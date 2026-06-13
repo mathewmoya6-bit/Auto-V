@@ -182,7 +182,15 @@
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
-        .spinner {
+        .error, .success {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
+        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
+        .loading {
             display: inline-block;
             width: 20px;
             height: 20px;
@@ -194,28 +202,13 @@
             vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .error, .success {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
-        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
-        .result-value {
-            font-size: 48px;
-            font-weight: bold;
-            color: #22c55e;
-            text-align: center;
-            margin: 20px 0;
-        }
     </style>
 </head>
 <body>
 
 <header>
     <div class="logo">🚗 AUTO-V Dashboard</div>
-    <button class="logout-btn" onclick="logout()">Logout</button>
+    <button class="logout-btn" id="logoutBtn">Logout</button>
 </header>
 
 <div class="container">
@@ -366,9 +359,6 @@
     const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // BACKEND API URL (NOT window.location.origin)
-    const API_BASE_URL = "https://meidriveafrica-backend.onrender.com";
-
     let currentUser = null;
     let valuationFee = 2500;
     let inspectionFee = 3500;
@@ -376,15 +366,22 @@
 
     // INIT
     async function init() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            location.href = "login.html";
-            return;
+        try {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error || !user) {
+                console.log('No user found, redirecting to login');
+                window.location.href = "login.html";
+                return;
+            }
+            currentUser = user;
+            document.getElementById("email").textContent = `Logged in as: ${user.email}`;
+            await loadHistory();
+            subscribeRealtime();
+            checkPaymentReturn();
+        } catch (e) {
+            console.error('Init error:', e);
+            window.location.href = "login.html";
         }
-        currentUser = user;
-        document.getElementById("email").textContent = `Logged in as: ${user.email}`;
-        await loadHistory();
-        subscribeRealtime();
     }
 
     // LOAD HISTORY
@@ -436,7 +433,7 @@
         }
     }
 
-    // SUBSCRIBE REALTIME (No polling needed)
+    // SUBSCRIBE REALTIME
     function subscribeRealtime() {
         supabase.channel("payments")
             .on("postgres_changes", {
@@ -448,6 +445,10 @@
                 if (payload.new.payment_status === "paid") {
                     loadHistory();
                     showMessage('✅ Payment confirmed! Results loaded.', 'success');
+                    hidePaymentStatus();
+                    isProcessingPayment = false;
+                    document.getElementById('submitValuationBtn').disabled = false;
+                    document.getElementById('submitInspectionBtn').disabled = false;
                 }
             })
             .subscribe();
@@ -470,7 +471,7 @@
         document.getElementById(id).style.display = 'none';
     }
 
-    // PROCESS VALUATION PAYMENT
+    // PROCESS VALUATION PAYMENT - Redirect to payment.html
     async function processValuationPayment() {
         if (isProcessingPayment) {
             showMessage('Payment already in progress. Please wait.', 'error');
@@ -520,37 +521,17 @@
             }
 
             closeModal('valuationModal');
-            showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
-
-            // CALL BACKEND API
-            const response = await fetch(`${API_BASE_URL}/api/payments/mpesa/initiate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    service_type: 'valuation',
-                    purpose: purpose,
-                    phone: phone,
-                    amount: valuationFee,
-                    service_id: service.id,
-                    user_id: currentUser.id
-                })
+            
+            // Redirect to payment.html with service details
+            const params = new URLSearchParams({
+                service_type: 'valuation',
+                service_id: service.id,
+                amount: valuationFee,
+                phone: phone,
+                reference: `VAL${service.id.substring(0, 8)}`
             });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error: ${response.status}`);
-            }
-
-            const result = await response.json();
-
-            if (result.success) {
-                showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-                // Just wait for realtime subscription to update
-            } else {
-                showPaymentStatus('❌ ' + (result.message || 'Payment initiation failed'), true);
-                setTimeout(() => hidePaymentStatus(), 5000);
-                isProcessingPayment = false;
-                document.getElementById('submitValuationBtn').disabled = false;
-            }
+            
+            window.location.href = `payment.html?${params.toString()}`;
 
         } catch (e) {
             console.error('Payment error:', e);
@@ -560,7 +541,7 @@
         }
     }
 
-    // PROCESS INSPECTION PAYMENT
+    // PROCESS INSPECTION PAYMENT - Redirect to payment.html
     async function processInspectionPayment() {
         if (isProcessingPayment) {
             showMessage('Payment already in progress. Please wait.', 'error');
@@ -609,42 +590,41 @@
             }
 
             closeModal('inspectionModal');
-            showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
-
-            const response = await fetch(`${API_BASE_URL}/api/payments/mpesa/initiate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    service_type: 'inspection',
-                    purpose: 'Inspection',
-                    phone: phone,
-                    amount: inspectionFee,
-                    service_id: service.id,
-                    user_id: currentUser.id
-                })
+            
+            // Redirect to payment.html with service details
+            const params = new URLSearchParams({
+                service_type: 'inspection',
+                service_id: service.id,
+                amount: inspectionFee,
+                phone: phone,
+                reference: `INS${service.id.substring(0, 8)}`
             });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error: ${response.status}`);
-            }
-
-            const result = await response.json();
-
-            if (result.success) {
-                showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-                // Just wait for realtime subscription to update
-            } else {
-                showPaymentStatus('❌ ' + (result.message || 'Payment initiation failed'), true);
-                setTimeout(() => hidePaymentStatus(), 5000);
-                isProcessingPayment = false;
-                document.getElementById('submitInspectionBtn').disabled = false;
-            }
+            
+            window.location.href = `payment.html?${params.toString()}`;
 
         } catch (e) {
             console.error('Payment error:', e);
             showMessage('Payment failed: ' + e.message, 'error');
             isProcessingPayment = false;
             document.getElementById('submitInspectionBtn').disabled = false;
+        }
+    }
+
+    // CHECK PAYMENT RETURN FROM PAYMENT.HTML
+    function checkPaymentReturn() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const status = urlParams.get('payment');
+        const service = urlParams.get('service');
+        const serviceId = urlParams.get('serviceId');
+        
+        if (status === 'success' && service && serviceId) {
+            showMessage(`✅ ${service} payment successful! Processing results...`, 'success');
+            // Clear URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+            // The realtime subscription will handle updating the UI
+        } else if (status === 'failed') {
+            showMessage('❌ Payment failed. Please try again.', 'error');
+            window.history.replaceState({}, document.title, window.location.pathname);
         }
     }
 
@@ -667,10 +647,25 @@
         document.getElementById('paymentStatus').style.display = 'none';
     }
 
-    // LOGOUT
+    // LOGOUT - Fixed
     async function logout() {
-        await supabase.auth.signOut();
-        location.href = "login.html";
+        try {
+            const logoutBtn = document.getElementById('logoutBtn');
+            logoutBtn.textContent = 'Logging out...';
+            logoutBtn.disabled = true;
+            
+            await supabase.auth.signOut();
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            window.location.href = "login.html";
+        } catch (e) {
+            console.error('Logout error:', e);
+            // Force logout even if Supabase fails
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = "login.html";
+        }
     }
 
     // EVENT LISTENERS
@@ -679,6 +674,7 @@
         document.getElementById('inspectionBtn').addEventListener('click', openInspection);
         document.getElementById('submitValuationBtn').addEventListener('click', processValuationPayment);
         document.getElementById('submitInspectionBtn').addEventListener('click', processInspectionPayment);
+        document.getElementById('logoutBtn').addEventListener('click', logout);
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
