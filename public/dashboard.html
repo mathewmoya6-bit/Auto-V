@@ -41,11 +41,8 @@
             border-radius: 20px;
             padding: 30px;
             text-align: center;
-            cursor: pointer;
             border: 1px solid #1e293b;
             transition: all 0.3s;
-            position: relative;
-            overflow: hidden;
         }
         .service-card:hover { border-color: #eab308; transform: translateY(-5px); box-shadow: 0 10px 30px rgba(234,179,8,0.1); }
         .service-icon { font-size: 50px; margin-bottom: 15px; }
@@ -62,7 +59,7 @@
             width: 100%;
             transition: all 0.3s;
         }
-        .btn-primary:hover { background: #facc15; transform: scale(1.02); }
+        .btn-primary:hover { background: #facc15; }
         .btn-primary:disabled { background: #666; cursor: not-allowed; }
         .modal {
             display: none;
@@ -114,18 +111,6 @@
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            border-top-color: #eab308;
-            animation: spin 0.8s linear infinite;
-            margin-right: 10px;
-            vertical-align: middle;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
         table { width: 100%; border-collapse: collapse; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1e293b; }
         th { color: #eab308; }
@@ -154,7 +139,7 @@
     <div class="welcome-card">
         <h1>Welcome to AUTO-V</h1>
         <p>Pay via M-Pesa → Get instant valuation/inspection results</p>
-        <p style="font-size: 12px; margin-top: 10px;" id="userEmail"></p>
+        <p style="font-size: 12px; margin-top: 10px;" id="userEmail">Loading user...</p>
     </div>
 
     <div id="errorMsg" class="error"></div>
@@ -188,7 +173,7 @@
                     </tr>
                 </thead>
                 <tbody id="historyBody">
-                    <tr><td colspan="6" style="text-align: center; padding: 40px;">No service history yet. Start by paying for a service!</td></tr>
+                    <tr><td colspan="6" style="text-align: center; padding: 40px;">No service history yet.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -248,13 +233,11 @@
 const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 
-// Create Supabase client
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
 let valuationFee = 2500;
 let inspectionFee = 3500;
-let pollInterval = null;
 let isProcessingPayment = false;
 
 // Check authentication
@@ -262,38 +245,81 @@ async function checkAuth() {
     try {
         const { data: { user }, error } = await supabase.auth.getUser();
         if (error || !user) {
-            // If not logged in, redirect to login
-            window.location.href = "login.html";
-            return false;
+            document.getElementById('userEmail').textContent = 'Guest Mode - Not logged in';
+            return true;
         }
         currentUser = user;
         document.getElementById('userEmail').textContent = `Logged in as: ${user.email}`;
         return true;
     } catch (e) {
         console.error('Auth check failed:', e);
-        return false;
+        document.getElementById('userEmail').textContent = 'Guest Mode - Supabase not configured';
+        return true;
     }
 }
 
-// Validate phone number
-function validatePhone(phone) {
-    const cleaned = phone.replace(/\D/g, '');
-    return cleaned.length >= 10 && cleaned.length <= 13;
+// Load user history from Supabase
+async function loadHistory() {
+    if (!currentUser) return;
+    
+    try {
+        const { data: valuations } = await supabase
+            .from('valuations')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        
+        const { data: inspections } = await supabase
+            .from('inspections')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        
+        const all = [
+            ...(valuations || []).map(v => ({ ...v, type: 'valuation' })),
+            ...(inspections || []).map(i => ({ ...i, type: 'inspection' }))
+        ];
+        
+        const tbody = document.getElementById('historyBody');
+        if (all.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No service history yet.</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = all.map(item => {
+            let badgeClass = 'badge-pending';
+            if (item.payment_status === 'paid') badgeClass = 'badge-paid';
+            if (item.status === 'processing') badgeClass = 'badge-processing';
+            
+            let resultText = '-';
+            if (item.type === 'valuation' && item.valuation_result) {
+                try {
+                    const result = typeof item.valuation_result === 'string' 
+                        ? JSON.parse(item.valuation_result) 
+                        : item.valuation_result;
+                    resultText = `KES ${(result.market_value || 0).toLocaleString()}`;
+                } catch (e) { resultText = 'Completed'; }
+            } else if (item.type === 'inspection' && item.overall_score) {
+                resultText = `${item.overall_score}%`;
+            }
+            
+            return `
+                <tr>
+                    <td>${new Date(item.created_at).toLocaleDateString()}</td>
+                    <td>${item.type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
+                    <td>${item.make || 'N/A'} ${item.model || 'N/A'} (${item.registration_number || 'N/A'})</td>
+                    <td>KES ${(item.valuation_amount || item.inspection_amount || 0).toLocaleString()}</td>
+                    <td><span class="${badgeClass}">${item.payment_status || 'pending'}</span></td>
+                    <td><strong>${resultText}</strong></td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('History load error:', e);
+    }
 }
 
-// Validate registration
-function validateRegistration(reg) {
-    return reg && reg.length >= 3;
-}
-
-// Validate year
-function validateYear(year) {
-    const currentYear = new Date().getFullYear();
-    const parsed = parseInt(year);
-    return !isNaN(parsed) && parsed >= 1900 && parsed <= currentYear + 1;
-}
-
-// Process valuation payment
+// Process valuation payment - redirect to payment.html
 async function processValuationPayment() {
     if (isProcessingPayment) {
         showMessage('Payment already in progress. Please wait.', 'error');
@@ -307,52 +333,51 @@ async function processValuationPayment() {
     const purpose = document.getElementById('valPurpose').value;
     const phone = document.getElementById('valPhone').value;
     
-    if (!validateRegistration(registration)) {
-        showMessage('Please enter a valid registration number', 'error');
-        return;
-    }
-    if (!make || !model) {
-        showMessage('Please enter make and model', 'error');
-        return;
-    }
-    if (!validateYear(year)) {
-        showMessage('Please enter a valid year (1900 - current year)', 'error');
-        return;
-    }
-    if (!validatePhone(phone)) {
-        showMessage('Please enter a valid phone number (10-13 digits)', 'error');
+    if (!registration || !make || !model || !year || !phone) {
+        showMessage('Please fill all fields', 'error');
         return;
     }
     
     isProcessingPayment = true;
-    const btn = document.getElementById('submitValuationBtn');
-    btn.disabled = true;
     
-    closeModal('valuationModal');
-    showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-    
-    // SIMULATE PAYMENT SUCCESS FOR DEMO
-    // In production, this would call your M-Pesa API
-    setTimeout(() => {
-        hidePaymentStatus();
-        isProcessingPayment = false;
-        btn.disabled = false;
-        showMessage('✅ Payment successful! Generating valuation...', 'success');
-        
-        // Generate demo result
-        const valuation = {
-            id: 'demo-' + Date.now(),
+    // Create service record in Supabase
+    const { data: service, error } = await supabase
+        .from('valuations')
+        .insert({
+            user_id: currentUser?.id || 'guest',
             registration_number: registration,
             make: make,
             model: model,
             year: parseInt(year),
-            valuation_purpose: purpose
-        };
-        generateValuationResult(valuation);
-    }, 3000);
+            valuation_purpose: purpose,
+            valuation_amount: valuationFee,
+            payment_status: 'pending',
+            status: 'awaiting_payment'
+        })
+        .select()
+        .single();
+    
+    if (error) {
+        showMessage('Error: ' + error.message, 'error');
+        isProcessingPayment = false;
+        return;
+    }
+    
+    closeModal('valuationModal');
+    
+    // Redirect to payment.html with service details
+    const params = new URLSearchParams({
+        service: 'valuation',
+        serviceId: service.id,
+        amount: valuationFee,
+        phone: phone,
+        reference: `VAL${service.id.substring(0, 8)}`
+    });
+    
+    window.location.href = `payment.html?${params.toString()}`;
 }
 
-// Process inspection payment
+// Process inspection payment - redirect to payment.html
 async function processInspectionPayment() {
     if (isProcessingPayment) {
         showMessage('Payment already in progress. Please wait.', 'error');
@@ -366,52 +391,80 @@ async function processInspectionPayment() {
     const mileage = document.getElementById('insMileage').value;
     const phone = document.getElementById('insPhone').value;
     
-    if (!validateRegistration(registration)) {
-        showMessage('Please enter a valid registration number', 'error');
-        return;
-    }
-    if (!make || !model) {
-        showMessage('Please enter make and model', 'error');
-        return;
-    }
-    if (!validateYear(year)) {
-        showMessage('Please enter a valid year (1900 - current year)', 'error');
-        return;
-    }
-    if (!mileage || parseInt(mileage) < 0) {
-        showMessage('Please enter valid mileage', 'error');
-        return;
-    }
-    if (!validatePhone(phone)) {
-        showMessage('Please enter a valid phone number (10-13 digits)', 'error');
+    if (!registration || !make || !model || !year || !mileage || !phone) {
+        showMessage('Please fill all fields', 'error');
         return;
     }
     
     isProcessingPayment = true;
-    const btn = document.getElementById('submitInspectionBtn');
-    btn.disabled = true;
     
-    closeModal('inspectionModal');
-    showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-    
-    // SIMULATE PAYMENT SUCCESS FOR DEMO
-    setTimeout(() => {
-        hidePaymentStatus();
-        isProcessingPayment = false;
-        btn.disabled = false;
-        showMessage('✅ Payment successful! Generating inspection...', 'success');
-        
-        // Generate demo result
-        const inspection = {
-            id: 'demo-' + Date.now(),
+    const { data: service, error } = await supabase
+        .from('inspections')
+        .insert({
+            user_id: currentUser?.id || 'guest',
             registration_number: registration,
             make: make,
             model: model,
             year: parseInt(year),
-            mileage: parseInt(mileage)
-        };
-        generateInspectionResult(inspection);
-    }, 3000);
+            mileage: parseInt(mileage),
+            inspection_amount: inspectionFee,
+            payment_status: 'pending',
+            status: 'awaiting_payment'
+        })
+        .select()
+        .single();
+    
+    if (error) {
+        showMessage('Error: ' + error.message, 'error');
+        isProcessingPayment = false;
+        return;
+    }
+    
+    closeModal('inspectionModal');
+    
+    const params = new URLSearchParams({
+        service: 'inspection',
+        serviceId: service.id,
+        amount: inspectionFee,
+        phone: phone,
+        reference: `INS${service.id.substring(0, 8)}`
+    });
+    
+    window.location.href = `payment.html?${params.toString()}`;
+}
+
+// Check payment status on return from payment.html
+function checkPaymentStatus() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get('payment');
+    const service = urlParams.get('service');
+    const serviceId = urlParams.get('serviceId');
+    
+    if (status === 'success' && service && serviceId) {
+        showMessage(`✅ ${service} payment successful! Processing results...`, 'success');
+        
+        // Generate results
+        setTimeout(async () => {
+            if (service === 'valuation') {
+                const { data: valuation } = await supabase
+                    .from('valuations')
+                    .select('*')
+                    .eq('id', serviceId)
+                    .single();
+                if (valuation) generateValuationResult(valuation);
+            } else {
+                const { data: inspection } = await supabase
+                    .from('inspections')
+                    .select('*')
+                    .eq('id', serviceId)
+                    .single();
+                if (inspection) generateInspectionResult(inspection);
+            }
+            loadHistory();
+            // Clear URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }, 2000);
+    }
 }
 
 // Generate valuation result
@@ -434,20 +487,25 @@ async function generateValuationResult(valuation) {
         certificate_number: `AUTO-VAL-${valuation.id.substring(0, 8)}`
     };
     
+    await supabase.from('valuations').update({ 
+        valuation_result: result,
+        status: 'completed',
+        payment_status: 'paid'
+    }).eq('id', valuation.id);
+    
     document.getElementById('resultTitle').textContent = '💰 Valuation Result';
     document.getElementById('resultContent').innerHTML = `
         <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 15px 0;">
-            <p><strong>Vehicle:</strong> ${valuation.make || 'N/A'} ${valuation.model || 'N/A'} (${valuation.year || 'N/A'})</p>
-            <p><strong>Registration:</strong> ${valuation.registration_number || 'N/A'}</p>
+            <p><strong>Vehicle:</strong> ${valuation.make} ${valuation.model} (${valuation.year})</p>
+            <p><strong>Registration:</strong> ${valuation.registration_number}</p>
             <div class="result-value">KES ${Math.round(marketValue).toLocaleString()}</div>
             <hr style="margin: 15px 0; border-color: #334155;">
             <p><strong>Depreciation:</strong> ${result.age} years (${result.depreciation_rate}%)</p>
             <p><strong>Certificate:</strong> ${result.certificate_number}</p>
-            <p style="color: #22c55e; margin-top: 15px;">✅ Valuation complete! Certificate saved.</p>
+            <p style="color: #22c55e; margin-top: 15px;">✅ Valuation complete!</p>
         </div>
     `;
     document.getElementById('resultModal').style.display = 'flex';
-    showMessage('✅ Valuation completed! Check your history.', 'success');
 }
 
 // Generate inspection result
@@ -468,11 +526,19 @@ async function generateInspectionResult(inspection) {
         certificate_number: `AUTO-INS-${inspection.id.substring(0, 8)}`
     };
     
+    await supabase.from('inspections').update({ 
+        overall_score: score,
+        final_verdict: verdict,
+        inspection_result: result,
+        status: 'completed',
+        payment_status: 'paid'
+    }).eq('id', inspection.id);
+    
     document.getElementById('resultTitle').textContent = '🔧 Inspection Result';
     document.getElementById('resultContent').innerHTML = `
         <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 15px 0;">
-            <p><strong>Vehicle:</strong> ${inspection.make || 'N/A'} ${inspection.model || 'N/A'} (${inspection.year || 'N/A'})</p>
-            <p><strong>Mileage:</strong> ${(inspection.mileage || 0).toLocaleString()} km</p>
+            <p><strong>Vehicle:</strong> ${inspection.make} ${inspection.model} (${inspection.year})</p>
+            <p><strong>Mileage:</strong> ${inspection.mileage.toLocaleString()} km</p>
             <div class="result-value">${score}% - ${verdict}</div>
             <hr style="margin: 15px 0; border-color: #334155;">
             <p><strong>Engine:</strong> ${result.categories.engine}</p>
@@ -480,25 +546,13 @@ async function generateInspectionResult(inspection) {
             <p><strong>Brakes:</strong> ${result.categories.brakes}</p>
             <p><strong>Electrical:</strong> ${result.categories.electrical}</p>
             <p><strong>Body:</strong> ${result.categories.body}</p>
-            <p style="color: #22c55e; margin-top: 15px;">✅ Inspection complete! Full report saved.</p>
+            <p style="color: #22c55e; margin-top: 15px;">✅ Inspection complete!</p>
         </div>
     `;
     document.getElementById('resultModal').style.display = 'flex';
-    showMessage('✅ Inspection completed! Check your history.', 'success');
 }
 
 // UI Helpers
-function showPaymentStatus(msg, isError = false) {
-    const div = document.getElementById('paymentStatus');
-    document.getElementById('paymentMessage').textContent = msg;
-    div.style.borderLeftColor = isError ? '#ef4444' : '#eab308';
-    div.style.display = 'block';
-}
-
-function hidePaymentStatus() {
-    document.getElementById('paymentStatus').style.display = 'none';
-}
-
 function showMessage(msg, type) {
     const div = document.getElementById(`${type}Msg`);
     div.textContent = msg;
@@ -520,25 +574,13 @@ function closeModal(id) {
     document.getElementById(id).style.display = 'none'; 
 }
 
-async function logout() { 
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-    }
-    await supabase.auth.signOut(); 
+function logout() { 
     window.location.href = "login.html"; 
 }
 
 // Initialize
-async function init() {
-    if (!await checkAuth()) return;
-    // Keep default fees displayed
-    document.getElementById('valuationPrice').textContent = `KES ${valuationFee.toLocaleString()}`;
-    document.getElementById('inspectionPrice').textContent = `KES ${inspectionFee.toLocaleString()}`;
-}
-
-// Event listeners
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Set up event listeners
     document.getElementById('valuationBtn').addEventListener('click', openValuation);
     document.getElementById('inspectionBtn').addEventListener('click', openInspection);
     document.getElementById('submitValuationBtn').addEventListener('click', processValuationPayment);
@@ -562,7 +604,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    init();
+    // Check auth and load data
+    await checkAuth();
+    await loadHistory();
+    checkPaymentStatus();
+    
+    // Show prices
+    document.getElementById('valuationPrice').textContent = `KES ${valuationFee.toLocaleString()}`;
+    document.getElementById('inspectionPrice').textContent = `KES ${inspectionFee.toLocaleString()}`;
+    
+    console.log('AUTO-V Dashboard loaded successfully!');
 });
 </script>
 </body>
