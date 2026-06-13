@@ -109,6 +109,38 @@ input:focus, select:focus {
     border-color: #eab308;
 }
 
+input[readonly] {
+    background: #0d0d0d;
+    color: #888;
+    cursor: not-allowed;
+}
+
+.tab-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #333;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.tab-active {
+    background: #eab308;
+    color: black;
+}
+
+.tab-inactive {
+    background: #333;
+    color: white;
+}
+
 .inspection-item {
     background: #1a1a1a;
     border-radius: 8px;
@@ -209,21 +241,6 @@ input:focus, select:focus {
     transition: width 0.3s;
 }
 
-.image-preview {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.preview-img {
-    width: 100%;
-    height: 80px;
-    object-fit: cover;
-    border-radius: 6px;
-    border: 1px solid #333;
-}
-
 .btn {
     padding: 12px 24px;
     border: none;
@@ -318,17 +335,13 @@ input:focus, select:focus {
     margin-top: 20px;
 }
 
-.badge {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: bold;
+.vehicle-info-card {
+    margin-top: 15px;
+    padding: 15px;
+    background: #1a1a1a;
+    border-radius: 8px;
+    border-left: 4px solid #eab308;
 }
-
-.badge-pass { background: #22c55e; color: white; }
-.badge-fail { background: #dc2626; color: white; }
-.badge-warning { background: #f97316; color: white; }
 
 @media (max-width: 768px) {
     .form-grid {
@@ -337,6 +350,9 @@ input:focus, select:focus {
     .inspection-header {
         flex-direction: column;
         align-items: flex-start;
+    }
+    .tab-buttons {
+        flex-direction: column;
     }
 }
 </style>
@@ -359,29 +375,90 @@ input:focus, select:focus {
 <div class="warning" id="warningMsg"></div>
 
 <!-- ============================================ -->
-<!-- STEP 1: VEHICLE IDENTIFICATION & DOCUMENTS -->
+<!-- STEP 1: SELECT OR ADD VEHICLE -->
 <!-- ============================================ -->
 <div id="step1" class="card">
-    <h2>📋 A. Vehicle Identification & Documents</h2>
+    <h2>🚗 Step 1: Select or Add Vehicle</h2>
+    
+    <div class="tab-buttons">
+        <button class="tab-btn tab-active" id="tabSelectBtn" onclick="showTab('select')">📋 Select Existing Vehicle</button>
+        <button class="tab-btn tab-inactive" id="tabAddBtn" onclick="showTab('add')">➕ Add New Vehicle</button>
+    </div>
+    
+    <!-- Select Existing Tab -->
+    <div id="tabSelectPanel">
+        <div class="form-group">
+            <label class="required">Choose Vehicle</label>
+            <select id="vehicleSelect">
+                <option value="">-- Select a vehicle --</option>
+            </select>
+        </div>
+        
+        <div id="vehicleInfo" class="vehicle-info-card" style="display:none;">
+            <h4>✅ Selected Vehicle Details</h4>
+            <div class="form-grid">
+                <div><strong>🔖 Registration:</strong> <span id="displayReg"></span></div>
+                <div><strong>🏭 Make/Model:</strong> <span id="displayMakeModel"></span></div>
+                <div><strong>📅 Year:</strong> <span id="displayYear"></span></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add New Vehicle Tab -->
+    <div id="tabAddPanel" style="display:none;">
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="required">Registration Number</label>
+                <input type="text" id="newRegistration" placeholder="e.g., KXX 123A" style="text-transform:uppercase">
+            </div>
+            <div class="form-group">
+                <label class="required">Make</label>
+                <input type="text" id="newMake" placeholder="e.g., Toyota, Honda, Subaru">
+            </div>
+            <div class="form-group">
+                <label class="required">Model</label>
+                <input type="text" id="newModel" placeholder="e.g., Corolla, Civic, Outback">
+            </div>
+            <div class="form-group">
+                <label class="required">Year of Manufacture</label>
+                <select id="newYear"></select>
+            </div>
+            <div class="form-group">
+                <label>VIN / Chassis Number</label>
+                <input type="text" id="newVin" placeholder="Optional">
+            </div>
+            <div class="form-group">
+                <label>Engine Number</label>
+                <input type="text" id="newEngine" placeholder="Optional">
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="addNewVehicle()">+ Add Vehicle & Continue</button>
+    </div>
+    
+    <div class="nav-buttons">
+        <div></div>
+        <button class="btn btn-primary" id="nextBtn" onclick="validateAndNext()">Next →</button>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- STEP 2: VEHICLE IDENTIFICATION & INSURANCE -->
+<!-- ============================================ -->
+<div id="step2" class="card" style="display:none">
+    <h2>📋 Step 2: Vehicle Identification & Insurance</h2>
     
     <div class="form-grid">
         <div class="form-group">
-            <label class="required">Select Vehicle</label>
-            <select id="vehicleSelect">
-                <option value="">Loading vehicles...</option>
-            </select>
-        </div>
-        <div class="form-group">
             <label class="required">Registration Number</label>
-            <input type="text" id="registration" placeholder="e.g., KXX 123A" readonly>
+            <input type="text" id="registration" readonly>
         </div>
         <div class="form-group">
             <label class="required">Make</label>
-            <input type="text" id="make" placeholder="e.g., Toyota" readonly>
+            <input type="text" id="make" readonly>
         </div>
         <div class="form-group">
             <label class="required">Model</label>
-            <input type="text" id="model" placeholder="e.g., Corolla" readonly>
+            <input type="text" id="model" readonly>
         </div>
         <div class="form-group">
             <label class="required">Year of Manufacture</label>
@@ -397,11 +474,11 @@ input:focus, select:focus {
             </select>
         </div>
         <div class="form-group">
-            <label class="required">Chassis / VIN Number</label>
+            <label>Chassis / VIN Number</label>
             <input type="text" id="vin" placeholder="JTEGD34V000123456">
         </div>
         <div class="form-group">
-            <label class="required">Engine Number</label>
+            <label>Engine Number</label>
             <input type="text" id="engineNo" placeholder="Engine number">
         </div>
         <div class="form-group">
@@ -456,36 +533,17 @@ input:focus, select:focus {
     </div>
     
     <div class="nav-buttons">
-        <div></div>
+        <button class="btn btn-secondary" onclick="prevStep(1)">← Back</button>
         <button class="btn btn-primary" onclick="validateInsuranceAndNext()">Next →</button>
     </div>
 </div>
 
 <!-- ============================================ -->
-<!-- STEP 2: MECHANICAL INSPECTION -->
-<!-- ============================================ -->
-<div id="step2" class="card" style="display:none">
-    <h2>🔧 B. Mechanical Inspection</h2>
-    <div id="mechanicalItems"></div>
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(1)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(3)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 3: BRAKES, TYRES & ELECTRICAL -->
+<!-- STEP 3: MECHANICAL INSPECTION -->
 <!-- ============================================ -->
 <div id="step3" class="card" style="display:none">
-    <h2>🛑 C. Brake System</h2>
-    <div id="brakeItems"></div>
-    
-    <h2>🛞 D. Tyres & Wheels</h2>
-    <div id="tyreItems"></div>
-    
-    <h2>💡 E. Electrical & Lighting Systems</h2>
-    <div id="electricalItems"></div>
-    
+    <h2>🔧 Step 3: Mechanical Inspection</h2>
+    <div id="mechanicalItems"></div>
     <div class="nav-buttons">
         <button class="btn btn-secondary" onclick="prevStep(2)">← Back</button>
         <button class="btn btn-primary" onclick="nextStep(4)">Next →</button>
@@ -493,29 +551,48 @@ input:focus, select:focus {
 </div>
 
 <!-- ============================================ -->
-<!-- STEP 4: SAFETY, BODY & ENVIRONMENTAL -->
+<!-- STEP 4: BRAKES, TYRES & ELECTRICAL -->
 <!-- ============================================ -->
 <div id="step4" class="card" style="display:none">
-    <h2>🪟 F. Safety Equipment</h2>
-    <div id="safetyItems"></div>
+    <h2>🛑 Step 4: Brake System</h2>
+    <div id="brakeItems"></div>
     
-    <h2>🚘 G. Body & Structural Integrity</h2>
-    <div id="bodyItems"></div>
+    <h2>🛞 Step 5: Tyres & Wheels</h2>
+    <div id="tyreItems"></div>
     
-    <h2>🌍 H. Environmental Compliance</h2>
-    <div id="environmentalItems"></div>
+    <h2>💡 Step 6: Electrical & Lighting Systems</h2>
+    <div id="electricalItems"></div>
     
     <div class="nav-buttons">
         <button class="btn btn-secondary" onclick="prevStep(3)">← Back</button>
+        <button class="btn btn-primary" onclick="nextStep(5)">Next →</button>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- STEP 5: SAFETY, BODY & ENVIRONMENTAL -->
+<!-- ============================================ -->
+<div id="step5" class="card" style="display:none">
+    <h2>🪟 Step 7: Safety Equipment</h2>
+    <div id="safetyItems"></div>
+    
+    <h2>🚘 Step 8: Body & Structural Integrity</h2>
+    <div id="bodyItems"></div>
+    
+    <h2>🌍 Step 9: Environmental Compliance</h2>
+    <div id="environmentalItems"></div>
+    
+    <div class="nav-buttons">
+        <button class="btn btn-secondary" onclick="prevStep(4)">← Back</button>
         <button class="btn btn-primary" onclick="calculateInspectionResult()">Review & Submit →</button>
     </div>
 </div>
 
 <!-- ============================================ -->
-<!-- STEP 5: RESULTS -->
+<!-- STEP 6: RESULTS -->
 <!-- ============================================ -->
-<div id="step5" class="card" style="display:none">
-    <h2>📊 I. Inspection Result</h2>
+<div id="step6" class="card" style="display:none">
+    <h2>📊 Step 10: Inspection Result</h2>
     
     <div id="inspectionResult" class="result-box">
         <div class="inspection-score" id="overallScore">0%</div>
@@ -544,7 +621,7 @@ input:focus, select:focus {
         </div>
         
         <div class="nav-buttons">
-            <button class="btn btn-secondary" onclick="prevStep(4)">← Back to Edit</button>
+            <button class="btn btn-secondary" onclick="prevStep(5)">← Back to Edit</button>
             <button class="btn btn-success" onclick="saveInspection()">✓ Submit Inspection Report</button>
         </div>
     </div>
@@ -607,6 +684,18 @@ const inspectionCategories = {
 };
 
 // ============================================
+// POPULATE YEAR DROPDOWN
+// ============================================
+function populateYears() {
+    const yearSelect = document.getElementById('newYear');
+    const currentYear = new Date().getFullYear();
+    yearSelect.innerHTML = '';
+    for (let y = currentYear; y >= 1980; y--) {
+        yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+    }
+}
+
+// ============================================
 // CHECK AUTHENTICATION
 // ============================================
 async function checkAuth() {
@@ -617,6 +706,25 @@ async function checkAuth() {
     }
     currentUser = user;
     return true;
+}
+
+// ============================================
+// TAB MANAGEMENT
+// ============================================
+function showTab(tab) {
+    if (tab === 'select') {
+        document.getElementById('tabSelectPanel').style.display = 'block';
+        document.getElementById('tabAddPanel').style.display = 'none';
+        document.getElementById('tabSelectBtn').className = 'tab-btn tab-active';
+        document.getElementById('tabAddBtn').className = 'tab-btn tab-inactive';
+        document.getElementById('nextBtn').style.display = 'block';
+    } else {
+        document.getElementById('tabSelectPanel').style.display = 'none';
+        document.getElementById('tabAddPanel').style.display = 'block';
+        document.getElementById('tabSelectBtn').className = 'tab-btn tab-inactive';
+        document.getElementById('tabAddBtn').className = 'tab-btn tab-active';
+        document.getElementById('nextBtn').style.display = 'none';
+    }
 }
 
 // ============================================
@@ -640,10 +748,18 @@ async function loadVehicles() {
             return;
         }
         
-        select.innerHTML = '<option value="">Select a vehicle...</option>';
+        select.innerHTML = '<option value="">-- Select a vehicle --</option>';
         
         data.forEach(v => {
-            select.innerHTML += `<option value="${v.id}" data-registration="${v.registration_number}" data-make="${v.make}" data-model="${v.model}" data-year="${v.year}" data-vin="${v.vin || ''}">${v.registration_number} - ${v.make} ${v.model}</option>`;
+            select.innerHTML += `<option value="${v.id}" 
+                data-registration="${v.registration_number}" 
+                data-make="${v.make}" 
+                data-model="${v.model}" 
+                data-year="${v.year}" 
+                data-vin="${v.vin || ''}" 
+                data-engine="${v.engine_number || ''}">
+                ${v.registration_number} - ${v.make} ${v.model} (${v.year})
+            </option>`;
         });
         
         select.onchange = function() {
@@ -655,13 +771,22 @@ async function loadVehicles() {
                     make: opt.dataset.make,
                     model: opt.dataset.model,
                     year: opt.dataset.year,
-                    vin: opt.dataset.vin
+                    vin: opt.dataset.vin,
+                    engine: opt.dataset.engine
                 };
+                
+                document.getElementById("displayReg").innerText = selectedVehicle.registration;
+                document.getElementById("displayMakeModel").innerText = `${selectedVehicle.make} ${selectedVehicle.model}`;
+                document.getElementById("displayYear").innerText = selectedVehicle.year;
+                document.getElementById("vehicleInfo").style.display = "block";
+                
+                // Fill step 2 fields
                 document.getElementById("registration").value = selectedVehicle.registration;
                 document.getElementById("make").value = selectedVehicle.make;
                 document.getElementById("model").value = selectedVehicle.model;
                 document.getElementById("year").value = selectedVehicle.year;
                 document.getElementById("vin").value = selectedVehicle.vin || "";
+                document.getElementById("engineNo").value = selectedVehicle.engine || "";
             }
         };
         
@@ -669,6 +794,98 @@ async function loadVehicles() {
         console.error("Error loading vehicles:", error);
         select.innerHTML = '<option value="">Error loading vehicles</option>';
     }
+}
+
+// ============================================
+// ADD NEW VEHICLE TO SUPABASE
+// ============================================
+async function addNewVehicle() {
+    const registration = document.getElementById('newRegistration').value.trim().toUpperCase();
+    const make = document.getElementById('newMake').value.trim();
+    const model = document.getElementById('newModel').value.trim();
+    const year = document.getElementById('newYear').value;
+    const vin = document.getElementById('newVin').value.trim();
+    const engine = document.getElementById('newEngine').value.trim();
+    
+    if (!registration || !make || !model || !year) {
+        document.getElementById('errorMsg').innerHTML = 'Please fill in Registration, Make, Model, and Year';
+        document.getElementById('errorMsg').style.display = 'block';
+        setTimeout(() => {
+            document.getElementById('errorMsg').style.display = 'none';
+        }, 3000);
+        return;
+    }
+    
+    const addBtn = event.target;
+    addBtn.disabled = true;
+    addBtn.innerHTML = '<span class="spinner"></span> Adding...';
+    
+    try {
+        const { data, error } = await supabase
+            .from('vehicles')
+            .insert([{
+                user_id: currentUser.id,
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: parseInt(year),
+                vin: vin,
+                engine_number: engine,
+                created_at: new Date().toISOString()
+            }])
+            .select();
+        
+        if (error) throw error;
+        
+        if (data && data[0]) {
+            selectedVehicle = {
+                id: data[0].id,
+                registration: data[0].registration_number,
+                make: data[0].make,
+                model: data[0].model,
+                year: data[0].year,
+                vin: data[0].vin || '',
+                engine: data[0].engine_number || ''
+            };
+            
+            // Fill step 2 fields
+            document.getElementById("registration").value = selectedVehicle.registration;
+            document.getElementById("make").value = selectedVehicle.make;
+            document.getElementById("model").value = selectedVehicle.model;
+            document.getElementById("year").value = selectedVehicle.year;
+            document.getElementById("vin").value = selectedVehicle.vin || "";
+            document.getElementById("engineNo").value = selectedVehicle.engine || "";
+            
+            document.getElementById('successMsg').innerHTML = '✓ Vehicle added successfully!';
+            document.getElementById('successMsg').style.display = 'block';
+            
+            setTimeout(() => {
+                nextStep(2);
+            }, 1500);
+        }
+        
+    } catch (error) {
+        document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
+        document.getElementById('errorMsg').style.display = 'block';
+        addBtn.disabled = false;
+        addBtn.innerHTML = '+ Add Vehicle & Continue';
+    }
+}
+
+// ============================================
+// VALIDATE AND NEXT
+// ============================================
+function validateAndNext() {
+    const select = document.getElementById('vehicleSelect');
+    if (!select.value) {
+        document.getElementById('errorMsg').innerHTML = 'Please select a vehicle or add a new one';
+        document.getElementById('errorMsg').style.display = 'block';
+        setTimeout(() => {
+            document.getElementById('errorMsg').style.display = 'none';
+        }, 3000);
+        return;
+    }
+    nextStep(2);
 }
 
 // ============================================
@@ -896,7 +1113,7 @@ function validateInsuranceAndNext() {
         document.getElementById("insuranceExpired").style.display = "none";
     }
     
-    nextStep(2);
+    nextStep(3);
 }
 
 // ============================================
@@ -948,12 +1165,15 @@ function calculateInspectionResult() {
         <div style="margin-top:15px; padding:10px; background:#1a1a1a; border-radius:8px;">
             <strong>Insurance Status:</strong> ${document.getElementById("insuranceProvider").value} - Expires ${document.getElementById("insuranceExpiry").value}
         </div>
+        <div style="margin-top:15px; padding:10px; background:#1a1a1a; border-radius:8px;">
+            <strong>Vehicle:</strong> ${selectedVehicle?.make} ${selectedVehicle?.model} (${selectedVehicle?.registration})
+        </div>
     `;
     
     document.getElementById("scoreBreakdown").innerHTML = breakdown;
     
     inspectionData = results;
-    nextStep(5);
+    nextStep(6);
 }
 
 // ============================================
@@ -980,7 +1200,7 @@ async function saveInspection() {
             engine_number: document.getElementById("engineNo").value,
             color: document.getElementById("color").value,
             fuel_type: document.getElementById("fuel").value,
-            odometer: parseInt(document.getElementById("odometer").value),
+            odometer: parseInt(document.getElementById("odometer").value) || 0,
             insurance_provider: document.getElementById("insuranceProvider").value,
             insurance_policy: document.getElementById("policyNumber").value,
             insurance_expiry: document.getElementById("insuranceExpiry").value,
@@ -1019,14 +1239,14 @@ async function saveInspection() {
 // ============================================
 function nextStep(step) {
     currentStep = step;
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 6; i++) {
         const stepDiv = document.getElementById(`step${i}`);
         if (stepDiv) stepDiv.style.display = i === step ? 'block' : 'none';
     }
-    const progress = ((step - 1) / 4) * 100;
+    const progress = ((step - 1) / 5) * 100;
     document.getElementById('progressFill').style.width = `${progress}%`;
     
-    if (step === 2 && !document.getElementById("mechanicalItems").innerHTML) {
+    if (step === 3 && !document.getElementById("mechanicalItems").innerHTML) {
         generateInspectionUI();
     }
 }
@@ -1041,6 +1261,7 @@ function prevStep(step) {
 async function init() {
     const isAuth = await checkAuth();
     if (isAuth) {
+        populateYears();
         await loadVehicles();
         nextStep(1);
     }
