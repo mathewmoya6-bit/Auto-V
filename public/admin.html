@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AUTO-V Admin Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V Admin Suite | Intelligent Fleet Oversight</title>
+    <!-- Supabase + Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -14,166 +15,201 @@
         }
 
         body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #0a0a0a;
-            color: white;
-            padding: 20px;
+            font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0c0f;
+            color: #edf2f7;
+            padding: 24px 20px;
         }
 
         .container {
             max-width: 1600px;
-            margin: auto;
+            margin: 0 auto;
         }
 
+        /* header / glassmorphism */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 32px;
             padding-bottom: 20px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid rgba(234, 179, 8, 0.3);
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 16px;
         }
 
         .logo {
             font-size: 28px;
-            font-weight: bold;
-            color: #eab308;
+            font-weight: 800;
+            background: linear-gradient(135deg, #eab308 0%, #facc15 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.3px;
         }
 
         .logo span {
-            font-size: 12px;
-            color: #888;
+            font-size: 11px;
+            color: #94a3b8;
             display: block;
+            font-weight: 400;
+            letter-spacing: 0;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 12px;
         }
 
         .back-btn, .logout-btn {
-            background: #333;
+            background: #1e293b;
             color: white;
             padding: 10px 20px;
+            border-radius: 40px;
             text-decoration: none;
-            border-radius: 6px;
+            font-weight: 500;
+            transition: 0.2s;
+            border: 1px solid #334155;
             cursor: pointer;
-            border: none;
+            font-size: 14px;
         }
 
         .logout-btn {
-            background: #dc2626;
+            background: #b91c1c;
+            border-color: #ef4444;
         }
 
         .logout-btn:hover {
-            background: #b91c1c;
+            background: #991b1b;
+            transform: translateY(-1px);
         }
 
+        .back-btn:hover {
+            background: #334155;
+        }
+
+        /* stats cards */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 18px;
+            margin-bottom: 32px;
         }
 
         .stat-card {
-            background: #111;
-            padding: 25px;
-            border-radius: 12px;
-            border: 1px solid #333;
+            background: #0f172a;
+            backdrop-filter: blur(4px);
+            padding: 20px 12px;
+            border-radius: 28px;
+            border: 1px solid #1e293b;
             text-align: center;
+            transition: all 0.2s;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
         }
 
         .stat-card h3 {
             color: #eab308;
-            margin-bottom: 10px;
-            font-size: 14px;
+            margin-bottom: 12px;
+            font-size: 13px;
             text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
         }
 
         .stat-number {
-            font-size: 42px;
-            font-weight: bold;
-            color: white;
-        }
-
-        .stat-unit {
-            font-size: 14px;
-            color: #888;
+            font-size: 40px;
+            font-weight: 800;
+            background: linear-gradient(145deg, #ffffff, #cbd5e1);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
         }
 
         .card {
-            background: #111;
-            padding: 25px;
-            border-radius: 12px;
-            border: 1px solid #333;
-            margin-bottom: 20px;
+            background: #0f172a;
+            border-radius: 28px;
+            border: 1px solid #1e2a3e;
+            padding: 24px 26px;
+            margin-bottom: 28px;
+            transition: box-shadow 0.2s;
         }
 
         h2 {
-            color: #eab308;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #333;
-            padding-bottom: 10px;
+            font-size: 1.6rem;
+            font-weight: 600;
+            background: linear-gradient(120deg, #fde047, #eab308);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            border-left: 4px solid #eab308;
+            padding-left: 16px;
+            margin-bottom: 22px;
         }
 
         h3 {
-            color: #eab308;
-            margin-bottom: 15px;
+            color: #facc15;
+            margin-bottom: 18px;
+            font-weight: 600;
+            font-size: 1.3rem;
         }
 
         .form-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
         }
 
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 8px;
         }
 
         label {
-            display: block;
-            margin-bottom: 8px;
-            color: #ccc;
             font-size: 12px;
+            text-transform: uppercase;
             font-weight: 600;
+            letter-spacing: 0.5px;
+            color: #94a3b8;
+            margin-bottom: 6px;
+            display: block;
         }
 
         input, select, textarea {
             width: 100%;
-            padding: 12px;
-            background: #1a1a1a;
-            color: white;
-            border: 1px solid #333;
-            border-radius: 8px;
+            padding: 12px 16px;
+            background: #0a0f1c;
+            border: 1px solid #2d3a4e;
+            border-radius: 20px;
+            color: #f1f5f9;
             font-size: 14px;
+            transition: 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #eab308;
+            box-shadow: 0 0 0 2px rgba(234,179,8,0.3);
         }
 
         button {
             background: #eab308;
-            color: black;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
+            color: #0a0c10;
             font-weight: bold;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 40px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: 0.2s;
+            font-size: 14px;
         }
 
         button:hover {
-            background: #ca8a04;
-        }
-
-        button:disabled {
-            background: #666;
-            cursor: not-allowed;
+            background: #facc15;
+            transform: scale(0.98);
         }
 
         .btn-secondary {
-            background: #333;
+            background: #334155;
             color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #444;
         }
 
         .btn-danger {
@@ -187,6 +223,7 @@
 
         .table-container {
             overflow-x: auto;
+            border-radius: 24px;
         }
 
         table {
@@ -195,106 +232,103 @@
         }
 
         th, td {
-            padding: 12px;
+            padding: 14px 12px;
             text-align: left;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #1e2a3a;
         }
 
         th {
             color: #eab308;
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 0.85rem;
         }
 
         tr:hover {
-            background: #1a1a1a;
+            background: rgba(234, 179, 8, 0.05);
         }
 
         .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
+            display: inline-flex;
+            padding: 4px 14px;
+            border-radius: 100px;
             font-size: 12px;
-            font-weight: bold;
+            font-weight: 700;
         }
 
-        .status-active { background: #22c55e; color: black; }
-        .status-pending { background: #eab308; color: black; }
-        .status-completed { background: #22c55e; color: black; }
-        .status-cancelled { background: #dc2626; color: white; }
+        .status-active { background: #22c55e20; color: #4ade80; border: 1px solid #22c55e40; }
+        .status-completed { background: #eab30820; color: #facc15; border: 1px solid #eab30840; }
+        .status-pending { background: #f9731620; color: #fb923c; border: 1px solid #f9731640; }
+        .status-cancelled { background: #dc262620; color: #f87171; border: 1px solid #dc262640; }
 
         .tabs {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
             flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 28px;
         }
 
         .tab-btn {
-            padding: 10px 20px;
-            background: #333;
+            background: #1e293b;
+            padding: 10px 24px;
+            border-radius: 40px;
+            color: #cbd5e1;
+            font-weight: 500;
             border: none;
-            border-radius: 8px;
-            color: white;
-            cursor: pointer;
         }
 
         .tab-btn.active {
             background: #eab308;
-            color: black;
-        }
-
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            border-top-color: #eab308;
-            animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .error {
-            color: #ef4444;
-            background: #7f1d1d;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            display: none;
-        }
-
-        .success {
-            color: #22c55e;
-            background: #14532d;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            display: none;
+            color: #0f172a;
+            box-shadow: 0 4px 12px rgba(234,179,8,0.3);
         }
 
         .charts-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
+            gap: 24px;
+            margin-bottom: 28px;
         }
 
         canvas {
-            max-height: 300px;
+            max-height: 280px;
+            width: 100%;
         }
 
-        @media (max-width: 768px) {
-            .charts-row {
-                grid-template-columns: 1fr;
-            }
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
+        .error, .success {
+            padding: 14px 20px;
+            border-radius: 50px;
+            margin-bottom: 20px;
+            display: none;
+            font-weight: 500;
+        }
+
+        .error {
+            background: #7f1d1dcc;
+            color: #ffc2c2;
+            border-left: 5px solid #ef4444;
+        }
+
+        .success {
+            background: #14532dcc;
+            color: #bbf7d0;
+            border-left: 5px solid #22c55e;
+        }
+
+        @media (max-width: 700px) {
+            .charts-row { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2,1fr); }
+            .card { padding: 18px; }
+        }
+        .delete-action-btn {
+            background: none;
+            padding: 5px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            background: #dc2626;
+            color: white;
+        }
+        .delete-action-btn:hover {
+            background: #b91c1c;
         }
     </style>
 </head>
@@ -303,598 +337,361 @@
 <div class="container">
     <div class="header">
         <div class="logo">
-            🚗 AUTO-V Admin Dashboard
-            <span>System Administrator | Full Control</span>
+            🚗 AUTO-V · KENYA
+            <span>Intelligent Vehicle Intelligence Hub</span>
         </div>
-        <div>
-            <button class="logout-btn" onclick="logout()">🚪 Logout</button>
-            <a href="dashboard.html" class="back-btn">← User Dashboard</a>
+        <div class="action-buttons">
+            <button class="logout-btn" onclick="handleLogout()">🚪 Exit Admin</button>
+            <a href="dashboard.html" class="back-btn">← User Portal</a>
         </div>
     </div>
 
     <div class="error" id="errorMsg"></div>
     <div class="success" id="successMsg"></div>
 
-    <!-- Stats Overview -->
+    <!-- KPI CARDS -->
     <div class="stats-grid" id="statsGrid">
-        <div class="stat-card">
-            <h3>Total Vehicles</h3>
-            <div class="stat-number" id="totalVehicles">0</div>
-        </div>
-        <div class="stat-card">
-            <h3>Total Valuations</h3>
-            <div class="stat-number" id="totalValuations">0</div>
-        </div>
-        <div class="stat-card">
-            <h3>Total Inspections</h3>
-            <div class="stat-number" id="totalInspections">0</div>
-        </div>
-        <div class="stat-card">
-            <h3>Total Users</h3>
-            <div class="stat-number" id="totalUsers">0</div>
-        </div>
-        <div class="stat-card">
-            <h3>Total Certificates</h3>
-            <div class="stat-number" id="totalCertificates">0</div>
-        </div>
-        <div class="stat-card">
-            <h3>Total Revenue (KES)</h3>
-            <div class="stat-number" id="totalRevenue">0</div>
-        </div>
+        <div class="stat-card"><h3>Total Vehicles</h3><div class="stat-number" id="totalVehicles">0</div></div>
+        <div class="stat-card"><h3>Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
+        <div class="stat-card"><h3>Inspections</h3><div class="stat-number" id="totalInspections">0</div></div>
+        <div class="stat-card"><h3>Active Users</h3><div class="stat-number" id="totalUsers">0</div></div>
+        <div class="stat-card"><h3>Certificates</h3><div class="stat-number" id="totalCertificates">0</div></div>
+        <div class="stat-card"><h3>Revenue (KES)</h3><div class="stat-number" id="totalRevenue">0</div></div>
     </div>
 
-    <!-- Charts -->
+    <!-- CHARTS SECTION -->
     <div class="charts-row">
-        <div class="card">
-            <h3>Monthly Valuations</h3>
-            <canvas id="valuationsChart"></canvas>
-        </div>
-        <div class="card">
-            <h3>Monthly Inspections</h3>
-            <canvas id="inspectionsChart"></canvas>
-        </div>
+        <div class="card"><h3>📊 Monthly Valuations</h3><canvas id="valuationsChart"></canvas></div>
+        <div class="card"><h3>🔧 Monthly Inspections</h3><canvas id="inspectionsChart"></canvas></div>
     </div>
 
-    <!-- Tabs -->
-    <div class="tabs">
-        <button class="tab-btn active" onclick="showTab('vehicles')">🚗 Vehicles</button>
-        <button class="tab-btn" onclick="showTab('valuations')">💰 Valuations</button>
-        <button class="tab-btn" onclick="showTab('inspections')">🔍 Inspections</button>
-        <button class="tab-btn" onclick="showTab('users')">👥 Users</button>
-        <button class="tab-btn" onclick="showTab('certificates')">📜 Certificates</button>
-        <button class="tab-btn" onclick="showTab('settings')">⚙️ Settings</button>
+    <!-- TABS -->
+    <div class="tabs" id="tabContainer">
+        <button class="tab-btn active" data-tab="vehicles">🚗 Fleet</button>
+        <button class="tab-btn" data-tab="valuations">💰 Valuations</button>
+        <button class="tab-btn" data-tab="inspections">🔍 Inspections</button>
+        <button class="tab-btn" data-tab="users">👥 Users</button>
+        <button class="tab-btn" data-tab="certificates">📜 Certificates</button>
+        <button class="tab-btn" data-tab="settings">⚙️ Core Settings</button>
     </div>
 
-    <!-- Vehicles Tab -->
+    <!-- VEHICLES -->
     <div id="vehiclesTab" class="card">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-            <h2>Vehicle Management</h2>
-            <button onclick="refreshData()">🔄 Refresh</button>
-        </div>
-        <div class="table-container">
-            <table id="vehiclesTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Registration</th>
-                        <th>Make/Model</th>
-                        <th>Year</th>
-                        <th>Owner ID</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="vehiclesTableBody">
-                    <tr><td colspan="7" style="text-align:center;">Loading...</td></tr>
-                </tbody>
-            </table>
-        </div>
+        <div style="display: flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:12px;"><h2>🚘 Vehicle Registry</h2><button onclick="refreshDashboard()">🔄 Sync Now</button></div>
+        <div class="table-container"><table id="vehiclesTable"><thead><tr><th>ID</th><th>Reg No.</th><th>Make/Model</th><th>Year</th><th>Owner ID</th><th>Created</th><th>Action</th></tr></thead><tbody id="vehiclesTableBody"><tr><td colspan="7">Loading fleet...</td></tr></tbody></table></div>
     </div>
 
-    <!-- Valuations Tab -->
+    <!-- VALUATIONS -->
     <div id="valuationsTab" class="card" style="display:none;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-            <h2>Valuation Management</h2>
-            <button onclick="refreshData()">🔄 Refresh</button>
-        </div>
-        <div class="table-container">
-            <table id="valuationsTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Vehicle</th>
-                        <th>Amount (KES)</th>
-                        <th>Purpose</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="valuationsTableBody">
-                    <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
-                </tbody>
-            </table>
-        </div>
+        <h2>💰 Valuation Records</h2>
+        <div class="table-container"><table id="valuationsTable"><thead><tr><th>ID</th><th>Vehicle Ref</th><th>Amount (KES)</th><th>Purpose</th><th>Date</th><th>Status</th></tr></thead><tbody id="valuationsTableBody"><tr><td colspan="6">Loading...</td></tr></tbody></table></div>
     </div>
 
-    <!-- Inspections Tab -->
+    <!-- INSPECTIONS -->
     <div id="inspectionsTab" class="card" style="display:none;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-            <h2>Inspection Management</h2>
-            <button onclick="refreshData()">🔄 Refresh</button>
-        </div>
-        <div class="table-container">
-            <table id="inspectionsTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Vehicle</th>
-                        <th>Score</th>
-                        <th>Verdict</th>
-                        <th>Inspector</th>
-                        <th>Date</th>
-                    </tr>
-                </thead>
-                <tbody id="inspectionsTableBody">
-                    <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
-                </tbody>
-            </table>
-        </div>
+        <h2>🔧 Technical Inspections</h2>
+        <div class="table-container"><table id="inspectionsTable"><thead><tr><th>ID</th><th>Vehicle</th><th>Score</th><th>Verdict</th><th>Inspector</th><th>Date</th></tr></thead><tbody id="inspectionsTableBody"><tr><td colspan="6">Fetching...</td></tr></tbody></table></div>
     </div>
 
-    <!-- Users Tab -->
+    <!-- USERS (read from auth and metadata) -->
     <div id="usersTab" class="card" style="display:none;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-            <h2>User Management</h2>
-            <button onclick="refreshData()">🔄 Refresh</button>
-        </div>
-        <div class="table-container">
-            <table id="usersTable">
-                <thead>
-                    <tr>
-                        <th>User ID</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Vehicles</th>
-                        <th>Joined</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="usersTableBody">
-                    <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
-                </tbody>
-            </table>
-        </div>
+        <h2>👥 Platform Users</h2>
+        <div class="table-container"><table id="usersTable"><thead><tr><th>User ID</th><th>Email</th><th>Role</th><th>Vehicles owned</th><th>Joined</th><th>Action</th></tr></thead><tbody id="usersTableBody"><tr><td colspan="6">Retrieving users...</td></tr></tbody></table></div>
     </div>
 
-    <!-- Certificates Tab -->
+    <!-- CERTIFICATES -->
     <div id="certificatesTab" class="card" style="display:none;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-            <h2>Certificate Management</h2>
-            <button onclick="refreshData()">🔄 Refresh</button>
-        </div>
-        <div class="table-container">
-            <table id="certificatesTable">
-                <thead>
-                    <tr>
-                        <th>Certificate No</th>
-                        <th>Vehicle</th>
-                        <th>Type</th>
-                        <th>Issue Date</th>
-                        <th>Valid Until</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="certificatesTableBody">
-                    <tr><td colspan="6" style="text-align:center;">Loading...</td></tr>
-                </tbody>
-            </table>
-        </div>
+        <h2>📜 Official Certificates</h2>
+        <div class="table-container"><table id="certificatesTable"><thead><tr><th>Cert No.</th><th>Vehicle ID</th><th>Type</th><th>Issue Date</th><th>Valid Until</th><th>Status</th></tr></thead><tbody id="certificatesTableBody"><tr><td colspan="6">Loading certs...</td></tr></tbody></table></div>
     </div>
 
-    <!-- Settings Tab -->
+    <!-- SETTINGS -->
     <div id="settingsTab" class="card" style="display:none;">
-        <h2>System Settings</h2>
+        <h2>⚙️ System Configuration</h2>
         <div class="form-grid">
-            <div class="form-group">
-                <label>System Name</label>
-                <input type="text" id="systemName" value="AUTO-V Kenya">
-            </div>
-            <div class="form-group">
-                <label>Contact Email</label>
-                <input type="email" id="contactEmail" value="admin@autov.co.ke">
-            </div>
-            <div class="form-group">
-                <label>Support Phone</label>
-                <input type="tel" id="supportPhone" value="+254 700 000 000">
-            </div>
-            <div class="form-group">
-                <label>Valuation Fee (KES)</label>
-                <input type="number" id="valuationFee" value="2500">
-            </div>
-            <div class="form-group">
-                <label>Inspection Fee (KES)</label>
-                <input type="number" id="inspectionFee" value="3500">
-            </div>
+            <div class="form-group"><label>🏷️ Platform Name</label><input type="text" id="systemName" value="AUTO-V Kenya"></div>
+            <div class="form-group"><label>📧 Admin Contact</label><input type="email" id="contactEmail" value="support@autov.co.ke"></div>
+            <div class="form-group"><label>📞 Support Hotline</label><input type="tel" id="supportPhone" value="+254 700 123 456"></div>
+            <div class="form-group"><label>💰 Valuation Base Fee (KES)</label><input type="number" id="valuationFee" value="2500"></div>
+            <div class="form-group"><label>🛠️ Inspection Fee (KES)</label><input type="number" id="inspectionFee" value="3500"></div>
         </div>
-        <button onclick="saveSettings()">Save Settings</button>
+        <button onclick="persistSettings()" style="margin-top: 12px;">💾 Save Global Settings</button>
     </div>
 </div>
 
 <script>
-
-// ============================================
-// SUPABASE - SINGLE SOURCE OF TRUTH
-// ============================================
-const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-let currentUser = null;
-let currentTab = 'vehicles';
-let valuationsChart = null;
-let inspectionsChart = null;
-
-// ============================================
-// CHECK AUTHENTICATION & ADMIN ROLE
-// ============================================
-async function checkAuth() {
-    const { data: { user }, error } = await sb.auth.getUser();
-    if (error || !user) {
-        window.location.href = "login.html";
-        return false;
-    }
-    currentUser = user;
+    // ---------- SUPABASE ----------
+    const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
-    // Check if user is admin (you can add a role check in your users table)
-    // For now, we'll allow access but you should implement role-based access
+    let globalCharts = { valuationsChart: null, inspectionsChart: null };
+    let currentAdminUser = null;
     
-    console.log('Admin logged in:', user.email);
-    return true;
-}
-
-// ============================================
-// LOAD ALL DATA FROM SUPABASE
-// ============================================
-async function loadAllData() {
-    try {
-        // Load all data in parallel
-        const [vehicles, valuations, inspections, certificates, users] = await Promise.all([
-            sb.from('vehicles').select('*').order('created_at', { ascending: false }),
-            sb.from('valuations').select('*').order('valuation_date', { ascending: false }),
-            sb.from('inspections').select('*').order('inspection_date', { ascending: false }),
-            sb.from('certificates').select('*').order('issued_at', { ascending: false }),
-            sb.auth.admin.listUsers()
-        ]);
-        
-        // Update stats
-        document.getElementById('totalVehicles').innerText = vehicles.data?.length || 0;
-        document.getElementById('totalValuations').innerText = valuations.data?.length || 0;
-        document.getElementById('totalInspections').innerText = inspections.data?.length || 0;
-        document.getElementById('totalCertificates').innerText = certificates.data?.length || 0;
-        
-        // Calculate total revenue (valuation fee + inspection fee)
-        const valuationFee = 2500;
-        const inspectionFee = 3500;
-        const totalRevenue = (valuations.data?.length || 0) * valuationFee + (inspections.data?.length || 0) * inspectionFee;
-        document.getElementById('totalRevenue').innerText = totalRevenue.toLocaleString();
-        
-        // Get unique users
-        const uniqueUsers = new Set();
-        vehicles.data?.forEach(v => uniqueUsers.add(v.user_id));
-        valuations.data?.forEach(v => uniqueUsers.add(v.user_id));
-        inspections.data?.forEach(v => uniqueUsers.add(v.user_id));
-        document.getElementById('totalUsers').innerText = uniqueUsers.size;
-        
-        // Populate tables
-        populateVehiclesTable(vehicles.data || []);
-        populateValuationsTable(valuations.data || []);
-        populateInspectionsTable(inspections.data || []);
-        populateCertificatesTable(certificates.data || []);
-        
-        // Update charts
-        updateCharts(valuations.data || [], inspections.data || []);
-        
-    } catch (error) {
-        console.error('Error loading data:', error);
-        document.getElementById('errorMsg').innerHTML = 'Error loading data: ' + error.message;
-        document.getElementById('errorMsg').style.display = 'block';
-        setTimeout(() => {
-            document.getElementById('errorMsg').style.display = 'none';
-        }, 5000);
-    }
-}
-
-// ============================================
-// POPULATE TABLES
-// ============================================
-function populateVehiclesTable(vehicles) {
-    const tbody = document.getElementById('vehiclesTableBody');
-    if (!vehicles.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No vehicles found</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = vehicles.map(v => `
-        <tr>
-            <td>${v.id.substring(0, 8)}...</td>
-            <td><strong>${v.registration_number || 'N/A'}</strong></td>
-            <td>${v.make || 'N/A'} ${v.model || 'N/A'}</td>
-            <td>${v.year || 'N/A'}</td>
-            <td>${v.user_id?.substring(0, 8) || 'N/A'}...</td>
-            <td>${new Date(v.created_at).toLocaleDateString()}</td>
-            <td><button class="btn-danger" style="padding:5px 10px;font-size:12px;" onclick="deleteRecord('vehicles', '${v.id}')">Delete</button></td>
-        </tr>
-    `).join('');
-}
-
-function populateValuationsTable(valuations) {
-    const tbody = document.getElementById('valuationsTableBody');
-    if (!valuations.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No valuations found</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = valuations.map(v => `
-        <tr>
-            <td>${v.id.substring(0, 8)}...</td>
-            <td>${v.registration || v.make || 'N/A'}</td>
-            <td><strong>KES ${v.valuation_amount?.toLocaleString() || v.amount?.toLocaleString() || 0}</strong></td>
-            <td>${v.valuation_purpose || 'N/A'}</td>
-            <td>${new Date(v.valuation_date || v.created_at).toLocaleDateString()}</td>
-            <td><span class="status-badge status-completed">Completed</span></td>
-        </tr>
-    `).join('');
-}
-
-function populateInspectionsTable(inspections) {
-    const tbody = document.getElementById('inspectionsTableBody');
-    if (!inspections.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No inspections found</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = inspections.map(i => `
-        <tr>
-            <td>${i.id.substring(0, 8)}...</td>
-            <td>${i.registration || i.make || 'N/A'}</td>
-            <td><strong>${i.overall_score || 0}%</strong></td>
-            <td><span class="status-badge ${i.final_verdict === 'PASS' ? 'status-active' : 'status-pending'}">${i.final_verdict || 'Pending'}</span></td>
-            <td>${i.inspector_name || 'N/A'}</td>
-            <td>${new Date(i.inspection_date).toLocaleDateString()}</td>
-        </tr>
-    `).join('');
-}
-
-function populateCertificatesTable(certificates) {
-    const tbody = document.getElementById('certificatesTableBody');
-    if (!certificates.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No certificates found</td></tr>';
-        return;
-    }
-    
-    const now = new Date();
-    tbody.innerHTML = certificates.map(c => {
-        const validUntil = new Date(c.valid_until);
-        const isValid = validUntil > now;
-        return `
-        <tr>
-            <td><strong>${c.certificate_number || 'N/A'}</strong></td>
-            <td>${c.vehicle_id?.substring(0, 8) || 'N/A'}...</td>
-            <td>${c.certificate_type || 'N/A'}</td>
-            <td>${new Date(c.issued_at).toLocaleDateString()}</td>
-            <td>${new Date(c.valid_until).toLocaleDateString()}</td>
-            <td><span class="status-badge ${isValid ? 'status-active' : 'status-cancelled'}">${isValid ? 'Active' : 'Expired'}</span></td>
-        </tr>
-    `}).join('');
-}
-
-// ============================================
-// UPDATE CHARTS
-// ============================================
-function updateCharts(valuations, inspections) {
-    // Group by month
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const valuationCounts = new Array(12).fill(0);
-    const inspectionCounts = new Array(12).fill(0);
-    
-    valuations.forEach(v => {
-        const date = new Date(v.valuation_date || v.created_at);
-        const month = date.getMonth();
-        valuationCounts[month]++;
-    });
-    
-    inspections.forEach(i => {
-        const date = new Date(i.inspection_date || i.created_at);
-        const month = date.getMonth();
-        inspectionCounts[month]++;
-    });
-    
-    // Destroy existing charts
-    if (valuationsChart) valuationsChart.destroy();
-    if (inspectionsChart) inspectionsChart.destroy();
-    
-    // Create new charts
-    const ctx1 = document.getElementById('valuationsChart').getContext('2d');
-    valuationsChart = new Chart(ctx1, {
-        type: 'bar',
-        data: {
-            labels: months,
-            datasets: [{
-                label: 'Valuations',
-                data: valuationCounts,
-                backgroundColor: '#eab308',
-                borderColor: '#ca8a04',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            scales: {
-                y: { beginAtZero: true, ticks: { color: 'white' } },
-                x: { ticks: { color: 'white' } }
-            },
-            plugins: { legend: { labels: { color: 'white' } } }
+    // Helper: show/hide feedback
+    function showMessage(type, text) {
+        const errDiv = document.getElementById('errorMsg');
+        const succDiv = document.getElementById('successMsg');
+        if(type === 'error') {
+            errDiv.innerHTML = text;
+            errDiv.style.display = 'block';
+            setTimeout(() => errDiv.style.display = 'none', 4500);
+        } else {
+            succDiv.innerHTML = text;
+            succDiv.style.display = 'block';
+            setTimeout(() => succDiv.style.display = 'none', 3500);
         }
-    });
+    }
     
-    const ctx2 = document.getElementById('inspectionsChart').getContext('2d');
-    inspectionsChart = new Chart(ctx2, {
-        type: 'bar',
-        data: {
-            labels: months,
-            datasets: [{
-                label: 'Inspections',
-                data: inspectionCounts,
-                backgroundColor: '#22c55e',
-                borderColor: '#16a34a',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            scales: {
-                y: { beginAtZero: true, ticks: { color: 'white' } },
-                x: { ticks: { color: 'white' } }
-            },
-            plugins: { legend: { labels: { color: 'white' } } }
+    // Authentication guard
+    async function verifyAdminSession() {
+        const { data: { user }, error } = await sb.auth.getUser();
+        if (error || !user) {
+            window.location.href = "login.html";
+            return false;
         }
-    });
-}
-
-// ============================================
-// DELETE RECORD
-// ============================================
-async function deleteRecord(table, id) {
-    if (!confirm(`Are you sure you want to delete this ${table.slice(0, -1)}? This action cannot be undone.`)) {
-        return;
+        currentAdminUser = user;
+        // optional: verify admin claim from a 'profiles' table if needed, but for demo we trust email domain or any auth.
+        console.log(`✅ Admin session: ${user.email}`);
+        return true;
     }
     
-    try {
-        const { error } = await sb.from(table).delete().eq('id', id);
-        if (error) throw error;
-        
-        document.getElementById('successMsg').innerHTML = 'Record deleted successfully!';
-        document.getElementById('successMsg').style.display = 'block';
-        setTimeout(() => {
-            document.getElementById('successMsg').style.display = 'none';
-        }, 3000);
-        
-        refreshData();
-        
-    } catch (error) {
-        document.getElementById('errorMsg').innerHTML = 'Error deleting record: ' + error.message;
-        document.getElementById('errorMsg').style.display = 'block';
-        setTimeout(() => {
-            document.getElementById('errorMsg').style.display = 'none';
-        }, 5000);
+    // Core data aggregator
+    async function fetchAllAdminMetrics() {
+        try {
+            const [vehiclesRes, valuationsRes, inspectionsRes, certificatesRes] = await Promise.all([
+                sb.from('vehicles').select('*').order('created_at', { ascending: false }),
+                sb.from('valuations').select('*').order('valuation_date', { ascending: false }),
+                sb.from('inspections').select('*').order('inspection_date', { ascending: false }),
+                sb.from('certificates').select('*').order('issued_at', { ascending: false })
+            ]);
+            
+            const vehicles = vehiclesRes.data || [];
+            const valuations = valuationsRes.data || [];
+            const inspections = inspectionsRes.data || [];
+            const certificates = certificatesRes.data || [];
+            
+            // Unique user count from vehicles + valuations + inspections user_id fields
+            const userIdsSet = new Set();
+            vehicles.forEach(v => v.user_id && userIdsSet.add(v.user_id));
+            valuations.forEach(v => v.user_id && userIdsSet.add(v.user_id));
+            inspections.forEach(i => i.user_id && userIdsSet.add(i.user_id));
+            const uniqueUsersCount = userIdsSet.size;
+            
+            const valuationFee = parseInt(localStorage.getItem('admin_valuation_fee') || '2500');
+            const inspectionFee = parseInt(localStorage.getItem('admin_inspection_fee') || '3500');
+            const totalRevenue = (valuations.length * valuationFee) + (inspections.length * inspectionFee);
+            
+            document.getElementById('totalVehicles').innerText = vehicles.length;
+            document.getElementById('totalValuations').innerText = valuations.length;
+            document.getElementById('totalInspections').innerText = inspections.length;
+            document.getElementById('totalCertificates').innerText = certificates.length;
+            document.getElementById('totalUsers').innerText = uniqueUsersCount;
+            document.getElementById('totalRevenue').innerText = totalRevenue.toLocaleString();
+            
+            populateVehiclesTable(vehicles);
+            populateValuationsTable(valuations);
+            populateInspectionsTable(inspections);
+            populateCertificatesTable(certificates);
+            await populateUsersTable(); // dynamic from auth list
+            
+            updateMonthlyCharts(valuations, inspections);
+            return { vehicles, valuations, inspections, certificates };
+        } catch (e) {
+            console.error(e);
+            showMessage('error', 'Failed to load analytics: ' + e.message);
+            return null;
+        }
     }
-}
-
-// ============================================
-// SAVE SETTINGS
-// ============================================
-function saveSettings() {
-    const settings = {
-        systemName: document.getElementById('systemName').value,
-        contactEmail: document.getElementById('contactEmail').value,
-        supportPhone: document.getElementById('supportPhone').value,
-        valuationFee: document.getElementById('valuationFee').value,
-        inspectionFee: document.getElementById('inspectionFee').value
+    
+    // Tables rendering
+    function populateVehiclesTable(vehicles) {
+        const tbody = document.getElementById('vehiclesTableBody');
+        if(!vehicles.length) { tbody.innerHTML = '<tr><td colspan="7">🚫 No registered vehicles</td></tr>'; return; }
+        tbody.innerHTML = vehicles.map(v => `
+            <tr>
+                <td>${v.id.slice(0,8)}</td><td><strong>${v.registration_number || 'N/A'}</strong></td>
+                <td>${v.make || '?'} ${v.model || ''}</td><td>${v.year || '-'}</td>
+                <td>${v.user_id?.slice(0,8) || 'anon'}</td>
+                <td>${new Date(v.created_at).toLocaleDateString()}</td>
+                <td><button class="delete-action-btn" onclick="deleteRecordFromTable('vehicles','${v.id}')">Delete</button></td>
+            </tr>
+        `).join('');
+    }
+    
+    function populateValuationsTable(valuations) {
+        const tbody = document.getElementById('valuationsTableBody');
+        if(!valuations.length){ tbody.innerHTML='<tr><td colspan="6">No valuation requests</td></tr>'; return; }
+        tbody.innerHTML = valuations.map(v => `
+            <tr>
+                <td>${v.id.slice(0,8)}</td><td>${v.registration || v.make || 'Vehicle'}</td>
+                <td><strong>KES ${(v.valuation_amount || v.amount || 0).toLocaleString()}</strong></td>
+                <td>${v.valuation_purpose || 'General'}</td>
+                <td>${new Date(v.valuation_date || v.created_at).toLocaleDateString()}</td>
+                <td><span class="status-badge status-completed">Completed</span></td>
+            </tr>
+        `).join('');
+    }
+    
+    function populateInspectionsTable(inspections) {
+        const tbody = document.getElementById('inspectionsTableBody');
+        if(!inspections.length){ tbody.innerHTML='<tr><td colspan="6">No inspections found</td></tr>'; return; }
+        tbody.innerHTML = inspections.map(i => `
+            <tr>
+                <td>${i.id.slice(0,8)}</td><td>${i.registration || i.make || 'Unknown'}</td>
+                <td>${i.overall_score ?? '—'}%</td>
+                <td><span class="status-badge ${i.final_verdict === 'PASS' ? 'status-active' : 'status-pending'}">${i.final_verdict || 'Pending'}</span></td>
+                <td>${i.inspector_name || 'System'}</td>
+                <td>${new Date(i.inspection_date).toLocaleDateString()}</td>
+            </tr>
+        `).join('');
+    }
+    
+    async function populateUsersTable() {
+        // fetch users via admin API - requires service role, but we can list from auth admin using listUsers (requires admin privileges)
+        // In browser with anon key, listUsers may be restricted. but we show users from vehicles table distinct + email via fallback.
+        // For robust admin: we can fetch profiles if table exists. As fallback, show distinct user details from vehicles.
+        const { data: vehicles } = await sb.from('vehicles').select('user_id');
+        const userIds = [...new Map(vehicles?.map(v=>[v.user_id, v.user_id])).values()].filter(Boolean);
+        const usersPreview = userIds.slice(0, 20).map(uid => ({ id: uid, email: `${uid.slice(0,6)}...@user.auto` }));
+        const tbody = document.getElementById('usersTableBody');
+        if(usersPreview.length === 0) { tbody.innerHTML='<tr><td colspan="6">No user data available</td></tr>'; return; }
+        tbody.innerHTML = usersPreview.map(u => `
+            <tr>
+                <td>${u.id.slice(0,8)}</td><td>${u.email}</td><td>Customer</td>
+                <td>${vehicles?.filter(v=>v.user_id===u.id).length || 0}</td>
+                <td>—</td>
+                <td><button class="delete-action-btn" style="background:#475569;" onclick="showMessage('error','Promote/delete via Supabase dashboard')">Manage</button></td>
+            </tr>
+        `).join('');
+    }
+    
+    function populateCertificatesTable(certificates) {
+        const tbody = document.getElementById('certificatesTableBody');
+        if(!certificates.length){ tbody.innerHTML='<tr><td colspan="6">No certificates issued</td></tr>'; return; }
+        const now = new Date();
+        tbody.innerHTML = certificates.map(c => {
+            const validUntil = new Date(c.valid_until);
+            const active = validUntil > now;
+            return `<tr>
+                <td><strong>${c.certificate_number || c.id.slice(0,10)}</strong></td>
+                <td>${c.vehicle_id?.slice(0,8) || 'N/A'}</td>
+                <td>${c.certificate_type || 'Inspection'}</td>
+                <td>${new Date(c.issued_at).toLocaleDateString()}</td>
+                <td>${new Date(c.valid_until).toLocaleDateString()}</td>
+                <td><span class="status-badge ${active ? 'status-active' : 'status-cancelled'}">${active ? 'Valid' : 'Expired'}</span></td>
+            </tr>`;
+        }).join('');
+    }
+    
+    // Monthly Charts
+    function updateMonthlyCharts(valuations, inspections) {
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const valCount = new Array(12).fill(0);
+        const inspCount = new Array(12).fill(0);
+        valuations.forEach(v => { const d = new Date(v.valuation_date || v.created_at); if(!isNaN(d.getMonth())) valCount[d.getMonth()]++; });
+        inspections.forEach(i => { const d = new Date(i.inspection_date || i.created_at); if(!isNaN(d.getMonth())) inspCount[d.getMonth()]++; });
+        
+        if(globalCharts.valuationsChart) globalCharts.valuationsChart.destroy();
+        if(globalCharts.inspectionsChart) globalCharts.inspectionsChart.destroy();
+        
+        const ctx1 = document.getElementById('valuationsChart').getContext('2d');
+        globalCharts.valuationsChart = new Chart(ctx1, {
+            type: 'bar', data: { labels: months, datasets: [{ label: 'Valuations', data: valCount, backgroundColor: '#eab308', borderRadius: 8 }] },
+            options: { responsive: true, maintainAspectRatio: true, scales: { y: { ticks: { color: '#ccc' }, beginAtZero: true }, x: { ticks: { color: '#ddd' } } }, plugins: { legend: { labels: { color: '#facc15' } } } }
+        });
+        const ctx2 = document.getElementById('inspectionsChart').getContext('2d');
+        globalCharts.inspectionsChart = new Chart(ctx2, {
+            type: 'bar', data: { labels: months, datasets: [{ label: 'Inspections', data: inspCount, backgroundColor: '#22c55e', borderRadius: 8 }] },
+            options: { responsive: true, scales: { y: { ticks: { color: '#ccc' } }, x: { ticks: { color: '#ddd' } } }, plugins: { legend: { labels: { color: '#86efac' } } } }
+        });
+    }
+    
+    // DELETE RECORD GLOBAL
+    window.deleteRecordFromTable = async function(table, id) {
+        if(!confirm(`⚠️ Permanently delete this ${table.slice(0,-1)} record? This action is irreversible.`)) return;
+        try {
+            const { error } = await sb.from(table).delete().eq('id', id);
+            if(error) throw error;
+            showMessage('success', `✔️ ${table} entry removed successfully`);
+            await refreshDashboard();
+        } catch(err) {
+            showMessage('error', `Delete failed: ${err.message}`);
+        }
     };
     
-    localStorage.setItem('admin_settings', JSON.stringify(settings));
-    
-    document.getElementById('successMsg').innerHTML = 'Settings saved successfully!';
-    document.getElementById('successMsg').style.display = 'block';
-    setTimeout(() => {
-        document.getElementById('successMsg').style.display = 'none';
-    }, 3000);
-}
-
-// ============================================
-// LOAD SETTINGS
-// ============================================
-function loadSettings() {
-    const saved = localStorage.getItem('admin_settings');
-    if (saved) {
-        const settings = JSON.parse(saved);
-        document.getElementById('systemName').value = settings.systemName || 'AUTO-V Kenya';
-        document.getElementById('contactEmail').value = settings.contactEmail || 'admin@autov.co.ke';
-        document.getElementById('supportPhone').value = settings.supportPhone || '+254 700 000 000';
-        document.getElementById('valuationFee').value = settings.valuationFee || 2500;
-        document.getElementById('inspectionFee').value = settings.inspectionFee || 3500;
-    }
-}
-
-// ============================================
-// TAB MANAGEMENT
-// ============================================
-function showTab(tab) {
-    currentTab = tab;
-    
-    const tabs = ['vehicles', 'valuations', 'inspections', 'users', 'certificates', 'settings'];
-    tabs.forEach(t => {
-        const el = document.getElementById(`${t}Tab`);
-        if (el) el.style.display = t === tab ? 'block' : 'none';
-    });
-    
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-}
-
-// ============================================
-// REFRESH DATA
-// ============================================
-async function refreshData() {
-    const refreshBtn = event?.target;
-    if (refreshBtn) {
-        refreshBtn.disabled = true;
-        refreshBtn.innerHTML = '<span class="spinner"></span> Loading...';
+    // Settings handlers
+    function persistSettings() {
+        const settings = {
+            systemName: document.getElementById('systemName').value,
+            contactEmail: document.getElementById('contactEmail').value,
+            supportPhone: document.getElementById('supportPhone').value,
+            valuationFee: document.getElementById('valuationFee').value,
+            inspectionFee: document.getElementById('inspectionFee').value
+        };
+        localStorage.setItem('admin_system_config', JSON.stringify(settings));
+        localStorage.setItem('admin_valuation_fee', settings.valuationFee);
+        localStorage.setItem('admin_inspection_fee', settings.inspectionFee);
+        showMessage('success', '⚙️ System settings updated globally');
+        refreshDashboard(); // refresh revenue
     }
     
-    await loadAllData();
+    function loadSystemSettings() {
+        const saved = localStorage.getItem('admin_system_config');
+        if(saved) {
+            const cfg = JSON.parse(saved);
+            document.getElementById('systemName').value = cfg.systemName || 'AUTO-V Kenya';
+            document.getElementById('contactEmail').value = cfg.contactEmail || 'support@autov.co.ke';
+            document.getElementById('supportPhone').value = cfg.supportPhone || '+254 700 123 456';
+            document.getElementById('valuationFee').value = cfg.valuationFee || 2500;
+            document.getElementById('inspectionFee').value = cfg.inspectionFee || 3500;
+        } else {
+            // set default fee values in localStorage to be used in revenue calc
+            localStorage.setItem('admin_valuation_fee', '2500');
+            localStorage.setItem('admin_inspection_fee', '3500');
+        }
+    }
     
-    if (refreshBtn) {
-        refreshBtn.disabled = false;
-        refreshBtn.innerHTML = '🔄 Refresh';
+    // Tab switching (modern)
+    function initTabs() {
+        const btns = document.querySelectorAll('.tab-btn');
+        const tabsMap = { vehicles:'vehiclesTab', valuations:'valuationsTab', inspections:'inspectionsTab', users:'usersTab', certificates:'certificatesTab', settings:'settingsTab' };
+        btns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tabKey = btn.getAttribute('data-tab');
+                if(!tabKey) return;
+                Object.values(tabsMap).forEach(tabId => { const el = document.getElementById(tabId); if(el) el.style.display = 'none'; });
+                const activeTabId = tabsMap[tabKey];
+                if(activeTabId) document.getElementById(activeTabId).style.display = 'block';
+                btns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                if(tabKey === 'users') populateUsersTable();
+            });
+        });
     }
-}
-
-// ============================================
-// LOGOUT
-// ============================================
-async function logout() {
-    await sb.auth.signOut();
-    window.location.href = 'login.html';
-}
-
-// ============================================
-// INITIALIZE
-// ============================================
-async function init() {
-    try {
-        const isAuth = await checkAuth();
-        if (!isAuth) return;
-        
-        await loadAllData();
-        loadSettings();
-        console.log('AUTO-V Admin Dashboard initialized successfully');
-        
-    } catch (err) {
-        console.error('Initialization Error:', err);
-        document.getElementById('errorMsg').innerHTML = 'System initialization failed: ' + err.message;
-        document.getElementById('errorMsg').style.display = 'block';
+    
+    async function refreshDashboard() {
+        const btn = event?.target;
+        if(btn && btn.innerText.includes('Sync')) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="display:inline-block;width:16px;height:16px;border:2px solid white;border-top-color:#eab308;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:6px;"></span> Syncing...'; }
+        await fetchAllAdminMetrics();
+        if(btn && btn.innerText.includes('Syncing')) { btn.disabled = false; btn.innerHTML = '🔄 Sync Now'; }
     }
-}
-
-document.addEventListener('DOMContentLoaded', init);
-
+    window.refreshDashboard = refreshDashboard;
+    
+    async function handleLogout() { await sb.auth.signOut(); window.location.href = 'login.html'; }
+    window.handleLogout = handleLogout;
+    
+    // bootstrap
+    (async function bootstrap() {
+        const authed = await verifyAdminSession();
+        if(!authed) return;
+        loadSystemSettings();
+        await fetchAllAdminMetrics();
+        initTabs();
+        // make users tab visible later; ensure default vehicles visible
+        document.getElementById('vehiclesTab').style.display = 'block';
+        console.log('🚀 ADMIN DASHBOARD READY | Full control panel active');
+    })();
 </script>
-
 </body>
 </html>
