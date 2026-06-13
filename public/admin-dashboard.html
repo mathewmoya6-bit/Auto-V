@@ -1,156 +1,285 @@
--- ============================================
--- CLEAN SETUP - DROP EVERYTHING FIRST
--- ============================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V | Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0a0c0f;
+            color: #edf2f7;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: auto; }
+        .header {
+            background: #0f172a;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #eab308, #facc15);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .logout-btn {
+            background: #dc2626;
+            color: white;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #0f172a;
+            padding: 25px;
+            border-radius: 20px;
+            text-align: center;
+            border: 1px solid #1e293b;
+        }
+        .stat-card h3 { color: #eab308; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; }
+        .stat-number { font-size: 36px; font-weight: bold; }
+        .card {
+            background: #0f172a;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid #1e293b;
+        }
+        h2 {
+            color: #eab308;
+            margin-bottom: 20px;
+            border-left: 4px solid #eab308;
+            padding-left: 15px;
+        }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #94a3b8; font-weight: 600; }
+        input {
+            width: 100%;
+            padding: 14px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+        }
+        button {
+            background: #eab308;
+            color: #0a0c10;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover { background: #facc15; }
+        .success, .error {
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .success { background: #14532d; color: #22c55e; }
+        .error { background: #7f1d1d; color: #ef4444; }
+        .preview-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 16px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .current-price { font-size: 42px; color: #22c55e; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1e293b; }
+        th { color: #eab308; }
+        .status-paid { background: #22c55e; color: black; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
+        .status-pending { background: #eab308; color: black; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
+        @media (max-width: 768px) { .container { padding: 10px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🚗 AUTO-V ADMIN | Supabase SSOT</div>
+            <button class="logout-btn" onclick="logout()">🚪 Logout</button>
+        </div>
 
--- Drop all existing policies
-DROP POLICY IF EXISTS "Users can insert own valuations" ON valuations;
-DROP POLICY IF EXISTS "Users can view own valuations" ON valuations;
-DROP POLICY IF EXISTS "Users can insert own inspections" ON inspections;
-DROP POLICY IF EXISTS "Users can view own inspections" ON inspections;
-DROP POLICY IF EXISTS "Allow public read system_settings" ON system_settings;
-DROP POLICY IF EXISTS "Allow public read" ON system_settings;
-DROP POLICY IF EXISTS "Anyone can read system settings" ON system_settings;
+        <div class="success" id="successMsg"></div>
+        <div class="error" id="errorMsg"></div>
 
--- Drop tables if they exist
-DROP TABLE IF EXISTS mpesa_transactions CASCADE;
-DROP TABLE IF EXISTS inspections CASCADE;
-DROP TABLE IF EXISTS valuations CASCADE;
-DROP TABLE IF EXISTS system_settings CASCADE;
-DROP TABLE IF EXISTS user_profiles CASCADE;
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card"><h3>💰 Total Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
+            <div class="stat-card"><h3>🔧 Total Inspections</h3><div class="stat-number" id="totalInspections">0</div></div>
+            <div class="stat-card"><h3>💵 Total Revenue</h3><div class="stat-number" id="totalRevenue">KES 0</div></div>
+            <div class="stat-card"><h3>👥 Total Users</h3><div class="stat-number" id="totalUsers">0</div></div>
+        </div>
 
--- ============================================
--- CREATE TABLES FRESH
--- ============================================
+        <!-- Fee Settings -->
+        <div class="card">
+            <h2>💰 Set Service Fees (Updates instantly to users)</h2>
+            <div class="form-group">
+                <label>🚗 Valuation Fee (KES)</label>
+                <input type="number" id="valuationFee" placeholder="Enter valuation fee">
+            </div>
+            <div class="form-group">
+                <label>🔧 Inspection Fee (KES)</label>
+                <input type="number" id="inspectionFee" placeholder="Enter inspection fee">
+            </div>
+            <button onclick="updateFees()">💾 Update Fees in Supabase</button>
 
--- Create system_settings table
-CREATE TABLE system_settings (
-    id SERIAL PRIMARY KEY,
-    setting_key TEXT UNIQUE NOT NULL,
-    setting_value TEXT NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+            <div class="preview-card">
+                <h3 style="color: #eab308;">📱 User Dashboard Preview</h3>
+                <div style="display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
+                    <div><p>Valuation</p><div class="current-price" id="previewValuation">KES 0</div></div>
+                    <div><p>Inspection</p><div class="current-price" id="previewInspection">KES 0</div></div>
+                </div>
+                <p style="margin-top: 15px; font-size: 12px;">✅ Prices stored in Supabase - Users see changes immediately</p>
+            </div>
+        </div>
 
--- Create valuations table
-CREATE TABLE valuations (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id UUID,
-    registration_number TEXT,
-    make TEXT,
-    model TEXT,
-    year INTEGER,
-    valuation_purpose TEXT,
-    valuation_amount INTEGER,
-    payment_status TEXT DEFAULT 'pending',
-    status TEXT DEFAULT 'pending',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+        <!-- Recent Valuations -->
+        <div class="card">
+            <h2>📊 Recent Valuations</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead><tr><th>User</th><th>Vehicle</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+                    <tbody id="valuationsList"><tr><td colspan="5">Loading from Supabase...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
 
--- Create inspections table
-CREATE TABLE inspections (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id UUID,
-    registration_number TEXT,
-    make TEXT,
-    model TEXT,
-    year INTEGER,
-    mileage INTEGER,
-    inspection_amount INTEGER,
-    payment_status TEXT DEFAULT 'pending',
-    status TEXT DEFAULT 'pending',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+        <!-- Recent Inspections -->
+        <div class="card">
+            <h2>🔍 Recent Inspections</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead><tr><th>User</th><th>Vehicle</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+                    <tbody id="inspectionsList"><tr><td colspan="5">Loading from Supabase...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
--- Create user_profiles table (for admin roles)
-CREATE TABLE user_profiles (
-    id UUID PRIMARY KEY,
-    email TEXT,
-    role TEXT DEFAULT 'user',
-    full_name TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    <script>
+        // SUPABASE IS THE SINGLE SOURCE OF TRUTH
+        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let currentUser = null;
 
--- ============================================
--- INSERT DEFAULT SETTINGS
--- ============================================
+        async function checkAdmin() {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error || !user) { window.location.href = "login.html"; return false; }
+            
+            const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+            if (!profile || profile.role !== 'admin') { await supabase.auth.signOut(); window.location.href = "login.html"; return false; }
+            
+            currentUser = user;
+            return true;
+        }
 
-INSERT INTO system_settings (setting_key, setting_value) VALUES 
-    ('valuation_fee', '2500'),
-    ('inspection_fee', '3500')
-ON CONFLICT (setting_key) DO UPDATE SET 
-    setting_value = EXCLUDED.setting_value,
-    updated_at = NOW();
+        async function loadFees() {
+            const { data: valuationFee } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
+            const { data: inspectionFee } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
+            
+            if (valuationFee) {
+                document.getElementById('valuationFee').value = valuationFee.setting_value;
+                document.getElementById('previewValuation').innerHTML = `KES ${parseInt(valuationFee.setting_value).toLocaleString()}`;
+            }
+            if (inspectionFee) {
+                document.getElementById('inspectionFee').value = inspectionFee.setting_value;
+                document.getElementById('previewInspection').innerHTML = `KES ${parseInt(inspectionFee.setting_value).toLocaleString()}`;
+            }
+        }
 
--- ============================================
--- ENABLE ROW LEVEL SECURITY
--- ============================================
+        async function updateFees() {
+            const valuationFee = document.getElementById('valuationFee').value;
+            const inspectionFee = document.getElementById('inspectionFee').value;
+            
+            if (!valuationFee || !inspectionFee) { showMessage('Please enter both fees', 'error'); return; }
+            
+            try {
+                await supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: valuationFee, updated_at: new Date() });
+                await supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: inspectionFee, updated_at: new Date() });
+                
+                document.getElementById('previewValuation').innerHTML = `KES ${parseInt(valuationFee).toLocaleString()}`;
+                document.getElementById('previewInspection').innerHTML = `KES ${parseInt(inspectionFee).toLocaleString()}`;
+                showMessage('✅ Fees updated in Supabase! Users see new prices instantly.', 'success');
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
 
-ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE valuations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inspections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+        async function loadStats() {
+            const { data: valuations } = await supabase.from('valuations').select('*').order('created_at', { ascending: false });
+            const { data: inspections } = await supabase.from('inspections').select('*').order('created_at', { ascending: false });
+            
+            const vals = valuations || [];
+            const insps = inspections || [];
+            
+            document.getElementById('totalValuations').innerText = vals.length;
+            document.getElementById('totalInspections').innerText = insps.length;
+            
+            const totalRevenue = vals.reduce((s, v) => s + (v.valuation_amount || 0), 0) + insps.reduce((s, i) => s + (i.inspection_amount || 0), 0);
+            document.getElementById('totalRevenue').innerHTML = `KES ${totalRevenue.toLocaleString()}`;
+            
+            const userIds = new Set(); vals.forEach(v => v.user_id && userIds.add(v.user_id)); insps.forEach(i => i.user_id && userIds.add(i.user_id));
+            document.getElementById('totalUsers').innerText = userIds.size;
+            
+            // Get user emails for display
+            const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+            const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+            
+            document.getElementById('valuationsList').innerHTML = vals.slice(0, 10).map(v => `
+                <tr><td>${userMap.get(v.user_id) || v.user_id?.substring(0,8)}</td><td>${v.make} ${v.model}</td><td>KES ${(v.valuation_amount || 0).toLocaleString()}</td>
+                <td><span class="${v.payment_status === 'paid' ? 'status-paid' : 'status-pending'}">${v.payment_status}</span></td>
+                <td>${new Date(v.created_at).toLocaleDateString()}</td></tr>
+            `).join('');
+            
+            document.getElementById('inspectionsList').innerHTML = insps.slice(0, 10).map(i => `
+                <tr><td>${userMap.get(i.user_id) || i.user_id?.substring(0,8)}</td><td>${i.make} ${i.model}</td><td>KES ${(i.inspection_amount || 0).toLocaleString()}</td>
+                <td><span class="${i.payment_status === 'paid' ? 'status-paid' : 'status-pending'}">${i.payment_status}</span></td>
+                <td>${new Date(i.created_at).toLocaleDateString()}</td></tr>
+            `).join('');
+        }
 
--- ============================================
--- CREATE POLICIES (FRESH)
--- ============================================
+        function showMessage(msg, type) {
+            const div = document.getElementById(`${type}Msg`);
+            div.innerHTML = msg; div.style.display = 'block';
+            setTimeout(() => div.style.display = 'none', 5000);
+        }
 
--- System settings - anyone can read (for pricing)
-CREATE POLICY "public_read_system_settings" ON system_settings
-    FOR SELECT USING (true);
+        async function logout() { await supabase.auth.signOut(); window.location.href = "login.html"; }
 
--- Valuations policies
-CREATE POLICY "insert_valuations" ON valuations
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "select_valuations" ON valuations
-    FOR SELECT USING (auth.uid() = user_id);
-
--- Inspections policies
-CREATE POLICY "insert_inspections" ON inspections
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "select_inspections" ON inspections
-    FOR SELECT USING (auth.uid() = user_id);
-
--- User profiles - users can read their own
-CREATE POLICY "select_user_profiles" ON user_profiles
-    FOR SELECT USING (auth.uid() = id);
-
--- ============================================
--- CREATE FUNCTION FOR AUTO USER PROFILE
--- ============================================
-
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO public.user_profiles (id, email, role)
-    VALUES (NEW.id, NEW.email, 'user');
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Drop trigger if exists
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-
--- Create trigger
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- ============================================
--- VERIFY EVERYTHING IS WORKING
--- ============================================
-
--- Show all tables
-SELECT table_name, table_schema 
-FROM information_schema.tables 
-WHERE table_schema = 'public' 
-AND table_type = 'BASE TABLE'
-ORDER BY table_name;
-
--- Show settings
-SELECT * FROM system_settings;
-
--- Count policies
-SELECT schemaname, tablename, policyname 
-FROM pg_policies 
-WHERE tablename IN ('system_settings', 'valuations', 'inspections', 'user_profiles');
+        async function init() {
+            if (!await checkAdmin()) return;
+            await loadFees();
+            await loadStats();
+            setInterval(loadStats, 30000);
+        }
+        
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
