@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Valuation Report - AUTO-V</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0a0a0a; color: white; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .logo { font-size: 28px; font-weight: bold; color: #eab308; }
+        .card { background: #111; padding: 30px; border-radius: 16px; border: 1px solid #333; margin-bottom: 20px; }
+        .report-header { border-bottom: 2px solid #eab308; padding-bottom: 20px; margin-bottom: 20px; }
+        .report-title { font-size: 24px; color: #eab308; }
+        .bank-badge { display: inline-block; background: #3b82f6; padding: 5px 15px; border-radius: 20px; font-size: 12px; }
+        .insurance-badge { display: inline-block; background: #22c55e; padding: 5px 15px; border-radius: 20px; font-size: 12px; }
+        .detail-row { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #333; }
+        .detail-label { font-weight: bold; color: #eab308; }
+        .footer { text-align: center; font-size: 12px; color: #666; margin-top: 30px; }
+        .watermark { position: fixed; bottom: 20px; right: 20px; opacity: 0.3; font-size: 12px; }
+        .verified { color: #22c55e; }
+        .warning { color: #f97316; }
+        .expired { color: #ef4444; }
+        button { background: #eab308; color: black; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; }
+        @media print {
+            body { background: white; color: black; }
+            .card { background: white; border: 1px solid #ddd; }
+            .detail-label { color: #333; }
+            button, .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="logo">AUTO-V</div>
+        <p>Professional Vehicle Valuation Report</p>
+    </div>
+
+    <div id="loadingCard" class="card" style="text-align: center;">
+        <div class="spinner"></div>
+        <p>Loading valuation report...</p>
+    </div>
+
+    <div id="reportCard" class="card" style="display: none;">
+        <div class="report-header">
+            <div class="report-title" id="reportTitle">VEHICLE VALUATION REPORT</div>
+            <div id="accessorBadge" style="margin-top: 10px;"></div>
+        </div>
+        
+        <div id="valuationDetails"></div>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <button onclick="window.print()" class="no-print">🖨️ Print Report</button>
+            <button onclick="downloadPDF()" class="no-print" style="margin-left: 10px;">📄 Download PDF</button>
+        </div>
+    </div>
+
+    <div class="footer no-print">
+        <p>This is an official AUTO-V valuation report. Verify authenticity at autov.vercel.app/verify</p>
+    </div>
+    <div class="watermark">AUTO-V CERTIFIED</div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Get share token from URL
+const urlParams = new URLSearchParams(window.location.search);
+const shareToken = urlParams.get('token');
+
+async function loadSharedValuation() {
+    if (!shareToken) {
+        showError('Invalid share link. No token provided.');
+        return;
+    }
+    
+    // Get valuation by share token
+    const { data: valuation, error } = await sb
+        .from('valuations')
+        .select('*, vehicles(*)')
+        .eq('share_token', shareToken)
+        .single();
+    
+    if (error || !valuation) {
+        showError('Valuation not found or link is invalid.');
+        return;
+    }
+    
+    // Check expiry
+    const expiryDate = new Date(valuation.share_expiry);
+    const now = new Date();
+    const isExpired = expiryDate < now;
+    
+    if (isExpired) {
+        showExpiredWarning();
+        return;
+    }
+    
+    // Log access
+    await sb.from('valuation_access_logs').insert({
+        valuation_id: valuation.id,
+        accessor_type: getAccessorTypeFromUrl(),
+        accessed_at: new Date().toISOString()
+    });
+    
+    displayValuationReport(valuation);
+}
+
+function displayValuationReport(valuation) {
+    document.getElementById('loadingCard').style.display = 'none';
+    document.getElementById('reportCard').style.display = 'block';
+    
+    // Set badge
+    const accessorType = getAccessorTypeFromUrl();
+    const badgeHtml = accessorType === 'bank' 
+        ? '<span class="bank-badge">🏦 For Bank Use Only</span>'
+        : '<span class="insurance-badge">🛡️ For Insurance Use Only</span>';
+    document.getElementById('accessorBadge').innerHTML = badgeHtml;
+    
+    // Display valuation details
+    document.getElementById('valuationDetails').innerHTML = `
+        <div class="detail-row">
+            <span class="detail-label">Certificate Number:</span>
+            <span>${valuation.certificate_number || 'N/A'}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Vehicle Registration:</span>
+            <span>${valuation.registration || 'N/A'}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Make & Model:</span>
+            <span>${valuation.make} ${valuation.model}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Year of Manufacture:</span>
+            <span>${valuation.year}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">VIN / Chassis:</span>
+            <span>${valuation.vin || 'Not Provided'}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Current Mileage:</span>
+            <span>${valuation.odometer?.toLocaleString() || 'N/A'} km</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Valuation Type:</span>
+            <span>${valuation.valuation_purpose || 'Market Value'}</span>
+        </div>
+        <div class="detail-row" style="background: #1a1a1a;">
+            <span class="detail-label">💰 VALUATION AMOUNT:</span>
+            <span style="font-size: 24px; font-weight: bold; color: #eab308;">KES ${(valuation.valuation_amount || valuation.amount || 0).toLocaleString()}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Valuation Date:</span>
+            <span>${new Date(valuation.valuation_date || valuation.created_at).toLocaleDateString()}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Valid Until:</span>
+            <span>${new Date(valuation.share_expiry).toLocaleDateString()}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Condition Score:</span>
+            <span>${valuation.condition_scores ? Object.values(valuation.condition_scores).reduce((a,b) => a+b, 0) / 4 : 'N/A'}%</span>
+        </div>
+    `;
+}
+
+function getAccessorTypeFromUrl() {
+    const referrer = document.referrer;
+    if (referrer.includes('bank')) return 'bank';
+    if (referrer.includes('insurance')) return 'insurance';
+    return 'third_party';
+}
+
+function showError(message) {
+    document.getElementById('loadingCard').innerHTML = `
+        <div style="color: #ef4444; text-align: center;">
+            <h3>❌ Access Denied</h3>
+            <p>${message}</p>
+            <button onclick="window.location.href='/dashboard.html'" style="margin-top: 20px;">← Go to Dashboard</button>
+        </div>
+    `;
+}
+
+function showExpiredWarning() {
+    document.getElementById('loadingCard').innerHTML = `
+        <div style="color: #f97316; text-align: center;">
+            <h3>⚠️ Link Expired</h3>
+            <p>This valuation report link has expired. Please request a new link from the vehicle owner.</p>
+            <button onclick="window.location.href='/dashboard.html'" style="margin-top: 20px;">← Go to Dashboard</button>
+        </div>
+    `;
+}
+
+function downloadPDF() {
+    window.print();
+}
+
+loadSharedValuation();
+</script>
+
+<style>
+.spinner {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 3px solid #333;
+    border-radius: 50%;
+    border-top-color: #eab308;
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+</body>
+</html>
