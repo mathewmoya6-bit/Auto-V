@@ -127,6 +127,22 @@ text-align:left;
 color:#eab308;
 }
 
+.loading{
+text-align:center;
+padding:20px;
+color:#eab308;
+}
+
+.error-message{
+background:#7f1d1d;
+color:#ef4444;
+padding:10px;
+border-radius:6px;
+margin:20px;
+text-align:center;
+display:none;
+}
+
 </style>
 </head>
 
@@ -146,7 +162,7 @@ Logout
 
 <div class="container">
 
-<h1>Welcome</h1>
+<h1>Welcome <span id="userName"></span></h1>
 
 <div class="cards">
 
@@ -175,19 +191,19 @@ Logout
 <div class="actions">
 
 <a href="vehicles.html" class="action-btn">
-Add Vehicle
+➕ Add Vehicle
 </a>
 
 <a href="valuation.html" class="action-btn">
-New Valuation
+💰 New Valuation
 </a>
 
 <a href="inspection.html" class="action-btn">
-Vehicle Inspection
+🔍 Vehicle Inspection
 </a>
 
 <a href="certificates.html" class="action-btn">
-Certificates
+📜 Certificates
 </a>
 
 </div>
@@ -207,7 +223,9 @@ Certificates
 </tr>
 </thead>
 
-<tbody id="vehicleTable"></tbody>
+<tbody id="vehicleTable">
+<tr><td colspan="4" class="loading">Loading vehicles...</td></tr>
+</tbody>
 
 </table>
 
@@ -221,13 +239,16 @@ Certificates
 
 <thead>
 <tr>
+<th>Vehicle</th>
 <th>Type</th>
-<th>Amount</th>
+<th>Amount (KES)</th>
 <th>Date</th>
 </tr>
 </thead>
 
-<tbody id="valuationTable"></tbody>
+<tbody id="valuationTable">
+<tr><td colspan="4" class="loading">Loading valuations...</td></tr>
+</tbody>
 
 </table>
 
@@ -245,6 +266,8 @@ SUPABASE_URL,
 SUPABASE_ANON_KEY
 );
 
+let currentUser = null;
+
 async function checkUser(){
     const { data: { user }, error } = await supabaseClient.auth.getUser();
     
@@ -253,53 +276,89 @@ async function checkUser(){
         return false;
     }
     
+    currentUser = user;
+    document.getElementById("userName").innerText = user.email?.split('@')[0] || "User";
     return true;
 }
 
 async function loadDashboard(){
-    // Get vehicles
-    const { data: vehicles } = await supabaseClient
-        .from("vehicles")
-        .select("*");
-    
-    document.getElementById("vehicleCount").innerText = vehicles?.length || 0;
-    
-    // Get valuations
-    const { data: valuations } = await supabaseClient
-        .from("valuations")
-        .select("*");
-    
-    document.getElementById("valuationCount").innerText = valuations?.length || 0;
-    
-    document.getElementById("certificateCount").innerText = "0";
-    document.getElementById("inspectionCount").innerText = "0";
-    
-    const vehicleTable = document.getElementById("vehicleTable");
-    vehicleTable.innerHTML = "";
-    
-    vehicles?.slice(0,10).forEach(v=>{
-        vehicleTable.innerHTML += `
-        <tr>
-            <td>${v.registration_number}</td>
-            <td>${v.make}</td>
-            <td>${v.model}</td>
-            <td>${v.year}</td>
-        </tr>
-        `;
-    });
-    
-    const valuationTable = document.getElementById("valuationTable");
-    valuationTable.innerHTML = "";
-    
-    valuations?.slice(0,10).forEach(v=>{
-        valuationTable.innerHTML += `
-        <tr>
-            <td>${v.valuation_type}</td>
-            <td>KES ${Number(v.amount).toLocaleString()}</td>
-            <td>${new Date(v.created_at).toLocaleDateString()}</td>
-        </tr>
-        `;
-    });
+    try {
+        // Get vehicles for current user only
+        const { data: vehicles, error: vehiclesError } = await supabaseClient
+            .from("vehicles")
+            .select("*")
+            .eq("user_id", currentUser.id);
+        
+        if (vehiclesError) throw vehiclesError;
+        
+        document.getElementById("vehicleCount").innerText = vehicles?.length || 0;
+        
+        const vehicleTable = document.getElementById("vehicleTable");
+        
+        if (!vehicles || vehicles.length === 0) {
+            vehicleTable.innerHTML = '<tr><td colspan="4" class="loading">No vehicles found. Click "Add Vehicle" to get started.</td></tr>';
+        } else {
+            vehicleTable.innerHTML = "";
+            vehicles.slice(0,10).forEach(v=>{
+                vehicleTable.innerHTML += `
+                <tr>
+                    <td>${v.registration_number || '-'}</td>
+                    <td>${v.make || '-'}</td>
+                    <td>${v.model || '-'}</td>
+                    <td>${v.year || '-'}</td>
+                </tr>
+                `;
+            });
+        }
+        
+        // Get valuations for current user only
+        const { data: valuations, error: valuationsError } = await supabaseClient
+            .from("valuations")
+            .select("*")
+            .eq("user_id", currentUser.id)
+            .order("created_at", { ascending: false });
+        
+        if (valuationsError) throw valuationsError;
+        
+        document.getElementById("valuationCount").innerText = valuations?.length || 0;
+        
+        const valuationTable = document.getElementById("valuationTable");
+        
+        if (!valuations || valuations.length === 0) {
+            valuationTable.innerHTML = '<tr><td colspan="4" class="loading">No valuations found. Click "New Valuation" to get started.</td></tr>';
+        } else {
+            valuationTable.innerHTML = "";
+            valuations.slice(0,10).forEach(v=>{
+                valuationTable.innerHTML += `
+                <tr>
+                    <td>${v.vehicle_registration || '-'}</td>
+                    <td>${v.valuation_type || 'Standard'}</td>
+                    <td>${Number(v.amount).toLocaleString()}</td>
+                    <td>${new Date(v.created_at).toLocaleDateString()}</td>
+                </tr>
+                `;
+            });
+        }
+        
+        // Placeholder counts for certificates and inspections
+        const { data: certificates } = await supabaseClient
+            .from("certificates")
+            .select("*", { count: 'exact', head: true })
+            .eq("user_id", currentUser.id)
+            .catch(() => ({ count: 0 }));
+        
+        const { data: inspections } = await supabaseClient
+            .from("inspections")
+            .select("*", { count: 'exact', head: true })
+            .eq("user_id", currentUser.id)
+            .catch(() => ({ count: 0 }));
+        
+        document.getElementById("certificateCount").innerText = certificates?.length || 0;
+        document.getElementById("inspectionCount").innerText = inspections?.length || 0;
+        
+    } catch (error) {
+        console.error("Error loading dashboard:", error);
+    }
 }
 
 async function logout(){
