@@ -140,7 +140,15 @@
         th { color: #eab308; }
         .status-paid { background: #22c55e; color: black; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
         .status-pending { background: #eab308; color: black; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
-        .refresh-note { font-size: 12px; color: #eab308; margin-top: 10px; }
+        .debug-info {
+            background: #1e293b;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 12px;
+            font-family: monospace;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -165,7 +173,7 @@
             <div class="service-icon">💰</div>
             <h3>Vehicle Valuation</h3>
             <p>Get accurate market value with certificate</p>
-            <div class="price-tag" id="valuationPrice">Loading...</div>
+            <div class="price-tag" id="valuationPrice">KES 2,500</div>
             <button class="btn-primary">Start Valuation →</button>
         </div>
 
@@ -173,20 +181,33 @@
             <div class="service-icon">🔍</div>
             <h3>Vehicle Inspection</h3>
             <p>150+ point comprehensive inspection</p>
-            <div class="price-tag" id="inspectionPrice">Loading...</div>
+            <div class="price-tag" id="inspectionPrice">KES 3,500</div>
             <button class="btn-primary">Start Inspection →</button>
         </div>
     </div>
 
     <div style="background: #0f172a; border-radius: 20px; padding: 30px;">
-        <h3>📋 My Requests (from Supabase)</h3>
+        <h3>📋 My Requests</h3>
         <div style="overflow-x: auto;">
-            <table>
-                <thead><tr><th>Date</th><th>Service</th><th>Vehicle</th><th>Amount</th><th>Status</th></tr></thead>
-                <tbody id="requestsBody"><tr><td colspan="5" style="text-align: center; padding: 40px;">Loading from Supabase...</td></tr></tbody>
+            <table id="requestsTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Service</th>
+                        <th>Vehicle</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="requestsBody">
+                    <tr><td colspan="5" style="text-align: center; padding: 40px;">Loading your requests...</td></tr>
+                </tbody>
             </table>
         </div>
     </div>
+    
+    <!-- Debug info -->
+    <div id="debugInfo" class="debug-info"></div>
 </div>
 
 <!-- Valuation Modal -->
@@ -197,9 +218,12 @@
         <div class="form-group"><label>Make</label><input type="text" id="valMake" placeholder="Toyota" required></div>
         <div class="form-group"><label>Model</label><input type="text" id="valModel" placeholder="Axio" required></div>
         <div class="form-group"><label>Year</label><input type="number" id="valYear" placeholder="2020" required></div>
-        <div class="form-group"><label>Valuation Purpose</label>
+        <div class="form-group">
+            <label>Valuation Purpose</label>
             <select id="valPurpose" required>
-                <option value="Insurance">Insurance Coverage</option><option value="Sale">Resale Value</option><option value="Loan">Bank Loan</option>
+                <option value="Insurance">Insurance Coverage</option>
+                <option value="Sale">Resale Value</option>
+                <option value="Loan">Bank Loan</option>
             </select>
         </div>
         <div class="form-group"><label>Amount to Pay</label><input type="text" id="valAmount" readonly style="background: #22c55e20; color: #22c55e; font-weight: bold;"></div>
@@ -224,40 +248,270 @@
 </div>
 
 <script>
-    // SUPABASE IS THE SINGLE SOURCE OF TRUTH
-    const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    let currentUser = null;
-    let currentValuationFee = 2500;
-    let currentInspectionFee = 3500;
+// SUPABASE CONFIGURATION - REAL CONNECTION
+const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    async function checkAuth() {
+let currentUser = null;
+let currentValuationFee = 2500;
+let currentInspectionFee = 3500;
+
+// Check authentication
+async function checkAuth() {
+    try {
         const { data: { user }, error } = await supabase.auth.getUser();
-        if (error || !user) { window.location.href = "login.html"; return false; }
+        if (error || !user) {
+            console.log('No user found, redirecting to login...');
+            window.location.href = "login.html";
+            return false;
+        }
         currentUser = user;
+        console.log('User authenticated:', user.email);
+        document.getElementById('debugInfo').style.display = 'block';
+        document.getElementById('debugInfo').innerHTML = `✅ Logged in as: ${user.email}<br>User ID: ${user.id}`;
         return true;
+    } catch (err) {
+        console.error('Auth error:', err);
+        window.location.href = "login.html";
+        return false;
     }
+}
 
-    async function loadFees() {
-        const { data: valuationFee } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
-        const { data: inspectionFee } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
+// Load fees from Supabase
+async function loadFees() {
+    try {
+        console.log('Loading fees from Supabase...');
+        const { data: valuationFee, error: vError } = await supabase
+            .from('system_settings')
+            .select('setting_value')
+            .eq('setting_key', 'valuation_fee')
+            .single();
+        
+        if (vError) console.error('Valuation fee error:', vError);
+        
+        const { data: inspectionFee, error: iError } = await supabase
+            .from('system_settings')
+            .select('setting_value')
+            .eq('setting_key', 'inspection_fee')
+            .single();
+        
+        if (iError) console.error('Inspection fee error:', iError);
         
         if (valuationFee) {
             currentValuationFee = parseInt(valuationFee.setting_value);
             document.getElementById('valuationPrice').innerHTML = `KES ${currentValuationFee.toLocaleString()}`;
+            console.log('Valuation fee loaded:', currentValuationFee);
         }
+        
         if (inspectionFee) {
             currentInspectionFee = parseInt(inspectionFee.setting_value);
             document.getElementById('inspectionPrice').innerHTML = `KES ${currentInspectionFee.toLocaleString()}`;
+            console.log('Inspection fee loaded:', currentInspectionFee);
         }
+        
+        document.getElementById('debugInfo').innerHTML += `<br>💰 Valuation Fee: KES ${currentValuationFee} | Inspection Fee: KES ${currentInspectionFee}`;
+        
+    } catch (error) {
+        console.error('Error loading fees:', error);
+        document.getElementById('debugInfo').innerHTML += `<br>❌ Error loading fees: ${error.message}`;
     }
+}
 
-    async function loadRequests() {
-        const { data: valuations } = await supabase.from('valuations').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
-        const { data: inspections } = await supabase.from('inspections').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+// Load user's requests
+async function loadRequests() {
+    try {
+        console.log('Loading user requests for:', currentUser.id);
+        
+        const { data: valuations, error: vError } = await supabase
+            .from('valuations')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        
+        if (vError) console.error('Valuations error:', vError);
+        
+        const { data: inspections, error: iError } = await supabase
+            .from('inspections')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        
+        if (iError) console.error('Inspections error:', iError);
+        
+        const valuationsList = valuations || [];
+        const inspectionsList = inspections || [];
+        
+        console.log(`Found ${valuationsList.length} valuations and ${inspectionsList.length} inspections`);
         
         const allRequests = [
-            ...(valuations || []).map(v => ({ ...v, type: 'valuation' })),
-            ...(inspections || []
+            ...valuationsList.map(v => ({ ...v, type: 'valuation' })),
+            ...inspectionsList.map(i => ({ ...i, type: 'inspection' }))
+        ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        
+        const tbody = document.getElementById('requestsBody');
+        
+        if (allRequests.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px;">No requests yet. Click Start Valuation or Start Inspection above!</td></tr>';
+            document.getElementById('debugInfo').innerHTML += `<br>📋 No requests found. Create one!`;
+            return;
+        }
+        
+        tbody.innerHTML = allRequests.map(req => `
+            <tr>
+                <td>${new Date(req.created_at).toLocaleDateString()}</td>
+                <td>${req.type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
+                <td>${req.make || 'N/A'} ${req.model || ''} (${req.registration_number || 'N/A'})</td>
+                <td>KES ${(req.valuation_amount || req.inspection_amount || 0).toLocaleString()}</td>
+                <td><span class="${req.payment_status === 'paid' ? 'status-paid' : 'status-pending'}">${req.payment_status || 'pending'}</span></td>
+            </tr>
+        `).join('');
+        
+        document.getElementById('debugInfo').innerHTML += `<br>📊 Found ${allRequests.length} total requests`;
+        
+    } catch (error) {
+        console.error('Error loading requests:', error);
+        document.getElementById('debugInfo').innerHTML += `<br>❌ Error loading requests: ${error.message}`;
+    }
+}
+
+// Submit valuation
+async function submitValuation() {
+    const registration = document.getElementById('valReg').value;
+    const make = document.getElementById('valMake').value;
+    const model = document.getElementById('valModel').value;
+    const year = document.getElementById('valYear').value;
+    const purpose = document.getElementById('valPurpose').value;
+    
+    if (!registration || !make || !model || !year) {
+        alert('Please fill all fields');
+        return;
+    }
+    
+    try {
+        const { data, error } = await supabase
+            .from('valuations')
+            .insert([{
+                user_id: currentUser.id,
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: parseInt(year),
+                valuation_purpose: purpose,
+                valuation_amount: currentValuationFee,
+                payment_status: 'completed',
+                created_at: new Date().toISOString()
+            }]);
+        
+        if (error) throw error;
+        
+        alert(`✅ Valuation submitted successfully!\n\nVehicle: ${make} ${model}\nAmount: KES ${currentValuationFee.toLocaleString()}\n\nCertificate will be sent to your email.`);
+        
+        closeValuationModal();
+        loadRequests();
+        
+        // Clear form
+        document.getElementById('valReg').value = '';
+        document.getElementById('valMake').value = '';
+        document.getElementById('valModel').value = '';
+        document.getElementById('valYear').value = '';
+        
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Submit inspection
+async function submitInspection() {
+    const registration = document.getElementById('insReg').value;
+    const make = document.getElementById('insMake').value;
+    const model = document.getElementById('insModel').value;
+    const year = document.getElementById('insYear').value;
+    const mileage = document.getElementById('insMileage').value;
+    
+    if (!registration || !make || !model || !year || !mileage) {
+        alert('Please fill all fields');
+        return;
+    }
+    
+    const score = Math.floor(Math.random() * 30) + 70;
+    
+    try {
+        const { data, error } = await supabase
+            .from('inspections')
+            .insert([{
+                user_id: currentUser.id,
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: parseInt(year),
+                mileage: parseInt(mileage),
+                inspection_amount: currentInspectionFee,
+                payment_status: 'completed',
+                overall_score: score,
+                created_at: new Date().toISOString()
+            }]);
+        
+        if (error) throw error;
+        
+        alert(`✅ Inspection submitted successfully!\n\nVehicle: ${make} ${model}\nScore: ${score}%\nAmount: KES ${currentInspectionFee.toLocaleString()}\n\nFull report will be sent to your email.`);
+        
+        closeInspectionModal();
+        loadRequests();
+        
+        // Clear form
+        document.getElementById('insReg').value = '';
+        document.getElementById('insMake').value = '';
+        document.getElementById('insModel').value = '';
+        document.getElementById('insYear').value = '';
+        document.getElementById('insMileage').value = '';
+        
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Modal functions
+function openValuationModal() {
+    document.getElementById('valAmount').value = `KES ${currentValuationFee.toLocaleString()}`;
+    document.getElementById('valuationModal').style.display = 'flex';
+}
+
+function closeValuationModal() {
+    document.getElementById('valuationModal').style.display = 'none';
+}
+
+function openInspectionModal() {
+    document.getElementById('insAmount').value = `KES ${currentInspectionFee.toLocaleString()}`;
+    document.getElementById('inspectionModal').style.display = 'flex';
+}
+
+function closeInspectionModal() {
+    document.getElementById('inspectionModal').style.display = 'none';
+}
+
+async function logout() {
+    await supabase.auth.signOut();
+    window.location.href = "login.html";
+}
+
+// Initialize
+async function init() {
+    console.log('Initializing dashboard...');
+    const authed = await checkAuth();
+    if (!authed) return;
+    
+    await loadFees();
+    await loadRequests();
+    
+    // Auto-refresh every 10 seconds
+    setInterval(() => {
+        loadFees();
+        loadRequests();
+    }, 10000);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
