@@ -1,562 +1,156 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AUTO-V | Admin Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #0a0c0f;
-            color: #edf2f7;
-            padding: 20px;
-        }
-        .container { max-width: 1600px; margin: auto; }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 32px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(234, 179, 8, 0.3);
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-        .logo {
-            font-size: 28px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #eab308 0%, #facc15 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-        .logo span { font-size: 11px; color: #94a3b8; display: block; }
-        .logout-btn {
-            background: #dc2626;
-            color: white;
-            padding: 10px 24px;
-            border: none;
-            border-radius: 40px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 20px;
-            margin-bottom: 32px;
-        }
-        .stat-card {
-            background: #0f172a;
-            padding: 20px;
-            border-radius: 20px;
-            border: 1px solid #1e293b;
-            text-align: center;
-        }
-        .stat-card h3 { color: #eab308; margin-bottom: 10px; font-size: 13px; text-transform: uppercase; }
-        .stat-number { font-size: 36px; font-weight: 800; color: white; }
-        .card {
-            background: #0f172a;
-            border-radius: 24px;
-            border: 1px solid #1e2a3e;
-            padding: 24px;
-            margin-bottom: 24px;
-        }
-        h2 {
-            color: #eab308;
-            margin-bottom: 20px;
-            font-size: 1.5rem;
-            border-left: 4px solid #eab308;
-            padding-left: 16px;
-        }
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
-        }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px; font-weight: 600; }
-        input, select {
-            width: 100%;
-            padding: 12px 16px;
-            background: #0a0f1c;
-            border: 1px solid #2d3a4e;
-            border-radius: 16px;
-            color: white;
-            font-size: 14px;
-        }
-        button {
-            background: #eab308;
-            color: #0a0c10;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 40px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        button:hover { background: #facc15; }
-        .table-container { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 14px 12px; text-align: left; border-bottom: 1px solid #1e2a3a; }
-        th { color: #eab308; font-weight: 600; }
-        tr:hover { background: rgba(234, 179, 8, 0.05); }
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-        .status-paid { background: #22c55e; color: black; }
-        .status-pending { background: #eab308; color: black; }
-        .status-completed { background: #3b82f6; color: white; }
-        .tabs {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-        }
-        .tab-btn {
-            background: #1e293b;
-            padding: 10px 24px;
-            border-radius: 40px;
-            color: #cbd5e1;
-            border: none;
-            cursor: pointer;
-        }
-        .tab-btn.active {
-            background: #eab308;
-            color: #0f172a;
-        }
-        .error, .success {
-            padding: 12px 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            display: none;
-        }
-        .error { background: #7f1d1d; color: #ef4444; }
-        .success { background: #14532d; color: #22c55e; }
-        .mpesa-config {
-            background: #1e293b;
-            padding: 20px;
-            border-radius: 16px;
-            margin-top: 20px;
-        }
-        @media (max-width: 768px) {
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-    </style>
-</head>
-<body>
+-- ============================================
+-- CLEAN SETUP - DROP EVERYTHING FIRST
+-- ============================================
 
-<div class="container">
-    <div class="header">
-        <div class="logo">
-            🚗 AUTO-V ADMIN
-            <span>M-Pesa Production | Full Control</span>
-        </div>
-        <button class="logout-btn" onclick="handleLogout()">🚪 Exit Admin</button>
-    </div>
+-- Drop all existing policies
+DROP POLICY IF EXISTS "Users can insert own valuations" ON valuations;
+DROP POLICY IF EXISTS "Users can view own valuations" ON valuations;
+DROP POLICY IF EXISTS "Users can insert own inspections" ON inspections;
+DROP POLICY IF EXISTS "Users can view own inspections" ON inspections;
+DROP POLICY IF EXISTS "Allow public read system_settings" ON system_settings;
+DROP POLICY IF EXISTS "Allow public read" ON system_settings;
+DROP POLICY IF EXISTS "Anyone can read system settings" ON system_settings;
 
-    <div class="error" id="errorMsg"></div>
-    <div class="success" id="successMsg"></div>
+-- Drop tables if they exist
+DROP TABLE IF EXISTS mpesa_transactions CASCADE;
+DROP TABLE IF EXISTS inspections CASCADE;
+DROP TABLE IF EXISTS valuations CASCADE;
+DROP TABLE IF EXISTS system_settings CASCADE;
+DROP TABLE IF EXISTS user_profiles CASCADE;
 
-    <!-- Stats Grid -->
-    <div class="stats-grid">
-        <div class="stat-card"><h3>Total Revenue</h3><div class="stat-number" id="totalRevenue">KES 0</div></div>
-        <div class="stat-card"><h3>Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
-        <div class="stat-card"><h3>Inspections</h3><div class="stat-number" id="totalInspections">0</div></div>
-        <div class="stat-card"><h3>Pending Payments</h3><div class="stat-number" id="pendingPayments">0</div></div>
-        <div class="stat-card"><h3>Active Users</h3><div class="stat-number" id="totalUsers">0</div></div>
-        <div class="stat-card"><h3>M-Pesa Txns</h3><div class="stat-number" id="totalTransactions">0</div></div>
-    </div>
+-- ============================================
+-- CREATE TABLES FRESH
+-- ============================================
 
-    <!-- Tabs -->
-    <div class="tabs">
-        <button class="tab-btn active" onclick="showTab('dashboard')">📊 Dashboard</button>
-        <button class="tab-btn" onclick="showTab('valuations')">💰 Valuations</button>
-        <button class="tab-btn" onclick="showTab('inspections')">🔍 Inspections</button>
-        <button class="tab-btn" onclick="showTab('payments')">💳 M-Pesa Transactions</button>
-        <button class="tab-btn" onclick="showTab('settings')">⚙️ System Settings</button>
-    </div>
+-- Create system_settings table
+CREATE TABLE system_settings (
+    id SERIAL PRIMARY KEY,
+    setting_key TEXT UNIQUE NOT NULL,
+    setting_value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
-    <!-- Dashboard Tab -->
-    <div id="dashboardTab" class="card">
-        <h2>📈 Revenue Chart</h2>
-        <canvas id="revenueChart" style="max-height: 300px;"></canvas>
-    </div>
+-- Create valuations table
+CREATE TABLE valuations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID,
+    registration_number TEXT,
+    make TEXT,
+    model TEXT,
+    year INTEGER,
+    valuation_purpose TEXT,
+    valuation_amount INTEGER,
+    payment_status TEXT DEFAULT 'pending',
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
-    <!-- Valuations Tab -->
-    <div id="valuationsTab" class="card" style="display:none;">
-        <h2>💰 Valuation Requests</h2>
-        <div class="table-container">
-            <table id="valuationsTable">
-                <thead><tr><th>ID</th><th>Vehicle</th><th>Amount</th><th>Payment Status</th><th>Transaction</th><th>Date</th></tr></thead>
-                <tbody id="valuationsBody"><tr><td colspan="6">Loading...</td></tr></tbody>
-            </table>
-        </div>
-    </div>
+-- Create inspections table
+CREATE TABLE inspections (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID,
+    registration_number TEXT,
+    make TEXT,
+    model TEXT,
+    year INTEGER,
+    mileage INTEGER,
+    inspection_amount INTEGER,
+    payment_status TEXT DEFAULT 'pending',
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
-    <!-- Inspections Tab -->
-    <div id="inspectionsTab" class="card" style="display:none;">
-        <h2>🔍 Inspection Requests</h2>
-        <div class="table-container">
-            <table id="inspectionsTable">
-                <thead><tr><th>ID</th><th>Vehicle</th><th>Amount</th><th>Payment Status</th><th>Transaction</th><th>Date</th></tr></thead>
-                <tbody id="inspectionsBody"><tr><td colspan="6">Loading...</td></tr></tbody>
-            </table>
-        </div>
-    </div>
+-- Create user_profiles table (for admin roles)
+CREATE TABLE user_profiles (
+    id UUID PRIMARY KEY,
+    email TEXT,
+    role TEXT DEFAULT 'user',
+    full_name TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
-    <!-- Payments Tab -->
-    <div id="paymentsTab" class="card" style="display:none;">
-        <h2>💳 M-Pesa Transaction History</h2>
-        <div class="table-container">
-            <table id="paymentsTable">
-                <thead><tr><th>Receipt No.</th><th>Phone</th><th>Amount</th><th>Service</th><th>Status</th><th>Date</th></tr></thead>
-                <tbody id="paymentsBody"><tr><td colspan="6">Loading...</td></tr></tbody>
-            </table>
-        </div>
-    </div>
+-- ============================================
+-- INSERT DEFAULT SETTINGS
+-- ============================================
 
-    <!-- Settings Tab -->
-    <div id="settingsTab" class="card" style="display:none;">
-        <h2>⚙️ System Configuration</h2>
-        <div class="form-grid">
-            <div class="form-group">
-                <label>💰 Valuation Fee (KES)</label>
-                <input type="number" id="valuationFee" value="2500">
-            </div>
-            <div class="form-group">
-                <label>🔧 Inspection Fee (KES)</label>
-                <input type="number" id="inspectionFee" value="3500">
-            </div>
-        </div>
-        <button onclick="savePricing()" style="margin-top: 10px;">💾 Save Pricing</button>
+INSERT INTO system_settings (setting_key, setting_value) VALUES 
+    ('valuation_fee', '2500'),
+    ('inspection_fee', '3500')
+ON CONFLICT (setting_key) DO UPDATE SET 
+    setting_value = EXCLUDED.setting_value,
+    updated_at = NOW();
 
-        <div class="mpesa-config">
-            <h3 style="color: #eab308; margin-bottom: 15px;">📱 M-Pesa Production Settings</h3>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Shortcode / Paybill</label>
-                    <input type="text" id="mpesaShortcode" value="4095377" readonly>
-                </div>
-                <div class="form-group">
-                    <label>Consumer Key</label>
-                    <input type="text" id="consumerKey" value="LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv" readonly>
-                </div>
-                <div class="form-group">
-                    <label>Consumer Secret</label>
-                    <input type="password" id="consumerSecret" value="aGGo8AuPJVpsZLcs" readonly>
-                </div>
-                <div class="form-group">
-                    <label>Passkey</label>
-                    <input type="password" id="passkey" value="7eb17a031bdfd5b4251863a1ddb72c5b9cd14f3385aa6a258c1442a0116e8277" readonly>
-                </div>
-            </div>
-            <div style="background: #0a0f1c; padding: 15px; border-radius: 12px; margin-top: 15px;">
-                <p style="color: #22c55e;">✅ M-Pesa Production Environment Active</p>
-                <p style="font-size: 12px; color: #94a3b8;">Shortcode: 4095377 | Live payments processing</p>
-            </div>
-        </div>
-    </div>
-</div>
+-- ============================================
+-- ENABLE ROW LEVEL SECURITY
+-- ============================================
 
-<script>
-// Supabase Config
-const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE valuations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inspections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 
-let currentUser = null;
-let revenueChart = null;
+-- ============================================
+-- CREATE POLICIES (FRESH)
+-- ============================================
 
-// Check admin auth
-async function checkAdminAuth() {
-    const { data: { user }, error } = await sb.auth.getUser();
-    if (error || !user) {
-        window.location.href = "admin-login.html";
-        return false;
-    }
-    
-    // Check if user has admin role
-    const { data: profile } = await sb
-        .from('user_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-    
-    if (!profile || profile.role !== 'admin') {
-        await sb.auth.signOut();
-        window.location.href = "admin-login.html";
-        return false;
-    }
-    
-    currentUser = user;
-    return true;
-}
+-- System settings - anyone can read (for pricing)
+CREATE POLICY "public_read_system_settings" ON system_settings
+    FOR SELECT USING (true);
 
-// Load dashboard data
-async function loadDashboardData() {
-    try {
-        // Get valuations
-        const { data: valuations, error: vError } = await sb
-            .from('valuations')
-            .select('*')
-            .order('created_at', { ascending: false });
-        
-        if (vError) console.error('Valuations error:', vError);
-        
-        // Get inspections
-        const { data: inspections, error: iError } = await sb
-            .from('inspections')
-            .select('*')
-            .order('created_at', { ascending: false });
-        
-        if (iError) console.error('Inspections error:', iError);
-        
-        // Get M-Pesa transactions
-        const { data: transactions, error: tError } = await sb
-            .from('mpesa_transactions')
-            .select('*')
-            .order('created_at', { ascending: false });
-        
-        if (tError) console.error('Transactions error:', tError);
-        
-        const vals = valuations || [];
-        const insps = inspections || [];
-        const txns = transactions || [];
-        
-        // Calculate stats
-        const paidVals = vals.filter(v => v.payment_status === 'paid');
-        const paidInsps = insps.filter(i => i.payment_status === 'paid');
-        const pendingVals = vals.filter(v => v.payment_status === 'pending');
-        const pendingInsps = insps.filter(i => i.payment_status === 'pending');
-        
-        const totalRevenue = paidVals.reduce((sum, v) => sum + (v.valuation_amount || 0), 0) +
-                            paidInsps.reduce((sum, i) => sum + (i.inspection_amount || 0), 0);
-        
-        document.getElementById('totalRevenue').innerHTML = `KES ${totalRevenue.toLocaleString()}`;
-        document.getElementById('totalValuations').innerText = vals.length;
-        document.getElementById('totalInspections').innerText = insps.length;
-        document.getElementById('pendingPayments').innerText = pendingVals.length + pendingInsps.length;
-        document.getElementById('totalTransactions').innerText = txns.length;
-        
-        // Get unique users
-        const userIds = new Set();
-        vals.forEach(v => v.user_id && userIds.add(v.user_id));
-        insps.forEach(i => i.user_id && userIds.add(i.user_id));
-        document.getElementById('totalUsers').innerText = userIds.size;
-        
-        // Populate tables
-        populateValuationsTable(vals);
-        populateInspectionsTable(insps);
-        populatePaymentsTable(txns);
-        
-        // Update chart
-        updateRevenueChart(vals, insps);
-        
-    } catch (error) {
-        console.error('Error loading dashboard:', error);
-        showMessage('Error loading data: ' + error.message, 'error');
-    }
-}
+-- Valuations policies
+CREATE POLICY "insert_valuations" ON valuations
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-function populateValuationsTable(valuations) {
-    const tbody = document.getElementById('valuationsBody');
-    if (!valuations.length) {
-        tbody.innerHTML = '<tr><td colspan="6">No valuation requests</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = valuations.map(v => `
-        <tr>
-            <td>${v.id.substring(0, 8)}...</td>
-            <td>${v.make || 'N/A'} ${v.model || ''} (${v.registration_number || 'N/A'})</td>
-            <td>KES ${(v.valuation_amount || 0).toLocaleString()}</td>
-            <td><span class="status-badge ${v.payment_status === 'paid' ? 'status-paid' : 'status-pending'}">${v.payment_status || 'pending'}</span></td>
-            <td>${v.transaction_code || v.mpesa_checkout_request_id?.substring(0, 10) || '-'}</td>
-            <td>${new Date(v.created_at).toLocaleDateString()}</td>
-        </tr>
-    `).join('');
-}
+CREATE POLICY "select_valuations" ON valuations
+    FOR SELECT USING (auth.uid() = user_id);
 
-function populateInspectionsTable(inspections) {
-    const tbody = document.getElementById('inspectionsBody');
-    if (!inspections.length) {
-        tbody.innerHTML = '<tr><td colspan="6">No inspection requests</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = inspections.map(i => `
-        <tr>
-            <td>${i.id.substring(0, 8)}...</td>
-            <td>${i.make || 'N/A'} ${i.model || ''} (${i.registration_number || 'N/A'})</td>
-            <td>KES ${(i.inspection_amount || 0).toLocaleString()}</td>
-            <td><span class="status-badge ${i.payment_status === 'paid' ? 'status-paid' : 'status-pending'}">${i.payment_status || 'pending'}</span></td>
-            <td>${i.transaction_code || i.mpesa_checkout_request_id?.substring(0, 10) || '-'}</td>
-            <td>${new Date(i.created_at).toLocaleDateString()}</td>
-        </tr>
-    `).join('');
-}
+-- Inspections policies
+CREATE POLICY "insert_inspections" ON inspections
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-function populatePaymentsTable(transactions) {
-    const tbody = document.getElementById('paymentsBody');
-    if (!transactions?.length) {
-        tbody.innerHTML = '<tr><td colspan="6">No M-Pesa transactions</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = transactions.map(t => `
-        <tr>
-            <td><strong>${t.mpesa_receipt_number || 'Pending'}</strong></td>
-            <td>${t.phone_number || '-'}</td>
-            <td>KES ${(t.amount || 0).toLocaleString()}</td>
-            <td>${t.service_type || '-'}</td>
-            <td><span class="status-badge ${t.status === 'completed' ? 'status-paid' : 'status-pending'}">${t.status || 'pending'}</span></td>
-            <td>${new Date(t.created_at).toLocaleString()}</td>
-        </tr>
-    `).join('');
-}
+CREATE POLICY "select_inspections" ON inspections
+    FOR SELECT USING (auth.uid() = user_id);
 
-function updateRevenueChart(valuations, inspections) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthlyRevenue = new Array(12).fill(0);
-    
-    [...valuations, ...inspections].forEach(item => {
-        if (item.payment_status === 'paid' && item.created_at) {
-            const date = new Date(item.created_at);
-            const month = date.getMonth();
-            const amount = item.valuation_amount || item.inspection_amount || 0;
-            monthlyRevenue[month] += amount;
-        }
-    });
-    
-    if (revenueChart) revenueChart.destroy();
-    
-    const ctx = document.getElementById('revenueChart').getContext('2d');
-    revenueChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: months,
-            datasets: [{
-                label: 'Revenue (KES)',
-                data: monthlyRevenue,
-                backgroundColor: '#eab308',
-                borderRadius: 8
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            scales: {
-                y: { 
-                    beginAtZero: true, 
-                    ticks: { color: '#cbd5e1' }
-                },
-                x: { ticks: { color: '#cbd5e1' } }
-            },
-            plugins: {
-                legend: { labels: { color: '#eab308' } }
-            }
-        }
-    });
-}
+-- User profiles - users can read their own
+CREATE POLICY "select_user_profiles" ON user_profiles
+    FOR SELECT USING (auth.uid() = id);
 
-async function savePricing() {
-    const valuationFee = document.getElementById('valuationFee').value;
-    const inspectionFee = document.getElementById('inspectionFee').value;
-    
-    try {
-        // Update or insert valuation fee
-        const { error: vError } = await sb
-            .from('system_settings')
-            .upsert({ setting_key: 'valuation_fee', setting_value: valuationFee, updated_at: new Date().toISOString() });
-        
-        if (vError) throw vError;
-        
-        // Update or insert inspection fee
-        const { error: iError } = await sb
-            .from('system_settings')
-            .upsert({ setting_key: 'inspection_fee', setting_value: inspectionFee, updated_at: new Date().toISOString() });
-        
-        if (iError) throw iError;
-        
-        showMessage('✅ Pricing updated successfully!', 'success');
-        
-    } catch (error) {
-        showMessage('Error saving pricing: ' + error.message, 'error');
-    }
-}
+-- ============================================
+-- CREATE FUNCTION FOR AUTO USER PROFILE
+-- ============================================
 
-async function loadPricing() {
-    try {
-        const { data: valuationFee } = await sb
-            .from('system_settings')
-            .select('setting_value')
-            .eq('setting_key', 'valuation_fee')
-            .maybeSingle();
-        
-        const { data: inspectionFee } = await sb
-            .from('system_settings')
-            .select('setting_value')
-            .eq('setting_key', 'inspection_fee')
-            .maybeSingle();
-        
-        if (valuationFee) document.getElementById('valuationFee').value = valuationFee.setting_value;
-        if (inspectionFee) document.getElementById('inspectionFee').value = inspectionFee.setting_value;
-    } catch (error) {
-        console.log('Using default pricing');
-    }
-}
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.user_profiles (id, email, role)
+    VALUES (NEW.id, NEW.email, 'user');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-function showTab(tabName) {
-    // Hide all tabs
-    const tabs = ['dashboard', 'valuations', 'inspections', 'payments', 'settings'];
-    tabs.forEach(tab => {
-        const el = document.getElementById(`${tab}Tab`);
-        if (el) el.style.display = 'none';
-    });
-    
-    // Show selected tab
-    document.getElementById(`${tabName}Tab`).style.display = 'block';
-    
-    // Update active button
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-}
+-- Drop trigger if exists
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
-function showMessage(msg, type) {
-    const msgDiv = document.getElementById(`${type}Msg`);
-    msgDiv.innerHTML = msg;
-    msgDiv.style.display = 'block';
-    setTimeout(() => msgDiv.style.display = 'none', 5000);
-}
+-- Create trigger
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
-async function handleLogout() {
-    await sb.auth.signOut();
-    window.location.href = "admin-login.html";
-}
+-- ============================================
+-- VERIFY EVERYTHING IS WORKING
+-- ============================================
 
-// Initialize
-async function init() {
-    const authed = await checkAdminAuth();
-    if (!authed) return;
-    
-    await loadPricing();
-    await loadDashboardData();
-    
-    // Refresh every 30 seconds
-    setInterval(loadDashboardData, 30000);
-}
+-- Show all tables
+SELECT table_name, table_schema 
+FROM information_schema.tables 
+WHERE table_schema = 'public' 
+AND table_type = 'BASE TABLE'
+ORDER BY table_name;
 
-document.addEventListener('DOMContentLoaded', init);
-</script>
-</body>
-</html>
+-- Show settings
+SELECT * FROM system_settings;
+
+-- Count policies
+SELECT schemaname, tablename, policyname 
+FROM pg_policies 
+WHERE tablename IN ('system_settings', 'valuations', 'inspections', 'user_profiles');
