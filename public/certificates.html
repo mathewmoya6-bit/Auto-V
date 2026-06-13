@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>AUTO-V Certificates</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
+<style>
+
+body{
+background:#0a0a0a;
+color:white;
+font-family:Arial,sans-serif;
+padding:20px;
+}
+
+.container{
+max-width:1000px;
+margin:auto;
+}
+
+.card{
+background:#111;
+padding:25px;
+border-radius:12px;
+border:1px solid #222;
+}
+
+h2{
+color:#eab308;
+margin-bottom:20px;
+}
+
+select,button{
+width:100%;
+padding:12px;
+margin-top:10px;
+background:#1a1a1a;
+color:white;
+border:1px solid #333;
+border-radius:8px;
+}
+
+button{
+background:#eab308;
+color:black;
+font-weight:bold;
+cursor:pointer;
+}
+
+.certificate{
+background:white;
+color:black;
+padding:40px;
+margin-top:30px;
+border-radius:10px;
+display:none;
+}
+
+.certificate h1{
+text-align:center;
+}
+
+.qr{
+text-align:center;
+margin-top:20px;
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="container">
+
+<div class="card">
+
+<h2>Generate Certificate</h2>
+
+<select id="certificateType">
+
+<option value="valuation">
+Valuation Certificate
+</option>
+
+<option value="inspection">
+Inspection Certificate
+</option>
+
+</select>
+
+<select id="vehicleList"></select>
+
+<button onclick="generateCertificate()">
+Generate Certificate
+</button>
+
+</div>
+
+<div id="certificate" class="certificate">
+
+<h1>AUTO-V CERTIFICATE</h1>
+
+<hr>
+
+<p>
+Certificate No:
+<strong id="certNumber"></strong>
+</p>
+
+<p>
+Vehicle:
+<strong id="vehicleInfo"></strong>
+</p>
+
+<p>
+Certificate Type:
+<strong id="certType"></strong>
+</p>
+
+<p>
+Issue Date:
+<strong id="issueDate"></strong>
+</p>
+
+<p>
+Verification Code:
+<strong id="verifyCode"></strong>
+</p>
+
+<div class="qr">
+<canvas id="qrCanvas"></canvas>
+</div>
+
+<br>
+
+<button onclick="window.print()">
+Print / Save PDF
+</button>
+
+</div>
+
+</div>
+
+<script>
+
+const SUPABASE_URL =
+"https://tsvejnzxrxrrecgquxbq.supabase.co";
+
+const SUPABASE_ANON_KEY =
+"YOUR_ANON_KEY";
+
+const supabaseClient =
+supabase.createClient(
+SUPABASE_URL,
+SUPABASE_ANON_KEY
+);
+
+async function loadVehicles(){
+
+const {data} =
+await supabaseClient
+.from("vehicles")
+.select("*");
+
+const select =
+document.getElementById(
+"vehicleList"
+);
+
+select.innerHTML="";
+
+data.forEach(vehicle=>{
+
+select.innerHTML += `
+<option value="${vehicle.id}">
+${vehicle.registration_number}
+-
+${vehicle.make}
+${vehicle.model}
+</option>
+`;
+
+});
+
+}
+
+async function generateCertificate(){
+
+const vehicleId =
+document.getElementById(
+"vehicleList"
+).value;
+
+const type =
+document.getElementById(
+"certificateType"
+).value;
+
+const {
+data:vehicle
+}
+=
+await supabaseClient
+.from("vehicles")
+.select("*")
+.eq("id",vehicleId)
+.single();
+
+const certificateNumber =
+"AUTOV-" +
+Date.now();
+
+const verificationCode =
+crypto.randomUUID();
+
+document.getElementById(
+"certNumber"
+).innerText =
+certificateNumber;
+
+document.getElementById(
+"vehicleInfo"
+).innerText =
+vehicle.registration_number +
+" - " +
+vehicle.make +
+" " +
+vehicle.model;
+
+document.getElementById(
+"certType"
+).innerText =
+type;
+
+document.getElementById(
+"issueDate"
+).innerText =
+new Date().toLocaleDateString();
+
+document.getElementById(
+"verifyCode"
+).innerText =
+verificationCode;
+
+await QRCode.toCanvas(
+document.getElementById(
+"qrCanvas"
+),
+verificationCode
+);
+
+document.getElementById(
+"certificate"
+).style.display =
+"block";
+
+const {
+data:{user}
+}
+=
+await supabaseClient.auth.getUser();
+
+await supabaseClient
+.from("certificates")
+.insert({
+
+user_id:user.id,
+
+vehicle_id:vehicleId,
+
+certificate_number:
+certificateNumber,
+
+verification_code:
+verificationCode,
+
+certificate_type:
+type,
+
+issued_at:
+new Date().toISOString()
+
+});
+
+}
+
+loadVehicles();
+
+</script>
+
+</body>
+</html>
