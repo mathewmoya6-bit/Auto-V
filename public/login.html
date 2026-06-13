@@ -62,6 +62,11 @@
             opacity:0.9;
         }
 
+        button:disabled{
+            background:#666;
+            cursor:not-allowed;
+        }
+
         a{
             color:#eab308;
             text-decoration:none;
@@ -70,6 +75,17 @@
         p{
             text-align:center;
             margin-top:15px;
+        }
+
+        .error{
+            color:#ef4444;
+            font-size:14px;
+            margin-bottom:15px;
+            display:none;
+            background:#7f1d1d;
+            padding:10px;
+            border-radius:6px;
+            text-align:center;
         }
     </style>
 </head>
@@ -82,11 +98,25 @@
 
         <form onsubmit="login(event)">
 
-            <input type="email" id="email" placeholder="Email Address" required>
+            <input
+                type="email"
+                id="email"
+                placeholder="Email Address"
+                required
+            >
 
-            <input type="password" id="password" placeholder="Password" required>
+            <input
+                type="password"
+                id="password"
+                placeholder="Password"
+                required
+            >
 
-            <button type="submit">Login</button>
+            <div class="error" id="error-message"></div>
+
+            <button type="submit" id="login-btn">
+                Login
+            </button>
 
         </form>
 
@@ -99,45 +129,78 @@
 
 <script>
 
-const SUPABASE_URL =
-"https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 
-const SUPABASE_ANON_KEY =
-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+const supabaseClient = supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+);
 
-const supabaseClient =
-supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Check if user is already logged in
+async function checkSession() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session) {
+        // Already logged in, redirect to dashboard
+        window.location.href = "dashboard.html";
+    }
+}
 
-async function login(event){
+async function login(event) {
     event.preventDefault();
 
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
+    const errorDiv = document.getElementById("error-message");
+    const loginBtn = document.getElementById("login-btn");
 
-    console.log("Attempting login...");
+    // Reset error
+    errorDiv.style.display = "none";
+    errorDiv.textContent = "";
 
-    const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password
-    });
+    // Disable button
+    loginBtn.disabled = true;
+    loginBtn.textContent = "Logging in...";
 
-    console.log("Login response:", data, error);
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email,
+            password
+        });
 
-    if(error){
-        alert(error.message);
-        return;
-    }
+        if (error) {
+            throw error;
+        }
 
-    if(data && data.session){
-        alert("Login Successful");
+        if (data.session) {
+            // Show success message briefly
+            errorDiv.style.color = "#22c55e";
+            errorDiv.style.background = "#14532d";
+            errorDiv.textContent = "Login successful! Redirecting...";
+            errorDiv.style.display = "block";
+            
+            // Redirect to dashboard
+            setTimeout(() => {
+                window.location.href = "dashboard.html";
+            }, 1000);
+        } else {
+            throw new Error("Login failed");
+        }
 
-        console.log("Redirecting to dashboard...");
-
-        window.location.replace("dashboard.html");
-    } else {
-        alert("Login failed: no session returned");
+    } catch (error) {
+        errorDiv.style.color = "#ef4444";
+        errorDiv.style.background = "#7f1d1d";
+        errorDiv.textContent = error.message;
+        errorDiv.style.display = "block";
+        
+        // Re-enable button
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Login";
     }
 }
+
+// Check session on page load
+checkSession();
 
 </script>
 
