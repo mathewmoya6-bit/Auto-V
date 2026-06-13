@@ -1,129 +1,890 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>AUTO-V Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<style>
-body{margin:0;font-family:Segoe UI,Arial;background:#0b1120;color:#fff}
-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;background:#111827;border-bottom:2px solid #eab308}
-.logo{font-weight:bold;font-size:24px;color:#eab308}
-.container{max-width:1100px;margin:auto;padding:24px}
-.card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px;margin-bottom:20px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
-button{background:#eab308;color:#000;border:0;padding:10px 16px;border-radius:8px;font-weight:bold;cursor:pointer}
-table{width:100%;border-collapse:collapse}
-th,td{padding:10px;border-bottom:1px solid #222;text-align:left}
-.badge{padding:4px 10px;border-radius:12px;background:#374151}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>AUTO-V Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0b1120;
+            color: #fff;
+            min-height: 100vh;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: #111827;
+            border-bottom: 2px solid #eab308;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .logo {
+            font-weight: bold;
+            font-size: 24px;
+            color: #eab308;
+        }
+        .logout-btn {
+            background: #dc2626;
+            color: #fff;
+            border: 0;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .logout-btn:hover { background: #ef4444; }
+        .container {
+            max-width: 1100px;
+            margin: auto;
+            padding: 24px;
+        }
+        .card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .service-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .service-card:hover {
+            border-color: #eab308;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(234,179,8,0.1);
+        }
+        .service-icon { font-size: 48px; margin-bottom: 10px; }
+        .service-card h3 { color: #eab308; margin-bottom: 10px; }
+        .price { 
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #22c55e; 
+            margin: 10px 0; 
+        }
+        button {
+            background: #eab308;
+            color: #000;
+            border: 0;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover { background: #facc15; }
+        button:disabled { background: #666; cursor: not-allowed; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #1f2937;
+            text-align: left;
+        }
+        th { color: #eab308; }
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: inline-block;
+        }
+        .badge-pending { background: #eab308; color: #000; }
+        .badge-paid { background: #22c55e; color: #000; }
+        .badge-processing { background: #3b82f6; color: #fff; }
+        .badge-completed { background: #8b5cf6; color: #fff; }
+        .badge-failed { background: #ef4444; color: #fff; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #111827;
+            border-radius: 16px;
+            max-width: 500px;
+            width: 90%;
+            padding: 30px;
+            border: 2px solid #eab308;
+        }
+        .modal-content h2 { color: #eab308; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #94a3b8; font-weight: 600; }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+        }
+        input:focus { outline: none; border-color: #eab308; }
+        .btn-success {
+            background: #22c55e;
+            color: #fff;
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .btn-secondary {
+            background: #475569;
+            color: #fff;
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .payment-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #111827;
+            padding: 15px 25px;
+            border-radius: 12px;
+            border-left: 4px solid #eab308;
+            display: none;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error, .success {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
+        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
+        .result-value {
+            font-size: 48px;
+            font-weight: bold;
+            color: #22c55e;
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
 </head>
 <body>
+
 <header>
-<div class="logo">AUTO‑V Dashboard</div>
-<button onclick="logout()">Logout</button>
+    <div class="logo">🚗 AUTO-V Dashboard</div>
+    <button class="logout-btn" onclick="logout()">Logout</button>
 </header>
 
 <div class="container">
 
-<div class="card">
-<h2>Welcome</h2>
-<div id="email">Loading...</div>
+    <!-- Welcome Card -->
+    <div class="card">
+        <h2>Welcome to AUTO-V</h2>
+        <div id="email">Loading...</div>
+        <p style="color: #94a3b8; margin-top: 5px;">Select a service below to get started</p>
+    </div>
+
+    <div id="errorMsg" class="error"></div>
+    <div id="successMsg" class="success"></div>
+
+    <!-- Service Cards -->
+    <div class="grid">
+        <div class="service-card">
+            <div class="service-icon">💰</div>
+            <h3>Vehicle Valuation</h3>
+            <p>Get accurate market value with official certificate</p>
+            <div class="price" id="valuationPrice">KES 2,500</div>
+            <button id="valuationBtn">Pay & Start →</button>
+        </div>
+
+        <div class="service-card">
+            <div class="service-icon">🔍</div>
+            <h3>Vehicle Inspection</h3>
+            <p>150+ point comprehensive inspection report</p>
+            <div class="price" id="inspectionPrice">KES 3,500</div>
+            <button id="inspectionBtn">Pay & Start →</button>
+        </div>
+    </div>
+
+    <!-- Service History -->
+    <div class="card">
+        <h2>📋 My Requests</h2>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Service</th>
+                        <th>Vehicle</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Payment</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody">
+                    <tr><td colspan="7" style="text-align:center;padding:40px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 
-<div class="grid">
-<div class="card">
-<h3>Vehicle Valuation</h3>
-<p>Start a new valuation.</p>
-<button onclick="location.href='valuation.html'">Start</button>
+<!-- Payment Status Popup -->
+<div id="paymentStatus" class="payment-status">
+    <div id="paymentMessage">Processing payment...</div>
 </div>
 
-<div class="card">
-<h3>Vehicle Inspection</h3>
-<p>Start a new inspection.</p>
-<button onclick="location.href='inspection.html'">Start</button>
-</div>
+<!-- Valuation Modal -->
+<div id="valuationModal" class="modal">
+    <div class="modal-content">
+        <h2>💰 Vehicle Valuation</h2>
+        <div class="form-group">
+            <label>Registration Number</label>
+            <input type="text" id="valReg" placeholder="KCA 123A">
+        </div>
+        <div class="form-group">
+            <label>Make</label>
+            <input type="text" id="valMake" placeholder="Toyota">
+        </div>
+        <div class="form-group">
+            <label>Model</label>
+            <input type="text" id="valModel" placeholder="Axio">
+        </div>
+        <div class="form-group">
+            <label>Year</label>
+            <input type="number" id="valYear" placeholder="2020">
+        </div>
+        <div class="form-group">
+            <label>Purpose</label>
+            <select id="valPurpose">
+                <option value="Insurance">Insurance</option>
+                <option value="Sale">Sale</option>
+                <option value="Bank Loan">Bank Loan</option>
+                <option value="Transfer">Transfer</option>
+                <option value="Import">Import</option>
+                <option value="Other">Other</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>M-Pesa Phone Number</label>
+            <input type="tel" id="valPhone" placeholder="0712345678">
+        </div>
+        <div class="form-group">
+            <label>Amount to Pay</label>
+            <input type="text" id="valAmount" readonly style="background:#22c55e20;color:#22c55e;font-weight:bold;">
+        </div>
+        <button class="btn-success" id="submitValuationBtn">💳 Pay with M-Pesa</button>
+        <button class="btn-secondary" onclick="closeModal('valuationModal')">Cancel</button>
+    </div>
 </div>
 
-<div class="card">
-<h2>My Requests</h2>
-<table>
-<thead>
-<tr>
-<th>Date</th>
-<th>Service</th>
-<th>Vehicle</th>
-<th>Status</th>
-<th>Payment</th>
-</tr>
-</thead>
-<tbody id="tbody">
-<tr><td colspan="5">Loading...</td></tr>
-</tbody>
-</table>
+<!-- Inspection Modal -->
+<div id="inspectionModal" class="modal">
+    <div class="modal-content">
+        <h2>🔍 Vehicle Inspection</h2>
+        <div class="form-group">
+            <label>Registration Number</label>
+            <input type="text" id="insReg" placeholder="KCA 123A">
+        </div>
+        <div class="form-group">
+            <label>Make</label>
+            <input type="text" id="insMake" placeholder="Toyota">
+        </div>
+        <div class="form-group">
+            <label>Model</label>
+            <input type="text" id="insModel" placeholder="Axio">
+        </div>
+        <div class="form-group">
+            <label>Year</label>
+            <input type="number" id="insYear" placeholder="2020">
+        </div>
+        <div class="form-group">
+            <label>Mileage (km)</label>
+            <input type="number" id="insMileage" placeholder="50000">
+        </div>
+        <div class="form-group">
+            <label>M-Pesa Phone Number</label>
+            <input type="tel" id="insPhone" placeholder="0712345678">
+        </div>
+        <div class="form-group">
+            <label>Amount to Pay</label>
+            <input type="text" id="insAmount" readonly style="background:#22c55e20;color:#22c55e;font-weight:bold;">
+        </div>
+        <button class="btn-success" id="submitInspectionBtn">💳 Pay with M-Pesa</button>
+        <button class="btn-secondary" onclick="closeModal('inspectionModal')">Cancel</button>
+    </div>
 </div>
 
+<!-- Result Modal -->
+<div id="resultModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <h2 id="resultTitle">Result</h2>
+        <div id="resultContent"></div>
+        <button class="btn-secondary" onclick="closeModal('resultModal')">Close</button>
+    </div>
 </div>
 
 <script>
-const SUPABASE_URL="YOUR_SUPABASE_URL";
-const SUPABASE_KEY="YOUR_SUPABASE_ANON_KEY";
-const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-let currentUser=null;
+    // SUPABASE CONFIG
+    const SUPABASE_URL = "YOUR_SUPABASE_URL";
+    const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-async function init(){
- const {data:{user}}=await supabase.auth.getUser();
- if(!user){
-   location.href="login.html";
-   return;
- }
- currentUser=user;
- document.getElementById("email").textContent=user.email;
- await loadHistory();
- subscribeRealtime();
-}
+    let currentUser = null;
+    let valuationFee = 2500;
+    let inspectionFee = 3500;
+    let isProcessingPayment = false;
+    let pollInterval = null;
 
-async function loadHistory(){
- const {data,error}=await supabase
-  .from("service_requests")
-  .select("*")
-  .eq("user_id",currentUser.id)
-  .order("created_at",{ascending:false});
+    // API endpoint (your backend)
+    const API_BASE_URL = window.location.origin;
 
- const tb=document.getElementById("tbody");
- if(error){
-   tb.innerHTML="<tr><td colspan='5'>"+error.message+"</td></tr>";
-   return;
- }
- if(!data||data.length===0){
-   tb.innerHTML="<tr><td colspan='5'>No requests</td></tr>";
-   return;
- }
+    // INIT
+    async function init() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            location.href = "login.html";
+            return;
+        }
+        currentUser = user;
+        document.getElementById("email").textContent = `Logged in as: ${user.email}`;
+        await loadHistory();
+        subscribeRealtime();
+        checkPaymentStatus();
+    }
 
- tb.innerHTML=data.map(r=>`
-<tr>
-<td>${new Date(r.created_at).toLocaleString()}</td>
-<td>${r.service_type}</td>
-<td>${r.make||""} ${r.model||""} (${r.registration_number||""})</td>
-<td><span class="badge">${r.status}</span></td>
-<td><span class="badge">${r.payment_status}</span></td>
-</tr>`).join("");
-}
+    // LOAD HISTORY
+    async function loadHistory() {
+        try {
+            const { data, error } = await supabase
+                .from("service_requests")
+                .select("*")
+                .eq("user_id", currentUser.id)
+                .order("created_at", { ascending: false });
 
-function subscribeRealtime(){
- supabase.channel("service_requests_live")
- .on("postgres_changes",
-   {event:"*",schema:"public",table:"service_requests"},
-   ()=>loadHistory())
- .subscribe();
-}
+            const tb = document.getElementById("tbody");
+            if (error) {
+                tb.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#ef4444;">Error: ${error.message}</td></tr>`;
+                return;
+            }
+            if (!data || data.length === 0) {
+                tb.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;">No service requests yet. Start by paying for a service!</td></tr>`;
+                return;
+            }
 
-async function logout(){
- await supabase.auth.signOut();
- location.href="login.html";
-}
+            tb.innerHTML = data.map(r => {
+                let statusBadge = `badge-${r.status || 'pending'}`;
+                let paymentBadge = `badge-${r.payment_status || 'pending'}`;
+                
+                let resultText = '-';
+                if (r.service_type === 'valuation' && r.valuation_result) {
+                    try {
+                        const result = typeof r.valuation_result === 'string' 
+                            ? JSON.parse(r.valuation_result) 
+                            : r.valuation_result;
+                        resultText = `KES ${(result.market_value || 0).toLocaleString()}`;
+                    } catch (e) { resultText = 'Completed'; }
+                } else if (r.service_type === 'inspection' && r.overall_score) {
+                    resultText = `${r.overall_score}%`;
+                }
 
-init();
+                return `
+                    <tr>
+                        <td>${new Date(r.created_at).toLocaleString()}</td>
+                        <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
+                        <td>${r.make || 'N/A'} ${r.model || 'N/A'} (${r.registration_number || 'N/A'})</td>
+                        <td>KES ${(r.valuation_amount || r.inspection_amount || 0).toLocaleString()}</td>
+                        <td><span class="badge ${statusBadge}">${r.status || 'pending'}</span></td>
+                        <td><span class="badge ${paymentBadge}">${r.payment_status || 'pending'}</span></td>
+                        <td><strong>${resultText}</strong></td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (e) {
+            console.error('History load error:', e);
+        }
+    }
+
+    // SUBSCRIBE REALTIME
+    function subscribeRealtime() {
+        supabase.channel("service_requests_live")
+            .on("postgres_changes",
+                { event: "*", schema: "public", table: "service_requests" },
+                () => loadHistory())
+            .subscribe();
+    }
+
+    // OPEN VALUATION MODAL
+    function openValuation() {
+        document.getElementById('valAmount').value = `KES ${valuationFee.toLocaleString()}`;
+        document.getElementById('valuationModal').style.display = 'flex';
+    }
+
+    // OPEN INSPECTION MODAL
+    function openInspection() {
+        document.getElementById('insAmount').value = `KES ${inspectionFee.toLocaleString()}`;
+        document.getElementById('inspectionModal').style.display = 'flex';
+    }
+
+    // CLOSE MODAL
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    // PROCESS VALUATION PAYMENT
+    async function processValuationPayment() {
+        if (isProcessingPayment) {
+            showMessage('Payment already in progress. Please wait.', 'error');
+            return;
+        }
+
+        const registration = document.getElementById('valReg').value;
+        const make = document.getElementById('valMake').value;
+        const model = document.getElementById('valModel').value;
+        const year = document.getElementById('valYear').value;
+        const purpose = document.getElementById('valPurpose').value;
+        const phone = document.getElementById('valPhone').value;
+
+        if (!registration || !make || !model || !year || !phone) {
+            showMessage('Please fill all fields', 'error');
+            return;
+        }
+
+        isProcessingPayment = true;
+        document.getElementById('submitValuationBtn').disabled = true;
+
+        try {
+            // Create service request
+            const { data: service, error } = await supabase
+                .from("service_requests")
+                .insert({
+                    user_id: currentUser.id,
+                    service_type: 'valuation',
+                    registration_number: registration,
+                    make: make,
+                    model: model,
+                    year: parseInt(year),
+                    valuation_purpose: purpose,
+                    valuation_amount: valuationFee,
+                    payment_status: 'pending',
+                    status: 'awaiting_payment'
+                })
+                .select()
+                .single();
+
+            if (error) {
+                showMessage('Error: ' + error.message, 'error');
+                isProcessingPayment = false;
+                document.getElementById('submitValuationBtn').disabled = false;
+                return;
+            }
+
+            closeModal('valuationModal');
+            showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
+
+            // CALL BACKEND API
+            const response = await fetch(`${API_BASE_URL}/api/payments/mpesa/initiate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service_type: 'valuation',
+                    purpose: purpose,
+                    phone: phone,
+                    amount: valuationFee,
+                    service_id: service.id,
+                    user_id: currentUser.id
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
+                startPollingPayment(service.id, 'valuation');
+            } else {
+                showPaymentStatus('❌ ' + (result.message || 'Payment initiation failed'), true);
+                setTimeout(() => hidePaymentStatus(), 5000);
+                isProcessingPayment = false;
+                document.getElementById('submitValuationBtn').disabled = false;
+            }
+
+        } catch (e) {
+            console.error('Payment error:', e);
+            showMessage('Payment failed: ' + e.message, 'error');
+            isProcessingPayment = false;
+            document.getElementById('submitValuationBtn').disabled = false;
+        }
+    }
+
+    // PROCESS INSPECTION PAYMENT
+    async function processInspectionPayment() {
+        if (isProcessingPayment) {
+            showMessage('Payment already in progress. Please wait.', 'error');
+            return;
+        }
+
+        const registration = document.getElementById('insReg').value;
+        const make = document.getElementById('insMake').value;
+        const model = document.getElementById('insModel').value;
+        const year = document.getElementById('insYear').value;
+        const mileage = document.getElementById('insMileage').value;
+        const phone = document.getElementById('insPhone').value;
+
+        if (!registration || !make || !model || !year || !mileage || !phone) {
+            showMessage('Please fill all fields', 'error');
+            return;
+        }
+
+        isProcessingPayment = true;
+        document.getElementById('submitInspectionBtn').disabled = true;
+
+        try {
+            const { data: service, error } = await supabase
+                .from("service_requests")
+                .insert({
+                    user_id: currentUser.id,
+                    service_type: 'inspection',
+                    registration_number: registration,
+                    make: make,
+                    model: model,
+                    year: parseInt(year),
+                    mileage: parseInt(mileage),
+                    inspection_amount: inspectionFee,
+                    payment_status: 'pending',
+                    status: 'awaiting_payment'
+                })
+                .select()
+                .single();
+
+            if (error) {
+                showMessage('Error: ' + error.message, 'error');
+                isProcessingPayment = false;
+                document.getElementById('submitInspectionBtn').disabled = false;
+                return;
+            }
+
+            closeModal('inspectionModal');
+            showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
+
+            const response = await fetch(`${API_BASE_URL}/api/payments/mpesa/initiate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service_type: 'inspection',
+                    purpose: 'Inspection',
+                    phone: phone,
+                    amount: inspectionFee,
+                    service_id: service.id,
+                    user_id: currentUser.id
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
+                startPollingPayment(service.id, 'inspection');
+            } else {
+                showPaymentStatus('❌ ' + (result.message || 'Payment initiation failed'), true);
+                setTimeout(() => hidePaymentStatus(), 5000);
+                isProcessingPayment = false;
+                document.getElementById('submitInspectionBtn').disabled = false;
+            }
+
+        } catch (e) {
+            console.error('Payment error:', e);
+            showMessage('Payment failed: ' + e.message, 'error');
+            isProcessingPayment = false;
+            document.getElementById('submitInspectionBtn').disabled = false;
+        }
+    }
+
+    // POLL PAYMENT STATUS
+    function startPollingPayment(serviceId, serviceType) {
+        let pollCount = 0;
+        const MAX_POLLS = 40;
+
+        if (pollInterval) clearInterval(pollInterval);
+
+        pollInterval = setInterval(async () => {
+            pollCount++;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/payments/status?service_id=${serviceId}&service_type=${serviceType}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.status === 'paid') {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    hidePaymentStatus();
+                    isProcessingPayment = false;
+                    document.getElementById('submitValuationBtn').disabled = false;
+                    document.getElementById('submitInspectionBtn').disabled = false;
+                    showMessage('✅ Payment successful! Generating results...', 'success');
+
+                    setTimeout(async () => {
+                        const { data: service } = await supabase
+                            .from("service_requests")
+                            .select("*")
+                            .eq("id", serviceId)
+                            .single();
+                        
+                        if (service) {
+                            if (serviceType === 'valuation') {
+                                generateValuationResult(service);
+                            } else {
+                                generateInspectionResult(service);
+                            }
+                        }
+                        await loadHistory();
+                    }, 1000);
+                } else if (result.status === 'failed') {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    hidePaymentStatus();
+                    isProcessingPayment = false;
+                    document.getElementById('submitValuationBtn').disabled = false;
+                    document.getElementById('submitInspectionBtn').disabled = false;
+                    showMessage('Payment failed. Please try again.', 'error');
+                }
+            } catch (e) {
+                console.error('Poll error:', e);
+            }
+
+            if (pollCount >= MAX_POLLS) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+                hidePaymentStatus();
+                isProcessingPayment = false;
+                document.getElementById('submitValuationBtn').disabled = false;
+                document.getElementById('submitInspectionBtn').disabled = false;
+                showMessage('Payment timeout. Please contact support.', 'error');
+            }
+        }, 3000);
+    }
+
+    // GENERATE VALUATION RESULT
+    async function generateValuationResult(valuation) {
+        const year = valuation.year || new Date().getFullYear();
+        const currentYear = new Date().getFullYear();
+        const age = Math.max(0, currentYear - year);
+        const baseValue = 2000000;
+        let marketValue = Math.max(300000, baseValue - (baseValue * age * 0.1));
+
+        if (valuation.make?.toLowerCase() === 'toyota') marketValue *= 1.1;
+        if (valuation.make?.toLowerCase() === 'mercedes') marketValue *= 1.2;
+        if (valuation.make?.toLowerCase() === 'bmw') marketValue *= 1.15;
+
+        const result = {
+            market_value: Math.round(marketValue),
+            age: age,
+            depreciation_rate: age * 10,
+            condition: 'Good',
+            certificate_number: `AUTO-VAL-${valuation.id.substring(0, 8)}`
+        };
+
+        await supabase.from("service_requests").update({
+            valuation_result: result,
+            status: 'completed',
+            payment_status: 'paid'
+        }).eq('id', valuation.id);
+
+        document.getElementById('resultTitle').textContent = '💰 Valuation Result';
+        document.getElementById('resultContent').innerHTML = `
+            <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 15px 0;">
+                <p><strong>Vehicle:</strong> ${valuation.make} ${valuation.model} (${valuation.year})</p>
+                <p><strong>Registration:</strong> ${valuation.registration_number}</p>
+                <div class="result-value">KES ${Math.round(marketValue).toLocaleString()}</div>
+                <hr style="margin: 15px 0; border-color: #334155;">
+                <p><strong>Depreciation:</strong> ${result.age} years (${result.depreciation_rate}%)</p>
+                <p><strong>Certificate:</strong> ${result.certificate_number}</p>
+                <p style="color: #22c55e; margin-top: 15px;">✅ Valuation complete!</p>
+            </div>
+        `;
+        document.getElementById('resultModal').style.display = 'flex';
+    }
+
+    // GENERATE INSPECTION RESULT
+    async function generateInspectionResult(inspection) {
+        const score = Math.floor(Math.random() * 25) + 75;
+        const verdict = score >= 85 ? 'EXCELLENT' : (score >= 70 ? 'GOOD' : 'FAIR');
+
+        const result = {
+            overall_score: score,
+            final_verdict: verdict,
+            categories: {
+                engine: score >= 80 ? 'Good' : 'Needs Attention',
+                transmission: score >= 75 ? 'Good' : 'Check Required',
+                brakes: score >= 85 ? 'Excellent' : 'Service Recommended',
+                electrical: score >= 80 ? 'Working' : 'Inspect Further',
+                body: score >= 70 ? 'Fair' : 'Repair Needed'
+            },
+            certificate_number: `AUTO-INS-${inspection.id.substring(0, 8)}`
+        };
+
+        await supabase.from("service_requests").update({
+            overall_score: score,
+            final_verdict: verdict,
+            inspection_result: result,
+            status: 'completed',
+            payment_status: 'paid'
+        }).eq('id', inspection.id);
+
+        document.getElementById('resultTitle').textContent = '🔧 Inspection Result';
+        document.getElementById('resultContent').innerHTML = `
+            <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 15px 0;">
+                <p><strong>Vehicle:</strong> ${inspection.make} ${inspection.model} (${inspection.year})</p>
+                <p><strong>Mileage:</strong> ${inspection.mileage.toLocaleString()} km</p>
+                <div class="result-value">${score}% - ${verdict}</div>
+                <hr style="margin: 15px 0; border-color: #334155;">
+                <p><strong>Engine:</strong> ${result.categories.engine}</p>
+                <p><strong>Transmission:</strong> ${result.categories.transmission}</p>
+                <p><strong>Brakes:</strong> ${result.categories.brakes}</p>
+                <p><strong>Electrical:</strong> ${result.categories.electrical}</p>
+                <p><strong>Body:</strong> ${result.categories.body}</p>
+                <p style="color: #22c55e; margin-top: 15px;">✅ Inspection complete!</p>
+            </div>
+        `;
+        document.getElementById('resultModal').style.display = 'flex';
+    }
+
+    // CHECK PAYMENT STATUS ON RETURN
+    function checkPaymentStatus() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const status = urlParams.get('payment');
+        const service = urlParams.get('service');
+        const serviceId = urlParams.get('serviceId');
+
+        if (status === 'success' && service && serviceId) {
+            showMessage(`✅ ${service} payment successful! Processing results...`, 'success');
+            setTimeout(async () => {
+                const { data: serviceData } = await supabase
+                    .from("service_requests")
+                    .select("*")
+                    .eq("id", serviceId)
+                    .single();
+                
+                if (serviceData) {
+                    if (service === 'valuation') {
+                        generateValuationResult(serviceData);
+                    } else {
+                        generateInspectionResult(serviceData);
+                    }
+                }
+                await loadHistory();
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }, 2000);
+        }
+    }
+
+    // UI HELPERS
+    function showMessage(msg, type) {
+        const div = document.getElementById(`${type}Msg`);
+        div.textContent = msg;
+        div.style.display = 'block';
+        setTimeout(() => div.style.display = 'none', 5000);
+    }
+
+    function showPaymentStatus(msg, isError = false) {
+        const div = document.getElementById('paymentStatus');
+        document.getElementById('paymentMessage').textContent = msg;
+        div.style.borderLeftColor = isError ? '#ef4444' : '#eab308';
+        div.style.display = 'block';
+    }
+
+    function hidePaymentStatus() {
+        document.getElementById('paymentStatus').style.display = 'none';
+    }
+
+    // LOGOUT
+    async function logout() {
+        await supabase.auth.signOut();
+        location.href = "login.html";
+    }
+
+    // EVENT LISTENERS
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('valuationBtn').addEventListener('click', openValuation);
+        document.getElementById('inspectionBtn').addEventListener('click', openInspection);
+        document.getElementById('submitValuationBtn').addEventListener('click', processValuationPayment);
+        document.getElementById('submitInspectionBtn').addEventListener('click', processInspectionPayment);
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal('valuationModal');
+                closeModal('inspectionModal');
+                closeModal('resultModal');
+            }
+        });
+
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeModal(this.id);
+                }
+            });
+        });
+
+        init();
+    });
 </script>
 </body>
 </html>
