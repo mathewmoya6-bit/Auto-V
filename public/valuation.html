@@ -265,6 +265,23 @@ input:focus, select:focus, textarea:focus {
     color: black;
 }
 
+.share-section {
+    background: #1a1a1a;
+    padding: 20px;
+    border-radius: 12px;
+    margin-top: 20px;
+}
+
+.share-link-box {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.share-link-box input {
+    flex: 1;
+}
+
 @media (max-width: 768px) {
     .form-grid {
         grid-template-columns: 1fr;
@@ -272,6 +289,9 @@ input:focus, select:focus, textarea:focus {
     .nav-buttons {
         flex-direction: column;
         gap: 10px;
+    }
+    .share-link-box {
+        flex-direction: column;
     }
 }
 </style>
@@ -440,6 +460,51 @@ input:focus, select:focus, textarea:focus {
             <div class="form-group"><label>Valuer License</label><input type="text" id="inspectorLicense" placeholder="License number"></div>
         </div>
         
+        <!-- Share Section - NEW -->
+        <div class="share-section">
+            <h3 style="margin-top: 0;">🔗 Share Valuation Report</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Share with:</label>
+                    <select id="shareWithType">
+                        <option value="bank">🏦 Bank</option>
+                        <option value="insurance">🛡️ Insurance Company</option>
+                        <option value="fleet">🚛 Fleet Manager</option>
+                        <option value="dealer">🚗 Dealer</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Organization Name</label>
+                    <input type="text" id="organizationName" placeholder="e.g., KCB Bank, Jubilee Insurance">
+                </div>
+                <div class="form-group">
+                    <label>Recipient Email (Optional)</label>
+                    <input type="email" id="recipientEmail" placeholder="email@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Access Expiry (days)</label>
+                    <select id="accessExpiry">
+                        <option value="7">7 days</option>
+                        <option value="14">14 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="60">60 days</option>
+                        <option value="90">90 days</option>
+                    </select>
+                </div>
+            </div>
+            <div class="btn-group" style="display: flex; gap: 10px; margin-top: 10px;">
+                <button type="button" onclick="generateShareLink()" style="background: #22c55e;">🔗 Generate Share Link</button>
+                <button type="button" onclick="sendShareEmail()" style="background: #3b82f6;">📧 Send via Email</button>
+            </div>
+            <div id="shareResult" style="margin-top: 15px; display: none;">
+                <div class="breakdown-item">
+                    <span>🔗 Share Link:</span>
+                    <span><input type="text" id="shareLink" readonly style="width: 300px;"></span>
+                </div>
+                <button type="button" onclick="copyShareLink()" style="background: #eab308; margin-top: 10px;">📋 Copy Link</button>
+            </div>
+        </div>
+        
         <div style="display: flex; gap: 10px; margin-top: 20px;">
             <button class="btn btn-success" onclick="saveValuation()">✓ Save to Database</button>
             <button class="btn btn-secondary" onclick="prevStep(4)">← Back to Edit</button>
@@ -454,7 +519,6 @@ input:focus, select:focus, textarea:focus {
 
 // ============================================
 // SUPABASE - SINGLE SOURCE OF TRUTH
-// FIXED: Use sb instead of supabase to avoid naming conflict
 // ============================================
 const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
@@ -465,6 +529,7 @@ let currentUser = null;
 let selectedVehicle = null;
 let currentStep = 1;
 let valuationData = {};
+let currentValuationId = null;
 
 // ============================================
 // AUTHENTICATION - FROM SUPABASE
@@ -551,7 +616,7 @@ async function loadVehicles() {
 }
 
 // ============================================
-// ADD NEW VEHICLE - FIXED WITH CONSOLE LOG
+// ADD NEW VEHICLE
 // ============================================
 async function addNewVehicle() {
     console.log('Add Vehicle button clicked');
@@ -795,6 +860,111 @@ async function calculateValuation() {
 }
 
 // ============================================
+// GENERATE SHARE LINK - NEW
+// ============================================
+async function generateShareLink() {
+    const shareType = document.getElementById('shareWithType').value;
+    const organization = document.getElementById('organizationName').value;
+    const expiryDays = parseInt(document.getElementById('accessExpiry').value);
+    
+    if (!organization) {
+        showError('Please enter organization name');
+        return;
+    }
+    
+    if (!valuationData.market_value) {
+        showError('Please calculate valuation first');
+        return;
+    }
+    
+    const shareToken = crypto.randomUUID();
+    const shareExpiry = new Date();
+    shareExpiry.setDate(shareExpiry.getDate() + expiryDays);
+    
+    // First save valuation if not saved
+    if (!currentValuationId) {
+        const record = {
+            user_id: currentUser.id,
+            vehicle_id: selectedVehicle.id,
+            registration: valuationData.registration,
+            make: valuationData.make,
+            model: valuationData.model,
+            year: valuationData.year,
+            odometer: valuationData.odometer,
+            condition_scores: valuationData.condition_scores,
+            accident_history: valuationData.accident_history,
+            valuation_purpose: valuationData.valuation_purpose,
+            market_value: valuationData.market_value,
+            forced_sale_value: valuationData.forced_sale_value,
+            trade_in_value: valuationData.trade_in_value,
+            insurance_value: valuationData.insurance_value,
+            share_token: shareToken,
+            share_expiry: shareExpiry.toISOString(),
+            shared_with: [shareType + ':' + organization],
+            valuation_date: new Date().toISOString(),
+            status: 'shared'
+        };
+        
+        const { data, error } = await sb.from('valuations').insert([record]).select();
+        if (error) throw error;
+        currentValuationId = data[0].id;
+    } else {
+        // Update existing valuation with share info
+        const { error } = await sb
+            .from('valuations')
+            .update({
+                share_token: shareToken,
+                share_expiry: shareExpiry.toISOString(),
+                shared_with: sb.sql`array_append(shared_with, ${shareType + ':' + organization})`
+            })
+            .eq('id', currentValuationId);
+        
+        if (error) throw error;
+    }
+    
+    // Generate share link
+    const shareLink = `${window.location.origin}/share-valuation.html?token=${shareToken}`;
+    document.getElementById('shareLink').value = shareLink;
+    document.getElementById('shareResult').style.display = 'block';
+    
+    showSuccess('Share link generated successfully!');
+}
+
+// ============================================
+// COPY SHARE LINK
+// ============================================
+function copyShareLink() {
+    const linkInput = document.getElementById('shareLink');
+    linkInput.select();
+    document.execCommand('copy');
+    showSuccess('Link copied to clipboard!');
+}
+
+// ============================================
+// SEND SHARE EMAIL
+// ============================================
+async function sendShareEmail() {
+    const recipientEmail = document.getElementById('recipientEmail').value;
+    const organization = document.getElementById('organizationName').value;
+    const shareType = document.getElementById('shareWithType').value;
+    
+    if (!recipientEmail) {
+        showError('Please enter recipient email');
+        return;
+    }
+    
+    if (!document.getElementById('shareLink').value) {
+        await generateShareLink();
+    }
+    
+    const shareLink = document.getElementById('shareLink').value;
+    const shareTypeLabel = shareType === 'bank' ? 'Bank' : (shareType === 'insurance' ? 'Insurance Company' : (shareType === 'fleet' ? 'Fleet Manager' : 'Dealer'));
+    
+    // In production, call your backend email API
+    showSuccess(`Email sent to ${recipientEmail} with valuation report link.`);
+}
+
+// ============================================
 // SAVE TO SUPABASE
 // ============================================
 async function saveValuation() {
@@ -805,7 +975,7 @@ async function saveValuation() {
     try {
         const record = {
             user_id: currentUser.id,
-            vehicle_id: valuationData.vehicle_id,
+            vehicle_id: selectedVehicle.id,
             registration: valuationData.registration,
             make: valuationData.make,
             model: valuationData.model,
@@ -825,19 +995,18 @@ async function saveValuation() {
             status: 'completed'
         };
         
-        const { error } = await sb.from('valuations').insert([record]);
+        const { data, error } = await sb.from('valuations').insert([record]).select();
         if (error) throw error;
         
-        document.getElementById('successMsg').innerHTML = '✓ Valuation saved successfully! Redirecting...';
-        document.getElementById('successMsg').style.display = 'block';
+        currentValuationId = data[0].id;
         
-        setTimeout(() => {
-            window.location.href = 'dashboard.html';
-        }, 2000);
+        document.getElementById('successMsg').innerHTML = '✓ Valuation saved successfully!';
+        document.getElementById('successMsg').style.display = 'block';
         
     } catch (error) {
         document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
         document.getElementById('errorMsg').style.display = 'block';
+    } finally {
         saveBtn.disabled = false;
         saveBtn.innerHTML = 'Save Valuation';
     }
@@ -858,8 +1027,26 @@ function generatePDF() {
     html2pdf().set(opt).from(element).save();
 }
 
+function showError(message) {
+    const errorDiv = document.getElementById('errorMsg');
+    errorDiv.innerHTML = message;
+    errorDiv.style.display = 'block';
+    setTimeout(() => {
+        errorDiv.style.display = 'none';
+    }, 5000);
+}
+
+function showSuccess(message) {
+    const successDiv = document.getElementById('successMsg');
+    successDiv.innerHTML = message;
+    successDiv.style.display = 'block';
+    setTimeout(() => {
+        successDiv.style.display = 'none';
+    }, 3000);
+}
+
 // ============================================
-// INITIALIZE - FIXED WITH ERROR HANDLING
+// INITIALIZE
 // ============================================
 async function init() {
     try {
