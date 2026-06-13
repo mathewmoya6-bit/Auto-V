@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Vehicle Valuation</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#0a0a0a;
+    color:white;
+    padding:20px;
+}
+
+.container{
+    max-width:700px;
+    margin:auto;
+}
+
+.card{
+    background:#111;
+    padding:25px;
+    border-radius:12px;
+    border:1px solid #333;
+}
+
+input,select{
+    width:100%;
+    padding:12px;
+    margin-bottom:15px;
+    background:#1a1a1a;
+    color:white;
+    border:1px solid #333;
+    border-radius:8px;
+}
+
+button{
+    width:100%;
+    padding:12px;
+    background:#eab308;
+    color:black;
+    border:none;
+    border-radius:8px;
+    font-weight:bold;
+}
+
+.result{
+    margin-top:20px;
+    padding:20px;
+    border:1px solid #eab308;
+    border-radius:10px;
+}
+</style>
+
+</head>
+<body>
+
+<div class="container">
+
+<div class="card">
+
+<h2>Vehicle Valuation</h2>
+
+<select id="vehicle"></select>
+
+<select id="condition">
+<option>Excellent</option>
+<option selected>Good</option>
+<option>Fair</option>
+<option>Poor</option>
+</select>
+
+<select id="valuation_type">
+<option value="Market Value">Market Value</option>
+<option value="Insurance Value">Insurance Value</option>
+<option value="Forced Sale Value">Forced Sale Value</option>
+<option value="Trade-In Value">Trade-In Value</option>
+<option value="Auction Value">Auction Value</option>
+</select>
+
+<button onclick="calculateValue()">
+Calculate Valuation
+</button>
+
+<div id="result" class="result" style="display:none">
+<h3 id="amount"></h3>
+
+<button onclick="saveValuation()">
+Save Valuation
+</button>
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+const SUPABASE_URL =
+"https://tsvejnzxrxrrecgquxbq.supabase.co";
+
+const SUPABASE_ANON_KEY =
+"YOUR_ANON_KEY";
+
+const supabaseClient =
+supabase.createClient(
+SUPABASE_URL,
+SUPABASE_ANON_KEY
+);
+
+let valuationResult = 0;
+
+async function loadVehicles(){
+
+const {
+data
+}
+=
+await supabaseClient
+.from("vehicles")
+.select("*");
+
+const select =
+document.getElementById("vehicle");
+
+data.forEach(v=>{
+
+select.innerHTML += `
+<option value="${v.id}">
+${v.registration_number}
+- ${v.make} ${v.model}
+</option>
+`;
+
+});
+
+}
+
+async function calculateValue(){
+
+const vehicleId =
+document.getElementById("vehicle").value;
+
+const condition =
+document.getElementById("condition").value;
+
+const { data } =
+await supabaseClient
+.from("vehicles")
+.select("*")
+.eq("id",vehicleId)
+.single();
+
+let baseValue = 2000000;
+
+const age =
+new Date().getFullYear() - data.year;
+
+const depreciation =
+Math.max(0.4,1-(age*0.08));
+
+const mileageFactor =
+Math.max(
+0.5,
+1-(data.mileage/250000)
+);
+
+const conditionFactor = {
+Excellent:1.0,
+Good:0.9,
+Fair:0.75,
+Poor:0.6
+}[condition];
+
+valuationResult =
+Math.round(
+baseValue *
+depreciation *
+mileageFactor *
+conditionFactor
+);
+
+document.getElementById("amount")
+.innerHTML =
+`KES ${valuationResult.toLocaleString()}`;
+
+document.getElementById("result")
+.style.display = "block";
+
+}
+
+async function saveValuation(){
+
+const vehicleId =
+document.getElementById("vehicle").value;
+
+const valuationType =
+document.getElementById("valuation_type").value;
+
+const {
+data:{user}
+}
+=
+await supabaseClient.auth.getUser();
+
+const { error } =
+await supabaseClient
+.from("valuations")
+.insert({
+
+user_id:user.id,
+vehicle_id:vehicleId,
+valuation_type:valuationType,
+amount:valuationResult
+
+});
+
+if(error){
+alert(error.message);
+return;
+}
+
+alert("Valuation Saved");
+
+window.location.href =
+"dashboard.html";
+
+}
+
+loadVehicles();
+
+</script>
+
+</body>
+</html>
