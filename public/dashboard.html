@@ -168,20 +168,20 @@
     <div id="successMsg" class="success"></div>
 
     <div class="services-grid">
-        <div class="service-card" onclick="openValuation()">
+        <div class="service-card">
             <div class="service-icon">💰</div>
             <h3>Vehicle Valuation</h3>
             <p>Get accurate market value with official certificate</p>
             <div class="price" id="valuationPrice">Loading...</div>
-            <button class="btn-primary" id="valuationBtn">Pay & Start →</button>
+            <button class="btn-primary" onclick="openValuation()">Pay & Start →</button>
         </div>
 
-        <div class="service-card" onclick="openInspection()">
+        <div class="service-card">
             <div class="service-icon">🔍</div>
             <h3>Vehicle Inspection</h3>
             <p>150+ point comprehensive inspection report</p>
             <div class="price" id="inspectionPrice">Loading...</div>
-            <button class="btn-primary" id="inspectionBtn">Pay & Start →</button>
+            <button class="btn-primary" onclick="openInspection()">Pay & Start →</button>
         </div>
     </div>
 
@@ -220,7 +220,7 @@
         </div>
         <div class="form-group"><label>M-Pesa Phone Number</label><input type="tel" id="valPhone" placeholder="0712345678"></div>
         <div class="form-group"><label>Amount to Pay</label><input type="text" id="valAmount" readonly style="background: #22c55e20; color: #22c55e; font-weight: bold;"></div>
-        <button class="btn-success" id="submitValuationBtn" onclick="processValuationPayment()">💳 Pay with M-Pesa</button>
+        <button class="btn-success" onclick="processValuationPayment()">💳 Pay with M-Pesa</button>
         <button class="btn-secondary" onclick="closeModal('valuationModal')">Cancel</button>
     </div>
 </div>
@@ -236,7 +236,7 @@
         <div class="form-group"><label>Mileage (km)</label><input type="number" id="insMileage" placeholder="50000"></div>
         <div class="form-group"><label>M-Pesa Phone Number</label><input type="tel" id="insPhone" placeholder="0712345678"></div>
         <div class="form-group"><label>Amount to Pay</label><input type="text" id="insAmount" readonly style="background: #22c55e20; color: #22c55e; font-weight: bold;"></div>
-        <button class="btn-success" id="submitInspectionBtn" onclick="processInspectionPayment()">💳 Pay with M-Pesa</button>
+        <button class="btn-success" onclick="processInspectionPayment()">💳 Pay with M-Pesa</button>
         <button class="btn-secondary" onclick="closeModal('inspectionModal')">Cancel</button>
     </div>
 </div>
@@ -284,10 +284,14 @@ async function loadFees() {
         
         document.getElementById('valuationPrice').innerHTML = `KES ${valuationFee.toLocaleString()}`;
         document.getElementById('inspectionPrice').innerHTML = `KES ${inspectionFee.toLocaleString()}`;
-    } catch (e) { console.log('Using default fees'); }
+    } catch (e) { 
+        console.log('Using default fees');
+        document.getElementById('valuationPrice').innerHTML = `KES ${valuationFee.toLocaleString()}`;
+        document.getElementById('inspectionPrice').innerHTML = `KES ${inspectionFee.toLocaleString()}`;
+    }
 }
 
-// Load user history with real-time subscription
+// Load user history
 async function loadHistory() {
     try {
         const { data: valuations } = await supabase.from('valuations').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
@@ -311,8 +315,10 @@ async function loadHistory() {
             
             let resultText = '-';
             if (item.type === 'valuation' && item.valuation_result) {
-                const result = JSON.parse(item.valuation_result);
-                resultText = `KES ${result.market_value?.toLocaleString()}`;
+                try {
+                    const result = typeof item.valuation_result === 'string' ? JSON.parse(item.valuation_result) : item.valuation_result;
+                    resultText = `KES ${result.market_value?.toLocaleString()}`;
+                } catch (e) { resultText = 'Completed'; }
             } else if (item.type === 'inspection' && item.overall_score) {
                 resultText = `${item.overall_score}%`;
             }
@@ -321,39 +327,14 @@ async function loadHistory() {
                 <tr>
                     <td>${new Date(item.created_at).toLocaleDateString()}</td>
                     <td>${item.type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
-                    <td>${item.make} ${item.model} (${item.registration_number})</td>
+                    <td>${item.make || ''} ${item.model || ''} (${item.registration_number || 'N/A'})</td>
                     <td>KES ${(item.valuation_amount || item.inspection_amount || 0).toLocaleString()}</td>
-                    <td><span class="${badgeClass}">${item.payment_status}</span></td>
+                    <td><span class="${badgeClass}">${item.payment_status || 'pending'}</span></td>
                     <td><strong>${resultText}</strong></td>
                 </tr>
             `;
         }).join('');
     } catch (e) { console.error(e); }
-}
-
-// Setup real-time subscription for payment updates
-function setupRealtimeSubscription() {
-    supabase
-        .channel('mpesa_updates')
-        .on('postgres_changes', 
-            { event: 'UPDATE', schema: 'public', table: 'valuations', filter: `user_id=eq.${currentUser.id}` },
-            (payload) => {
-                if (payload.new.payment_status === 'paid' && payload.new.status === 'processing') {
-                    showPaymentStatus('✅ Payment confirmed! Processing valuation...');
-                    setTimeout(() => generateValuationResult(payload.new), 2000);
-                }
-            }
-        )
-        .on('postgres_changes',
-            { event: 'UPDATE', schema: 'public', table: 'inspections', filter: `user_id=eq.${currentUser.id}` },
-            (payload) => {
-                if (payload.new.payment_status === 'paid' && payload.new.status === 'processing') {
-                    showPaymentStatus('✅ Payment confirmed! Processing inspection...');
-                    setTimeout(() => generateInspectionResult(payload.new), 2000);
-                }
-            }
-        )
-        .subscribe();
 }
 
 // Process valuation payment
@@ -370,37 +351,41 @@ async function processValuationPayment() {
         return;
     }
     
-    // Create service record
-    const { data: service, error } = await supabase
-        .from('valuations')
-        .insert({
-            user_id: currentUser.id,
-            registration_number: registration,
-            make: make,
-            model: model,
-            year: parseInt(year),
-            valuation_purpose: purpose,
-            valuation_amount: valuationFee,
-            payment_status: 'pending',
-            status: 'awaiting_payment'
-        })
-        .select()
-        .single();
-    
-    if (error) { showMessage('Error: ' + error.message, 'error'); return; }
-    
-    closeModal('valuationModal');
-    showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
-    
-    // Call M-Pesa STK Push
-    const response = await callMpesaSTKPush(phone, valuationFee, `VAL${service.id.substring(0, 8)}`, 'Vehicle Valuation', 'valuation', service.id);
-    
-    if (response.ResponseCode === '0') {
-        showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-        startPollingPayment(service.id, 'valuation');
-    } else {
-        showPaymentStatus('❌ Payment initiation failed: ' + response.ResponseDescription, true);
-        setTimeout(() => hidePaymentStatus(), 5000);
+    try {
+        // Create service record
+        const { data: service, error } = await supabase
+            .from('valuations')
+            .insert({
+                user_id: currentUser.id,
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: parseInt(year),
+                valuation_purpose: purpose,
+                valuation_amount: valuationFee,
+                payment_status: 'pending',
+                status: 'awaiting_payment'
+            })
+            .select()
+            .single();
+        
+        if (error) { showMessage('Error: ' + error.message, 'error'); return; }
+        
+        closeModal('valuationModal');
+        showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
+        
+        // Call M-Pesa STK Push
+        const response = await callMpesaSTKPush(phone, valuationFee, `VAL${service.id.substring(0, 8)}`, 'Vehicle Valuation');
+        
+        if (response.ResponseCode === '0') {
+            showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
+            startPollingPayment(service.id, 'valuation');
+        } else {
+            showPaymentStatus('❌ Payment initiation failed: ' + response.ResponseDescription, true);
+            setTimeout(() => hidePaymentStatus(), 5000);
+        }
+    } catch (e) {
+        showMessage('Error: ' + e.message, 'error');
     }
 }
 
@@ -418,40 +403,44 @@ async function processInspectionPayment() {
         return;
     }
     
-    const { data: service, error } = await supabase
-        .from('inspections')
-        .insert({
-            user_id: currentUser.id,
-            registration_number: registration,
-            make: make,
-            model: model,
-            year: parseInt(year),
-            mileage: parseInt(mileage),
-            inspection_amount: inspectionFee,
-            payment_status: 'pending',
-            status: 'awaiting_payment'
-        })
-        .select()
-        .single();
-    
-    if (error) { showMessage('Error: ' + error.message, 'error'); return; }
-    
-    closeModal('inspectionModal');
-    showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
-    
-    const response = await callMpesaSTKPush(phone, inspectionFee, `INS${service.id.substring(0, 8)}`, 'Vehicle Inspection', 'inspection', service.id);
-    
-    if (response.ResponseCode === '0') {
-        showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-        startPollingPayment(service.id, 'inspection');
-    } else {
-        showPaymentStatus('❌ Payment initiation failed: ' + response.ResponseDescription, true);
-        setTimeout(() => hidePaymentStatus(), 5000);
+    try {
+        const { data: service, error } = await supabase
+            .from('inspections')
+            .insert({
+                user_id: currentUser.id,
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: parseInt(year),
+                mileage: parseInt(mileage),
+                inspection_amount: inspectionFee,
+                payment_status: 'pending',
+                status: 'awaiting_payment'
+            })
+            .select()
+            .single();
+        
+        if (error) { showMessage('Error: ' + error.message, 'error'); return; }
+        
+        closeModal('inspectionModal');
+        showPaymentStatus('⏳ Initiating M-Pesa payment... Please check your phone');
+        
+        const response = await callMpesaSTKPush(phone, inspectionFee, `INS${service.id.substring(0, 8)}`, 'Vehicle Inspection');
+        
+        if (response.ResponseCode === '0') {
+            showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
+            startPollingPayment(service.id, 'inspection');
+        } else {
+            showPaymentStatus('❌ Payment initiation failed: ' + response.ResponseDescription, true);
+            setTimeout(() => hidePaymentStatus(), 5000);
+        }
+    } catch (e) {
+        showMessage('Error: ' + e.message, 'error');
     }
 }
 
 // Call M-Pesa API via Edge Function
-async function callMpesaSTKPush(phone, amount, accountRef, desc, serviceType, serviceId) {
+async function callMpesaSTKPush(phone, amount, accountRef, desc) {
     let formattedPhone = phone.replace(/\D/g, '');
     if (formattedPhone.startsWith('0')) formattedPhone = '254' + formattedPhone.substring(1);
     if (!formattedPhone.startsWith('254')) formattedPhone = '254' + formattedPhone;
@@ -460,13 +449,10 @@ async function callMpesaSTKPush(phone, amount, accountRef, desc, serviceType, se
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({
-            action: 'stkpush',
             amount: amount,
             phoneNumber: formattedPhone,
             accountReference: accountRef,
-            transactionDesc: desc,
-            serviceType: serviceType,
-            serviceId: serviceId
+            transactionDesc: desc
         })
     });
     
@@ -478,20 +464,24 @@ function startPollingPayment(serviceId, serviceType) {
     if (pollInterval) clearInterval(pollInterval);
     
     pollInterval = setInterval(async () => {
-        const table = serviceType === 'valuation' ? 'valuations' : 'inspections';
-        const { data: service } = await supabase.from(table).select('payment_status, status').eq('id', serviceId).single();
-        
-        if (service?.payment_status === 'paid') {
-            clearInterval(pollInterval);
-            hidePaymentStatus();
-            if (serviceType === 'valuation') {
-                const { data: valuation } = await supabase.from('valuations').select('*').eq('id', serviceId).single();
-                generateValuationResult(valuation);
-            } else {
-                const { data: inspection } = await supabase.from('inspections').select('*').eq('id', serviceId).single();
-                generateInspectionResult(inspection);
+        try {
+            const table = serviceType === 'valuation' ? 'valuations' : 'inspections';
+            const { data: service } = await supabase.from(table).select('payment_status, status').eq('id', serviceId).single();
+            
+            if (service?.payment_status === 'paid') {
+                clearInterval(pollInterval);
+                hidePaymentStatus();
+                if (serviceType === 'valuation') {
+                    const { data: valuation } = await supabase.from('valuations').select('*').eq('id', serviceId).single();
+                    generateValuationResult(valuation);
+                } else {
+                    const { data: inspection } = await supabase.from('inspections').select('*').eq('id', serviceId).single();
+                    generateInspectionResult(inspection);
+                }
+                loadHistory();
             }
-            loadHistory();
+        } catch (e) {
+            // Continue polling
         }
     }, 3000);
     
@@ -506,7 +496,7 @@ function startPollingPayment(serviceId, serviceType) {
 
 // Generate valuation result
 async function generateValuationResult(valuation) {
-    const year = valuation.year;
+    const year = valuation.year || new Date().getFullYear();
     const currentYear = new Date().getFullYear();
     const age = currentYear - year;
     const baseValue = 2000000;
@@ -526,7 +516,7 @@ async function generateValuationResult(valuation) {
     };
     
     await supabase.from('valuations').update({ 
-        valuation_result: JSON.stringify(result),
+        valuation_result: result,
         status: 'completed'
     }).eq('id', valuation.id);
     
@@ -568,7 +558,7 @@ async function generateInspectionResult(inspection) {
     await supabase.from('inspections').update({ 
         overall_score: score,
         final_verdict: verdict,
-        inspection_result: JSON.stringify(result),
+        inspection_result: result,
         status: 'completed'
     }).eq('id', inspection.id);
     
@@ -627,7 +617,6 @@ async function init() {
     if (!await checkAuth()) return;
     await loadFees();
     await loadHistory();
-    setupRealtimeSubscription();
 }
 
 document.addEventListener('DOMContentLoaded', init);
