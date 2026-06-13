@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payments - AUTO-V</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0a0a0a;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: bold;
+            color: #eab308;
+        }
+
+        .back-btn {
+            background: #333;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+
+        .card {
+            background: #111;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            color: #eab308;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ccc;
+            font-weight: 600;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: #1a1a1a;
+            color: white;
+            border: 1px solid #333;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        button {
+            background: #eab308;
+            color: black;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #ca8a04;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .payment-summary {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .amount {
+            font-size: 48px;
+            font-weight: bold;
+            color: #eab308;
+        }
+
+        .service-name {
+            font-size: 20px;
+            margin-top: 10px;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .status-success {
+            background: #14532d;
+            color: #22c55e;
+            border: 1px solid #22c55e;
+        }
+
+        .status-error {
+            background: #7f1d1d;
+            color: #ef4444;
+            border: 1px solid #ef4444;
+        }
+
+        .status-pending {
+            background: #7c2d12;
+            color: #f97316;
+            border: 1px solid #f97316;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .payment-history {
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+
+        th {
+            color: #eab308;
+        }
+
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="logo">💰 AUTO-V Payments</div>
+        <a href="dashboard.html" class="back-btn">← Dashboard</a>
+    </div>
+
+    <!-- Payment Form -->
+    <div class="card">
+        <h2>Make a Payment</h2>
+        
+        <div class="payment-summary">
+            <div class="amount" id="amountDisplay">KES 0</div>
+            <div class="service-name" id="serviceName">Select a service</div>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Service Type</label>
+                <select id="serviceType">
+                    <option value="">-- Select service --</option>
+                    <option value="valuation">Vehicle Valuation - KES 2,500</option>
+                    <option value="inspection">Vehicle Inspection - KES 3,500</option>
+                    <option value="certificate">Certificate Generation - KES 1,000</option>
+                    <option value="valuation_certificate">Valuation + Certificate - KES 3,000</option>
+                    <option value="full_package">Full Package (Valuation + Inspection + Certificate) - KES 6,000</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Select Vehicle</label>
+                <select id="vehicleId">
+                    <option value="">Loading vehicles...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>M-Pesa Phone Number</label>
+                <input type="tel" id="phoneNumber" placeholder="0712345678">
+                <small style="color:#888;">Enter the M-Pesa registered phone number</small>
+            </div>
+        </div>
+
+        <button onclick="initiatePayment()" id="payBtn">
+            💳 Pay with M-Pesa
+        </button>
+
+        <div id="paymentStatus" class="status"></div>
+    </div>
+
+    <!-- Payment History -->
+    <div class="card">
+        <h2>Payment History</h2>
+        <div class="payment-history">
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Service</th>
+                        <th>Amount</th>
+                        <th>M-Pesa Receipt</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr>
+                        <td colspan="5" style="text-align:center;">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+
+// ============================================
+// SUPABASE - SINGLE SOURCE OF TRUTH
+// ============================================
+const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let servicePrices = {
+    'valuation': 2500,
+    'inspection': 3500,
+    'certificate': 1000,
+    'valuation_certificate': 3000,
+    'full_package': 6000
+};
+
+// ============================================
+// CHECK AUTHENTICATION
+// ============================================
+async function checkAuth() {
+    const { data: { user }, error } = await sb.auth.getUser();
+    if (error || !user) {
+        window.location.href = "login.html";
+        return false;
+    }
+    currentUser = user;
+    return true;
+}
+
+// ============================================
+// LOAD VEHICLES
+// ============================================
+async function loadVehicles() {
+    const select = document.getElementById('vehicleId');
+    select.innerHTML = '<option value="">Loading vehicles...</option>';
+    
+    try {
+        const { data, error } = await sb
+            .from('vehicles')
+            .select('*')
+            .eq('user_id', currentUser.id);
+        
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+            select.innerHTML = '<option value="">No vehicles found. Add a vehicle first.</option>';
+            return;
+        }
+        
+        select.innerHTML = '<option value="">-- Select vehicle --</option>';
+        data.forEach(v => {
+            select.innerHTML += `<option value="${v.id}">${v.registration_number} - ${v.make} ${v.model}</option>`;
+        });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        select.innerHTML = '<option value="">Error loading vehicles</option>';
+    }
+}
+
+// ============================================
+// LOAD PAYMENT HISTORY
+// ============================================
+async function loadPaymentHistory() {
+    const tbody = document.getElementById('historyBody');
+    
+    try {
+        const { data, error } = await sb
+            .from('payments')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No payment history found</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = data.map(p => `
+            <tr>
+                <td>${new Date(p.created_at).toLocaleDateString()}</td>
+                <td>${p.service_type || 'N/A'}</td>
+                <td>KES ${p.amount?.toLocaleString() || 0}</td>
+                <td>${p.mpesa_receipt_number || '-'}</td>
+                <td><span style="color: ${p.status === 'completed' ? '#22c55e' : '#f97316'}">${p.status || 'pending'}</span></td>
+            </tr>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading history:', error);
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Error loading history</td></tr>';
+    }
+}
+
+// ============================================
+// UPDATE AMOUNT DISPLAY
+// ============================================
+document.getElementById('serviceType').addEventListener('change', function() {
+    const service = this.value;
+    const amount = servicePrices[service] || 0;
+    document.getElementById('amountDisplay').innerHTML = `KES ${amount.toLocaleString()}`;
+    
+    const serviceNames = {
+        'valuation': 'Vehicle Valuation',
+        'inspection': 'Vehicle Inspection',
+        'certificate': 'Certificate Generation',
+        'valuation_certificate': 'Valuation + Certificate',
+        'full_package': 'Full Package'
+    };
+    document.getElementById('serviceName').innerHTML = serviceNames[service] || 'Select a service';
+});
+
+// ============================================
+// INITIATE PAYMENT
+// ============================================
+async function initiatePayment() {
+    const serviceType = document.getElementById('serviceType').value;
+    const vehicleId = document.getElementById('vehicleId').value;
+    const phoneNumber = document.getElementById('phoneNumber').value;
+    const amount = servicePrices[serviceType];
+    
+    const errorDiv = document.getElementById('paymentStatus');
+    const payBtn = document.getElementById('payBtn');
+    
+    // Reset status
+    errorDiv.style.display = 'none';
+    errorDiv.className = 'status';
+    
+    if (!serviceType) {
+        showStatus('Please select a service', 'error');
+        return;
+    }
+    
+    if (!vehicleId) {
+        showStatus('Please select a vehicle', 'error');
+        return;
+    }
+    
+    if (!phoneNumber || phoneNumber.length < 10) {
+        showStatus('Please enter a valid M-Pesa phone number', 'error');
+        return;
+    }
+    
+    payBtn.disabled = true;
+    payBtn.innerHTML = '<span class="spinner"></span> Initiating Payment...';
+    
+    try {
+        // Call the M-Pesa STK Push API via Vercel function
+        const response = await fetch('/api/payment?action=stkpush', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                phone: phoneNumber,
+                amount: amount,
+                reference: `AUTOV-${Date.now()}`,
+                description: `${serviceType} for vehicle ${vehicleId}`
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.ResponseCode === '0') {
+            showStatus(`STK Push sent! Check your phone and enter M-Pesa PIN to complete payment. CheckoutRequestID: ${result.CheckoutRequestID}`, 'pending');
+            
+            // Save payment record
+            await sb.from('payments').insert([{
+                user_id: currentUser.id,
+                vehicle_id: vehicleId,
+                service_type: serviceType,
+                amount: amount,
+                checkout_request_id: result.CheckoutRequestID,
+                merchant_request_id: result.MerchantRequestID,
+                status: 'pending',
+                created_at: new Date().toISOString()
+            }]);
+            
+            // Poll for payment status
+            pollPaymentStatus(result.CheckoutRequestID);
+        } else {
+            showStatus(`Payment failed: ${result.ResponseDescription || 'Unknown error'}`, 'error');
+            payBtn.disabled = false;
+            payBtn.innerHTML = '💳 Pay with M-Pesa';
+        }
+        
+    } catch (error) {
+        console.error('Payment error:', error);
+        showStatus('Payment initiation failed. Please try again.', 'error');
+        payBtn.disabled = false;
+        payBtn.innerHTML = '💳 Pay with M-Pesa';
+    }
+}
+
+// ============================================
+// POLL PAYMENT STATUS
+// ============================================
+async function pollPaymentStatus(checkoutRequestID) {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds max
+    
+    const interval = setInterval(async () => {
+        attempts++;
+        
+        try {
+            const response = await fetch(`/api/payment?action=query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ checkoutRequestID })
+            });
+            
+            const result = await response.json();
+            
+            if (result.ResultCode === '0') {
+                clearInterval(interval);
+                showStatus(`Payment successful! Receipt: ${result.MpesaReceiptNumber}`, 'success');
+                
+                // Update payment record
+                await sb.from('payments')
+                    .update({
+                        status: 'completed',
+                        mpesa_receipt_number: result.MpesaReceiptNumber,
+                        result_code: result.ResultCode
+                    })
+                    .eq('checkout_request_id', checkoutRequestID);
+                
+                // Refresh payment history
+                await loadPaymentHistory();
+                
+                document.getElementById('payBtn').disabled = false;
+                document.getElementById('payBtn').innerHTML = '💳 Pay with M-Pesa';
+                
+            } else if (result.ResultCode === '1037') {
+                // Still pending
+                if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    showStatus('Payment timeout. Please check your M-Pesa messages.', 'pending');
+                    document.getElementById('payBtn').disabled = false;
+                    document.getElementById('payBtn').innerHTML = '💳 Pay with M-Pesa';
+                }
+            } else if (result.ResultCode !== '1037') {
+                clearInterval(interval);
+                showStatus(`Payment failed: ${result.ResultDesc}`, 'error');
+                document.getElementById('payBtn').disabled = false;
+                document.getElementById('payBtn').innerHTML = '💳 Pay with M-Pesa';
+            }
+            
+        } catch (error) {
+            console.error('Status query error:', error);
+            if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                document.getElementById('payBtn').disabled = false;
+                document.getElementById('payBtn').innerHTML = '💳 Pay with M-Pesa';
+            }
+        }
+    }, 2000);
+}
+
+// ============================================
+// SHOW STATUS MESSAGE
+// ============================================
+function showStatus(message, type) {
+    const statusDiv = document.getElementById('paymentStatus');
+    statusDiv.innerHTML = message;
+    statusDiv.className = `status status-${type}`;
+    statusDiv.style.display = 'block';
+}
+
+// ============================================
+// INITIALIZE
+// ============================================
+async function init() {
+    const isAuth = await checkAuth();
+    if (isAuth) {
+        await loadVehicles();
+        await loadPaymentHistory();
+    }
+}
+
+init();
+
+</script>
+
+</body>
+</html>
