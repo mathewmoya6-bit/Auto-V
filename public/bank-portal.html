@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bank & Insurance Portal - AUTO-V</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { background: #0a0a0a; color: white; font-family: Arial; padding: 20px; }
+        .container { max-width: 1400px; margin: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .logo { font-size: 28px; font-weight: bold; color: #eab308; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { padding: 10px 20px; background: #333; border: none; border-radius: 8px; color: white; cursor: pointer; }
+        .tab-btn.active { background: #eab308; color: black; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
+        th { color: #eab308; }
+        .card { background: #111; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        input { padding: 10px; background: #1a1a1a; color: white; border: 1px solid #333; border-radius: 6px; width: 200px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="logo">🏦 Financial Institution Portal</div>
+        <div><span id="orgName">KCB Bank</span> | <a href="login.html" style="color:#eab308;">Logout</a></div>
+    </div>
+    
+    <div class="tabs">
+        <button class="tab-btn active" onclick="showTab('valuations')">Valuations</button>
+        <button class="tab-btn" onclick="showTab('inspections')">Inspections</button>
+        <button class="tab-btn" onclick="showTab('certificates')">Certificates</button>
+    </div>
+    
+    <div class="card">
+        <input type="text" id="searchInput" placeholder="Search by reg no, make, or model..." onkeyup="searchTable()">
+    </div>
+    
+    <div id="valuationsTab" class="card">
+        <h3>Shared Valuations</h3>
+        <table id="valuationsTable">
+            <thead><tr><th>Reg No</th><th>Make/Model</th><th>Year</th><th>Value (KES)</th><th>Valid Until</th><th>Action</th></tr></thead>
+            <tbody id="valuationsBody"></tbody>
+        </table>
+    </div>
+    
+    <div id="inspectionsTab" class="card" style="display:none;">
+        <h3>Shared Inspections</h3>
+        <table id="inspectionsTable">
+            <thead><tr><th>Reg No</th><th>Make/Model</th><th>Score</th><th>Verdict</th><th>Inspection Date</th><th>Action</th></tr></thead>
+            <tbody id="inspectionsBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+async function loadSharedValuations() {
+    // Get valuations shared with banks (where shared_with contains 'bank')
+    const { data } = await sb
+        .from('valuations')
+        .select('*')
+        .not('share_token', 'is', null)
+        .gte('share_expiry', new Date().toISOString());
+    
+    const tbody = document.getElementById('valuationsBody');
+    tbody.innerHTML = data.map(v => `
+        <tr>
+            <td>${v.registration}</td>
+            <td>${v.make} ${v.model}</td>
+            <td>${v.year}</td>
+            <td>KES ${(v.valuation_amount || 0).toLocaleString()}</td>
+            <td>${new Date(v.share_expiry).toLocaleDateString()}</td>
+            <td><a href="/share-valuation.html?token=${v.share_token}" target="_blank">View</a></td>
+        </tr>
+    `).join('');
+}
+
+loadSharedValuations();
+</script>
+</body>
+</html>
