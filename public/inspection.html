@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Vehicle Inspection</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+
+body{
+background:#0a0a0a;
+color:white;
+font-family:Arial,sans-serif;
+padding:20px;
+}
+
+.container{
+max-width:900px;
+margin:auto;
+}
+
+.card{
+background:#111;
+padding:25px;
+border-radius:12px;
+border:1px solid #222;
+}
+
+h2{
+color:#eab308;
+margin-bottom:20px;
+}
+
+label{
+display:block;
+margin-top:15px;
+margin-bottom:5px;
+}
+
+input,select{
+width:100%;
+padding:12px;
+background:#1a1a1a;
+border:1px solid #333;
+border-radius:8px;
+color:white;
+}
+
+button{
+width:100%;
+padding:14px;
+margin-top:20px;
+background:#eab308;
+border:none;
+border-radius:8px;
+font-weight:bold;
+cursor:pointer;
+}
+
+.success{
+background:#14532d;
+padding:15px;
+margin-top:20px;
+border-radius:8px;
+display:none;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="card">
+
+<h2>Vehicle Inspection Upload</h2>
+
+<select id="vehicle"></select>
+
+<label>Front View</label>
+<input type="file" id="front" accept="image/*">
+
+<label>Rear View</label>
+<input type="file" id="rear" accept="image/*">
+
+<label>Left Side</label>
+<input type="file" id="left" accept="image/*">
+
+<label>Right Side</label>
+<input type="file" id="right" accept="image/*">
+
+<label>Interior</label>
+<input type="file" id="interior" accept="image/*">
+
+<label>Dashboard</label>
+<input type="file" id="dashboard" accept="image/*">
+
+<label>Engine Bay</label>
+<input type="file" id="engine" accept="image/*">
+
+<label>Tyres</label>
+<input type="file" id="tyres" accept="image/*">
+
+<label>Underbody</label>
+<input type="file" id="underbody" accept="image/*">
+
+<button onclick="uploadInspection()">
+Upload Inspection Photos
+</button>
+
+<div id="success" class="success">
+Inspection uploaded successfully
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+const SUPABASE_URL =
+"https://tsvejnzxrxrrecgquxbq.supabase.co";
+
+const SUPABASE_ANON_KEY =
+"YOUR_ANON_KEY";
+
+const supabaseClient =
+supabase.createClient(
+SUPABASE_URL,
+SUPABASE_ANON_KEY
+);
+
+async function loadVehicles(){
+
+const {
+data
+}
+=
+await supabaseClient
+.from("vehicles")
+.select("*");
+
+const vehicleSelect =
+document.getElementById("vehicle");
+
+vehicleSelect.innerHTML="";
+
+data.forEach(v=>{
+
+vehicleSelect.innerHTML += `
+<option value="${v.id}">
+${v.registration_number}
+- ${v.make} ${v.model}
+</option>
+`;
+
+});
+
+}
+
+async function uploadSingle(file,vehicleId,type){
+
+if(!file) return null;
+
+const fileName =
+`${vehicleId}/${Date.now()}_${type}_${file.name}`;
+
+const { error } =
+await supabaseClient.storage
+.from("vehicle-images")
+.upload(fileName,file);
+
+if(error){
+throw error;
+}
+
+return fileName;
+
+}
+
+async function uploadInspection(){
+
+const vehicleId =
+document.getElementById("vehicle").value;
+
+const uploads = {
+
+front:
+document.getElementById("front").files[0],
+
+rear:
+document.getElementById("rear").files[0],
+
+left:
+document.getElementById("left").files[0],
+
+right:
+document.getElementById("right").files[0],
+
+interior:
+document.getElementById("interior").files[0],
+
+dashboard:
+document.getElementById("dashboard").files[0],
+
+engine:
+document.getElementById("engine").files[0],
+
+tyres:
+document.getElementById("tyres").files[0],
+
+underbody:
+document.getElementById("underbody").files[0]
+
+};
+
+try{
+
+const front =
+await uploadSingle(
+uploads.front,
+vehicleId,
+"front"
+);
+
+const rear =
+await uploadSingle(
+uploads.rear,
+vehicleId,
+"rear"
+);
+
+const left =
+await uploadSingle(
+uploads.left,
+vehicleId,
+"left"
+);
+
+const right =
+await uploadSingle(
+uploads.right,
+vehicleId,
+"right"
+);
+
+const interior =
+await uploadSingle(
+uploads.interior,
+vehicleId,
+"interior"
+);
+
+const dashboard =
+await uploadSingle(
+uploads.dashboard,
+vehicleId,
+"dashboard"
+);
+
+const engine =
+await uploadSingle(
+uploads.engine,
+vehicleId,
+"engine"
+);
+
+const tyres =
+await uploadSingle(
+uploads.tyres,
+vehicleId,
+"tyres"
+);
+
+const underbody =
+await uploadSingle(
+uploads.underbody,
+vehicleId,
+"underbody"
+);
+
+const {
+data:{user}
+}
+=
+await supabaseClient.auth.getUser();
+
+await supabaseClient
+.from("inspections")
+.insert({
+
+user_id:user.id,
+
+vehicle_id:vehicleId,
+
+front_image:front,
+
+rear_image:rear,
+
+left_image:left,
+
+right_image:right,
+
+interior_image:interior,
+
+dashboard_image:dashboard,
+
+engine_image:engine,
+
+tyres_image:tyres,
+
+underbody_image:underbody
+
+});
+
+document.getElementById(
+"success"
+).style.display="block";
+
+}
+catch(error){
+
+alert(error.message);
+
+}
+
+}
+
+loadVehicles();
+
+</script>
+
+</body>
+</html>
