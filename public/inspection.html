@@ -382,7 +382,7 @@ input:focus, select:focus, textarea:focus {
             <div class="form-group"><label>VIN</label><input type="text" id="newVin" placeholder="VIN number"></div>
             <div class="form-group"><label>Engine Number</label><input type="text" id="newEngine" placeholder="Engine number"></div>
         </div>
-        <button class="btn btn-primary" id="addVehicleBtn">+ Add Vehicle & Continue</button>
+        <button type="button" class="btn btn-primary" id="addVehicleBtn" onclick="addNewVehicle()">+ Add Vehicle & Continue</button>
     </div>
     
     <div class="nav-buttons"><div></div><button class="btn btn-primary" id="nextBtn">Next →</button></div>
@@ -395,7 +395,7 @@ input:focus, select:focus, textarea:focus {
     <h2>📋 Step 2: Inspection Information</h2>
     
     <div class="form-grid">
-        <div class="form-group"><label class="required">Inspection Number</label><input type="text" id="inspectionNo" value="INSP-" + Date.now() readonly></div>
+        <div class="form-group"><label class="required">Inspection Number</label><input type="text" id="inspectionNo" readonly></div>
         <div class="form-group"><label class="required">Inspection Date</label><input type="date" id="inspectionDate"></div>
         <div class="form-group"><label>Inspection Time</label><input type="time" id="inspectionTime"></div>
         <div class="form-group"><label class="required">Inspection Type</label><select id="inspectionType"><option>Pre-Purchase Inspection</option><option>Insurance Inspection</option><option>Roadworthiness Inspection</option><option>Fleet Inspection</option><option>Post-Accident Inspection</option><option>NTSA Compliance</option><option>KEBS Verification</option><option>Annual Inspection</option></select></div>
@@ -730,11 +730,12 @@ input:focus, select:focus, textarea:focus {
 
 // ============================================
 // SUPABASE - SINGLE SOURCE OF TRUTH
+// FIXED: Use sb instead of supabase to avoid naming conflict
 // ============================================
 const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
 let selectedVehicle = null;
@@ -745,7 +746,7 @@ let inspectionResults = {};
 // AUTHENTICATION
 // ============================================
 async function checkAuth() {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await sb.auth.getUser();
     if (error || !user) {
         window.location.href = "login.html";
         return false;
@@ -753,6 +754,7 @@ async function checkAuth() {
     currentUser = user;
     document.getElementById('inspectionNo').value = `INSP-${Date.now()}`;
     document.getElementById('inspectionDate').value = new Date().toISOString().split('T')[0];
+    console.log('User authenticated:', user.email);
     return true;
 }
 
@@ -762,6 +764,7 @@ async function checkAuth() {
 function populateYears() {
     const yearSelect = document.getElementById('newYear');
     const currentYear = new Date().getFullYear();
+    yearSelect.innerHTML = '';
     for (let y = currentYear; y >= 1980; y--) {
         yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
     }
@@ -775,7 +778,7 @@ async function loadVehicles() {
     select.innerHTML = '<option value="">Loading...</option>';
     
     try {
-        const { data, error } = await supabase
+        const { data, error } = await sb
             .from('vehicles')
             .select('*')
             .eq('user_id', currentUser.id)
@@ -783,7 +786,7 @@ async function loadVehicles() {
         
         if (error) throw error;
         if (!data || data.length === 0) {
-            select.innerHTML = '<option value="">No vehicles found</option>';
+            select.innerHTML = '<option value="">No vehicles found. Add a vehicle first.</option>';
             return;
         }
         
@@ -820,14 +823,16 @@ async function loadVehicles() {
         
     } catch (error) {
         console.error('Error:', error);
-        select.innerHTML = '<option value="">Error loading</option>';
+        select.innerHTML = '<option value="">Error loading vehicles</option>';
     }
 }
 
 // ============================================
-// ADD NEW VEHICLE
+// ADD NEW VEHICLE - FIXED
 // ============================================
 async function addNewVehicle() {
+    console.log('Add Vehicle button clicked - Inspection');
+    
     const registration = document.getElementById('newRegistration').value.trim().toUpperCase();
     const make = document.getElementById('newMake').value.trim();
     const model = document.getElementById('newModel').value.trim();
@@ -836,7 +841,7 @@ async function addNewVehicle() {
     const engine = document.getElementById('newEngine').value.trim();
     
     if (!registration || !make || !model || !year) {
-        document.getElementById('errorMsg').innerHTML = 'Please fill required fields';
+        document.getElementById('errorMsg').innerHTML = 'Please fill in Registration, Make, Model, and Year';
         document.getElementById('errorMsg').style.display = 'block';
         setTimeout(() => hideError(), 3000);
         return;
@@ -847,18 +852,26 @@ async function addNewVehicle() {
     addBtn.innerHTML = '<span class="spinner"></span> Saving...';
     
     try {
-        const { data, error } = await supabase.from('vehicles').insert([{
-            user_id: currentUser.id,
-            registration_number: registration,
-            make: make,
-            model: model,
-            year: parseInt(year),
-            vin: vin || null,
-            engine_number: engine || null,
-            created_at: new Date().toISOString()
-        }]).select();
+        const { data, error } = await sb
+            .from('vehicles')
+            .insert([{
+                user_id: currentUser.id,
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: parseInt(year),
+                vin: vin || null,
+                engine_number: engine || null,
+                created_at: new Date().toISOString()
+            }])
+            .select();
         
-        if (error) throw error;
+        if (error) {
+            if (error.code === '23505') {
+                throw new Error('Vehicle with this registration already exists');
+            }
+            throw error;
+        }
         
         if (data && data[0]) {
             selectedVehicle = {
@@ -878,12 +891,13 @@ async function addNewVehicle() {
             document.getElementById('vin').value = selectedVehicle.vin || '';
             document.getElementById('engineNo').value = selectedVehicle.engine || '';
             
-            document.getElementById('successMsg').innerHTML = '✓ Vehicle added!';
+            document.getElementById('successMsg').innerHTML = '✓ Vehicle added successfully!';
             document.getElementById('successMsg').style.display = 'block';
             
             await loadVehicles();
             setTimeout(() => nextStep(2), 1500);
         }
+        
     } catch (error) {
         document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
         document.getElementById('errorMsg').style.display = 'block';
@@ -941,7 +955,7 @@ function prevStep(step) {
 function validateAndNext() {
     const select = document.getElementById('vehicleSelect');
     if (!select.value) {
-        document.getElementById('errorMsg').innerHTML = 'Please select a vehicle';
+        document.getElementById('errorMsg').innerHTML = 'Please select a vehicle or add a new one';
         document.getElementById('errorMsg').style.display = 'block';
         setTimeout(() => hideError(), 3000);
         return;
@@ -953,20 +967,6 @@ function validateAndNext() {
 // CALCULATE INSPECTION RESULT
 // ============================================
 function calculateInspectionResult() {
-    // Calculate section scores
-    let mechanicalScore = 0;
-    let safetyScore = 0;
-    let bodyScore = 0;
-    let electricalScore = 0;
-    let complianceScore = 0;
-    
-    // Mechanical scores from engine, transmission, brakes, suspension
-    const engineItems = ['engineStart', 'idleQuality', 'engineNoise', 'oilLeaks'];
-    const transItems = ['gearShifting', 'clutch', 'transNoise'];
-    const brakeItems = ['brakePads', 'brakeDiscs', 'parkingBrake'];
-    const suspItems = ['shocks', 'springs', 'ballJoints'];
-    
-    // Calculate overall
     const roadTestScores = [
         parseInt(document.getElementById('accelScore').value),
         parseInt(document.getElementById('brakeScore').value),
@@ -975,7 +975,6 @@ function calculateInspectionResult() {
         parseInt(document.getElementById('enginePerf').value)
     ];
     const avgRoadTest = roadTestScores.reduce((a,b) => a+b, 0) / 5;
-    
     const overall = Math.round(avgRoadTest * 10);
     document.getElementById('overallScore').innerHTML = `${overall}%`;
     
@@ -1032,7 +1031,7 @@ async function saveInspection() {
             inspection_date_completed: new Date().toISOString()
         };
         
-        const { error } = await supabase.from('inspections').insert([record]);
+        const { error } = await sb.from('inspections').insert([record]);
         if (error) throw error;
         
         document.getElementById('successMsg').innerHTML = '✓ Inspection saved! Generating report...';
@@ -1055,7 +1054,7 @@ function generatePDF() {
     const element = document.getElementById('inspectionResult');
     const opt = {
         margin: [0.5, 0.5, 0.5, 0.5],
-        filename: `Inspection_Report_${selectedVehicle?.registration}.pdf`,
+        filename: `Inspection_Report_${selectedVehicle?.registration || 'vehicle'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, backgroundColor: '#0a0a0a' },
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
@@ -1064,21 +1063,29 @@ function generatePDF() {
 }
 
 // ============================================
-// INITIALIZE
+// INITIALIZE - FIXED WITH ERROR HANDLING
 // ============================================
 async function init() {
-    const isAuth = await checkAuth();
-    if (isAuth) {
+    try {
+        const isAuth = await checkAuth();
+        if (!isAuth) return;
+        
         populateYears();
         await loadVehicles();
         
-        document.getElementById('tabSelectBtn').onclick = () => showTab('select');
-        document.getElementById('tabAddBtn').onclick = () => showTab('add');
-        document.getElementById('addVehicleBtn').onclick = addNewVehicle;
-        document.getElementById('nextBtn').onclick = validateAndNext;
+        document.getElementById('tabSelectBtn').addEventListener('click', () => showTab('select'));
+        document.getElementById('tabAddBtn').addEventListener('click', () => showTab('add'));
+        document.getElementById('nextBtn').addEventListener('click', () => validateAndNext());
         
         showTab('select');
         nextStep(1);
+        
+        console.log('AUTO-V Inspection initialized successfully');
+        
+    } catch (err) {
+        console.error('Initialization Error:', err);
+        document.getElementById('errorMsg').innerHTML = 'System initialization failed: ' + err.message;
+        document.getElementById('errorMsg').style.display = 'block';
     }
 }
 
