@@ -1,12 +1,158 @@
-<h1>AUTO-V Dashboard</h1>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>AUTO-V Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#0a0a0a;
+    color:white;
+    margin:0;
+    padding:20px;
+}
+
+.header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.card{
+    background:#111;
+    border:1px solid #333;
+    border-radius:10px;
+    padding:20px;
+    margin-top:20px;
+}
+
+button{
+    background:#eab308;
+    color:black;
+    border:none;
+    padding:10px 15px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:bold;
+}
+
+.vehicle{
+    border:1px solid #333;
+    padding:15px;
+    border-radius:8px;
+    margin-bottom:10px;
+}
+</style>
+
+</head>
+<body>
+
+<div class="header">
+    <h1>AUTO-V Dashboard</h1>
+
+    <button onclick="logout()">
+        Logout
+    </button>
+</div>
 
 <p>
 Logged in as:
-<span id="userEmail"></span>
+<strong id="userEmail"></strong>
 </p>
 
-<button onclick="logout()">
-Logout
-</button>
+<div class="card">
+    <h2>My Vehicles</h2>
 
-<div id="vehicleList"></div>
+    <a href="vehicles.html">
+        <button>Add Vehicle</button>
+    </a>
+
+    <div id="vehicleList"></div>
+</div>
+
+<script>
+
+const SUPABASE_URL =
+"https://tsvejnzxrxrrecgquxbq.supabase.co";
+
+const SUPABASE_ANON_KEY =
+"YOUR_ANON_KEY";
+
+const supabaseClient =
+supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+);
+
+async function loadDashboard(){
+
+    const {
+        data:{ session }
+    } = await supabaseClient.auth.getSession();
+
+    if(!session){
+        window.location.href="login.html";
+        return;
+    }
+
+    document.getElementById("userEmail")
+        .innerText = session.user.email;
+
+    loadVehicles();
+}
+
+async function loadVehicles(){
+
+    const { data, error } =
+    await supabaseClient
+        .from("vehicles")
+        .select("*")
+        .order("created_at",{ascending:false});
+
+    if(error){
+        console.log(error);
+        return;
+    }
+
+    const list =
+    document.getElementById("vehicleList");
+
+    list.innerHTML="";
+
+    data.forEach(vehicle => {
+
+        list.innerHTML += `
+        <div class="vehicle">
+            <h3>${vehicle.registration_number}</h3>
+
+            <p>
+                ${vehicle.make}
+                ${vehicle.model}
+            </p>
+
+            <p>Year: ${vehicle.year}</p>
+
+            <p>Mileage: ${vehicle.mileage} KM</p>
+        </div>
+        `;
+    });
+}
+
+async function logout(){
+
+    await supabaseClient.auth.signOut();
+
+    window.location.href="login.html";
+}
+
+loadDashboard();
+
+</script>
+
+</body>
+</html>
