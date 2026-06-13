@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Professional Vehicle Valuation - AUTO-V</title>
+<title>AUTO-V Professional Vehicle Valuation</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 
 <style>
 * {
@@ -22,7 +23,7 @@ body {
 }
 
 .container {
-    max-width: 1400px;
+    max-width: 1600px;
     margin: auto;
 }
 
@@ -38,17 +39,33 @@ body {
 }
 
 .logo {
-    font-size: 24px;
+    font-size: 28px;
     font-weight: bold;
     color: #eab308;
 }
 
-.back-btn {
+.logo span {
+    font-size: 12px;
+    color: #888;
+    display: block;
+}
+
+.back-btn, .pdf-btn {
     background: #333;
     color: white;
     padding: 10px 20px;
     text-decoration: none;
     border-radius: 6px;
+    cursor: pointer;
+    border: none;
+}
+
+.pdf-btn {
+    background: #dc2626;
+}
+
+.pdf-btn:hover {
+    background: #b91c1c;
 }
 
 h2 {
@@ -63,6 +80,11 @@ h3 {
     margin: 20px 0 15px 0;
 }
 
+h4 {
+    color: #eab308;
+    margin: 15px 0 10px 0;
+}
+
 .card {
     background: #111;
     padding: 25px;
@@ -73,7 +95,7 @@ h3 {
 
 .form-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 20px;
 }
 
@@ -85,7 +107,7 @@ label {
     display: block;
     margin-bottom: 8px;
     color: #ccc;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
 }
 
@@ -109,36 +131,30 @@ input:focus, select:focus, textarea:focus {
     border-color: #eab308;
 }
 
-input[readonly] {
-    background: #0d0d0d;
-    color: #888;
-    cursor: not-allowed;
-}
-
-.tab-buttons {
+.condition-score {
     display: flex;
+    align-items: center;
     gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid #333;
 }
 
-.tab-btn {
-    padding: 10px 20px;
-    border: none;
-    border-radius: 8px 8px 0 0;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.3s;
+.condition-score input {
+    width: 80px;
+    text-align: center;
 }
 
-.tab-active {
-    background: #eab308;
-    color: black;
-}
-
-.tab-inactive {
+.progress-bar {
+    width: 100%;
+    height: 4px;
     background: #333;
-    color: white;
+    border-radius: 2px;
+    margin-bottom: 20px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #eab308;
+    border-radius: 2px;
+    transition: width 0.3s;
 }
 
 .btn {
@@ -173,6 +189,12 @@ input[readonly] {
     color: white;
 }
 
+.nav-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+
 .result-box {
     background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
     border: 2px solid #eab308;
@@ -195,26 +217,17 @@ input[readonly] {
     border-bottom: 1px solid #333;
 }
 
-.progress-bar {
-    width: 100%;
-    height: 4px;
-    background: #333;
-    border-radius: 2px;
-    margin-bottom: 20px;
+.risk-badge {
+    display: inline-block;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-weight: bold;
 }
 
-.progress-fill {
-    height: 100%;
-    background: #eab308;
-    border-radius: 2px;
-    transition: width 0.3s;
-}
-
-.nav-buttons {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 20px;
-}
+.risk-low { background: #22c55e; color: black; }
+.risk-medium { background: #eab308; color: black; }
+.risk-high { background: #f97316; color: white; }
+.risk-critical { background: #dc2626; color: white; }
 
 .spinner {
     display: inline-block;
@@ -224,8 +237,6 @@ input[readonly] {
     border-radius: 50%;
     border-top-color: #eab308;
     animation: spin 0.8s linear infinite;
-    margin-right: 8px;
-    vertical-align: middle;
 }
 
 @keyframes spin {
@@ -250,20 +261,62 @@ input[readonly] {
     display: none;
 }
 
-.vehicle-info-card {
-    margin-top: 20px;
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.photo-upload {
+    text-align: center;
     padding: 15px;
     background: #1a1a1a;
     border-radius: 8px;
-    border-left: 4px solid #eab308;
+    cursor: pointer;
+    border: 1px dashed #333;
+}
+
+.photo-upload:hover {
+    border-color: #eab308;
+}
+
+.photo-preview {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-top: 5px;
+}
+
+.tab-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    background: #333;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+}
+
+.tab-btn.active {
+    background: #eab308;
+    color: black;
 }
 
 @media (max-width: 768px) {
     .form-grid {
         grid-template-columns: 1fr;
     }
-    .tab-buttons {
+    .nav-buttons {
         flex-direction: column;
+        gap: 10px;
     }
 }
 </style>
@@ -273,8 +326,14 @@ input[readonly] {
 <div class="container">
 
 <div class="header">
-    <div class="logo">🚗 Professional Vehicle Valuation</div>
-    <a href="dashboard.html" class="back-btn">← Dashboard</a>
+    <div class="logo">
+        AUTO-V Professional Valuation
+        <span>ISO 9001:2024 Certified | NTSA/KEBS Compliant</span>
+    </div>
+    <div>
+        <button class="pdf-btn" onclick="generatePDF()">📄 Download PDF Report</button>
+        <a href="dashboard.html" class="back-btn">← Dashboard</a>
+    </div>
 </div>
 
 <div class="progress-bar">
@@ -284,16 +343,17 @@ input[readonly] {
 <div class="error" id="errorMsg"></div>
 <div class="success" id="successMsg"></div>
 
+<!-- ============================================ -->
 <!-- STEP 1: SELECT OR ADD VEHICLE -->
+<!-- ============================================ -->
 <div id="step1" class="card">
     <h2>🚗 Step 1: Select or Add Vehicle</h2>
     
     <div class="tab-buttons">
-        <button class="tab-btn tab-active" id="tabSelectBtn">📋 Select Existing Vehicle</button>
-        <button class="tab-btn tab-inactive" id="tabAddBtn">➕ Add New Vehicle</button>
+        <button class="tab-btn active" id="tabSelectBtn">📋 Select Existing Vehicle</button>
+        <button class="tab-btn" id="tabAddBtn">➕ Add New Vehicle</button>
     </div>
     
-    <!-- Select Existing Tab -->
     <div id="tabSelectPanel">
         <div class="form-group">
             <label class="required">Choose Vehicle</label>
@@ -301,44 +361,24 @@ input[readonly] {
                 <option value="">-- Select a vehicle --</option>
             </select>
         </div>
-        
-        <div id="vehicleInfo" class="vehicle-info-card" style="display:none;">
-            <h4>✅ Selected Vehicle Details</h4>
+        <div id="vehicleInfo" style="display:none; margin-top:15px; padding:15px; background:#1a1a1a; border-radius:8px;">
+            <h4>Selected Vehicle</h4>
             <div class="form-grid">
-                <div><strong>🔖 Registration:</strong> <span id="displayReg"></span></div>
-                <div><strong>🏭 Make/Model:</strong> <span id="displayMakeModel"></span></div>
-                <div><strong>📅 Year:</strong> <span id="displayYear"></span></div>
+                <div><strong>Registration:</strong> <span id="displayReg"></span></div>
+                <div><strong>Make/Model:</strong> <span id="displayMakeModel"></span></div>
+                <div><strong>Year:</strong> <span id="displayYear"></span></div>
             </div>
         </div>
     </div>
     
-    <!-- Add New Vehicle Tab -->
     <div id="tabAddPanel" style="display:none;">
         <div class="form-grid">
-            <div class="form-group">
-                <label class="required">Registration Number</label>
-                <input type="text" id="newRegistration" placeholder="e.g., KXX 123A">
-            </div>
-            <div class="form-group">
-                <label class="required">Make</label>
-                <input type="text" id="newMake" placeholder="e.g., Toyota">
-            </div>
-            <div class="form-group">
-                <label class="required">Model</label>
-                <input type="text" id="newModel" placeholder="e.g., Corolla">
-            </div>
-            <div class="form-group">
-                <label class="required">Year</label>
-                <select id="newYear"></select>
-            </div>
-            <div class="form-group">
-                <label>VIN / Chassis</label>
-                <input type="text" id="newVin" placeholder="Optional">
-            </div>
-            <div class="form-group">
-                <label>Engine Number</label>
-                <input type="text" id="newEngine" placeholder="Optional">
-            </div>
+            <div class="form-group"><label class="required">Registration Number</label><input type="text" id="newRegistration" placeholder="e.g., KXX 123A"></div>
+            <div class="form-group"><label class="required">Make</label><input type="text" id="newMake" placeholder="e.g., Toyota"></div>
+            <div class="form-group"><label class="required">Model</label><input type="text" id="newModel" placeholder="e.g., Corolla"></div>
+            <div class="form-group"><label class="required">Year</label><select id="newYear"></select></div>
+            <div class="form-group"><label>VIN / Chassis</label><input type="text" id="newVin" placeholder="JTEGD34V000123456"></div>
+            <div class="form-group"><label>Engine Number</label><input type="text" id="newEngine" placeholder="Engine number"></div>
         </div>
         <button class="btn btn-primary" id="addVehicleBtn">+ Add Vehicle & Continue</button>
     </div>
@@ -349,66 +389,34 @@ input[readonly] {
     </div>
 </div>
 
-<!-- STEP 2: VEHICLE SPECIFICATIONS -->
+<!-- ============================================ -->
+<!-- STEP 2: VEHICLE IDENTITY & OWNERSHIP -->
+<!-- ============================================ -->
 <div id="step2" class="card" style="display:none">
-    <h2>📋 Step 2: Vehicle Specifications</h2>
+    <h2>📋 Step 2: Vehicle Identity & Ownership</h2>
     
     <div class="form-grid">
-        <div class="form-group">
-            <label class="required">Registration</label>
-            <input type="text" id="registration" readonly>
-        </div>
-        <div class="form-group">
-            <label class="required">Make</label>
-            <input type="text" id="make" readonly>
-        </div>
-        <div class="form-group">
-            <label class="required">Model</label>
-            <input type="text" id="model" readonly>
-        </div>
-        <div class="form-group">
-            <label class="required">Year</label>
-            <input type="text" id="year" readonly>
-        </div>
-        <div class="form-group">
-            <label>VIN</label>
-            <input type="text" id="vin" placeholder="Enter VIN">
-        </div>
-        <div class="form-group">
-            <label>Engine Number</label>
-            <input type="text" id="engineNo" placeholder="Enter engine number">
-        </div>
-        <div class="form-group">
-            <label class="required">Color</label>
-            <select id="color">
-                <option value="White">White</option>
-                <option value="Black">Black</option>
-                <option value="Silver">Silver</option>
-                <option value="Red">Red</option>
-                <option value="Blue">Blue</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="required">Fuel Type</label>
-            <select id="fuel">
-                <option value="Petrol">Petrol</option>
-                <option value="Diesel">Diesel</option>
-                <option value="Hybrid">Hybrid</option>
-                <option value="Electric">Electric</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="required">Transmission</label>
-            <select id="transmission">
-                <option value="Manual">Manual</option>
-                <option value="Automatic">Automatic</option>
-                <option value="CVT">CVT</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="required">Odometer (km)</label>
-            <input type="number" id="odometer" placeholder="Current mileage">
-        </div>
+        <div class="form-group"><label class="required">Registration Number</label><input type="text" id="registration" readonly></div>
+        <div class="form-group"><label class="required">Chassis Number (VIN)</label><input type="text" id="vin" placeholder="Enter VIN number"></div>
+        <div class="form-group"><label>Engine Number</label><input type="text" id="engineNo" placeholder="Engine number"></div>
+        <div class="form-group"><label>Logbook Number</label><input type="text" id="logbookNo" placeholder="Logbook number"></div>
+        <div class="form-group"><label>CR Number</label><input type="text" id="crNumber" placeholder="CR number"></div>
+        <div class="form-group"><label>NTSA TIMS Status</label><select id="timsStatus"><option>Verified</option><option>Pending</option><option>Not Registered</option></select></div>
+        <div class="form-group"><label>Vehicle Category</label><select id="category"><option>Private Car</option><option>PSV</option><option>Commercial</option><option>Government</option></select></div>
+        <div class="form-group"><label>Body Type</label><select id="bodyType"><option>Sedan</option><option>SUV</option><option>Pickup</option><option>Van</option><option>Hatchback</option></select></div>
+        <div class="form-group"><label>Country of Origin</label><input type="text" id="origin" placeholder="e.g., Japan, UK, Kenya"></div>
+        <div class="form-group"><label>Import Date</label><input type="date" id="importDate"></div>
+        <div class="form-group"><label>First Registration Date</label><input type="date" id="firstRegDate"></div>
+    </div>
+    
+    <h3>👤 Owner Information</h3>
+    <div class="form-grid">
+        <div class="form-group"><label class="required">Owner Name</label><input type="text" id="ownerName" placeholder="Full name"></div>
+        <div class="form-group"><label class="required">ID/Passport Number</label><input type="text" id="ownerId" placeholder="ID/Passport"></div>
+        <div class="form-group"><label>Phone Number</label><input type="tel" id="ownerPhone" placeholder="0712345678"></div>
+        <div class="form-group"><label>Email Address</label><input type="email" id="ownerEmail" placeholder="owner@example.com"></div>
+        <div class="form-group"><label>Company Name (if fleet)</label><input type="text" id="companyName" placeholder="Company name"></div>
+        <div class="form-group"><label>PIN Number</label><input type="text" id="pinNumber" placeholder="PIN number"></div>
     </div>
     
     <div class="nav-buttons">
@@ -417,25 +425,29 @@ input[readonly] {
     </div>
 </div>
 
-<!-- STEP 3: PURPOSE OF VALUATION -->
+<!-- ============================================ -->
+<!-- STEP 3: VEHICLE SPECIFICATIONS -->
+<!-- ============================================ -->
 <div id="step3" class="card" style="display:none">
-    <h2>🎯 Step 3: Purpose of Valuation</h2>
+    <h2>🔧 Step 3: Advanced Vehicle Specifications</h2>
     
-    <div class="form-group">
-        <label class="required">Valuation Purpose</label>
-        <select id="valuationPurpose">
-            <option value="">-- Select purpose --</option>
-            <option value="Sale/Purchase">Sale/Purchase Transaction</option>
-            <option value="Insurance Coverage">Insurance Coverage</option>
-            <option value="Bank Loan">Bank Loan / Financing</option>
-            <option value="Tax Assessment">Tax Assessment</option>
-            <option value="Legal Matter">Court / Legal Matter</option>
-        </select>
-    </div>
-    
-    <div class="form-group">
-        <label>Additional Notes</label>
-        <textarea id="purposeNotes" rows="3" placeholder="Any additional information..."></textarea>
+    <div class="form-grid">
+        <div class="form-group"><label class="required">Make</label><input type="text" id="make" readonly></div>
+        <div class="form-group"><label class="required">Model</label><input type="text" id="model" readonly></div>
+        <div class="form-group"><label>Variant</label><input type="text" id="variant" placeholder="e.g., XLE, Sport"></div>
+        <div class="form-group"><label>Trim Level</label><input type="text" id="trim" placeholder="e.g., Limited, Base"></div>
+        <div class="form-group"><label class="required">Year of Manufacture</label><input type="text" id="year" readonly></div>
+        <div class="form-group"><label>Year of Registration</label><input type="number" id="regYear" placeholder="Year registered"></div>
+        <div class="form-group"><label class="required">Fuel Type</label><select id="fuel"><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></div>
+        <div class="form-group"><label class="required">Transmission</label><select id="transmission"><option>Manual</option><option>Automatic</option><option>CVT</option></select></div>
+        <div class="form-group"><label>Drive Type</label><select id="driveType"><option>FWD</option><option>RWD</option><option>AWD</option><option>4WD</option></select></div>
+        <div class="form-group"><label>Engine Capacity (CC)</label><select id="engineCC"><option>1000</option><option>1500</option><option>1800</option><option>2000</option><option>2500</option><option>3000</option></select></div>
+        <div class="form-group"><label>Horsepower (HP)</label><input type="number" id="horsepower" placeholder="HP"></div>
+        <div class="form-group"><label>Torque (Nm)</label><input type="number" id="torque" placeholder="Nm"></div>
+        <div class="form-group"><label>Color</label><select id="color"><option>White</option><option>Black</option><option>Silver</option><option>Red</option><option>Blue</option></select></div>
+        <div class="form-group"><label>Seats</label><input type="number" id="seats" value="5"></div>
+        <div class="form-group"><label>Doors</label><input type="number" id="doors" value="4"></div>
+        <div class="form-group"><label class="required">Current Odometer (km)</label><input type="number" id="odometer" placeholder="Current mileage"></div>
     </div>
     
     <div class="nav-buttons">
@@ -444,69 +456,19 @@ input[readonly] {
     </div>
 </div>
 
-<!-- STEP 4: VEHICLE CONDITION -->
+<!-- ============================================ -->
+<!-- STEP 4: VALUATION PURPOSE -->
+<!-- ============================================ -->
 <div id="step4" class="card" style="display:none">
-    <h2>🔧 Step 4: Vehicle Condition</h2>
+    <h2>🎯 Step 4: Valuation Purpose</h2>
     
     <div class="form-grid">
-        <div class="form-group">
-            <label>Overall Condition</label>
-            <select id="condition">
-                <option value="Excellent">Excellent</option>
-                <option value="Good" selected>Good</option>
-                <option value="Fair">Fair</option>
-                <option value="Poor">Poor</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Engine (1-10)</label>
-            <input type="range" id="engineScore" min="1" max="10" step="0.5" value="8" oninput="engineVal.innerText=this.value">
-            <span id="engineVal">8</span>/10
-        </div>
-        <div class="form-group">
-            <label>Transmission (1-10)</label>
-            <input type="range" id="transmissionScore" min="1" max="10" step="0.5" value="8" oninput="transVal.innerText=this.value">
-            <span id="transVal">8</span>/10
-        </div>
-        <div class="form-group">
-            <label>Exterior (1-10)</label>
-            <input type="range" id="exteriorScore" min="1" max="10" step="0.5" value="8" oninput="exteriorVal.innerText=this.value">
-            <span id="exteriorVal">8</span>/10
-        </div>
-        <div class="form-group">
-            <label>Interior (1-10)</label>
-            <input type="range" id="interiorScore" min="1" max="10" step="0.5" value="8" oninput="interiorVal.innerText=this.value">
-            <span id="interiorVal">8</span>/10
-        </div>
+        <div class="form-group"><label class="required">Valuation Purpose</label><select id="valuationPurpose"><option value="">-- Select --</option><option>Insurance</option><option>Sale</option><option>Purchase</option><option>Financing</option><option>Court Matter</option><option>Taxation</option><option>Asset Register</option><option>Auction</option><option>Fleet Disposal</option></select></div>
+        <div class="form-group"><label>Intended Use</label><select id="intendedUse"><option>Selling</option><option>Buying</option><option>Loan Application</option><option>Legal Matter</option></select></div>
+        <div class="form-group"><label>Requesting Institution</label><input type="text" id="institution" placeholder="e.g., KCB Bank, Jubilee Insurance"></div>
+        <div class="form-group"><label>Reference Number</label><input type="text" id="refNumber" placeholder="Reference number"></div>
     </div>
-    
-    <div class="form-grid">
-        <div class="form-group">
-            <label>Service History</label>
-            <select id="serviceHistory">
-                <option value="Full">Full Service History</option>
-                <option value="Partial">Partial</option>
-                <option value="None">None</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Previous Owners</label>
-            <select id="owners">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4+</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Accident History</label>
-            <select id="accident">
-                <option value="none">None</option>
-                <option value="minor">Minor</option>
-                <option value="major">Major</option>
-            </select>
-        </div>
-    </div>
+    <div class="form-group"><label>Additional Notes</label><textarea id="purposeNotes" rows="3" placeholder="Any additional information..."></textarea></div>
     
     <div class="nav-buttons">
         <button class="btn btn-secondary" onclick="prevStep(3)">← Back</button>
@@ -514,53 +476,149 @@ input[readonly] {
     </div>
 </div>
 
-<!-- STEP 5: FEATURES -->
+<!-- ============================================ -->
+<!-- STEP 5: CONDITION ASSESSMENT -->
+<!-- ============================================ -->
 <div id="step5" class="card" style="display:none">
-    <h2>⭐ Step 5: Additional Features</h2>
+    <h2>🔧 Step 5: Vehicle Condition Assessment</h2>
     
     <div class="form-grid">
-        <div class="form-group">
-            <label>Sunroof</label>
-            <select id="sunroof">
-                <option value="None">None</option>
-                <option value="Standard">Standard</option>
-                <option value="Panoramic">Panoramic</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Infotainment</label>
-            <select id="infotainment">
-                <option value="Basic">Basic</option>
-                <option value="Touchscreen">Touchscreen</option>
-                <option value="Premium">Premium</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Wheel Type</label>
-            <select id="wheels">
-                <option value="Steel">Steel</option>
-                <option value="Alloy">Alloy</option>
-                <option value="Premium">Premium</option>
-            </select>
-        </div>
+        <div class="form-group"><label>Engine Condition (%)</label><input type="range" id="engineScore" min="0" max="100" value="80" oninput="engineVal.innerText=this.value"><span id="engineVal">80</span>%</div>
+        <div class="form-group"><label>Transmission (%)</label><input type="range" id="transScore" min="0" max="100" value="80" oninput="transVal.innerText=this.value"><span id="transVal">80</span>%</div>
+        <div class="form-group"><label>Suspension (%)</label><input type="range" id="suspScore" min="0" max="100" value="80" oninput="suspVal.innerText=this.value"><span id="suspVal">80</span>%</div>
+        <div class="form-group"><label>Steering (%)</label><input type="range" id="steerScore" min="0" max="100" value="80" oninput="steerVal.innerText=this.value"><span id="steerVal">80</span>%</div>
+        <div class="form-group"><label>Braking System (%)</label><input type="range" id="brakeScore" min="0" max="100" value="80" oninput="brakeVal.innerText=this.value"><span id="brakeVal">80</span>%</div>
+        <div class="form-group"><label>Electrical System (%)</label><input type="range" id="elecScore" min="0" max="100" value="80" oninput="elecVal.innerText=this.value"><span id="elecVal">80</span>%</div>
+        <div class="form-group"><label>Body Condition (%)</label><input type="range" id="bodyScore" min="0" max="100" value="80" oninput="bodyVal.innerText=this.value"><span id="bodyVal">80</span>%</div>
+        <div class="form-group"><label>Paint Condition (%)</label><input type="range" id="paintScore" min="0" max="100" value="80" oninput="paintVal.innerText=this.value"><span id="paintVal">80</span>%</div>
+        <div class="form-group"><label>Interior Condition (%)</label><input type="range" id="interiorScore" min="0" max="100" value="80" oninput="interiorVal.innerText=this.value"><span id="interiorVal">80</span>%</div>
+        <div class="form-group"><label>Tyre Condition (%)</label><input type="range" id="tyreScore" min="0" max="100" value="80" oninput="tyreVal.innerText=this.value"><span id="tyreVal">80</span>%</div>
+    </div>
+    
+    <h3>⚠️ Accident Assessment</h3>
+    <div class="form-grid">
+        <div class="form-group"><label>Previous Accident</label><select id="accident"><option value="none">None</option><option value="minor">Minor</option><option value="moderate">Moderate</option><option value="major">Major</option></select></div>
+        <div class="form-group"><label>Structural Damage</label><select id="structuralDamage"><option>No</option><option>Yes - Minor</option><option>Yes - Major</option></select></div>
+        <div class="form-group"><label>Flood Damage</label><select id="floodDamage"><option>No</option><option>Yes</option></select></div>
+        <div class="form-group"><label>Fire Damage</label><select id="fireDamage"><option>No</option><option>Yes</option></select></div>
+        <div class="form-group"><label>Airbag Deployment</label><select id="airbag"><option>No</option><option>Yes</option></select></div>
+        <div class="form-group"><label>Repaired Panels</label><input type="text" id="repairedPanels" placeholder="List repaired panels"></div>
     </div>
     
     <div class="nav-buttons">
         <button class="btn btn-secondary" onclick="prevStep(4)">← Back</button>
-        <button class="btn btn-primary" onclick="calculateValuation()">Calculate →</button>
+        <button class="btn btn-primary" onclick="nextStep(6)">Next →</button>
     </div>
 </div>
 
-<!-- STEP 6: RESULTS -->
+<!-- ============================================ -->
+<!-- STEP 6: INSPECTION & TYRE ANALYSIS -->
+<!-- ============================================ -->
 <div id="step6" class="card" style="display:none">
-    <h2>💰 Valuation Result</h2>
+    <h2>🔍 Step 6: KEBS/NTSA Inspection & Tyre Analysis</h2>
+    
+    <div class="form-grid">
+        <div class="form-group"><label>Headlamps</label><select id="headlamps"><option>Pass</option><option>Fail</option></select></div>
+        <div class="form-group"><label>Indicators</label><select id="indicators"><option>Pass</option><option>Fail</option></select></div>
+        <div class="form-group"><label>Brake Lights</label><select id="brakeLights"><option>Pass</option><option>Fail</option></select></div>
+        <div class="form-group"><label>Horn</label><select id="horn"><option>Pass</option><option>Fail</option></select></div>
+        <div class="form-group"><label>Wipers/Washers</label><select id="wipers"><option>Pass</option><option>Fail</option></select></div>
+        <div class="form-group"><label>Seat Belts</label><select id="seatbelts"><option>Pass</option><option>Fail</option></select></div>
+        <div class="form-group"><label>Fire Extinguisher</label><select id="fireExt"><option>Present</option><option>Missing</option></select></div>
+        <div class="form-group"><label>Speed Governor (PSV)</label><select id="govGovernor"><option>N/A</option><option>Present</option><option>Missing</option></select></div>
+    </div>
+    
+    <h3>🛞 Tyre Analysis</h3>
+    <div class="form-grid">
+        <div class="form-group"><label>LF Tyre Tread (mm)</label><input type="number" id="lfTread" step="0.5" placeholder="mm"></div>
+        <div class="form-group"><label>RF Tyre Tread (mm)</label><input type="number" id="rfTread" step="0.5" placeholder="mm"></div>
+        <div class="form-group"><label>LR Tyre Tread (mm)</label><input type="number" id="lrTread" step="0.5" placeholder="mm"></div>
+        <div class="form-group"><label>RR Tyre Tread (mm)</label><input type="number" id="rrTread" step="0.5" placeholder="mm"></div>
+        <div class="form-group"><label>Tyre Brand</label><input type="text" id="tyreBrand" placeholder="Brand"></div>
+        <div class="form-group"><label>Tyre Size</label><input type="text" id="tyreSize" placeholder="e.g., 205/55R16"></div>
+        <div class="form-group"><label>DOT Year</label><input type="number" id="dotYear" placeholder="Year"></div>
+    </div>
+    
+    <h3>🔧 Mechanical Findings</h3>
+    <div class="form-grid">
+        <div class="form-group"><label>Oil Leaks</label><select id="oilLeaks"><option>None</option><option>Minor</option><option>Major</option></select></div>
+        <div class="form-group"><label>Engine Noise</label><select id="engineNoise"><option>Normal</option><option>Abnormal</option></select></div>
+        <div class="form-group"><label>Smoke Emission</label><select id="smoke"><option>None</option><option>Minor</option><option>Excessive</option></select></div>
+        <div class="form-group"><label>Battery Voltage</label><input type="text" id="batteryVoltage" placeholder="Voltage"></div>
+    </div>
+    
+    <div class="nav-buttons">
+        <button class="btn btn-secondary" onclick="prevStep(5)">← Back</button>
+        <button class="btn btn-primary" onclick="nextStep(7)">Next →</button>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- STEP 7: PHOTOS & DOCUMENTS -->
+<!-- ============================================ -->
+<div id="step7" class="card" style="display:none">
+    <h2>📸 Step 7: Vehicle Photos & Documents</h2>
+    
+    <div class="photo-grid" id="photoGrid">
+        <div class="photo-upload" onclick="document.getElementById('photoFront').click()">Front View<br><input type="file" id="photoFront" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewFront')"><img id="previewFront" class="photo-preview" style="display:none"></div>
+        <div class="photo-upload" onclick="document.getElementById('photoRear').click()">Rear View<br><input type="file" id="photoRear" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewRear')"><img id="previewRear" class="photo-preview" style="display:none"></div>
+        <div class="photo-upload" onclick="document.getElementById('photoLeft').click()">Left Side<br><input type="file" id="photoLeft" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewLeft')"><img id="previewLeft" class="photo-preview" style="display:none"></div>
+        <div class="photo-upload" onclick="document.getElementById('photoRight').click()">Right Side<br><input type="file" id="photoRight" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewRight')"><img id="previewRight" class="photo-preview" style="display:none"></div>
+        <div class="photo-upload" onclick="document.getElementById('photoEngine').click()">Engine Bay<br><input type="file" id="photoEngine" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewEngine')"><img id="previewEngine" class="photo-preview" style="display:none"></div>
+        <div class="photo-upload" onclick="document.getElementById('photoDashboard').click()">Dashboard<br><input type="file" id="photoDashboard" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewDashboard')"><img id="previewDashboard" class="photo-preview" style="display:none"></div>
+        <div class="photo-upload" onclick="document.getElementById('photoOdometer').click()">Odometer<br><input type="file" id="photoOdometer" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewOdometer')"><img id="previewOdometer" class="photo-preview" style="display:none"></div>
+        <div class="photo-upload" onclick="document.getElementById('photoVin').click()">VIN Plate<br><input type="file" id="photoVin" accept="image/*" style="display:none" onchange="previewPhoto(this, 'previewVin')"><img id="previewVin" class="photo-preview" style="display:none"></div>
+    </div>
+    
+    <h3>📄 Documents</h3>
+    <div class="form-grid">
+        <div class="form-group"><label>Logbook Copy</label><input type="file" id="docLogbook" accept=".pdf,.jpg,.png"></div>
+        <div class="form-group"><label>Owner ID Copy</label><input type="file" id="docOwnerId" accept=".pdf,.jpg,.png"></div>
+        <div class="form-group"><label>Insurance Certificate</label><input type="file" id="docInsurance" accept=".pdf,.jpg,.png"></div>
+        <div class="form-group"><label>Service Records</label><input type="file" id="docService" accept=".pdf,.jpg,.png"></div>
+    </div>
+    
+    <div class="nav-buttons">
+        <button class="btn btn-secondary" onclick="prevStep(6)">← Back</button>
+        <button class="btn btn-primary" onclick="calculateProfessionalValuation()">Calculate Valuation →</button>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- STEP 8: RESULTS -->
+<!-- ============================================ -->
+<div id="step8" class="card" style="display:none">
+    <h2>💰 Step 8: Valuation Results</h2>
+    
     <div id="valuationResult" class="result-box">
         <div class="result-value" id="finalValue">KES 0</div>
+        <div style="text-align:center; margin:10px 0" id="riskBadge"></div>
+        
+        <h3>Market Values</h3>
+        <div id="marketValues"></div>
+        
+        <h3>Valuation Breakdown</h3>
         <div id="breakdownList"></div>
+        
+        <h3>Risk Assessment</h3>
+        <div id="riskAssessment"></div>
+        
+        <h3>Recommendations</h3>
         <div id="recommendations"></div>
+        
+        <div class="form-group" style="margin-top:20px">
+            <label>Valuer Comments</label>
+            <textarea id="valuerComments" rows="3" placeholder="Professional comments..."></textarea>
+        </div>
+        <div class="form-grid">
+            <div class="form-group"><label>Inspector Name</label><input type="text" id="inspectorName" placeholder="Inspector name"></div>
+            <div class="form-group"><label>Inspector License</label><input type="text" id="inspectorLicense" placeholder="License number"></div>
+        </div>
+        
         <div style="display: flex; gap: 10px; margin-top: 20px;">
-            <button class="btn btn-success" onclick="saveValuation()">✓ Save Valuation</button>
-            <button class="btn btn-secondary" onclick="prevStep(5)">← Back</button>
+            <button class="btn btn-success" onclick="saveProfessionalValuation()">✓ Save to Database</button>
+            <button class="btn btn-secondary" onclick="prevStep(7)">← Back to Edit</button>
+            <button class="btn btn-primary" onclick="generatePDF()">📄 Download PDF Report</button>
         </div>
     </div>
 </div>
@@ -581,6 +639,7 @@ let currentUser = null;
 let selectedVehicle = null;
 let currentStep = 1;
 let valuationData = {};
+let uploadedPhotos = {};
 
 // ============================================
 // AUTHENTICATION
@@ -601,7 +660,6 @@ async function checkAuth() {
 function populateYears() {
     const yearSelect = document.getElementById('newYear');
     const currentYear = new Date().getFullYear();
-    yearSelect.innerHTML = '';
     for (let y = currentYear; y >= 1980; y--) {
         yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
     }
@@ -630,7 +688,7 @@ async function loadVehicles() {
         
         select.innerHTML = '<option value="">-- Select vehicle --</option>';
         data.forEach(v => {
-            select.innerHTML += `<option value="${v.id}" data-reg="${v.registration_number}" data-make="${v.make}" data-model="${v.model}" data-year="${v.year}">${v.registration_number} - ${v.make} ${v.model}</option>`;
+            select.innerHTML += `<option value="${v.id}" data-reg="${v.registration_number}" data-make="${v.make}" data-model="${v.model}" data-year="${v.year}" data-vin="${v.vin || ''}" data-engine="${v.engine_number || ''}">${v.registration_number} - ${v.make} ${v.model}</option>`;
         });
         
         select.onchange = function() {
@@ -641,7 +699,9 @@ async function loadVehicles() {
                     registration: opt.dataset.reg,
                     make: opt.dataset.make,
                     model: opt.dataset.model,
-                    year: opt.dataset.year
+                    year: opt.dataset.year,
+                    vin: opt.dataset.vin,
+                    engine: opt.dataset.engine
                 };
                 document.getElementById('displayReg').innerText = selectedVehicle.registration;
                 document.getElementById('displayMakeModel').innerText = `${selectedVehicle.make} ${selectedVehicle.model}`;
@@ -652,6 +712,8 @@ async function loadVehicles() {
                 document.getElementById('make').value = selectedVehicle.make;
                 document.getElementById('model').value = selectedVehicle.model;
                 document.getElementById('year').value = selectedVehicle.year;
+                document.getElementById('vin').value = selectedVehicle.vin || '';
+                document.getElementById('engineNo').value = selectedVehicle.engine || '';
             }
         };
         
@@ -662,11 +724,9 @@ async function loadVehicles() {
 }
 
 // ============================================
-// ADD NEW VEHICLE TO SUPABASE
+// ADD NEW VEHICLE
 // ============================================
 async function addNewVehicle() {
-    console.log("addNewVehicle called");
-    
     const registration = document.getElementById('newRegistration').value.trim().toUpperCase();
     const make = document.getElementById('newMake').value.trim();
     const model = document.getElementById('newModel').value.trim();
@@ -674,7 +734,6 @@ async function addNewVehicle() {
     const vin = document.getElementById('newVin').value.trim();
     const engine = document.getElementById('newEngine').value.trim();
     
-    // Validate required fields
     if (!registration || !make || !model || !year) {
         document.getElementById('errorMsg').innerHTML = 'Please fill in Registration, Make, Model, and Year';
         document.getElementById('errorMsg').style.display = 'block';
@@ -689,7 +748,6 @@ async function addNewVehicle() {
     addBtn.innerHTML = '<span class="spinner"></span> Saving...';
     
     try {
-        // Insert into Supabase
         const { data, error } = await supabase
             .from('vehicles')
             .insert([{
@@ -704,12 +762,7 @@ async function addNewVehicle() {
             }])
             .select();
         
-        if (error) {
-            if (error.code === '23505') {
-                throw new Error('Vehicle with this registration already exists');
-            }
-            throw error;
-        }
+        if (error) throw error;
         
         if (data && data[0]) {
             selectedVehicle = {
@@ -717,24 +770,23 @@ async function addNewVehicle() {
                 registration: data[0].registration_number,
                 make: data[0].make,
                 model: data[0].model,
-                year: data[0].year
+                year: data[0].year,
+                vin: data[0].vin || '',
+                engine: data[0].engine_number || ''
             };
             
-            // Fill step 2 fields
             document.getElementById('registration').value = selectedVehicle.registration;
             document.getElementById('make').value = selectedVehicle.make;
             document.getElementById('model').value = selectedVehicle.model;
             document.getElementById('year').value = selectedVehicle.year;
+            document.getElementById('vin').value = selectedVehicle.vin || '';
+            document.getElementById('engineNo').value = selectedVehicle.engine || '';
             
             document.getElementById('successMsg').innerHTML = '✓ Vehicle added successfully!';
             document.getElementById('successMsg').style.display = 'block';
             
-            // Reload vehicle list
             await loadVehicles();
-            
-            setTimeout(() => {
-                nextStep(2);
-            }, 1500);
+            setTimeout(() => nextStep(2), 1500);
         }
         
     } catch (error) {
@@ -752,21 +804,50 @@ function showTab(tab) {
     if (tab === 'select') {
         document.getElementById('tabSelectPanel').style.display = 'block';
         document.getElementById('tabAddPanel').style.display = 'none';
-        document.getElementById('tabSelectBtn').className = 'tab-btn tab-active';
-        document.getElementById('tabAddBtn').className = 'tab-btn tab-inactive';
+        document.getElementById('tabSelectBtn').className = 'tab-btn active';
+        document.getElementById('tabAddBtn').className = 'tab-btn';
         document.getElementById('nextBtn').style.display = 'block';
     } else {
         document.getElementById('tabSelectPanel').style.display = 'none';
         document.getElementById('tabAddPanel').style.display = 'block';
-        document.getElementById('tabSelectBtn').className = 'tab-btn tab-inactive';
-        document.getElementById('tabAddBtn').className = 'tab-btn tab-active';
+        document.getElementById('tabSelectBtn').className = 'tab-btn';
+        document.getElementById('tabAddBtn').className = 'tab-btn active';
         document.getElementById('nextBtn').style.display = 'none';
     }
 }
 
 // ============================================
-// VALIDATE AND NEXT
+// PHOTO PREVIEW
 // ============================================
+function previewPhoto(input, previewId) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = document.getElementById(previewId);
+            img.src = e.target.result;
+            img.style.display = 'block';
+            uploadedPhotos[previewId] = input.files[0];
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+// ============================================
+// NAVIGATION
+// ============================================
+function nextStep(step) {
+    currentStep = step;
+    for (let i = 1; i <= 8; i++) {
+        const el = document.getElementById(`step${i}`);
+        if (el) el.style.display = i === step ? 'block' : 'none';
+    }
+    document.getElementById('progressFill').style.width = `${((step - 1) / 7) * 100}%`;
+}
+
+function prevStep(step) {
+    nextStep(step);
+}
+
 function validateAndNext() {
     const select = document.getElementById('vehicleSelect');
     if (!select.value) {
@@ -781,87 +862,129 @@ function validateAndNext() {
 }
 
 // ============================================
-// NAVIGATION
+// PROFESSIONAL VALUATION CALCULATION
 // ============================================
-function nextStep(step) {
-    currentStep = step;
-    for (let i = 1; i <= 6; i++) {
-        const el = document.getElementById(`step${i}`);
-        if (el) el.style.display = i === step ? 'block' : 'none';
-    }
-    document.getElementById('progressFill').style.width = `${((step - 1) / 5) * 100}%`;
-}
-
-function prevStep(step) {
-    nextStep(step);
-}
-
-// ============================================
-// CALCULATE VALUATION
-// ============================================
-async function calculateValuation() {
+async function calculateProfessionalValuation() {
     const btn = event.target;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Calculating...';
     
     try {
-        const params = {
+        // Collect condition scores
+        const engineScore = parseInt(document.getElementById('engineScore').value) / 100;
+        const transScore = parseInt(document.getElementById('transScore').value) / 100;
+        const suspScore = parseInt(document.getElementById('suspScore').value) / 100;
+        const brakeScore = parseInt(document.getElementById('brakeScore').value) / 100;
+        const bodyScore = parseInt(document.getElementById('bodyScore').value) / 100;
+        const interiorScore = parseInt(document.getElementById('interiorScore').value) / 100;
+        const tyreScore = parseInt(document.getElementById('tyreScore').value) / 100;
+        
+        const avgCondition = (engineScore + transScore + suspScore + brakeScore + bodyScore + interiorScore + tyreScore) / 7;
+        
+        // Base value by make
+        let baseValue = 2000000;
+        const make = document.getElementById('make').value;
+        if (make === 'Toyota') baseValue = 2800000;
+        else if (make === 'Honda') baseValue = 2600000;
+        else if (make === 'Subaru') baseValue = 3000000;
+        else if (make === 'Mercedes') baseValue = 5000000;
+        else if (make === 'BMW') baseValue = 4800000;
+        
+        // Age depreciation
+        const currentYear = new Date().getFullYear();
+        const year = parseInt(document.getElementById('year').value);
+        const age = currentYear - year;
+        const ageFactor = Math.max(0.35, 1 - (age * 0.08));
+        
+        // Mileage factor
+        const odometer = parseInt(document.getElementById('odometer').value) || 0;
+        const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
+        
+        // Accident penalty
+        const accident = document.getElementById('accident').value;
+        let accidentFactor = 1.0;
+        if (accident === 'minor') accidentFactor = 0.85;
+        else if (accident === 'moderate') accidentFactor = 0.65;
+        else if (accident === 'major') accidentFactor = 0.40;
+        
+        // Service history factor
+        const serviceHistory = document.getElementById('serviceHistory')?.value || 'Partial';
+        const serviceFactor = serviceHistory === 'Full' ? 1.05 : (serviceHistory === 'None' ? 0.92 : 1.0);
+        
+        // Calculate market values
+        const marketValue = Math.round(baseValue * ageFactor * mileageFactor * avgCondition * accidentFactor * serviceFactor);
+        const forcedSaleValue = Math.round(marketValue * 0.7);
+        const tradeInValue = Math.round(marketValue * 0.8);
+        const insuranceValue = Math.round(marketValue * 1.1);
+        const auctionValue = Math.round(marketValue * 0.75);
+        
+        // Risk assessment
+        let riskLevel = 'Low';
+        let riskColor = 'risk-low';
+        if (odometer > 200000 || accident !== 'none' || avgCondition < 0.6) {
+            riskLevel = 'High';
+            riskColor = 'risk-high';
+        } else if (odometer > 100000 || avgCondition < 0.75) {
+            riskLevel = 'Medium';
+            riskColor = 'risk-medium';
+        }
+        
+        valuationData = {
             vehicle_id: selectedVehicle.id,
-            registration: selectedVehicle.registration,
-            make: selectedVehicle.make,
-            model: selectedVehicle.model,
-            year: parseInt(selectedVehicle.year),
-            color: document.getElementById('color').value,
-            fuel: document.getElementById('fuel').value,
-            transmission: document.getElementById('transmission').value,
-            odometer: parseInt(document.getElementById('odometer').value) || 0,
+            registration: document.getElementById('registration').value,
+            make: make,
+            model: document.getElementById('model').value,
+            year: year,
+            vin: document.getElementById('vin').value,
+            engine_number: document.getElementById('engineNo').value,
+            owner_name: document.getElementById('ownerName').value,
+            owner_id: document.getElementById('ownerId').value,
+            odometer: odometer,
+            condition_scores: { engine: engineScore*100, transmission: transScore*100, body: bodyScore*100, interior: interiorScore*100, tyres: tyreScore*100 },
+            accident_history: accident,
             valuation_purpose: document.getElementById('valuationPurpose').value,
-            condition: document.getElementById('condition').value,
-            engine_score: parseFloat(document.getElementById('engineScore').value),
-            transmission_score: parseFloat(document.getElementById('transmissionScore').value),
-            exterior_score: parseFloat(document.getElementById('exteriorScore').value),
-            interior_score: parseFloat(document.getElementById('interiorScore').value),
-            service_history: document.getElementById('serviceHistory').value,
-            owners: parseInt(document.getElementById('owners').value),
-            accident: document.getElementById('accident').value,
-            sunroof: document.getElementById('sunroof').value,
-            infotainment: document.getElementById('infotainment').value,
-            wheels: document.getElementById('wheels').value
+            market_value: marketValue,
+            forced_sale_value: forcedSaleValue,
+            trade_in_value: tradeInValue,
+            insurance_value: insuranceValue,
+            auction_value: auctionValue,
+            risk_level: riskLevel,
+            valuation_date: new Date().toISOString()
         };
         
-        // Calculate value
-        let baseValue = 2000000;
-        if (params.make === 'Toyota') baseValue = 2800000;
-        else if (params.make === 'Honda') baseValue = 2600000;
-        else if (params.make === 'Subaru') baseValue = 3000000;
-        else if (params.make === 'Mercedes') baseValue = 5000000;
-        else if (params.make === 'BMW') baseValue = 4800000;
+        // Display results
+        document.getElementById('finalValue').innerHTML = `KES ${marketValue.toLocaleString()}`;
         
-        const currentYear = new Date().getFullYear();
-        const age = currentYear - params.year;
-        const ageFactor = Math.max(0.35, 1 - (age * 0.08));
-        const mileageFactor = Math.max(0.45, 1 - (params.odometer / 250000));
-        const avgScore = (params.engine_score + params.transmission_score + params.exterior_score + params.interior_score) / 4;
-        const conditionFactor = 0.5 + (avgScore / 20);
-        
-        let finalAmount = baseValue * ageFactor * mileageFactor * conditionFactor;
-        finalAmount = Math.round(finalAmount / 1000) * 1000;
-        
-        valuationData = { ...params, finalAmount };
-        
-        document.getElementById('finalValue').innerHTML = `KES ${finalAmount.toLocaleString()}`;
-        
-        let breakdown = `
-            <div class="breakdown-item"><span>💰 Base Value</span><span>KES ${baseValue.toLocaleString()}</span></div>
-            <div class="breakdown-item"><span>📉 Age (${age} years)</span><span>${Math.round(ageFactor * 100)}%</span></div>
-            <div class="breakdown-item"><span>📈 Mileage (${params.odometer.toLocaleString()} km)</span><span>${Math.round(mileageFactor * 100)}%</span></div>
-            <div class="breakdown-item"><span>🔧 Condition Score (${avgScore.toFixed(1)}/10)</span><span>${conditionFactor.toFixed(2)}x</span></div>
-            <div class="breakdown-item" style="border-top:2px solid #eab308;"><span>💰 FINAL VALUE</span><span>KES ${finalAmount.toLocaleString()}</span></div>
+        document.getElementById('marketValues').innerHTML = `
+            <div class="breakdown-item"><span>💰 Market Value</span><span>KES ${marketValue.toLocaleString()}</span></div>
+            <div class="breakdown-item"><span>🏷️ Forced Sale Value</span><span>KES ${forcedSaleValue.toLocaleString()}</span></div>
+            <div class="breakdown-item"><span>🔄 Trade-In Value</span><span>KES ${tradeInValue.toLocaleString()}</span></div>
+            <div class="breakdown-item"><span>🛡️ Insurance Value</span><span>KES ${insuranceValue.toLocaleString()}</span></div>
+            <div class="breakdown-item"><span>🔨 Auction Value</span><span>KES ${auctionValue.toLocaleString()}</span></div>
         `;
-        document.getElementById('breakdownList').innerHTML = breakdown;
-        document.getElementById('recommendations').innerHTML = '<p>✓ Valuation complete. Click Save to store in database.</p>';
         
-        nextStep(6);
+        document.getElementById('breakdownList').innerHTML = `
+            <div class="breakdown-item"><span>📊 Condition Score</span><span>${(avgCondition * 100).toFixed(1)}%</span></div>
+            <div class="breakdown-item"><span>📉 Age Factor (${age} years)</span><span>${(ageFactor * 100).toFixed(1)}%</span></div>
+            <div class="breakdown-item"><span>📈 Mileage Factor</span><span>${(mileageFactor * 100).toFixed(1)}%</span></div>
+            <div class="breakdown-item"><span>💥 Accident Penalty</span><span>${(accidentFactor * 100).toFixed(1)}%</span></div>
+        `;
+        
+        document.getElementById('riskBadge').innerHTML = `<span class="risk-badge ${riskColor}">Risk Level: ${riskLevel}</span>`;
+        document.getElementById('riskAssessment').innerHTML = `
+            <div class="breakdown-item"><span>Mileage</span><span>${odometer.toLocaleString()} km ${odometer > 150000 ? '⚠️ High' : '✓ Normal'}</span></div>
+            <div class="breakdown-item"><span>Accident History</span><span>${accident === 'none' ? '✓ None' : '⚠️ ' + accident}</span></div>
+            <div class="breakdown-item"><span>Condition Score</span><span>${avgCondition > 0.8 ? '✓ Good' : (avgCondition > 0.6 ? '⚠️ Average' : '❌ Poor')}</span></div>
+        `;
+        
+        let recommendations = '';
+        if (odometer > 150000) recommendations += '<li>⚠️ High mileage - recommend mechanical inspection</li>';
+        if (accident !== 'none') recommendations += '<li>🛠️ Accident history documented - verify repairs</li>';
+        if (avgCondition < 0.7) recommendations += '<li>🔧 Below average condition - recommend service</li>';
+        if (recommendations === '') recommendations = '<li>✓ Vehicle in good condition</li>';
+        document.getElementById('recommendations').innerHTML = `<ul>${recommendations}</ul>`;
+        
+        nextStep(8);
         
     } catch (error) {
         document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
@@ -875,7 +998,7 @@ async function calculateValuation() {
 // ============================================
 // SAVE TO SUPABASE
 // ============================================
-async function saveValuation() {
+async function saveProfessionalValuation() {
     const saveBtn = event.target;
     saveBtn.disabled = true;
     saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
@@ -883,32 +1006,28 @@ async function saveValuation() {
     try {
         const record = {
             user_id: currentUser.id,
-            vehicle_id: selectedVehicle.id,
+            vehicle_id: valuationData.vehicle_id,
             registration: valuationData.registration,
             make: valuationData.make,
             model: valuationData.model,
             year: valuationData.year,
-            color: valuationData.color,
-            fuel_type: valuationData.fuel,
-            transmission: valuationData.transmission,
+            vin: valuationData.vin,
+            engine_number: valuationData.engine_number,
+            owner_name: valuationData.owner_name,
+            owner_id: valuationData.owner_id,
             odometer: valuationData.odometer,
+            condition_scores: valuationData.condition_scores,
+            accident_history: valuationData.accident_history,
             valuation_purpose: valuationData.valuation_purpose,
-            condition_rating: valuationData.condition,
-            condition_scores: {
-                engine: valuationData.engine_score,
-                transmission: valuationData.transmission_score,
-                exterior: valuationData.exterior_score,
-                interior: valuationData.interior_score
-            },
-            service_history: valuationData.service_history,
-            owners: valuationData.owners,
-            accident_history: valuationData.accident,
-            features: {
-                sunroof: valuationData.sunroof,
-                infotainment: valuationData.infotainment,
-                wheels: valuationData.wheels
-            },
-            valuation_amount: valuationData.finalAmount,
+            market_value: valuationData.market_value,
+            forced_sale_value: valuationData.forced_sale_value,
+            trade_in_value: valuationData.trade_in_value,
+            insurance_value: valuationData.insurance_value,
+            auction_value: valuationData.auction_value,
+            risk_level: valuationData.risk_level,
+            inspector_name: document.getElementById('inspectorName').value,
+            inspector_license: document.getElementById('inspectorLicense').value,
+            valuer_comments: document.getElementById('valuerComments').value,
             valuation_date: new Date().toISOString(),
             status: 'completed'
         };
@@ -916,12 +1035,12 @@ async function saveValuation() {
         const { error } = await supabase.from('valuations').insert([record]);
         if (error) throw error;
         
-        document.getElementById('successMsg').innerHTML = '✓ Valuation saved! Redirecting...';
+        document.getElementById('successMsg').innerHTML = '✓ Professional valuation saved! Generating report...';
         document.getElementById('successMsg').style.display = 'block';
         
         setTimeout(() => {
-            window.location.href = 'dashboard.html';
-        }, 2000);
+            generatePDF();
+        }, 1500);
         
     } catch (error) {
         document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
@@ -929,6 +1048,21 @@ async function saveValuation() {
         saveBtn.disabled = false;
         saveBtn.innerHTML = 'Save Valuation';
     }
+}
+
+// ============================================
+// GENERATE PDF REPORT
+// ============================================
+function generatePDF() {
+    const element = document.getElementById('valuationResult');
+    const opt = {
+        margin: [0.5, 0.5, 0.5, 0.5],
+        filename: `Valuation_Report_${valuationData.registration}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, backgroundColor: '#0a0a0a' },
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(element).save();
 }
 
 // ============================================
@@ -940,23 +1074,16 @@ async function init() {
         populateYears();
         await loadVehicles();
         
-        // Attach event listeners - FIXED
-        const tabSelectBtn = document.getElementById('tabSelectBtn');
-        const tabAddBtn = document.getElementById('tabAddBtn');
-        const addVehicleBtn = document.getElementById('addVehicleBtn');
-        const nextBtn = document.getElementById('nextBtn');
-        
-        if (tabSelectBtn) tabSelectBtn.onclick = () => showTab('select');
-        if (tabAddBtn) tabAddBtn.onclick = () => showTab('add');
-        if (addVehicleBtn) addVehicleBtn.onclick = addNewVehicle;
-        if (nextBtn) nextBtn.onclick = validateAndNext;
+        document.getElementById('tabSelectBtn').onclick = () => showTab('select');
+        document.getElementById('tabAddBtn').onclick = () => showTab('add');
+        document.getElementById('addVehicleBtn').onclick = addNewVehicle;
+        document.getElementById('nextBtn').onclick = validateAndNext;
         
         showTab('select');
         nextStep(1);
     }
 }
 
-// Start the app when DOM is fully loaded
 document.addEventListener('DOMContentLoaded', init);
 
 </script>
