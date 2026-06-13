@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
     <title>AUTO-V Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -190,18 +191,6 @@
         }
         .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
         .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            border-top-color: #eab308;
-            animation: spin 0.8s linear infinite;
-            margin-right: 10px;
-            vertical-align: middle;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -213,7 +202,6 @@
 
 <div class="container">
 
-    <!-- Welcome Card -->
     <div class="card">
         <h2>Welcome to AUTO-V</h2>
         <div id="email">Loading...</div>
@@ -223,7 +211,6 @@
     <div id="errorMsg" class="error"></div>
     <div id="successMsg" class="success"></div>
 
-    <!-- Service Cards -->
     <div class="grid">
         <div class="service-card">
             <div class="service-icon">💰</div>
@@ -242,7 +229,6 @@
         </div>
     </div>
 
-    <!-- Service History -->
     <div class="card">
         <h2>📋 My Requests</h2>
         <div style="overflow-x: auto;">
@@ -265,11 +251,6 @@
         </div>
     </div>
 
-</div>
-
-<!-- Payment Status Popup -->
-<div id="paymentStatus" class="payment-status">
-    <div id="paymentMessage">Processing payment...</div>
 </div>
 
 <!-- Valuation Modal -->
@@ -354,52 +335,39 @@
 </div>
 
 <script>
-    // SUPABASE CONFIG
-    const SUPABASE_URL = "YOUR_SUPABASE_URL";
-    const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Use the shared supabase instance from supabase.js
+    const { supabase, requireAuth, logout, createServiceRequest, getServiceRequests, subscribeToUpdates } = window.autoV;
 
     let currentUser = null;
     let valuationFee = 2500;
     let inspectionFee = 3500;
     let isProcessingPayment = false;
+    let subscription = null;
 
-    // INIT
+    // Initialize
     async function init() {
-        try {
-            const { data: { user }, error } = await supabase.auth.getUser();
-            if (error || !user) {
-                console.log('No user found, redirecting to login');
-                window.location.href = "login.html";
-                return;
-            }
-            currentUser = user;
-            document.getElementById("email").textContent = `Logged in as: ${user.email}`;
-            await loadHistory();
-            subscribeRealtime();
-            checkPaymentReturn();
-        } catch (e) {
-            console.error('Init error:', e);
-            window.location.href = "login.html";
-        }
+        const user = await requireAuth();
+        if (!user) return;
+        
+        currentUser = user;
+        document.getElementById("email").textContent = `Logged in as: ${user.email}`;
+        
+        await loadHistory();
+        setupRealtime();
+        
+        // Set prices
+        document.getElementById('valuationPrice').textContent = `KES ${valuationFee.toLocaleString()}`;
+        document.getElementById('inspectionPrice').textContent = `KES ${inspectionFee.toLocaleString()}`;
     }
 
-    // LOAD HISTORY
+    // Load history
     async function loadHistory() {
         try {
-            const { data, error } = await supabase
-                .from("service_requests")
-                .select("*")
-                .eq("user_id", currentUser.id)
-                .order("created_at", { ascending: false });
-
-            const tb = document.getElementById("tbody");
-            if (error) {
-                tb.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#ef4444;">Error: ${error.message}</td></tr>`;
-                return;
-            }
+            const data = await getServiceRequests(currentUser.id);
+            const tb = document.getElementById('tbody');
+            
             if (!data || data.length === 0) {
-                tb.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;">No service requests yet. Start by paying for a service!</td></tr>`;
+                tb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;">No service requests yet.</td></tr>';
                 return;
             }
 
@@ -433,45 +401,29 @@
         }
     }
 
-    // SUBSCRIBE REALTIME
-    function subscribeRealtime() {
-        supabase.channel("payments")
-            .on("postgres_changes", {
-                event: "UPDATE",
-                schema: "public",
-                table: "service_requests",
-                filter: `user_id=eq.${currentUser.id}`
-            }, (payload) => {
-                if (payload.new.payment_status === "paid") {
-                    loadHistory();
-                    showMessage('✅ Payment confirmed! Results loaded.', 'success');
-                    hidePaymentStatus();
-                    isProcessingPayment = false;
-                    document.getElementById('submitValuationBtn').disabled = false;
-                    document.getElementById('submitInspectionBtn').disabled = false;
-                }
-            })
-            .subscribe();
+    // Setup realtime
+    function setupRealtime() {
+        subscription = subscribeToUpdates(currentUser.id, () => {
+            loadHistory();
+        });
     }
 
-    // OPEN VALUATION MODAL
+    // Open modals
     function openValuation() {
         document.getElementById('valAmount').value = `KES ${valuationFee.toLocaleString()}`;
         document.getElementById('valuationModal').style.display = 'flex';
     }
 
-    // OPEN INSPECTION MODAL
     function openInspection() {
         document.getElementById('insAmount').value = `KES ${inspectionFee.toLocaleString()}`;
         document.getElementById('inspectionModal').style.display = 'flex';
     }
 
-    // CLOSE MODAL
     function closeModal(id) {
         document.getElementById(id).style.display = 'none';
     }
 
-    // PROCESS VALUATION PAYMENT - Redirect to payment.html
+    // Process valuation
     async function processValuationPayment() {
         if (isProcessingPayment) {
             showMessage('Payment already in progress. Please wait.', 'error');
@@ -494,35 +446,24 @@
         document.getElementById('submitValuationBtn').disabled = true;
 
         try {
-            // Create service request
-            const { data: service, error } = await supabase
-                .from("service_requests")
-                .insert({
-                    user_id: currentUser.id,
-                    service_type: 'valuation',
-                    registration_number: registration,
-                    make: make,
-                    model: model,
-                    year: Number(year),
-                    purpose: purpose,
-                    amount: valuationFee,
-                    phone: phone,
-                    payment_status: 'pending',
-                    status: 'awaiting_payment'
-                })
-                .select()
-                .single();
-
-            if (error) {
-                showMessage('Error: ' + error.message, 'error');
-                isProcessingPayment = false;
-                document.getElementById('submitValuationBtn').disabled = false;
-                return;
-            }
+            const service = await createServiceRequest({
+                user_id: currentUser.id,
+                service_type: 'valuation',
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: Number(year),
+                purpose: purpose,
+                amount: valuationFee,
+                phone: phone,
+                payment_status: 'pending',
+                status: 'awaiting_payment'
+            });
 
             closeModal('valuationModal');
-            
-            // Redirect to payment.html with service details
+            showMessage('✅ Request created! Redirecting to payment...', 'success');
+
+            // Redirect to payment page
             const params = new URLSearchParams({
                 service_type: 'valuation',
                 service_id: service.id,
@@ -531,17 +472,18 @@
                 reference: `VAL${service.id.substring(0, 8)}`
             });
             
-            window.location.href = `payment.html?${params.toString()}`;
+            setTimeout(() => {
+                window.location.href = `payment.html?${params.toString()}`;
+            }, 1500);
 
         } catch (e) {
-            console.error('Payment error:', e);
-            showMessage('Payment failed: ' + e.message, 'error');
+            showMessage('Error: ' + e.message, 'error');
             isProcessingPayment = false;
             document.getElementById('submitValuationBtn').disabled = false;
         }
     }
 
-    // PROCESS INSPECTION PAYMENT - Redirect to payment.html
+    // Process inspection
     async function processInspectionPayment() {
         if (isProcessingPayment) {
             showMessage('Payment already in progress. Please wait.', 'error');
@@ -564,34 +506,23 @@
         document.getElementById('submitInspectionBtn').disabled = true;
 
         try {
-            const { data: service, error } = await supabase
-                .from("service_requests")
-                .insert({
-                    user_id: currentUser.id,
-                    service_type: 'inspection',
-                    registration_number: registration,
-                    make: make,
-                    model: model,
-                    year: Number(year),
-                    mileage: Number(mileage),
-                    amount: inspectionFee,
-                    phone: phone,
-                    payment_status: 'pending',
-                    status: 'awaiting_payment'
-                })
-                .select()
-                .single();
-
-            if (error) {
-                showMessage('Error: ' + error.message, 'error');
-                isProcessingPayment = false;
-                document.getElementById('submitInspectionBtn').disabled = false;
-                return;
-            }
+            const service = await createServiceRequest({
+                user_id: currentUser.id,
+                service_type: 'inspection',
+                registration_number: registration,
+                make: make,
+                model: model,
+                year: Number(year),
+                mileage: Number(mileage),
+                amount: inspectionFee,
+                phone: phone,
+                payment_status: 'pending',
+                status: 'awaiting_payment'
+            });
 
             closeModal('inspectionModal');
-            
-            // Redirect to payment.html with service details
+            showMessage('✅ Request created! Redirecting to payment...', 'success');
+
             const params = new URLSearchParams({
                 service_type: 'inspection',
                 service_id: service.id,
@@ -600,35 +531,17 @@
                 reference: `INS${service.id.substring(0, 8)}`
             });
             
-            window.location.href = `payment.html?${params.toString()}`;
+            setTimeout(() => {
+                window.location.href = `payment.html?${params.toString()}`;
+            }, 1500);
 
         } catch (e) {
-            console.error('Payment error:', e);
-            showMessage('Payment failed: ' + e.message, 'error');
+            showMessage('Error: ' + e.message, 'error');
             isProcessingPayment = false;
             document.getElementById('submitInspectionBtn').disabled = false;
         }
     }
 
-    // CHECK PAYMENT RETURN FROM PAYMENT.HTML
-    function checkPaymentReturn() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const status = urlParams.get('payment');
-        const service = urlParams.get('service');
-        const serviceId = urlParams.get('serviceId');
-        
-        if (status === 'success' && service && serviceId) {
-            showMessage(`✅ ${service} payment successful! Processing results...`, 'success');
-            // Clear URL parameters
-            window.history.replaceState({}, document.title, window.location.pathname);
-            // The realtime subscription will handle updating the UI
-        } else if (status === 'failed') {
-            showMessage('❌ Payment failed. Please try again.', 'error');
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-    }
-
-    // UI HELPERS
     function showMessage(msg, type) {
         const div = document.getElementById(`${type}Msg`);
         div.textContent = msg;
@@ -636,39 +549,7 @@
         setTimeout(() => div.style.display = 'none', 5000);
     }
 
-    function showPaymentStatus(msg, isError = false) {
-        const div = document.getElementById('paymentStatus');
-        document.getElementById('paymentMessage').textContent = msg;
-        div.style.borderLeftColor = isError ? '#ef4444' : '#eab308';
-        div.style.display = 'block';
-    }
-
-    function hidePaymentStatus() {
-        document.getElementById('paymentStatus').style.display = 'none';
-    }
-
-    // LOGOUT - Fixed
-    async function logout() {
-        try {
-            const logoutBtn = document.getElementById('logoutBtn');
-            logoutBtn.textContent = 'Logging out...';
-            logoutBtn.disabled = true;
-            
-            await supabase.auth.signOut();
-            localStorage.clear();
-            sessionStorage.clear();
-            
-            window.location.href = "login.html";
-        } catch (e) {
-            console.error('Logout error:', e);
-            // Force logout even if Supabase fails
-            localStorage.clear();
-            sessionStorage.clear();
-            window.location.href = "login.html";
-        }
-    }
-
-    // EVENT LISTENERS
+    // Event listeners
     document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('valuationBtn').addEventListener('click', openValuation);
         document.getElementById('inspectionBtn').addEventListener('click', openInspection);
