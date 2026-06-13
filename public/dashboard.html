@@ -360,29 +360,19 @@
     </div>
 </div>
 
-<!-- Result Modal -->
-<div id="resultModal" class="modal">
-    <div class="modal-content" style="max-width: 600px;">
-        <h2 id="resultTitle">Result</h2>
-        <div id="resultContent"></div>
-        <button class="btn-secondary" onclick="closeModal('resultModal')">Close</button>
-    </div>
-</div>
-
 <script>
     // SUPABASE CONFIG
     const SUPABASE_URL = "YOUR_SUPABASE_URL";
     const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    // BACKEND API URL (NOT window.location.origin)
+    const API_BASE_URL = "https://meidriveafrica-backend.onrender.com";
+
     let currentUser = null;
     let valuationFee = 2500;
     let inspectionFee = 3500;
     let isProcessingPayment = false;
-    let pollInterval = null;
-
-    // API endpoint (your backend)
-    const API_BASE_URL = window.location.origin;
 
     // INIT
     async function init() {
@@ -395,7 +385,6 @@
         document.getElementById("email").textContent = `Logged in as: ${user.email}`;
         await loadHistory();
         subscribeRealtime();
-        checkPaymentStatus();
     }
 
     // LOAD HISTORY
@@ -422,15 +411,12 @@
                 let paymentBadge = `badge-${r.payment_status || 'pending'}`;
                 
                 let resultText = '-';
-                if (r.service_type === 'valuation' && r.valuation_result) {
-                    try {
-                        const result = typeof r.valuation_result === 'string' 
-                            ? JSON.parse(r.valuation_result) 
-                            : r.valuation_result;
-                        resultText = `KES ${(result.market_value || 0).toLocaleString()}`;
-                    } catch (e) { resultText = 'Completed'; }
-                } else if (r.service_type === 'inspection' && r.overall_score) {
-                    resultText = `${r.overall_score}%`;
+                if (r.result) {
+                    if (r.service_type === 'valuation') {
+                        resultText = `KES ${Number(r.result.market_value).toLocaleString()}`;
+                    } else if (r.service_type === 'inspection') {
+                        resultText = `${r.result.overall_score}%`;
+                    }
                 }
 
                 return `
@@ -438,7 +424,7 @@
                         <td>${new Date(r.created_at).toLocaleString()}</td>
                         <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
                         <td>${r.make || 'N/A'} ${r.model || 'N/A'} (${r.registration_number || 'N/A'})</td>
-                        <td>KES ${(r.valuation_amount || r.inspection_amount || 0).toLocaleString()}</td>
+                        <td>KES ${Number(r.amount).toLocaleString()}</td>
                         <td><span class="badge ${statusBadge}">${r.status || 'pending'}</span></td>
                         <td><span class="badge ${paymentBadge}">${r.payment_status || 'pending'}</span></td>
                         <td><strong>${resultText}</strong></td>
@@ -450,12 +436,20 @@
         }
     }
 
-    // SUBSCRIBE REALTIME
+    // SUBSCRIBE REALTIME (No polling needed)
     function subscribeRealtime() {
-        supabase.channel("service_requests_live")
-            .on("postgres_changes",
-                { event: "*", schema: "public", table: "service_requests" },
-                () => loadHistory())
+        supabase.channel("payments")
+            .on("postgres_changes", {
+                event: "UPDATE",
+                schema: "public",
+                table: "service_requests",
+                filter: `user_id=eq.${currentUser.id}`
+            }, (payload) => {
+                if (payload.new.payment_status === "paid") {
+                    loadHistory();
+                    showMessage('✅ Payment confirmed! Results loaded.', 'success');
+                }
+            })
             .subscribe();
     }
 
@@ -508,9 +502,10 @@
                     registration_number: registration,
                     make: make,
                     model: model,
-                    year: parseInt(year),
-                    valuation_purpose: purpose,
-                    valuation_amount: valuationFee,
+                    year: Number(year),
+                    purpose: purpose,
+                    amount: valuationFee,
+                    phone: phone,
                     payment_status: 'pending',
                     status: 'awaiting_payment'
                 })
@@ -549,7 +544,7 @@
 
             if (result.success) {
                 showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-                startPollingPayment(service.id, 'valuation');
+                // Just wait for realtime subscription to update
             } else {
                 showPaymentStatus('❌ ' + (result.message || 'Payment initiation failed'), true);
                 setTimeout(() => hidePaymentStatus(), 5000);
@@ -596,9 +591,10 @@
                     registration_number: registration,
                     make: make,
                     model: model,
-                    year: parseInt(year),
-                    mileage: parseInt(mileage),
-                    inspection_amount: inspectionFee,
+                    year: Number(year),
+                    mileage: Number(mileage),
+                    amount: inspectionFee,
+                    phone: phone,
                     payment_status: 'pending',
                     status: 'awaiting_payment'
                 })
@@ -636,7 +632,7 @@
 
             if (result.success) {
                 showPaymentStatus('📱 M-Pesa prompt sent! Enter your PIN to complete payment');
-                startPollingPayment(service.id, 'inspection');
+                // Just wait for realtime subscription to update
             } else {
                 showPaymentStatus('❌ ' + (result.message || 'Payment initiation failed'), true);
                 setTimeout(() => hidePaymentStatus(), 5000);
@@ -649,189 +645,6 @@
             showMessage('Payment failed: ' + e.message, 'error');
             isProcessingPayment = false;
             document.getElementById('submitInspectionBtn').disabled = false;
-        }
-    }
-
-    // POLL PAYMENT STATUS
-    function startPollingPayment(serviceId, serviceType) {
-        let pollCount = 0;
-        const MAX_POLLS = 40;
-
-        if (pollInterval) clearInterval(pollInterval);
-
-        pollInterval = setInterval(async () => {
-            pollCount++;
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/payments/status?service_id=${serviceId}&service_type=${serviceType}`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error: ${response.status}`);
-                }
-
-                const result = await response.json();
-
-                if (result.status === 'paid') {
-                    clearInterval(pollInterval);
-                    pollInterval = null;
-                    hidePaymentStatus();
-                    isProcessingPayment = false;
-                    document.getElementById('submitValuationBtn').disabled = false;
-                    document.getElementById('submitInspectionBtn').disabled = false;
-                    showMessage('✅ Payment successful! Generating results...', 'success');
-
-                    setTimeout(async () => {
-                        const { data: service } = await supabase
-                            .from("service_requests")
-                            .select("*")
-                            .eq("id", serviceId)
-                            .single();
-                        
-                        if (service) {
-                            if (serviceType === 'valuation') {
-                                generateValuationResult(service);
-                            } else {
-                                generateInspectionResult(service);
-                            }
-                        }
-                        await loadHistory();
-                    }, 1000);
-                } else if (result.status === 'failed') {
-                    clearInterval(pollInterval);
-                    pollInterval = null;
-                    hidePaymentStatus();
-                    isProcessingPayment = false;
-                    document.getElementById('submitValuationBtn').disabled = false;
-                    document.getElementById('submitInspectionBtn').disabled = false;
-                    showMessage('Payment failed. Please try again.', 'error');
-                }
-            } catch (e) {
-                console.error('Poll error:', e);
-            }
-
-            if (pollCount >= MAX_POLLS) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-                hidePaymentStatus();
-                isProcessingPayment = false;
-                document.getElementById('submitValuationBtn').disabled = false;
-                document.getElementById('submitInspectionBtn').disabled = false;
-                showMessage('Payment timeout. Please contact support.', 'error');
-            }
-        }, 3000);
-    }
-
-    // GENERATE VALUATION RESULT
-    async function generateValuationResult(valuation) {
-        const year = valuation.year || new Date().getFullYear();
-        const currentYear = new Date().getFullYear();
-        const age = Math.max(0, currentYear - year);
-        const baseValue = 2000000;
-        let marketValue = Math.max(300000, baseValue - (baseValue * age * 0.1));
-
-        if (valuation.make?.toLowerCase() === 'toyota') marketValue *= 1.1;
-        if (valuation.make?.toLowerCase() === 'mercedes') marketValue *= 1.2;
-        if (valuation.make?.toLowerCase() === 'bmw') marketValue *= 1.15;
-
-        const result = {
-            market_value: Math.round(marketValue),
-            age: age,
-            depreciation_rate: age * 10,
-            condition: 'Good',
-            certificate_number: `AUTO-VAL-${valuation.id.substring(0, 8)}`
-        };
-
-        await supabase.from("service_requests").update({
-            valuation_result: result,
-            status: 'completed',
-            payment_status: 'paid'
-        }).eq('id', valuation.id);
-
-        document.getElementById('resultTitle').textContent = '💰 Valuation Result';
-        document.getElementById('resultContent').innerHTML = `
-            <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 15px 0;">
-                <p><strong>Vehicle:</strong> ${valuation.make} ${valuation.model} (${valuation.year})</p>
-                <p><strong>Registration:</strong> ${valuation.registration_number}</p>
-                <div class="result-value">KES ${Math.round(marketValue).toLocaleString()}</div>
-                <hr style="margin: 15px 0; border-color: #334155;">
-                <p><strong>Depreciation:</strong> ${result.age} years (${result.depreciation_rate}%)</p>
-                <p><strong>Certificate:</strong> ${result.certificate_number}</p>
-                <p style="color: #22c55e; margin-top: 15px;">✅ Valuation complete!</p>
-            </div>
-        `;
-        document.getElementById('resultModal').style.display = 'flex';
-    }
-
-    // GENERATE INSPECTION RESULT
-    async function generateInspectionResult(inspection) {
-        const score = Math.floor(Math.random() * 25) + 75;
-        const verdict = score >= 85 ? 'EXCELLENT' : (score >= 70 ? 'GOOD' : 'FAIR');
-
-        const result = {
-            overall_score: score,
-            final_verdict: verdict,
-            categories: {
-                engine: score >= 80 ? 'Good' : 'Needs Attention',
-                transmission: score >= 75 ? 'Good' : 'Check Required',
-                brakes: score >= 85 ? 'Excellent' : 'Service Recommended',
-                electrical: score >= 80 ? 'Working' : 'Inspect Further',
-                body: score >= 70 ? 'Fair' : 'Repair Needed'
-            },
-            certificate_number: `AUTO-INS-${inspection.id.substring(0, 8)}`
-        };
-
-        await supabase.from("service_requests").update({
-            overall_score: score,
-            final_verdict: verdict,
-            inspection_result: result,
-            status: 'completed',
-            payment_status: 'paid'
-        }).eq('id', inspection.id);
-
-        document.getElementById('resultTitle').textContent = '🔧 Inspection Result';
-        document.getElementById('resultContent').innerHTML = `
-            <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 15px 0;">
-                <p><strong>Vehicle:</strong> ${inspection.make} ${inspection.model} (${inspection.year})</p>
-                <p><strong>Mileage:</strong> ${inspection.mileage.toLocaleString()} km</p>
-                <div class="result-value">${score}% - ${verdict}</div>
-                <hr style="margin: 15px 0; border-color: #334155;">
-                <p><strong>Engine:</strong> ${result.categories.engine}</p>
-                <p><strong>Transmission:</strong> ${result.categories.transmission}</p>
-                <p><strong>Brakes:</strong> ${result.categories.brakes}</p>
-                <p><strong>Electrical:</strong> ${result.categories.electrical}</p>
-                <p><strong>Body:</strong> ${result.categories.body}</p>
-                <p style="color: #22c55e; margin-top: 15px;">✅ Inspection complete!</p>
-            </div>
-        `;
-        document.getElementById('resultModal').style.display = 'flex';
-    }
-
-    // CHECK PAYMENT STATUS ON RETURN
-    function checkPaymentStatus() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const status = urlParams.get('payment');
-        const service = urlParams.get('service');
-        const serviceId = urlParams.get('serviceId');
-
-        if (status === 'success' && service && serviceId) {
-            showMessage(`✅ ${service} payment successful! Processing results...`, 'success');
-            setTimeout(async () => {
-                const { data: serviceData } = await supabase
-                    .from("service_requests")
-                    .select("*")
-                    .eq("id", serviceId)
-                    .single();
-                
-                if (serviceData) {
-                    if (service === 'valuation') {
-                        generateValuationResult(serviceData);
-                    } else {
-                        generateInspectionResult(serviceData);
-                    }
-                }
-                await loadHistory();
-                window.history.replaceState({}, document.title, window.location.pathname);
-            }, 2000);
         }
     }
 
@@ -871,7 +684,6 @@
             if (e.key === 'Escape') {
                 closeModal('valuationModal');
                 closeModal('inspectionModal');
-                closeModal('resultModal');
             }
         });
 
