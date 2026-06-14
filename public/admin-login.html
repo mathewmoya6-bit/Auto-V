@@ -151,72 +151,87 @@
                 loginBtn.innerHTML = '<span class="spinner"></span> Authenticating...';
 
                 try {
-                    // Step 1: Sign in
-                    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                    // STEP 1: Sign in with Supabase
+                    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ 
+                        email, 
+                        password 
+                    });
 
-                    if (error) {
-                        if (error.message === 'Invalid login credentials') {
+                    if (authError) {
+                        if (authError.message === 'Invalid login credentials') {
                             showMessage('Invalid email or password.', 'error');
-                        } else if (error.message.includes('Email not confirmed')) {
+                        } else if (authError.message.includes('Email not confirmed')) {
                             showMessage('Please verify your email first.', 'info');
                         } else {
-                            showMessage(error.message, 'error');
+                            showMessage(authError.message, 'error');
                         }
                         loginBtn.disabled = false;
                         loginBtn.innerHTML = 'Admin Login';
                         return;
                     }
 
-                    if (!data.user) {
-                        showMessage('Login failed.', 'error');
+                    if (!authData || !authData.user) {
+                        showMessage('Login failed. Please try again.', 'error');
                         loginBtn.disabled = false;
                         loginBtn.innerHTML = 'Admin Login';
                         return;
                     }
 
-                    // Step 2: Check admin role - use maybeSingle() to avoid 406 error
+                    const user = authData.user;
+
+                    // STEP 2: Check if profile exists - use maybeSingle() to avoid 406 error
                     const { data: profile, error: profileError } = await supabase
                         .from('user_profiles')
-                        .select('role')
-                        .eq('id', data.user.id)
-                        .maybeSingle();  // CRITICAL: Use maybeSingle() not single()
+                        .select('*')
+                        .eq('id', user.id)
+                        .maybeSingle();
 
-                    if (profileError) {
-                        console.error('Profile error:', profileError);
-                        showMessage('Database error. Please contact support.', 'error');
-                        await supabase.auth.signOut();
-                        loginBtn.disabled = false;
-                        loginBtn.innerHTML = 'Admin Login';
-                        return;
-                    }
-
-                    // If no profile exists, create one with 'user' role
+                    // STEP 3: If profile doesn't exist, create it using upsert (no conflict)
                     if (!profile) {
-                        const { error: insertError } = await supabase
+                        const { error: upsertError } = await supabase
                             .from('user_profiles')
-                            .insert({
-                                id: data.user.id,
-                                email: data.user.email,
-                                role: 'user',
-                                created_at: new Date().toISOString()
-                            });
-                        
-                        if (insertError) {
-                            showMessage('Failed to create user profile.', 'error');
+                            .upsert(
+                                {
+                                    id: user.id,
+                                    email: user.email,
+                                    role: 'user',  // Default role, will be updated if admin
+                                    created_at: new Date().toISOString()
+                                },
+                                { onConflict: 'id' }
+                            );
+
+                        if (upsertError) {
+                            console.error('Profile creation error:', upsertError);
+                            showMessage('Failed to setup user profile. Please contact support.', 'error');
                             await supabase.auth.signOut();
                             loginBtn.disabled = false;
                             loginBtn.innerHTML = 'Admin Login';
                             return;
                         }
                         
-                        showMessage('Profile created. Admin access not granted.', 'info');
-                        await supabase.auth.signOut();
-                        loginBtn.disabled = false;
-                        loginBtn.innerHTML = 'Admin Login';
-                        return;
+                        // Fetch the newly created profile
+                        const { data: newProfile } = await supabase
+                            .from('user_profiles')
+                            .select('*')
+                            .eq('id', user.id)
+                            .maybeSingle();
+                            
+                        if (newProfile && newProfile.role === 'admin') {
+                            showMessage('Admin login successful! Redirecting...', 'success');
+                            setTimeout(() => {
+                                window.location.href = "admin-dashboard.html";
+                            }, 1500);
+                            return;
+                        } else {
+                            showMessage('Account created. Admin access not granted.', 'info');
+                            await supabase.auth.signOut();
+                            loginBtn.disabled = false;
+                            loginBtn.innerHTML = 'Admin Login';
+                            return;
+                        }
                     }
 
-                    // Step 3: Verify admin role
+                    // STEP 4: Verify admin role
                     if (profile.role !== 'admin') {
                         showMessage('Access denied. Admin privileges required.', 'error');
                         await supabase.auth.signOut();
@@ -225,7 +240,7 @@
                         return;
                     }
 
-                    // Success
+                    // STEP 5: Success - redirect to admin dashboard
                     showMessage('Admin login successful! Redirecting...', 'success');
                     setTimeout(() => {
                         window.location.href = "admin-dashboard.html";
