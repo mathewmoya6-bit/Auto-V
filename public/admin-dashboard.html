@@ -255,7 +255,7 @@
                             <th>Premium Fee</th>
                             <th>Certificate Fee</th>
                             <th>Actions</th>
-                        </table>
+                        </tr>
                     </thead>
                     <tbody id="pricingBody">
                         <tr><td colspan="7" style="text-align:center;">Loading pricing rules...<\/td><\/tr>
@@ -276,7 +276,7 @@
         <div id="requestsTab" class="card" style="display:none;">
             <h2>📋 Service Requests</h2>
             <div style="overflow-x: auto;">
-                <table id="requestsTable"><thead><tr><th>Date</th><th>Type</th><th>Vehicle</th><th>Amount</th><th>Status</th></tr></thead><tbody id="requestsBody"><td><td colspan="5">Loading...<\/td><\/tr></tbody></table>
+                <table id="requestsTable"><thead><tr><th>Date</th><th>Type</th><th>Vehicle</th><th>Amount</th><th>Status</th></tr></thead><tbody id="requestsBody"><tr><td colspan="5">Loading...<\/td><\/tr></tbody></table>
             </div>
         </div>
 
@@ -284,7 +284,7 @@
         <div id="paymentsTab" class="card" style="display:none;">
             <h2>💳 Payment Transactions</h2>
             <div style="overflow-x: auto;">
-                <table id="paymentsTable"><thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Receipt</th><th>Status</th></td></thead><tbody id="paymentsBody"><tr><td colspan="5">Loading...<\/td><\/tr></tbody></table>
+                <table id="paymentsTable"><thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead><tbody id="paymentsBody"><tr><td colspan="5">Loading...<\/td><\/tr></tbody></table>
             </div>
         </div>
     </div>
@@ -304,11 +304,12 @@
 
 <script>
 // ============================================
-// SUPABASE SINGLE SOURCE OF TRUTH
+// SUPABASE SINGLE SOURCE OF TRUTH - UNIQUE VARIABLE NAME
+// Using __SUPABASE_CLIENT__ to avoid any conflict
 // ============================================
-const supabaseUrl = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+const __SUPABASE_URL__ = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const __SUPABASE_KEY__ = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+const __supabase = window.supabase.createClient(__SUPABASE_URL__, __SUPABASE_KEY__);
 
 let currentUser = null;
 let allPricingRules = [];
@@ -317,11 +318,11 @@ let allPricingRules = [];
 // AUTHENTICATION
 // ============================================
 async function checkAdmin() {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await __supabase.auth.getUser();
     if (error || !user) { window.location.href = "admin-login.html"; return false; }
-    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    const { data: profile } = await __supabase.from('user_profiles').select('role').eq('id', user.id).single();
     if (!profile || profile.role !== 'admin') {
-        await supabase.auth.signOut();
+        await __supabase.auth.signOut();
         window.location.href = "admin-login.html";
         return false;
     }
@@ -333,7 +334,7 @@ async function checkAdmin() {
 // PRICING RULES CRUD (FULL WORKING)
 // ============================================
 async function loadPricingRules() {
-    const { data, error } = await supabase.from('pricing_rules').select('*').order('vehicle_category', { ascending: true });
+    const { data, error } = await __supabase.from('pricing_rules').select('*').order('vehicle_category', { ascending: true });
     if (error) {
         console.error('Error loading pricing:', error);
         await initPricingTable();
@@ -355,7 +356,7 @@ async function initPricingTable() {
         { vehicle_category: 'commercial', purpose: 'fleet_valuation', base_price: 3500, express_fee: 1000, premium_fee: 7000, certificate_fee: 500 }
     ];
     for (const rule of defaultRules) {
-        await supabase.from('pricing_rules').upsert(rule, { onConflict: 'vehicle_category,purpose' });
+        await __supabase.from('pricing_rules').upsert(rule, { onConflict: 'vehicle_category,purpose' });
     }
     await loadPricingRules();
 }
@@ -396,7 +397,7 @@ function renderPricingTable() {
 }
 
 async function updatePriceField(id, field, value) {
-    const { error } = await supabase.from('pricing_rules').update({ [field]: parseInt(value) || 0 }).eq('id', id);
+    const { error } = await __supabase.from('pricing_rules').update({ [field]: parseInt(value) || 0 }).eq('id', id);
     if (error) showMessage('Error updating price', 'error');
     else showMessage('Price updated!', 'success');
 }
@@ -421,7 +422,7 @@ window.updatePricingRule = async () => {
         premium_fee: parseInt(document.getElementById('editPremiumFee').value) || 0,
         certificate_fee: parseInt(document.getElementById('editCertFee').value) || 0
     };
-    const { error } = await supabase.from('pricing_rules').update(updates).eq('id', id);
+    const { error } = await __supabase.from('pricing_rules').update(updates).eq('id', id);
     if (error) showMessage('Error: ' + error.message, 'error');
     else { showMessage('Rule updated!', 'success'); closeModal('editModal'); loadPricingRules(); }
 };
@@ -435,14 +436,14 @@ window.addPricingRule = async () => {
         premium_fee: parseInt(document.getElementById('newPremiumFee').value) || 0,
         certificate_fee: parseInt(document.getElementById('newCertFee').value) || 0
     };
-    const { error } = await supabase.from('pricing_rules').insert(newRule);
+    const { error } = await __supabase.from('pricing_rules').insert(newRule);
     if (error) showMessage('Error: ' + error.message, 'error');
     else { showMessage('Rule added!', 'success'); loadPricingRules(); }
 };
 
 window.deletePricingRule = async (id) => {
     if (confirm('Delete this pricing rule?')) {
-        const { error } = await supabase.from('pricing_rules').delete().eq('id', id);
+        const { error } = await __supabase.from('pricing_rules').delete().eq('id', id);
         if (error) showMessage('Error: ' + error.message, 'error');
         else { showMessage('Rule deleted!', 'success'); loadPricingRules(); }
     }
@@ -452,8 +453,8 @@ window.deletePricingRule = async (id) => {
 // OTHER DATA LOADING
 // ============================================
 async function loadStats() {
-    const { data: users } = await supabase.from('user_profiles').select('id');
-    const { data: requests } = await supabase.from('service_requests').select('*');
+    const { data: users } = await __supabase.from('user_profiles').select('id');
+    const { data: requests } = await __supabase.from('service_requests').select('*');
     const revenue = requests?.reduce((sum, r) => sum + (r.payment_status === 'paid' ? (r.amount || 0) : 0), 0) || 0;
     document.getElementById('totalUsers').innerText = users?.length || 0;
     document.getElementById('totalRequests').innerText = requests?.length || 0;
@@ -461,7 +462,7 @@ async function loadStats() {
 }
 
 async function loadUsers() {
-    const { data } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
+    const { data } = await __supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
     document.getElementById('usersBody').innerHTML = (data || []).map(u => `
         <tr>
             <td>${u.id?.slice(0,8)}...<\/td>
@@ -473,7 +474,7 @@ async function loadUsers() {
 }
 
 async function loadRequests() {
-    const { data } = await supabase.from('service_requests').select('*').order('created_at', { ascending: false });
+    const { data } = await __supabase.from('service_requests').select('*').order('created_at', { ascending: false });
     document.getElementById('requestsBody').innerHTML = (data || []).slice(0, 50).map(r => `
         <tr>
             <td>${new Date(r.created_at).toLocaleString()}<\/td>
@@ -486,7 +487,7 @@ async function loadRequests() {
 }
 
 async function loadPayments() {
-    const { data } = await supabase.from('mpesa_transactions').select('*').order('created_at', { ascending: false });
+    const { data } = await __supabase.from('mpesa_transactions').select('*').order('created_at', { ascending: false });
     document.getElementById('paymentsBody').innerHTML = (data || []).slice(0, 50).map(p => `
         <tr>
             <td>${new Date(p.created_at).toLocaleString()}<\/td>
@@ -511,7 +512,7 @@ function switchTab(tab) {
     if (tab === 'pricing') loadPricingRules();
 }
 
-document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
+document.getElementById('logoutBtn').onclick = async () => { await __supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
 document.querySelectorAll('.tab-btn').forEach(btn => { btn.onclick = () => switchTab(btn.dataset.tab); });
 
 async function init() {
