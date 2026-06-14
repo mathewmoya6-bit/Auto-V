@@ -28,6 +28,8 @@
         }
         .logo { font-size: 24px; font-weight: bold; color: #eab308; display: flex; align-items: center; gap: 10px; }
         .logo span { font-size: 12px; color: #94a3b8; }
+        .user-info { display: flex; align-items: center; gap: 15px; }
+        .user-role { background: #eab308; color: black; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; }
         .logout-btn { background: #dc2626; color: #fff; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         .logout-btn:hover { background: #b91c1c; }
         .container { max-width: 1400px; margin: auto; padding: 24px; }
@@ -46,6 +48,7 @@
         .service-icon { font-size: 48px; margin-bottom: 10px; }
         .service-card h3 { color: #eab308; margin-bottom: 10px; }
         .price { font-size: 28px; font-weight: bold; color: #22c55e; margin: 15px 0; }
+        .price-note { font-size: 11px; color: #94a3b8; margin-top: 5px; }
         .btn-primary {
             background: #eab308;
             color: #000;
@@ -62,9 +65,11 @@
         th, td { padding: 10px; border-bottom: 1px solid #1f2937; text-align: left; }
         th { color: #eab308; }
         .badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
+        .badge-draft { background: #64748b; color: white; }
         .badge-pending { background: #eab308; color: #000; }
         .badge-paid { background: #22c55e; color: #000; }
         .badge-completed { background: #8b5cf6; color: #fff; }
+        .badge-approved { background: #3b82f6; color: #fff; }
         .modal {
             display: none;
             position: fixed;
@@ -124,11 +129,7 @@
             border-radius: 8px;
             overflow: hidden;
         }
-        .preview-item img {
-            width: 100%;
-            height: 80px;
-            object-fit: cover;
-        }
+        .preview-item img { width: 100%; height: 80px; object-fit: cover; }
         .remove-image {
             position: absolute;
             top: 2px;
@@ -147,20 +148,30 @@
         .btn-success:hover { background: #16a34a; }
         .btn-secondary { background: #475569; color: #fff; flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        @media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } }
-        .result-box {
+        .service-type-selector {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .service-option {
+            flex: 1;
+            padding: 15px;
             background: #1e293b;
             border-radius: 12px;
-            padding: 20px;
-            margin-top: 20px;
-            display: none;
-        }
-        .result-value {
-            font-size: 36px;
-            font-weight: bold;
-            color: #22c55e;
+            cursor: pointer;
             text-align: center;
+            border: 2px solid transparent;
+            transition: all 0.3s;
         }
+        .service-option.selected {
+            border-color: #eab308;
+            background: #2d3a4e;
+        }
+        .service-option:hover { background: #334155; }
+        .service-option-icon { font-size: 32px; margin-bottom: 5px; }
+        .service-option-title { font-weight: bold; }
+        .service-option-price { font-size: 12px; color: #22c55e; }
+        @media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } }
         .spinner {
             display: inline-block;
             width: 20px;
@@ -181,32 +192,21 @@
         }
         .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
         .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
-        .payment-status {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #111827;
-            padding: 15px 25px;
-            border-radius: 12px;
-            border-left: 4px solid #eab308;
-            display: none;
-            z-index: 1000;
-        }
     </style>
 </head>
 <body>
     <header>
-        <div class="logo">
-            🚗 AUTO-V 
-            <span>| Vehicle Intelligence Platform</span>
+        <div class="logo">🚗 AUTO-V <span>| Vehicle Intelligence Platform</span></div>
+        <div class="user-info">
+            <span class="user-role" id="userRole">Loading...</span>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
-        <button class="logout-btn" id="logoutBtn">Logout</button>
     </header>
     <div class="container">
         <div class="card">
             <h2>Welcome to AUTO-V</h2>
             <div id="email">Loading...</div>
-            <p style="color: #94a3b8; margin-top: 5px;">Complete vehicle valuation and inspection with AI-powered analysis</p>
+            <p style="color: #94a3b8; margin-top: 5px;">Professional vehicle valuation and inspection services</p>
         </div>
 
         <div id="errorMsg" class="error"></div>
@@ -216,15 +216,17 @@
             <div class="service-card" id="valuationCard">
                 <div class="service-icon">💰</div>
                 <h3>Vehicle Valuation</h3>
-                <p>Market value, insurance value, trade-in estimate</p>
-                <div class="price" id="valuationPrice">KES 2,500</div>
+                <p>Instant market estimate / Professional valuation</p>
+                <div class="price" id="valuationPrice">KES 0</div>
+                <div class="price-note">Starting from</div>
                 <button class="btn-primary" id="valuationBtn">Start Valuation →</button>
             </div>
             <div class="service-card" id="inspectionCard">
                 <div class="service-icon">🔍</div>
                 <h3>Vehicle Inspection</h3>
-                <p>150+ point comprehensive inspection</p>
-                <div class="price" id="inspectionPrice">KES 3,500</div>
+                <p>Comprehensive 150+ point inspection</p>
+                <div class="price" id="inspectionPrice">KES 0</div>
+                <div class="price-note">Starting from</div>
                 <button class="btn-primary" id="inspectionBtn">Start Inspection →</button>
             </div>
         </div>
@@ -233,8 +235,8 @@
             <h2>📋 My Service History</h2>
             <div style="overflow-x: auto;">
                 <table id="historyTable">
-                    <thead><tr><th>Date</th><th>Service</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Result</th></tr></thead>
-                    <tbody id="historyBody"><tr><td colspan="6" style="text-align:center;padding:40px;">Loading...<\/td><\/tr></tbody>
+                    <thead><tr><th>Date</th><th>Request ID</th><th>Service</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th><th>Result</th></tr></thead>
+                    <tbody id="historyBody"><tr><td colspan="8" style="text-align:center;padding:40px;">Loading...<\/td><\/tr></tbody>
                 </table>
             </div>
         </div>
@@ -245,11 +247,31 @@
         <div class="modal-content">
             <h2>💰 Vehicle Valuation</h2>
             <div id="valuationError" class="error"></div>
-            
+
+            <!-- Service Type Selection -->
+            <h3>Select Service Type</h3>
+            <div class="service-type-selector" id="valuationServiceType">
+                <div class="service-option" data-type="instant">
+                    <div class="service-option-icon">⚡</div>
+                    <div class="service-option-title">Instant Market Estimate</div>
+                    <div class="service-option-price">AI Generated · No Inspection</div>
+                </div>
+                <div class="service-option" data-type="standard">
+                    <div class="service-option-icon">📄</div>
+                    <div class="service-option-title">Standard Valuation</div>
+                    <div class="service-option-price">Physical Inspection · Certificate</div>
+                </div>
+                <div class="service-option" data-type="premium">
+                    <div class="service-option-icon">⭐</div>
+                    <div class="service-option-title">Premium Inspection & Valuation</div>
+                    <div class="service-option-price">Full Inspection · Certified Report</div>
+                </div>
+            </div>
+
             <h3>Vehicle Information</h3>
             <div class="form-row">
                 <div class="form-group"><label class="required">Registration</label><input type="text" id="valReg" placeholder="KCA 123A"></div>
-                <div class="form-group"><label class="required">VIN / Chassis</label><input type="text" id="valVin" placeholder="JTEGD34V000123456"></div>
+                <div class="form-group"><label>VIN / Chassis</label><input type="text" id="valVin" placeholder="JTEGD34V000123456"></div>
             </div>
             <div class="form-row">
                 <div class="form-group"><label class="required">Make</label><input type="text" id="valMake" placeholder="Toyota"></div>
@@ -272,19 +294,25 @@
             <div class="form-group">
                 <select id="valPurpose">
                     <option value="">-- Select Purpose --</option>
-                    <option>Pre-Insurance Valuation</option>
-                    <option>Technical Brief Valuation</option>
-                    <option>Accident Assessment</option>
-                    <option>Pre-Loss Valuation</option>
-                    <option>Pre-Purchase Inspection & Valuation</option>
-                    <option>Insurance Claim Verification</option>
-                    <option>Loan / Security (Collateral) Valuation</option>
-                    <option>Import Verification / Customs Valuation</option>
-                    <option>Fleet / Corporate Asset Valuation</option>
-                    <option>Total Loss Evaluation</option>
-                    <option>Estate / Probate Valuation</option>
-                    <option>Legal / Court Case Valuation</option>
-                    <option>Hire Purchase / Lease Valuation</option>
+                    <option value="market_value">💰 Market Value</option>
+                    <option value="insurance">🛡️ Insurance Valuation</option>
+                    <option value="forced_sale">📉 Forced Sale Value</option>
+                    <option value="trade_in">🔄 Trade-In Valuation</option>
+                    <option value="loan">🏦 Loan / Security Valuation</option>
+                    <option value="asset_financing">💵 Asset Financing</option>
+                    <option value="pre_purchase">🔍 Pre-Purchase Inspection</option>
+                    <option value="fleet">🚛 Fleet Valuation</option>
+                    <option value="company_asset">📊 Company Asset Register</option>
+                    <option value="import_duty">🌍 Import Duty Assessment</option>
+                    <option value="tax">💰 Tax Assessment</option>
+                    <option value="court">⚖️ Court Evidence</option>
+                    <option value="legal">📋 Legal Dispute</option>
+                    <option value="estate">📜 Estate / Probate</option>
+                    <option value="divorce">💔 Divorce Settlement</option>
+                    <option value="auction">🔨 Auction</option>
+                    <option value="leasing">📝 Leasing</option>
+                    <option value="internal_asset">📁 Internal Asset Management</option>
+                    <option value="dealer_stock">🚗 Dealer Stock Evaluation</option>
                 </select>
             </div>
 
@@ -298,17 +326,17 @@
                 <div class="form-group"><label>Number of Owners</label><select id="valOwners"><option>1</option><option>2</option><option>3</option><option>4+</option></select></div>
             </div>
 
-            <h3>📸 Vehicle Images (Required)</h3>
+            <h3>📸 Vehicle Images</h3>
             <div class="form-group">
                 <div class="upload-area" id="valImageUpload">
                     <div>📸 Click or drag to upload vehicle images</div>
-                    <div style="font-size: 12px; margin-top: 5px;">Front, Rear, Side, Interior, Engine, Odometer</div>
+                    <div style="font-size: 12px;">Front, Rear, Side, Interior, Engine, Odometer</div>
                     <input type="file" id="valImages" multiple accept="image/*" style="display:none">
                 </div>
                 <div id="valImagePreview" class="image-preview"></div>
             </div>
 
-            <h3>📄 Documents (Optional)</h3>
+            <h3>📄 Documents</h3>
             <div class="form-group">
                 <div class="upload-area" id="valDocUpload">
                     <div>📄 Click or drag to upload documents</div>
@@ -321,7 +349,7 @@
             <div class="form-group"><label>Additional Notes</label><textarea id="valNotes" rows="2" placeholder="Any additional information..."></textarea></div>
 
             <div class="modal-buttons">
-                <button class="btn-success" id="submitValuationBtn">💳 Pay & Submit</button>
+                <button class="btn-success" id="submitValuationBtn">💳 Proceed to Payment</button>
                 <button class="btn-secondary" onclick="closeModal('valuationModal')">Cancel</button>
             </div>
         </div>
@@ -350,12 +378,12 @@
             <h3>Inspection Type</h3>
             <div class="form-group">
                 <select id="insType">
-                    <option>Full Mechanical Inspection</option>
-                    <option>Pre-Purchase Inspection</option>
-                    <option>Accident Assessment</option>
-                    <option>Roadworthiness & Compliance</option>
-                    <option>Fraud / Identity Verification</option>
-                    <option>Non-Standard (Modified/Salvage)</option>
+                    <option value="full_mechanical">🔧 Full Mechanical Inspection</option>
+                    <option value="pre_purchase">🔍 Pre-Purchase Inspection</option>
+                    <option value="accident_assessment">💥 Accident Assessment</option>
+                    <option value="roadworthiness">🛣️ Roadworthiness & Compliance</option>
+                    <option value="fraud_verification">🛡️ Fraud / Identity Verification</option>
+                    <option value="non_standard">🔧 Non-Standard (Modified/Salvage)</option>
                 </select>
             </div>
 
@@ -369,7 +397,7 @@
                 <div class="form-group"><label>Interior</label><input type="range" id="insInterior" min="1" max="10" value="8" oninput="document.getElementById('interiorVal').innerText=this.value"><span id="interiorVal">8</span>/10</div>
             </div>
 
-            <h3>📸 Inspection Images (Required)</h3>
+            <h3>📸 Inspection Images</h3>
             <div class="form-group">
                 <div class="upload-area" id="insImageUpload">
                     <div>📸 Click or drag to upload inspection images</div>
@@ -382,70 +410,89 @@
             <div class="form-group"><label>Inspector Notes</label><textarea id="insNotes" rows="2" placeholder="Detailed inspection notes..."></textarea></div>
 
             <div class="modal-buttons">
-                <button class="btn-success" id="submitInspectionBtn">💳 Pay & Submit</button>
+                <button class="btn-success" id="submitInspectionBtn">💳 Proceed to Payment</button>
                 <button class="btn-secondary" onclick="closeModal('inspectionModal')">Cancel</button>
             </div>
         </div>
     </div>
 
-    <div id="paymentStatus" class="payment-status">⏳ Processing...</div>
-
     <script>
-        // Supabase Single Source of Truth - No duplicate declaration
+        // Supabase Single Source of Truth
         (function() {
             const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
             const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
             let currentUser = null;
-            let valuationFee = 2500;
-            let inspectionFee = 3500;
+            let currentUserRole = 'user';
+            let valuationPrice = 2500;
+            let inspectionPrice = 3500;
             let valImageFiles = [];
             let valDocFiles = [];
             let insImageFiles = [];
-            let isProcessing = false;
+            let selectedValuationType = 'standard';
 
-            // DOM Elements
-            const emailEl = document.getElementById('email');
-            const valuationPriceEl = document.getElementById('valuationPrice');
-            const inspectionPriceEl = document.getElementById('inspectionPrice');
-            const historyBody = document.getElementById('historyBody');
-            const logoutBtn = document.getElementById('logoutBtn');
-            const valuationBtn = document.getElementById('valuationBtn');
-            const inspectionBtn = document.getElementById('inspectionBtn');
-            const submitValuationBtn = document.getElementById('submitValuationBtn');
-            const submitInspectionBtn = document.getElementById('submitInspectionBtn');
+            // Service type prices mapping
+            const servicePrices = {
+                instant: { valuation: 0, inspection: 0 },
+                standard: { valuation: 2500, inspection: 3500 },
+                premium: { valuation: 5000, inspection: 7000 }
+            };
 
             async function init() {
                 const { data: { user }, error } = await supabase.auth.getUser();
                 if (error || !user) { window.location.href = "login.html"; return; }
                 currentUser = user;
-                if (emailEl) emailEl.innerHTML = `Logged in as: ${user.email}`;
+                
+                // Get user role
+                const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+                if (profile) {
+                    currentUserRole = profile.role;
+                    document.getElementById('userRole').innerHTML = currentUserRole === 'admin' ? '👑 ADMIN' : '👤 USER';
+                }
+                document.getElementById('email').innerHTML = `Logged in as: ${user.email}`;
+                
                 await loadFees();
                 await loadHistory();
                 setupImageUploads();
+                setupServiceTypeSelector();
             }
 
             async function loadFees() {
                 try {
                     const { data: vFee } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
                     const { data: iFee } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
-                    if (vFee) valuationFee = parseInt(vFee.setting_value);
-                    if (iFee) inspectionFee = parseInt(iFee.setting_value);
-                    if (valuationPriceEl) valuationPriceEl.innerHTML = `KES ${valuationFee.toLocaleString()}`;
-                    if (inspectionPriceEl) inspectionPriceEl.innerHTML = `KES ${inspectionFee.toLocaleString()}`;
+                    if (vFee) valuationPrice = parseInt(vFee.setting_value);
+                    if (iFee) inspectionPrice = parseInt(iFee.setting_value);
+                    
+                    document.getElementById('valuationPrice').innerHTML = `KES ${valuationPrice.toLocaleString()}`;
+                    document.getElementById('inspectionPrice').innerHTML = `KES ${inspectionPrice.toLocaleString()}`;
                 } catch(e) { console.log('Using default fees'); }
             }
 
             async function loadHistory() {
                 try {
                     const { data } = await supabase.from('service_requests').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
-                    if (!historyBody) return;
-                    if (!data || data.length === 0) { 
-                        historyBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;">No requests yet. Start a service above!<\/td><\/tr>'; 
-                        return; 
+                    const tbody = document.getElementById('historyBody');
+                    if (!data || data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;">No requests yet. Start a service above!<\/td><\/tr>';
+                        return;
                     }
-                    historyBody.innerHTML = data.map(r => {
+                    
+                    // Status badge mapping
+                    const getStatusBadge = (status) => {
+                        const badges = {
+                            'draft': 'badge-draft',
+                            'awaiting_payment': 'badge-pending',
+                            'payment_confirmed': 'badge-paid',
+                            'inspection_completed': 'badge-completed',
+                            'approved': 'badge-approved',
+                            'completed': 'badge-completed'
+                        };
+                        return badges[status] || 'badge-pending';
+                    };
+                    
+                    tbody.innerHTML = data.map(r => {
                         let resultText = '-';
                         if (r.result) {
                             if (r.service_type === 'valuation') resultText = `KES ${r.result.market_value?.toLocaleString() || 'N/A'}`;
@@ -453,48 +500,54 @@
                         }
                         return `<tr>
                             <td>${new Date(r.created_at).toLocaleString()}<\/td>
+                            <td><span style="font-family:monospace; font-size:11px;">${r.id?.slice(0,8)}...<\/span><\/td>
                             <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}<\/td>
                             <td>${r.make} ${r.model} (${r.registration_number})<\/td>
                             <td>KES ${(r.amount || 0).toLocaleString()}<\/td>
-                            <td><span class="badge badge-${r.payment_status === 'paid' ? 'paid' : 'pending'}">${r.payment_status || 'pending'}</span><\/td>
-                            <td><strong>${resultText}</strong><\/td>
+                            <td><span class="badge ${r.payment_status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.payment_status || 'pending'}<\/span><\/td>
+                            <td><span class="badge ${getStatusBadge(r.status)}">${r.status || 'draft'}<\/span><\/td>
+                            <td><strong>${resultText}<\/strong><\/td>
                         </tr>`;
                     }).join('');
                 } catch(e) { console.error(e); }
             }
 
+            function setupServiceTypeSelector() {
+                const options = document.querySelectorAll('#valuationServiceType .service-option');
+                options.forEach(opt => {
+                    opt.onclick = () => {
+                        options.forEach(o => o.classList.remove('selected'));
+                        opt.classList.add('selected');
+                        selectedValuationType = opt.dataset.type;
+                        const prices = servicePrices[selectedValuationType];
+                        if (prices) {
+                            document.getElementById('valuationPrice').innerHTML = `KES ${prices.valuation.toLocaleString()}`;
+                        }
+                    };
+                });
+                // Select standard by default
+                document.querySelector('#valuationServiceType .service-option[data-type="standard"]')?.classList.add('selected');
+            }
+
             function setupImageUploads() {
-                // Valuation Images
-                const valImgUpload = document.getElementById('valImageUpload');
-                const valImgInput = document.getElementById('valImages');
-                if (valImgUpload && valImgInput) {
-                    valImgUpload.onclick = () => valImgInput.click();
-                    valImgInput.onchange = (e) => handleImageUpload(e, 'valImagePreview', valImageFiles);
-                }
-                
-                // Valuation Documents
-                const valDocUpload = document.getElementById('valDocUpload');
-                const valDocInput = document.getElementById('valDocs');
-                if (valDocUpload && valDocInput) {
-                    valDocUpload.onclick = () => valDocInput.click();
-                    valDocInput.onchange = (e) => handleImageUpload(e, 'valDocPreview', valDocFiles);
-                }
-                
-                // Inspection Images
-                const insImgUpload = document.getElementById('insImageUpload');
-                const insImgInput = document.getElementById('insImages');
-                if (insImgUpload && insImgInput) {
-                    insImgUpload.onclick = () => insImgInput.click();
-                    insImgInput.onchange = (e) => handleImageUpload(e, 'insImagePreview', insImageFiles);
+                setupUpload('valImageUpload', 'valImages', 'valImagePreview', valImageFiles);
+                setupUpload('valDocUpload', 'valDocs', 'valDocPreview', valDocFiles);
+                setupUpload('insImageUpload', 'insImages', 'insImagePreview', insImageFiles);
+            }
+
+            function setupUpload(uploadId, inputId, previewId, fileArray) {
+                const uploadArea = document.getElementById(uploadId);
+                const input = document.getElementById(inputId);
+                if (uploadArea && input) {
+                    uploadArea.onclick = () => input.click();
+                    input.onchange = (e) => handleFiles(e.target.files, previewId, fileArray);
                 }
             }
 
-            function handleImageUpload(event, previewId, fileArray) {
-                const files = Array.from(event.target.files);
+            function handleFiles(files, previewId, fileArray) {
                 const preview = document.getElementById(previewId);
                 if (!preview) return;
-                
-                files.forEach(file => {
+                Array.from(files).forEach(file => {
                     if (!file.type.startsWith('image/')) return;
                     fileArray.push(file);
                     const reader = new FileReader();
@@ -532,25 +585,22 @@
             }
 
             async function submitValuation() {
-                if (isProcessing) { showMessage('Please wait...', 'error'); return; }
-                
-                const registration = document.getElementById('valReg')?.value;
+                const reg = document.getElementById('valReg')?.value;
                 const make = document.getElementById('valMake')?.value;
                 const model = document.getElementById('valModel')?.value;
                 const year = document.getElementById('valYear')?.value;
                 const odometer = document.getElementById('valOdometer')?.value;
                 const purpose = document.getElementById('valPurpose')?.value;
+                const phone = document.getElementById('valPhone')?.value;
                 
-                if (!registration || !make || !model || !year || !odometer || !purpose) {
+                if (!reg || !make || !model || !year || !odometer || !purpose) {
                     showMessage('Please fill all required fields', 'error');
                     return;
                 }
                 
-                isProcessing = true;
-                if (submitValuationBtn) {
-                    submitValuationBtn.disabled = true;
-                    submitValuationBtn.innerHTML = '<span class="spinner"></span> Submitting...';
-                }
+                const btn = document.getElementById('submitValuationBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span> Processing...';
                 
                 try {
                     const imageUrls = await uploadFiles(valImageFiles, `users/${currentUser.id}/valuations/${Date.now()}/images`);
@@ -560,131 +610,114 @@
                     let marketValue = Math.max(300000, 2000000 - (2000000 * Math.min(age * 0.08, 0.7)));
                     if (make.toLowerCase() === 'toyota') marketValue = Math.round(marketValue * 1.1);
                     
-                    const result = {
-                        market_value: marketValue,
-                        insurance_value: Math.round(marketValue * 1.1),
-                        trade_in_value: Math.round(marketValue * 0.8),
-                        forced_sale_value: Math.round(marketValue * 0.7),
-                        age_years: age,
-                        depreciation_rate: age * 10
-                    };
+                    const amount = servicePrices[selectedValuationType]?.valuation || valuationPrice;
                     
                     const { data, error } = await supabase.from('service_requests').insert({
                         user_id: currentUser.id,
                         service_type: 'valuation',
-                        registration_number: registration,
+                        service_level: selectedValuationType,
+                        registration_number: reg,
+                        vin: document.getElementById('valVin')?.value,
                         make: make,
                         model: model,
                         year: parseInt(year),
+                        engine_number: document.getElementById('valEngine')?.value,
+                        fuel_type: document.getElementById('valFuel')?.value,
+                        transmission: document.getElementById('valTrans')?.value,
                         odometer: parseInt(odometer),
+                        color: document.getElementById('valColor')?.value,
                         valuation_purpose: purpose,
+                        condition: document.getElementById('valCondition')?.value,
+                        accident_history: document.getElementById('valAccident')?.value,
+                        service_history: document.getElementById('valService')?.value,
+                        owners_count: parseInt(document.getElementById('valOwners')?.value) || 1,
+                        notes: document.getElementById('valNotes')?.value,
                         image_urls: imageUrls,
                         document_urls: docUrls,
-                        amount: valuationFee,
+                        amount: amount,
                         payment_status: 'pending',
                         status: 'awaiting_payment',
-                        result: result
+                        result: { market_value: marketValue, estimated_value: marketValue }
                     }).select().single();
                     
                     if (error) throw error;
-                    showMessage('Valuation created! Redirecting to payment...', 'success');
+                    showMessage('Request created! Redirecting to payment...', 'success');
                     setTimeout(() => {
-                        window.location.href = `payment.html?id=${data.id}&type=valuation&amount=${valuationFee}`;
+                        window.location.href = `payment.html?id=${data.id}&type=valuation&amount=${amount}`;
                     }, 1500);
                     
                 } catch (error) {
                     showMessage('Error: ' + error.message, 'error');
-                    if (submitValuationBtn) {
-                        submitValuationBtn.disabled = false;
-                        submitValuationBtn.innerHTML = '💳 Pay & Submit';
-                    }
-                } finally {
-                    isProcessing = false;
+                    btn.disabled = false;
+                    btn.innerHTML = '💳 Proceed to Payment';
                 }
             }
 
             async function submitInspection() {
-                if (isProcessing) { showMessage('Please wait...', 'error'); return; }
-                
-                const registration = document.getElementById('insReg')?.value;
+                const reg = document.getElementById('insReg')?.value;
                 const make = document.getElementById('insMake')?.value;
                 const model = document.getElementById('insModel')?.value;
                 const year = document.getElementById('insYear')?.value;
                 const odometer = document.getElementById('insOdometer')?.value;
                 
-                if (!registration || !make || !model || !year || !odometer) {
+                if (!reg || !make || !model || !year || !odometer) {
                     showMessage('Please fill all required fields', 'error');
                     return;
                 }
                 
-                isProcessing = true;
-                if (submitInspectionBtn) {
-                    submitInspectionBtn.disabled = true;
-                    submitInspectionBtn.innerHTML = '<span class="spinner"></span> Submitting...';
-                }
+                const btn = document.getElementById('submitInspectionBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span> Processing...';
                 
                 try {
                     const imageUrls = await uploadFiles(insImageFiles, `users/${currentUser.id}/inspections/${Date.now()}/images`);
-                    
-                    const result = {
-                        overall_score: 85,
-                        verdict: 'PASS',
-                        certificate_number: `INS-${Date.now()}`
-                    };
+                    const engineScore = parseInt(document.getElementById('insEngine')?.value) || 8;
+                    const transScore = parseInt(document.getElementById('insTrans')?.value) || 8;
+                    const bodyScore = parseInt(document.getElementById('insBody')?.value) || 8;
+                    const interiorScore = parseInt(document.getElementById('insInterior')?.value) || 8;
+                    const overallScore = Math.round((engineScore + transScore + bodyScore + interiorScore) / 4);
                     
                     const { data, error } = await supabase.from('service_requests').insert({
                         user_id: currentUser.id,
                         service_type: 'inspection',
-                        registration_number: registration,
+                        registration_number: reg,
+                        vin: document.getElementById('insVin')?.value,
                         make: make,
                         model: model,
                         year: parseInt(year),
                         odometer: parseInt(odometer),
+                        inspection_type: document.getElementById('insType')?.value,
+                        condition_scores: { engine: engineScore, transmission: transScore, body: bodyScore, interior: interiorScore },
+                        notes: document.getElementById('insNotes')?.value,
                         image_urls: imageUrls,
-                        amount: inspectionFee,
+                        amount: inspectionPrice,
                         payment_status: 'pending',
                         status: 'awaiting_payment',
-                        result: result
+                        result: { overall_score: overallScore, verdict: overallScore >= 70 ? 'PASS' : 'FAIL' }
                     }).select().single();
                     
                     if (error) throw error;
-                    showMessage('Inspection created! Redirecting to payment...', 'success');
+                    showMessage('Request created! Redirecting to payment...', 'success');
                     setTimeout(() => {
-                        window.location.href = `payment.html?id=${data.id}&type=inspection&amount=${inspectionFee}`;
+                        window.location.href = `payment.html?id=${data.id}&type=inspection&amount=${inspectionPrice}`;
                     }, 1500);
                     
                 } catch (error) {
                     showMessage('Error: ' + error.message, 'error');
-                    if (submitInspectionBtn) {
-                        submitInspectionBtn.disabled = false;
-                        submitInspectionBtn.innerHTML = '💳 Pay & Submit';
-                    }
-                } finally {
-                    isProcessing = false;
+                    btn.disabled = false;
+                    btn.innerHTML = '💳 Proceed to Payment';
                 }
             }
 
-            function openValuationModal() { 
-                const modal = document.getElementById('valuationModal');
-                if (modal) modal.style.display = 'flex';
-            }
-            
-            function openInspectionModal() { 
-                const modal = document.getElementById('inspectionModal');
-                if (modal) modal.style.display = 'flex';
-            }
-            
-            window.closeModal = function(id) { 
-                const modal = document.getElementById(id);
-                if (modal) modal.style.display = 'none';
-            };
+            function openValuationModal() { document.getElementById('valuationModal').style.display = 'flex'; }
+            function openInspectionModal() { document.getElementById('inspectionModal').style.display = 'flex'; }
+            window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
 
-            // Event Listeners
-            if (valuationBtn) valuationBtn.onclick = openValuationModal;
-            if (inspectionBtn) inspectionBtn.onclick = openInspectionModal;
-            if (submitValuationBtn) submitValuationBtn.onclick = submitValuation;
-            if (submitInspectionBtn) submitInspectionBtn.onclick = submitInspection;
-            if (logoutBtn) logoutBtn.onclick = async () => { await supabase.auth.signOut(); window.location.href = "login.html"; };
+            document.getElementById('valuationBtn').onclick = openValuationModal;
+            document.getElementById('inspectionBtn').onclick = openInspectionModal;
+            document.getElementById('submitValuationBtn').onclick = submitValuation;
+            document.getElementById('submitInspectionBtn').onclick = submitInspection;
+            document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = "login.html"; };
             
             document.querySelectorAll('.modal').forEach(modal => {
                 modal.onclick = (e) => { if (e.target === modal) window.closeModal(modal.id); };
