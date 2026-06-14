@@ -3,59 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - AUTO-V</title>
-    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/stackblitz/starters/main/shell/static/favicon.png">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>AUTO-V | Admin Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
-        body { background: #0a0a0a; color: white; display: flex; }
-        .sidebar { width: 250px; background: #111; height: 100vh; padding: 20px; border-right: 1px solid #222; }
-        .sidebar h2 { color: #eab308; margin-bottom: 30px; }
-        .sidebar a { display: block; color: #ccc; padding: 12px; text-decoration: none; border-radius: 8px; margin-bottom: 5px; transition: .3s; }
-        .sidebar a:hover, .sidebar a.active { background: #eab308; color: #000; }
-        .main { flex: 1; padding: 30px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #111; border: 1px solid #222; padding: 20px; border-radius: 12px; }
-        .stat-card h3 { color: #eab308; font-size: 14px; }
-        .stat-card .number { font-size: 32px; font-weight: bold; margin-top: 10px; }
-        table { width: 100%; border-collapse: collapse; background: #111; border-radius: 12px; overflow: hidden; }
-        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #222; }
-        th { background: #1a1a1a; color: #eab308; }
-        .badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; }
-        .badge.active { background: #22c55e; color: #000; }
-        .badge.pending { background: #eab308; color: #000; }
-        .badge.inactive { background: #ef4444; color: white; }
-        .btn { background: #eab308; color: #000; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; }
-        @media(max-width:768px){ .sidebar { display: none; } }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0a0c15;
+            color: white;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: auto; }
+        header {
+            background: #0f172a;
+            padding: 16px 24px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { font-size: 24px; font-weight: bold; color: #eab308; }
+        .logout-btn { background: #dc2626; color: white; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #0f172a;
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+            border: 1px solid #1e293b;
+        }
+        .stat-number { font-size: 32px; font-weight: bold; color: #22c55e; }
+        .card {
+            background: #0f172a;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid #1e293b;
+        }
+        h2 { color: #eab308; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1e293b; }
+        th { color: #eab308; }
+        .btn { background: #eab308; color: black; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <h2>AUTO-V Admin</h2>
-        <a href="admin-dashboard.html" class="active">Dashboard</a>
-        <a href="admin.html">Users</a>
-        <a href="reports.html">Reports</a>
-        <a href="settings.html">Settings</a>
-        <a href="index.html">← Back to Site</a>
-    </div>
-    <div class="main">
-        <h1>Admin Dashboard</h1>
-        <div class="stats">
-            <div class="stat-card"><h3>Total Users</h3><div class="number">1,247</div></div>
-            <div class="stat-card"><h3>Vehicles Verified</h3><div class="number">843</div></div>
-            <div class="stat-card"><h3>Pending Inspections</h3><div class="number">32</div></div>
-            <div class="stat-card"><h3>Revenue (KSh)</h3><div class="number">2.4M</div></div>
+    <div class="container">
+        <header>
+            <div class="logo">🚗 AUTO-V Admin</div>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </header>
+        
+        <div class="stats-grid">
+            <div class="stat-card"><h3>Total Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
+            <div class="stat-card"><h3>Total Inspections</h3><div class="stat-number" id="totalInspections">0</div></div>
+            <div class="stat-card"><h3>Total Revenue</h3><div class="stat-number" id="totalRevenue">KES 0</div></div>
+            <div class="stat-card"><h3>Total Users</h3><div class="stat-number" id="totalUsers">0</div></div>
         </div>
-        <h2>Recent Activity</h2>
-        <table>
-            <thead><tr><th>User</th><th>Action</th><th>Status</th><th>Date</th></tr></thead>
-            <tbody>
-                <tr><td>John Kamau</td><td>Vehicle Valuation</td><td><span class="badge active">Completed</span></td><td>2026-06-12</td></tr>
-                <tr><td>Mary Akinyi</td><td>Inspection Request</td><td><span class="badge pending">Pending</span></td><td>2026-06-12</td></tr>
-                <tr><td>Peter Omondi</td><td>Certificate Download</td><td><span class="badge active">Completed</span></td><td>2026-06-11</td></tr>
-            </tbody>
-        </table>
+        
+        <div class="card">
+            <h2>💰 Set Service Fees</h2>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div><label>Valuation Fee (KES)</label><input type="number" id="valuationFee" style="padding:10px; margin-left:10px;"></div>
+                <div><label>Inspection Fee (KES)</label><input type="number" id="inspectionFee" style="padding:10px; margin-left:10px;"></div>
+                <button class="btn" id="updateFeesBtn">Update Fees</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📊 Recent Requests</h2>
+            <div style="overflow-x: auto;">
+                <table id="requestsTable">
+                    <thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th></tr></thead>
+                    <tbody id="requestsBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
+        </div>
     </div>
-    <script src="supabase.js"></script>
+    <script>
+        const supabase = window.AUTO_V_CONFIG?.supabase || window.supabase.createClient(
+            "https://tsvejnzxrxrrecgquxbq.supabase.co",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ"
+        );
+        
+        async function loadData() {
+            const { data: valuations } = await supabase.from('service_requests').select('*').eq('service_type', 'valuation').order('created_at', { ascending: false });
+            const { data: inspections } = await supabase.from('service_requests').select('*').eq('service_type', 'inspection').order('created_at', { ascending: false });
+            const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+            
+            const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+            const all = [...(valuations || []), ...(inspections || [])].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            document.getElementById('totalValuations').innerText = valuations?.length || 0;
+            document.getElementById('totalInspections').innerText = inspections?.length || 0;
+            
+            const revenue = (valuations || []).reduce((s,v) => s + (v.amount || 0), 0) + (inspections || []).reduce((s,i) => s + (i.amount || 0), 0);
+            document.getElementById('totalRevenue').innerHTML = `KES ${revenue.toLocaleString()}`;
+            document.getElementById('totalUsers').innerText = userMap.size;
+            
+            const tbody = document.getElementById('requestsBody');
+            if (all.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No requests<\/td><\/tr>'; return; }
+            tbody.innerHTML = all.slice(0, 50).map(r => `
+                <tr>
+                    <td>${new Date(r.created_at).toLocaleString()}</td>
+                    <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
+                    <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}...</td>
+                    <td>${r.make} ${r.model} ($ {r.registration_number})</td>
+                    <td>KES ${(r.amount || 0).toLocaleString()}</td>
+                    <td><span style="background:${r.payment_status === 'paid' ? '#22c55e' : '#eab308'}; padding:4px 12px; border-radius:20px;">${r.payment_status || 'pending'}</span></td>
+                    <td>${r.status || 'pending'}</td>
+                </tr>
+            `).join('');
+        }
+        
+        async function updateFees() {
+            const valuationFee = document.getElementById('valuationFee').value;
+            const inspectionFee = document.getElementById('inspectionFee').value;
+            await supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: valuationFee });
+            await supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: inspectionFee });
+            alert('Fees updated!');
+        }
+        
+        async function loadFees() {
+            const { data: v } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
+            const { data: i } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
+            if (v) document.getElementById('valuationFee').value = v.setting_value;
+            if (i) document.getElementById('inspectionFee').value = i.setting_value;
+        }
+        
+        document.getElementById('updateFeesBtn').onclick = updateFees;
+        document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
+        
+        supabase.auth.getUser().then(({ data: { user }, error }) => {
+            if (error || !user) window.location.href = 'admin-login.html';
+            else { loadFees(); loadData(); setInterval(loadData, 30000); }
+        });
+    </script>
 </body>
 </html>
