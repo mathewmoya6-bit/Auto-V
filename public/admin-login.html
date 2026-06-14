@@ -25,10 +25,6 @@
             max-width: 450px;
             border: 1px solid #1e293b;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            transition: transform 0.3s;
-        }
-        .login-container:hover {
-            transform: translateY(-3px);
         }
         .logo { text-align: center; margin-bottom: 30px; }
         .logo h1 {
@@ -38,11 +34,7 @@
             background-clip: text;
             color: transparent;
         }
-        .logo p {
-            color: #94a3b8;
-            font-size: 13px;
-            margin-top: 5px;
-        }
+        .logo p { color: #94a3b8; font-size: 13px; margin-top: 5px; }
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500; }
         input {
@@ -53,7 +45,6 @@
             border-radius: 16px;
             color: white;
             font-size: 15px;
-            transition: all 0.3s;
         }
         input:focus {
             outline: none;
@@ -72,15 +63,8 @@
             cursor: pointer;
             transition: all 0.3s;
         }
-        button:hover {
-            background: #facc15;
-            transform: translateY(-2px);
-        }
-        button:disabled {
-            background: #475569;
-            cursor: not-allowed;
-            transform: none;
-        }
+        button:hover { background: #facc15; transform: translateY(-2px); }
+        button:disabled { background: #475569; cursor: not-allowed; }
         .message {
             padding: 12px 16px;
             border-radius: 12px;
@@ -103,9 +87,7 @@
             margin-right: 8px;
             vertical-align: middle;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .mpesa-badge {
             text-align: center;
             margin-top: 24px;
@@ -114,9 +96,7 @@
             font-size: 11px;
             color: #64748b;
         }
-        .mpesa-badge strong {
-            color: #22c55e;
-        }
+        .mpesa-badge strong { color: #22c55e; }
     </style>
 </head>
 <body>
@@ -142,28 +122,22 @@
 
     <script>
         (function() {
-            // Supabase Single Source of Truth
             const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
             const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
-            // DOM Elements
             const emailInput = document.getElementById('email');
             const passwordInput = document.getElementById('password');
             const loginBtn = document.getElementById('loginBtn');
             const messageBox = document.getElementById('messageBox');
 
-            // Show message helper
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
                 messageBox.className = `message ${type}-message`;
                 messageBox.style.display = 'block';
-                setTimeout(() => {
-                    messageBox.style.display = 'none';
-                }, 5000);
+                setTimeout(() => messageBox.style.display = 'none', 5000);
             }
 
-            // Handle Admin Login
             async function handleLogin() {
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
@@ -173,20 +147,18 @@
                     return;
                 }
 
-                // Disable button and show loading
                 loginBtn.disabled = true;
                 loginBtn.innerHTML = '<span class="spinner"></span> Authenticating...';
 
                 try {
-                    // Step 1: Sign in with Supabase
+                    // Step 1: Sign in
                     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
                     if (error) {
-                        console.error('Login error:', error);
                         if (error.message === 'Invalid login credentials') {
-                            showMessage('Invalid email or password. Please try again.', 'error');
+                            showMessage('Invalid email or password.', 'error');
                         } else if (error.message.includes('Email not confirmed')) {
-                            showMessage('Please verify your email address before logging in.', 'info');
+                            showMessage('Please verify your email first.', 'info');
                         } else {
                             showMessage(error.message, 'error');
                         }
@@ -196,22 +168,48 @@
                     }
 
                     if (!data.user) {
-                        showMessage('Login failed. Please try again.', 'error');
+                        showMessage('Login failed.', 'error');
                         loginBtn.disabled = false;
                         loginBtn.innerHTML = 'Admin Login';
                         return;
                     }
 
-                    // Step 2: Check if user has admin role
+                    // Step 2: Check admin role - use maybeSingle() to avoid 406 error
                     const { data: profile, error: profileError } = await supabase
                         .from('user_profiles')
                         .select('role')
                         .eq('id', data.user.id)
-                        .single();
+                        .maybeSingle();  // CRITICAL: Use maybeSingle() not single()
 
                     if (profileError) {
                         console.error('Profile error:', profileError);
-                        showMessage('User profile not found. Please contact support.', 'error');
+                        showMessage('Database error. Please contact support.', 'error');
+                        await supabase.auth.signOut();
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = 'Admin Login';
+                        return;
+                    }
+
+                    // If no profile exists, create one with 'user' role
+                    if (!profile) {
+                        const { error: insertError } = await supabase
+                            .from('user_profiles')
+                            .insert({
+                                id: data.user.id,
+                                email: data.user.email,
+                                role: 'user',
+                                created_at: new Date().toISOString()
+                            });
+                        
+                        if (insertError) {
+                            showMessage('Failed to create user profile.', 'error');
+                            await supabase.auth.signOut();
+                            loginBtn.disabled = false;
+                            loginBtn.innerHTML = 'Admin Login';
+                            return;
+                        }
+                        
+                        showMessage('Profile created. Admin access not granted.', 'info');
                         await supabase.auth.signOut();
                         loginBtn.disabled = false;
                         loginBtn.innerHTML = 'Admin Login';
@@ -227,39 +225,32 @@
                         return;
                     }
 
-                    // Success - redirect to admin dashboard
+                    // Success
                     showMessage('Admin login successful! Redirecting...', 'success');
                     setTimeout(() => {
                         window.location.href = "admin-dashboard.html";
                     }, 1500);
 
                 } catch (err) {
-                    console.error('Unexpected error:', err);
+                    console.error('Login error:', err);
                     showMessage('Network error. Please try again.', 'error');
                     loginBtn.disabled = false;
                     loginBtn.innerHTML = 'Admin Login';
                 }
             }
 
-            // Check if already logged in as admin
             async function checkExistingSession() {
                 try {
-                    const { data: { session }, error } = await supabase.auth.getSession();
-                    
+                    const { data: { session } } = await supabase.auth.getSession();
                     if (session && session.user) {
-                        // Check if user has admin role
                         const { data: profile } = await supabase
                             .from('user_profiles')
                             .select('role')
                             .eq('id', session.user.id)
-                            .single();
+                            .maybeSingle();
                         
                         if (profile && profile.role === 'admin') {
-                            // Already logged in as admin, redirect to dashboard
                             window.location.href = "admin-dashboard.html";
-                        } else if (profile && profile.role !== 'admin') {
-                            // Logged in but not admin, sign out
-                            await supabase.auth.signOut();
                         }
                     }
                 } catch (err) {
@@ -267,18 +258,10 @@
                 }
             }
 
-            // Event listeners
             loginBtn.addEventListener('click', handleLogin);
-            
-            // Enter key support
-            emailInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') handleLogin();
-            });
-            passwordInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') handleLogin();
-            });
+            emailInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+            passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
 
-            // Check existing session on page load
             checkExistingSession();
         })();
     </script>
