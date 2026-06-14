@@ -1,1097 +1,407 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AUTO-V Professional Vehicle Inspection</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-
-<style>
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background: #0a0a0a;
-    color: white;
-    padding: 20px;
-}
-
-.container {
-    max-width: 1600px;
-    margin: auto;
-}
-
-.header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #333;
-    flex-wrap: wrap;
-    gap: 15px;
-}
-
-.logo {
-    font-size: 28px;
-    font-weight: bold;
-    color: #eab308;
-}
-
-.logo span {
-    font-size: 12px;
-    color: #888;
-    display: block;
-}
-
-.back-btn, .pdf-btn {
-    background: #333;
-    color: white;
-    padding: 10px 20px;
-    text-decoration: none;
-    border-radius: 6px;
-    cursor: pointer;
-    border: none;
-}
-
-.pdf-btn {
-    background: #dc2626;
-}
-
-.pdf-btn:hover {
-    background: #b91c1c;
-}
-
-h2 {
-    color: #eab308;
-    margin-bottom: 20px;
-    border-bottom: 1px solid #333;
-    padding-bottom: 10px;
-}
-
-h3 {
-    color: #eab308;
-    margin: 20px 0 15px 0;
-}
-
-h4 {
-    color: #eab308;
-    margin: 15px 0 10px 0;
-}
-
-.card {
-    background: #111;
-    padding: 25px;
-    border-radius: 12px;
-    border: 1px solid #333;
-    margin-bottom: 20px;
-}
-
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-}
-
-.form-group {
-    margin-bottom: 15px;
-}
-
-label {
-    display: block;
-    margin-bottom: 8px;
-    color: #ccc;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-label.required:after {
-    content: " *";
-    color: #ef4444;
-}
-
-input, select, textarea {
-    width: 100%;
-    padding: 12px;
-    background: #1a1a1a;
-    color: white;
-    border: 1px solid #333;
-    border-radius: 8px;
-    font-size: 14px;
-}
-
-input:focus, select:focus, textarea:focus {
-    outline: none;
-    border-color: #eab308;
-}
-
-.status-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.status-pass { background: #22c55e; color: black; }
-.status-fail { background: #dc2626; color: white; }
-.status-warning { background: #f97316; color: white; }
-
-.condition-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 11px;
-}
-
-.condition-excellent { background: #22c55e; color: black; }
-.condition-good { background: #eab308; color: black; }
-.condition-fair { background: #f97316; color: white; }
-.condition-poor { background: #dc2626; color: white; }
-
-.progress-bar {
-    width: 100%;
-    height: 4px;
-    background: #333;
-    border-radius: 2px;
-    margin-bottom: 20px;
-}
-
-.progress-fill {
-    height: 100%;
-    background: #eab308;
-    border-radius: 2px;
-    transition: width 0.3s;
-}
-
-.btn {
-    padding: 12px 24px;
-    border: none;
-    border-radius: 8px;
-    font-weight: bold;
-    cursor: pointer;
-    margin-right: 10px;
-}
-
-.btn-primary {
-    background: #eab308;
-    color: black;
-}
-
-.btn-primary:hover {
-    background: #ca8a04;
-}
-
-.btn-secondary {
-    background: #333;
-    color: white;
-}
-
-.btn-secondary:hover {
-    background: #444;
-}
-
-.btn-success {
-    background: #22c55e;
-    color: white;
-}
-
-.nav-buttons {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 20px;
-}
-
-.result-box {
-    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
-    border: 2px solid #eab308;
-    border-radius: 12px;
-    padding: 25px;
-    margin-top: 20px;
-}
-
-.result-value {
-    font-size: 48px;
-    font-weight: bold;
-    color: #eab308;
-    text-align: center;
-}
-
-.breakdown-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 10px;
-    border-bottom: 1px solid #333;
-}
-
-.spinner {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 2px solid #fff;
-    border-radius: 50%;
-    border-top-color: #eab308;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.error {
-    color: #ef4444;
-    background: #7f1d1d;
-    padding: 10px;
-    border-radius: 6px;
-    margin-bottom: 15px;
-    display: none;
-}
-
-.success {
-    color: #22c55e;
-    background: #14532d;
-    padding: 10px;
-    border-radius: 6px;
-    margin-bottom: 15px;
-    display: none;
-}
-
-.photo-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 15px;
-    margin-top: 10px;
-}
-
-.photo-upload {
-    text-align: center;
-    padding: 15px;
-    background: #1a1a1a;
-    border-radius: 8px;
-    cursor: pointer;
-    border: 1px dashed #333;
-}
-
-.photo-upload:hover {
-    border-color: #eab308;
-}
-
-.photo-preview {
-    width: 100%;
-    height: 80px;
-    object-fit: cover;
-    border-radius: 6px;
-    margin-top: 5px;
-}
-
-.tab-buttons {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-}
-
-.tab-btn {
-    padding: 10px 20px;
-    background: #333;
-    border: none;
-    border-radius: 8px;
-    color: white;
-    cursor: pointer;
-}
-
-.tab-btn.active {
-    background: #eab308;
-    color: black;
-}
-
-.score-circle {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    background: conic-gradient(#eab308 0deg, #333 0deg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto;
-}
-
-@media (max-width: 768px) {
-    .form-grid {
-        grid-template-columns: 1fr;
-    }
-    .nav-buttons {
-        flex-direction: column;
-        gap: 10px;
-    }
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Professional Vehicle Inspection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0c15;
+            color: #ffffff;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: auto; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eab308;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #eab308, #facc15);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .logo span { font-size: 11px; color: #94a3b8; display: block; }
+        .nav-btn {
+            background: #1e293b;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .card {
+            background: #0f172a;
+            border-radius: 24px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid #1e293b;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px; font-weight: 600; }
+        label.required:after { content: " *"; color: #ef4444; }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1e293b;
+            color: white;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            font-size: 14px;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #eab308; }
+        .btn {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-primary { background: #eab308; color: #0a0c10; }
+        .btn-secondary { background: #334155; color: white; }
+        .btn-success { background: #22c55e; color: white; }
+        .result-box {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 2px solid #eab308;
+            border-radius: 20px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+        .result-value { font-size: 48px; font-weight: 800; color: #22c55e; text-align: center; }
+        .checklist-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+        }
+        .pass { color: #22c55e; }
+        .fail { color: #ef4444; }
+        .warning { color: #eab308; }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error, .success {
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .error { background: #7f1d1d; color: #ef4444; }
+        .success { background: #14532d; color: #22c55e; }
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 30px; }
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .nav-buttons { flex-direction: column; gap: 10px; }
+            .nav-buttons button { width: 100%; }
+        }
+    </style>
 </head>
 <body>
 
 <div class="container">
-
-<div class="header">
-    <div class="logo">
-        AUTO-V Professional Inspection
-        <span>NTSA/KEBS Certified | ISO 9001:2024</span>
-    </div>
-    <div>
-        <button class="pdf-btn" onclick="generatePDF()">📄 Download Report</button>
-        <a href="dashboard.html" class="back-btn">← Dashboard</a>
-    </div>
-</div>
-
-<div class="progress-bar">
-    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
-</div>
-
-<div class="error" id="errorMsg"></div>
-<div class="success" id="successMsg"></div>
-
-<!-- ============================================ -->
-<!-- STEP 1: SELECT OR ADD VEHICLE -->
-<!-- ============================================ -->
-<div id="step1" class="card">
-    <h2>🚗 Step 1: Select or Add Vehicle</h2>
-    
-    <div class="tab-buttons">
-        <button class="tab-btn active" id="tabSelectBtn">📋 Select Existing Vehicle</button>
-        <button class="tab-btn" id="tabAddBtn">➕ Add New Vehicle</button>
-    </div>
-    
-    <div id="tabSelectPanel">
-        <div class="form-group"><label class="required">Choose Vehicle</label><select id="vehicleSelect"><option value="">-- Select a vehicle --</option></select></div>
-        <div id="vehicleInfo" style="display:none; margin-top:15px; padding:15px; background:#1a1a1a; border-radius:8px;">
-            <div class="form-grid"><div><strong>Registration:</strong> <span id="displayReg"></span></div><div><strong>Make/Model:</strong> <span id="displayMakeModel"></span></div><div><strong>Year:</strong> <span id="displayYear"></span></div></div>
+    <div class="header">
+        <div class="logo">
+            🔍 AUTO-V Inspection
+            <span>150+ Point Comprehensive Vehicle Inspection</span>
+        </div>
+        <div>
+            <button class="nav-btn" onclick="window.location.href='valuation.html'">💰 Go to Valuation</button>
+            <button class="nav-btn" onclick="window.location.href='dashboard.html'">← Dashboard</button>
         </div>
     </div>
-    
-    <div id="tabAddPanel" style="display:none;">
+
+    <div class="error" id="errorMsg"></div>
+    <div class="success" id="successMsg"></div>
+
+    <!-- Step 1: Vehicle Information -->
+    <div id="step1" class="card">
+        <h2>🚗 Step 1: Vehicle Information</h2>
         <div class="form-grid">
-            <div class="form-group"><label class="required">Registration</label><input type="text" id="newRegistration" placeholder="KXX 123A"></div>
-            <div class="form-group"><label class="required">Make</label><input type="text" id="newMake" placeholder="Toyota"></div>
-            <div class="form-group"><label class="required">Model</label><input type="text" id="newModel" placeholder="Corolla"></div>
-            <div class="form-group"><label class="required">Year</label><select id="newYear"></select></div>
-            <div class="form-group"><label>VIN</label><input type="text" id="newVin" placeholder="VIN number"></div>
-            <div class="form-group"><label>Engine Number</label><input type="text" id="newEngine" placeholder="Engine number"></div>
+            <div class="form-group"><label class="required">Registration Number</label><input type="text" id="registration" placeholder="KCA 123A"></div>
+            <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vin" placeholder="JTEGD34V000123456"></div>
+            <div class="form-group"><label class="required">Make</label><input type="text" id="make" placeholder="Toyota"></div>
+            <div class="form-group"><label class="required">Model</label><input type="text" id="model" placeholder="Axio"></div>
+            <div class="form-group"><label class="required">Year</label><select id="year"></select></div>
+            <div class="form-group"><label class="required">Mileage (km)</label><input type="number" id="mileage" placeholder="Enter mileage"></div>
         </div>
-        <button type="button" class="btn btn-primary" id="addVehicleBtn" onclick="addNewVehicle()">+ Add Vehicle & Continue</button>
+        <div class="nav-buttons">
+            <div></div>
+            <button class="btn btn-primary" onclick="nextStep(2)">Next →</button>
+        </div>
     </div>
-    
-    <div class="nav-buttons"><div></div><button class="btn btn-primary" id="nextBtn">Next →</button></div>
-</div>
 
-<!-- ============================================ -->
-<!-- STEP 2: INSPECTION INFO & DOCUMENTS -->
-<!-- ============================================ -->
-<div id="step2" class="card" style="display:none">
-    <h2>📋 Step 2: Inspection Information</h2>
-    
-    <div class="form-grid">
-        <div class="form-group"><label class="required">Inspection Number</label><input type="text" id="inspectionNo" readonly></div>
-        <div class="form-group"><label class="required">Inspection Date</label><input type="date" id="inspectionDate"></div>
-        <div class="form-group"><label>Inspection Time</label><input type="time" id="inspectionTime"></div>
-        <div class="form-group"><label class="required">Inspection Type</label><select id="inspectionType"><option>Pre-Purchase Inspection</option><option>Insurance Inspection</option><option>Roadworthiness Inspection</option><option>Fleet Inspection</option><option>Post-Accident Inspection</option><option>NTSA Compliance</option><option>KEBS Verification</option><option>Annual Inspection</option></select></div>
-        <div class="form-group"><label>Inspection Location</label><input type="text" id="inspectionLocation" placeholder="Garage address"></div>
-        <div class="form-group"><label class="required">Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name"></div>
-        <div class="form-group"><label class="required">Inspector License No</label><input type="text" id="inspectorLicense" placeholder="License number"></div>
-        <div class="form-group"><label>Customer Name</label><input type="text" id="customerName" placeholder="Customer name"></div>
-        <div class="form-group"><label>Customer Phone</label><input type="tel" id="customerPhone" placeholder="Phone number"></div>
-    </div>
-    
-    <h3>📄 Document Verification</h3>
-    <div class="form-grid">
-        <div class="form-group"><label>Logbook</label><select id="docLogbook"><option>Pass</option><option>Fail</option><option>Not Available</option></select></div>
-        <div class="form-group"><label>Owner ID Verified</label><select id="docOwnerId"><option>Pass</option><option>Fail</option><option>Not Available</option></select></div>
-        <div class="form-group"><label>Insurance Certificate</label><select id="docInsurance"><option>Pass</option><option>Fail</option><option>Not Available</option></select></div>
-        <div class="form-group"><label>Service Book</label><select id="docService"><option>Pass</option><option>Fail</option><option>Not Available</option></select></div>
-        <div class="form-group"><label>Import Documents</label><select id="docImport"><option>Pass</option><option>Fail</option><option>Not Available</option><option>N/A</option></select></div>
-        <div class="form-group"><label>NTSA TIMS Verification</label><select id="docNtsa"><option>Verified</option><option>Pending</option><option>Not Registered</option></select></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(1)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(3)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 3: VEHICLE IDENTIFICATION -->
-<!-- ============================================ -->
-<div id="step3" class="card" style="display:none">
-    <h2>🔍 Step 3: Vehicle Identification</h2>
-    
-    <div class="form-grid">
-        <div class="form-group"><label>Registration Number</label><input type="text" id="registration" readonly></div>
-        <div class="form-group"><label>Make</label><input type="text" id="make" readonly></div>
-        <div class="form-group"><label>Model</label><input type="text" id="model" readonly></div>
-        <div class="form-group"><label>Variant</label><input type="text" id="variant" placeholder="e.g., XLE"></div>
-        <div class="form-group"><label>Year of Manufacture</label><input type="text" id="year" readonly></div>
-        <div class="form-group"><label>Year of Registration</label><input type="number" id="regYear" placeholder="Year"></div>
-        <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vin" placeholder="VIN"></div>
-        <div class="form-group"><label>Engine Number</label><input type="text" id="engineNo" placeholder="Engine number"></div>
-        <div class="form-group"><label>Color</label><select id="color"><option>White</option><option>Black</option><option>Silver</option><option>Red</option><option>Blue</option></select></div>
-        <div class="form-group"><label>Fuel Type</label><select id="fuel"><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></div>
-        <div class="form-group"><label>Transmission</label><select id="transmission"><option>Manual</option><option>Automatic</option><option>CVT</option></select></div>
-        <div class="form-group"><label>Drive Type</label><select id="driveType"><option>FWD</option><option>RWD</option><option>AWD</option><option>4WD</option></select></div>
-        <div class="form-group"><label>Engine Capacity (CC)</label><select id="engineCC"><option>1000</option><option>1500</option><option>1800</option><option>2000</option><option>2500</option><option>3000</option></select></div>
-        <div class="form-group"><label>Current Mileage (km)</label><input type="number" id="mileage" placeholder="Mileage"></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(2)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(4)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 4: EXTERIOR & GLASS INSPECTION -->
-<!-- ============================================ -->
-<div id="step4" class="card" style="display:none">
-    <h2>🚘 Step 4: Exterior & Glass Inspection</h2>
-    
-    <div class="form-grid">
-        <div class="form-group"><label>Front Bumper</label><select id="frontBumper"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Rear Bumper</label><select id="rearBumper"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Bonnet</label><select id="bonnet"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Roof</label><select id="roof"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Left Front Door</label><select id="lfDoor"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Right Front Door</label><select id="rfDoor"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Left Rear Door</label><select id="lrDoor"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Right Rear Door</label><select id="rrDoor"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Paint Quality</label><select id="paintQuality"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
-        <div class="form-group"><label>Rust Presence</label><select id="rust"><option>None</option><option>Surface</option><option>Structural</option></select></div>
-        <div class="form-group"><label>Body Alignment</label><select id="bodyAlignment"><option>Aligned</option><option>Misaligned</option></select></div>
-    </div>
-    
-    <h3>🪟 Glass Inspection</h3>
-    <div class="form-grid">
-        <div class="form-group"><label>Front Windscreen</label><select id="frontGlass"><option>Excellent</option><option>Good</option><option>Cracked</option><option>Chip</option></select></div>
-        <div class="form-group"><label>Rear Windscreen</label><select id="rearGlass"><option>Excellent</option><option>Good</option><option>Cracked</option><option>Chip</option></select></div>
-        <div class="form-group"><label>Side Windows</label><select id="sideGlass"><option>Excellent</option><option>Good</option><option>Cracked</option><option>Chip</option></select></div>
-        <div class="form-group"><label>Tint Compliance</label><select id="tint"><option>Compliant</option><option>Non-Compliant</option></select></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(3)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(5)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 5: LIGHTING & TYRES -->
-<!-- ============================================ -->
-<div id="step5" class="card" style="display:none">
-    <h2>💡 Step 5: Lighting System</h2>
-    
-    <div class="form-grid">
-        <div class="form-group"><label>Low Beam</label><select id="lowBeam"><option>Pass</option><option>Fail</option></select></div>
-        <div class="form-group"><label>High Beam</label><select id="highBeam"><option>Pass</option><option>Fail</option></select></div>
-        <div class="form-group"><label>Fog Lights</label><select id="fogLights"><option>Pass</option><option>Fail</option><option>N/A</option></select></div>
-        <div class="form-group"><label>Indicators</label><select id="indicators"><option>Pass</option><option>Fail</option></select></div>
-        <div class="form-group"><label>Hazard Lights</label><select id="hazards"><option>Pass</option><option>Fail</option></select></div>
-        <div class="form-group"><label>Brake Lights</label><select id="brakeLights"><option>Pass</option><option>Fail</option></select></div>
-        <div class="form-group"><label>Reverse Lights</label><select id="reverseLights"><option>Pass</option><option>Fail</option></select></div>
-        <div class="form-group"><label>Number Plate Lights</label><select id="plateLights"><option>Pass</option><option>Fail</option></select></div>
-    </div>
-    
-    <h2>🛞 Step 6: Tyre Inspection</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>LF Tyre Tread (mm)</label><input type="number" id="lfTread" step="0.5" placeholder="mm"></div>
-        <div class="form-group"><label>RF Tyre Tread (mm)</label><input type="number" id="rfTread" step="0.5" placeholder="mm"></div>
-        <div class="form-group"><label>LR Tyre Tread (mm)</label><input type="number" id="lrTread" step="0.5" placeholder="mm"></div>
-        <div class="form-group"><label>RR Tyre Tread (mm)</label><input type="number" id="rrTread" step="0.5" placeholder="mm"></div>
-        <div class="form-group"><label>Tyre Brand</label><input type="text" id="tyreBrand" placeholder="Brand"></div>
-        <div class="form-group"><label>Tyre Size</label><input type="text" id="tyreSize" placeholder="205/55R16"></div>
-        <div class="form-group"><label>DOT Year</label><input type="number" id="dotYear" placeholder="Year"></div>
-        <div class="form-group"><label>Spare Wheel Available</label><select id="spareWheel"><option>Yes</option><option>No</option></select></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(4)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(6)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 6: ENGINE & TRANSMISSION -->
-<!-- ============================================ -->
-<div id="step6" class="card" style="display:none">
-    <h2>🔧 Step 7: Engine Inspection</h2>
-    
-    <div class="form-grid">
-        <div class="form-group"><label>Engine Start</label><select id="engineStart"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
-        <div class="form-group"><label>Idle Quality</label><select id="idleQuality"><option>Smooth</option><option>Rough</option><option>Stalling</option></select></div>
-        <div class="form-group"><label>Engine Noise</label><select id="engineNoise"><option>Normal</option><option>Abnormal</option><option>Knocking</option></select></div>
-        <div class="form-group"><label>Engine Vibration</label><select id="engineVibration"><option>Normal</option><option>Excessive</option></select></div>
-        <div class="form-group"><label>Oil Leaks</label><select id="oilLeaks"><option>None</option><option>Minor</option><option>Major</option></select></div>
-        <div class="form-group"><label>Coolant Leaks</label><select id="coolantLeaks"><option>None</option><option>Minor</option><option>Major</option></select></div>
-        <div class="form-group"><label>Belts Condition</label><select id="belts"><option>Good</option><option>Worn</option><option>Cracked</option></select></div>
-        <div class="form-group"><label>Hoses Condition</label><select id="hoses"><option>Good</option><option>Worn</option><option>Cracked</option></select></div>
-    </div>
-    
-    <h2>⚙️ Step 8: Transmission Inspection</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Gear Shifting</label><select id="gearShifting"><option>Smooth</option><option>Rough</option><option>Difficulty</option></select></div>
-        <div class="form-group"><label>Clutch Operation</label><select id="clutch"><option>Smooth</option><option>Stiff</option><option>Slipping</option></select></div>
-        <div class="form-group"><label>Transmission Noise</label><select id="transNoise"><option>Normal</option><option>Whining</option><option>Grinding</option></select></div>
-        <div class="form-group"><label>Transmission Fluid</label><select id="transFluid"><option>Clean</option><option>Dirty</option><option>Low</option></select></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(5)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(7)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 7: BRAKES, SUSPENSION, ELECTRICAL -->
-<!-- ============================================ -->
-<div id="step7" class="card" style="display:none">
-    <h2>🛑 Step 9: Brake System</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Brake Pads</label><select id="brakePads"><option>Good</option><option>Worn</option><option>Replace</option></select></div>
-        <div class="form-group"><label>Brake Discs</label><select id="brakeDiscs"><option>Good</option><option>Worn</option><option>Replace</option></select></div>
-        <div class="form-group"><label>Brake Fluid</label><select id="brakeFluid"><option>Adequate</option><option>Low</option><option>Contaminated</option></select></div>
-        <div class="form-group"><label>ABS System</label><select id="abs"><option>Working</option><option>Fault</option><option>Light On</option></select></div>
-        <div class="form-group"><label>Parking Brake</label><select id="parkingBrake"><option>Working</option><option>Weak</option><option>Not Working</option></select></div>
-    </div>
-    
-    <h2>🔧 Step 10: Suspension System</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Shock Absorbers</label><select id="shocks"><option>Good</option><option>Weak</option><option>Leaking</option></select></div>
-        <div class="form-group"><label>Springs</label><select id="springs"><option>Good</option><option>Broken</option><option>Sagging</option></select></div>
-        <div class="form-group"><label>Ball Joints</label><select id="ballJoints"><option>Good</option><option>Worn</option><option>Excessive Play</option></select></div>
-        <div class="form-group"><label>Wheel Bearings</label><select id="wheelBearings"><option>Good</option><option>Noise</option><option>Play</option></select></div>
-    </div>
-    
-    <h2>⚡ Step 11: Electrical System</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Battery Condition</label><select id="battery"><option>Good</option><option>Weak</option><option>Replace</option></select></div>
-        <div class="form-group"><label>Alternator</label><select id="alternator"><option>Charging</option><option>Not Charging</option></select></div>
-        <div class="form-group"><label>Horn</label><select id="horn"><option>Working</option><option>Not Working</option></select></div>
-        <div class="form-group"><label>Wipers</label><select id="wipers"><option>Working</option><option>Not Working</option></select></div>
-        <div class="form-group"><label>Power Windows</label><select id="powerWindows"><option>Working</option><option>Partial</option><option>Not Working</option></select></div>
-        <div class="form-group"><label>Dashboard Warning Lights</label><select id="warningLights"><option>None</option><option>Engine</option><option>ABS</option><option>Airbag</option><option>Multiple</option></select></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(6)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(8)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 8: INTERIOR & SAFETY -->
-<!-- ============================================ -->
-<div id="step8" class="card" style="display:none">
-    <h2>💺 Step 12: Interior Inspection</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Driver Seat</label><select id="driverSeat"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
-        <div class="form-group"><label>Passenger Seats</label><select id="passSeats"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
-        <div class="form-group"><label>Dashboard</label><select id="dashboardCond"><option>Excellent</option><option>Good</option><option>Cracked</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Steering Wheel</label><select id="steeringWheel"><option>Excellent</option><option>Good</option><option>Worn</option><option>Damaged</option></select></div>
-        <div class="form-group"><label>Carpets</label><select id="carpets"><option>Clean</option><option>Stained</option><option>Torn</option></select></div>
-        <div class="form-group"><label>Air Conditioning</label><select id="ac"><option>Working</option><option>Weak</option><option>Not Working</option></select></div>
-    </div>
-    
-    <h2>🛡️ Step 13: Safety Equipment (NTSA Focus)</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Seat Belts</label><select id="seatbelts"><option>Compliant</option><option>Non-Compliant</option></select></div>
-        <div class="form-group"><label>Airbags</label><select id="airbags"><option>Present</option><option>Deployed</option><option>Missing</option></select></div>
-        <div class="form-group"><label>Fire Extinguisher</label><select id="fireExt"><option>Present</option><option>Missing</option></select></div>
-        <div class="form-group"><label>Warning Triangle</label><select id="warningTriangle"><option>Present</option><option>Missing</option></select></div>
-        <div class="form-group"><label>First Aid Kit</label><select id="firstAid"><option>Present</option><option>Missing</option></select></div>
-        <div class="form-group"><label>Speed Governor (PSV)</label><select id="speedGov"><option>N/A</option><option>Present</option><option>Missing</option></select></div>
-        <div class="form-group"><label>Reflective Markings</label><select id="reflective"><option>Compliant</option><option>Non-Compliant</option><option>N/A</option></select></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(7)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(9)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 9: UNDERBODY & ROAD TEST -->
-<!-- ============================================ -->
-<div id="step9" class="card" style="display:none">
-    <h2>🔍 Step 14: Underbody Inspection</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Chassis Condition</label><select id="chassis"><option>Good</option><option>Rust</option><option>Damage</option><option>Repair Evidence</option></select></div>
-        <div class="form-group"><label>Exhaust System</label><select id="exhaust"><option>Good</option><option>Leaking</option><option>Rusted</option></select></div>
-        <div class="form-group"><label>Fuel Tank</label><select id="fuelTank"><option>Good</option><option>Damaged</option><option>Leaking</option></select></div>
-        <div class="form-group"><label>Structural Damage</label><select id="structuralDamage"><option>None</option><option>Minor</option><option>Major</option></select></div>
-    </div>
-    
-    <h2>🏁 Step 15: Road Test</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Acceleration (1-10)</label><input type="range" id="accelScore" min="1" max="10" value="8" oninput="accelVal.innerText=this.value"><span id="accelVal">8</span>/10</div>
-        <div class="form-group"><label>Braking (1-10)</label><input type="range" id="brakeScore" min="1" max="10" value="8" oninput="brakeVal2.innerText=this.value"><span id="brakeVal2">8</span>/10</div>
-        <div class="form-group"><label>Steering Feel (1-10)</label><input type="range" id="steerScore" min="1" max="10" value="8" oninput="steerVal2.innerText=this.value"><span id="steerVal2">8</span>/10</div>
-        <div class="form-group"><label>Suspension Comfort (1-10)</label><input type="range" id="suspComfort" min="1" max="10" value="8" oninput="suspVal2.innerText=this.value"><span id="suspVal2">8</span>/10</div>
-        <div class="form-group"><label>Engine Performance (1-10)</label><input type="range" id="enginePerf" min="1" max="10" value="8" oninput="engPerfVal.innerText=this.value"><span id="engPerfVal">8</span>/10</div>
-    </div>
-    
-    <h2>💥 Step 16: Accident Damage Assessment</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Previous Accident Evidence</label><select id="prevAccident"><option>None</option><option>Minor</option><option>Moderate</option><option>Major</option></select></div>
-        <div class="form-group"><label>Chassis Repair Evidence</label><select id="chassisRepair"><option>No</option><option>Yes</option></select></div>
-        <div class="form-group"><label>Panel Replacement</label><select id="panelReplace"><option>No</option><option>Yes</option></select></div>
-        <div class="form-group"><label>Flood Damage</label><select id="floodDamage"><option>No</option><option>Yes</option></select></div>
-        <div class="form-group"><label>Fire Damage</label><select id="fireDamage"><option>No</option><option>Yes</option></select></div>
-        <div class="form-group"><label>Airbag Deployment</label><select id="airbagDeploy"><option>No</option><option>Yes</option></select></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(8)">← Back</button>
-        <button class="btn btn-primary" onclick="nextStep(10)">Next →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 10: PHOTOS & OBD -->
-<!-- ============================================ -->
-<div id="step10" class="card" style="display:none">
-    <h2>📸 Step 17: Vehicle Photos</h2>
-    <div class="photo-grid">
-        <div class="photo-upload" onclick="document.getElementById('photoFront').click()">Front View<br><input type="file" id="photoFront" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewFront')"><img id="previewFront" class="photo-preview" style="display:none"></div>
-        <div class="photo-upload" onclick="document.getElementById('photoRear').click()">Rear View<br><input type="file" id="photoRear" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewRear')"><img id="previewRear" class="photo-preview" style="display:none"></div>
-        <div class="photo-upload" onclick="document.getElementById('photoLeft').click()">Left Side<br><input type="file" id="photoLeft" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewLeft')"><img id="previewLeft" class="photo-preview" style="display:none"></div>
-        <div class="photo-upload" onclick="document.getElementById('photoRight').click()">Right Side<br><input type="file" id="photoRight" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewRight')"><img id="previewRight" class="photo-preview" style="display:none"></div>
-        <div class="photo-upload" onclick="document.getElementById('photoEngine').click()">Engine Bay<br><input type="file" id="photoEngine" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewEngine')"><img id="previewEngine" class="photo-preview" style="display:none"></div>
-        <div class="photo-upload" onclick="document.getElementById('photoOdometer').click()">Odometer<br><input type="file" id="photoOdometer" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewOdometer')"><img id="previewOdometer" class="photo-preview" style="display:none"></div>
-        <div class="photo-upload" onclick="document.getElementById('photoVin').click()">VIN Plate<br><input type="file" id="photoVin" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewVin')"><img id="previewVin" class="photo-preview" style="display:none"></div>
-        <div class="photo-upload" onclick="document.getElementById('photoUnderbody').click()">Underbody<br><input type="file" id="photoUnderbody" accept="image/*" style="display:none" onchange="previewPhoto(this,'previewUnderbody')"><img id="previewUnderbody" class="photo-preview" style="display:none"></div>
-    </div>
-    
-    <h2>🔌 Step 18: OBD Diagnostic Scan</h2>
-    <div class="form-grid">
-        <div class="form-group"><label>Diagnostic Scanner Used</label><select id="scannerUsed"><option>Yes</option><option>No</option></select></div>
-        <div class="form-group"><label>ECU Fault Codes</label><input type="text" id="ecuCodes" placeholder="Any fault codes"></div>
-        <div class="form-group"><label>ABS Fault Codes</label><input type="text" id="absCodes" placeholder="Any fault codes"></div>
-        <div class="form-group"><label>Airbag Fault Codes</label><input type="text" id="airbagCodes" placeholder="Any fault codes"></div>
-        <div class="form-group"><label>Battery Health (%)</label><input type="number" id="batteryHealth" placeholder="Percentage"></div>
-        <div class="form-group"><label>OBD Report</label><input type="file" id="obdReport" accept=".pdf"></div>
-    </div>
-    
-    <div class="nav-buttons">
-        <button class="btn btn-secondary" onclick="prevStep(9)">← Back</button>
-        <button class="btn btn-primary" onclick="calculateInspectionResult()">Calculate Results →</button>
-    </div>
-</div>
-
-<!-- ============================================ -->
-<!-- STEP 11: RESULTS -->
-<!-- ============================================ -->
-<div id="step11" class="card" style="display:none">
-    <h2>📊 Step 19: Final Inspection Results</h2>
-    
-    <div id="inspectionResult" class="result-box">
-        <div class="result-value" id="overallScore">0%</div>
-        <div style="text-align:center; margin:10px 0" id="ratingBadge"></div>
+    <!-- Step 2: Inspection Checklist -->
+    <div id="step2" class="card" style="display:none">
+        <h2>🔧 Step 2: 150+ Point Inspection Checklist</h2>
         
-        <h3>Section Scores</h3>
-        <div id="sectionScores"></div>
-        
-        <h3>Findings & Recommendations</h3>
-        <div id="findingsList"></div>
-        
+        <h3>Engine & Mechanical</h3>
         <div class="form-grid">
-            <div class="form-group"><label>Major Defects</label><textarea id="majorDefects" rows="2" placeholder="List major defects..."></textarea></div>
-            <div class="form-group"><label>Minor Defects</label><textarea id="minorDefects" rows="2" placeholder="List minor defects..."></textarea></div>
+            <div class="form-group"><label>Engine Start</label><select id="engineStart"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Engine Idle</label><select id="engineIdle"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Oil Leaks</label><select id="oilLeaks"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Coolant System</label><select id="coolant"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Exhaust Smoke</label><select id="exhaust"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
         </div>
-        
+
+        <h3>Transmission & Drivetrain</h3>
         <div class="form-grid">
-            <div class="form-group"><label>Estimated Repair Cost (KES)</label><input type="number" id="repairCost" placeholder="Estimated cost"></div>
-            <div class="form-group"><label>Final Verdict</label><select id="finalVerdict"><option>PASS</option><option>PASS WITH RECOMMENDATIONS</option><option>REQUIRES REPAIRS</option><option>FAIL</option></select></div>
+            <div class="form-group"><label>Gear Shifting</label><select id="gearShift"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Clutch Operation</label><select id="clutch"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Transmission Noise</label><select id="transNoise"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
         </div>
-        
-        <div class="form-group"><label>Inspector Signature</label><input type="text" id="inspectorSignature" placeholder="Digital signature"></div>
-        
-        <div style="display: flex; gap: 10px; margin-top: 20px;">
-            <button class="btn btn-success" onclick="saveInspection()">✓ Save to Database</button>
-            <button class="btn btn-secondary" onclick="prevStep(10)">← Back to Edit</button>
-            <button class="btn btn-primary" onclick="generatePDF()">📄 Download Report</button>
+
+        <h3>Brakes & Suspension</h3>
+        <div class="form-grid">
+            <div class="form-group"><label>Brake Performance</label><select id="brakePerf"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Brake Pads</label><select id="brakePads"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Suspension</label><select id="suspension"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Shock Absorbers</label><select id="shocks"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+        </div>
+
+        <h3>Electrical System</h3>
+        <div class="form-grid">
+            <div class="form-group"><label>Battery</label><select id="battery"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Alternator</label><select id="alternator"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Lights</label><select id="lights"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>AC System</label><select id="ac"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+        </div>
+
+        <h3>Tyres & Wheels</h3>
+        <div class="form-grid">
+            <div class="form-group"><label>Tread Depth</label><select id="tread"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Tyre Pressure</label><select id="tyrePressure"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Wheel Alignment</label><select id="alignment"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+        </div>
+
+        <h3>Body & Interior</h3>
+        <div class="form-grid">
+            <div class="form-group"><label>Body Condition</label><select id="bodyCondition"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Paint Condition</label><select id="paint"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Rust/Damage</label><select id="rust"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Interior Condition</label><select id="interior"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Seatbelts</label><select id="seatbelts"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+            <div class="form-group"><label>Windows/Mirrors</label><select id="windows"><option>Pass</option><option>Fail</option><option>Warning</option></select></div>
+        </div>
+
+        <div class="form-group"><label>Inspector Notes</label><textarea id="inspectorNotes" rows="3" placeholder="Detailed inspection notes..."></textarea></div>
+
+        <div class="nav-buttons">
+            <button class="btn btn-secondary" onclick="prevStep(1)">← Back</button>
+            <button class="btn btn-primary" onclick="calculateInspection()">Generate Report →</button>
         </div>
     </div>
-</div>
 
+    <!-- Step 3: Results -->
+    <div id="step3" class="card" style="display:none">
+        <h2>🔍 Inspection Report</h2>
+        <div id="inspectionResult" class="result-box">
+            <div class="result-value" id="overallScore">0%</div>
+            <div id="verdictBadge" style="text-align:center; margin:15px 0"></div>
+            <h3>Inspection Summary</h3>
+            <div id="summaryStats"></div>
+            <h3>Detailed Results</h3>
+            <div id="detailedResults"></div>
+            <div class="form-group" style="margin-top:20px"><label>Inspector Name</label><input type="text" id="inspectorName" placeholder="Inspector name"></div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-success" onclick="saveInspection()">✓ Save to Database</button>
+                <button class="btn btn-secondary" onclick="prevStep(2)">← Back to Edit</button>
+                <button class="btn btn-primary" onclick="generatePDF()">📄 Download PDF</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
+    const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ============================================
-// SUPABASE - SINGLE SOURCE OF TRUTH
-// FIXED: Use sb instead of supabase to avoid naming conflict
-// ============================================
-const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+    let currentUser = null;
+    let currentStep = 1;
+    let inspectionData = {};
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-let currentUser = null;
-let selectedVehicle = null;
-let currentStep = 1;
-let inspectionResults = {};
-
-// ============================================
-// AUTHENTICATION
-// ============================================
-async function checkAuth() {
-    const { data: { user }, error } = await sb.auth.getUser();
-    if (error || !user) {
-        window.location.href = "login.html";
-        return false;
+    async function checkAuth() {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) { window.location.href = "login.html"; return false; }
+        currentUser = user;
+        return true;
     }
-    currentUser = user;
-    document.getElementById('inspectionNo').value = `INSP-${Date.now()}`;
-    document.getElementById('inspectionDate').value = new Date().toISOString().split('T')[0];
-    console.log('User authenticated:', user.email);
-    return true;
-}
 
-// ============================================
-// POPULATE YEARS
-// ============================================
-function populateYears() {
-    const yearSelect = document.getElementById('newYear');
-    const currentYear = new Date().getFullYear();
-    yearSelect.innerHTML = '';
-    for (let y = currentYear; y >= 1980; y--) {
-        yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
-    }
-}
-
-// ============================================
-// LOAD VEHICLES
-// ============================================
-async function loadVehicles() {
-    const select = document.getElementById('vehicleSelect');
-    select.innerHTML = '<option value="">Loading...</option>';
-    
-    try {
-        const { data, error } = await sb
-            .from('vehicles')
-            .select('*')
-            .eq('user_id', currentUser.id)
-            .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        if (!data || data.length === 0) {
-            select.innerHTML = '<option value="">No vehicles found. Add a vehicle first.</option>';
-            return;
+    function populateYears() {
+        const yearSelect = document.getElementById('year');
+        const currentYear = new Date().getFullYear();
+        for (let y = currentYear; y >= 1980; y--) {
+            yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
         }
-        
-        select.innerHTML = '<option value="">-- Select vehicle --</option>';
-        data.forEach(v => {
-            select.innerHTML += `<option value="${v.id}" data-reg="${v.registration_number}" data-make="${v.make}" data-model="${v.model}" data-year="${v.year}" data-vin="${v.vin || ''}" data-engine="${v.engine_number || ''}">${v.registration_number} - ${v.make} ${v.model}</option>`;
-        });
-        
-        select.onchange = function() {
-            const opt = select.options[select.selectedIndex];
-            if (opt && opt.value) {
-                selectedVehicle = {
-                    id: opt.value,
-                    registration: opt.dataset.reg,
-                    make: opt.dataset.make,
-                    model: opt.dataset.model,
-                    year: opt.dataset.year,
-                    vin: opt.dataset.vin,
-                    engine: opt.dataset.engine
-                };
-                document.getElementById('displayReg').innerText = selectedVehicle.registration;
-                document.getElementById('displayMakeModel').innerText = `${selectedVehicle.make} ${selectedVehicle.model}`;
-                document.getElementById('displayYear').innerText = selectedVehicle.year;
-                document.getElementById('vehicleInfo').style.display = 'block';
-                
-                document.getElementById('registration').value = selectedVehicle.registration;
-                document.getElementById('make').value = selectedVehicle.make;
-                document.getElementById('model').value = selectedVehicle.model;
-                document.getElementById('year').value = selectedVehicle.year;
-                document.getElementById('vin').value = selectedVehicle.vin || '';
-                document.getElementById('engineNo').value = selectedVehicle.engine || '';
-            }
-        };
-        
-    } catch (error) {
-        console.error('Error:', error);
-        select.innerHTML = '<option value="">Error loading vehicles</option>';
     }
-}
 
-// ============================================
-// ADD NEW VEHICLE - FIXED
-// ============================================
-async function addNewVehicle() {
-    console.log('Add Vehicle button clicked - Inspection');
-    
-    const registration = document.getElementById('newRegistration').value.trim().toUpperCase();
-    const make = document.getElementById('newMake').value.trim();
-    const model = document.getElementById('newModel').value.trim();
-    const year = document.getElementById('newYear').value;
-    const vin = document.getElementById('newVin').value.trim();
-    const engine = document.getElementById('newEngine').value.trim();
-    
-    if (!registration || !make || !model || !year) {
-        document.getElementById('errorMsg').innerHTML = 'Please fill in Registration, Make, Model, and Year';
-        document.getElementById('errorMsg').style.display = 'block';
-        setTimeout(() => hideError(), 3000);
-        return;
+    function nextStep(step) {
+        currentStep = step;
+        for (let i = 1; i <= 3; i++) {
+            const el = document.getElementById(`step${i}`);
+            if (el) el.style.display = i === step ? 'block' : 'none';
+        }
     }
-    
-    const addBtn = document.getElementById('addVehicleBtn');
-    addBtn.disabled = true;
-    addBtn.innerHTML = '<span class="spinner"></span> Saving...';
-    
-    try {
-        const { data, error } = await sb
-            .from('vehicles')
-            .insert([{
+
+    function prevStep(step) { nextStep(step); }
+
+    function getScore(value) {
+        if (value === 'Pass') return 100;
+        if (value === 'Warning') return 50;
+        return 0;
+    }
+
+    async function calculateInspection() {
+        const btn = event.target;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Generating...';
+
+        const categories = {
+            engine: ['engineStart', 'engineIdle', 'oilLeaks', 'coolant', 'exhaust'],
+            transmission: ['gearShift', 'clutch', 'transNoise'],
+            brakes: ['brakePerf', 'brakePads', 'suspension', 'shocks'],
+            electrical: ['battery', 'alternator', 'lights', 'ac'],
+            tyres: ['tread', 'tyrePressure', 'alignment'],
+            body: ['bodyCondition', 'paint', 'rust', 'interior', 'seatbelts', 'windows']
+        };
+
+        let scores = {};
+        let totalScore = 0;
+        let totalItems = 0;
+
+        for (const [cat, items] of Object.entries(categories)) {
+            let catSum = 0;
+            items.forEach(item => {
+                const value = document.getElementById(item).value;
+                const score = getScore(value);
+                catSum += score;
+                totalScore += score;
+                totalItems++;
+            });
+            scores[cat] = catSum / items.length;
+        }
+
+        const overall = totalScore / totalItems;
+        const verdict = overall >= 80 ? 'PASS' : (overall >= 60 ? 'PASS with Notes' : 'FAIL');
+
+        inspectionData = {
+            registration: document.getElementById('registration').value,
+            vin: document.getElementById('vin').value,
+            make: document.getElementById('make').value,
+            model: document.getElementById('model').value,
+            year: parseInt(document.getElementById('year').value),
+            mileage: parseInt(document.getElementById('mileage').value),
+            scores: scores,
+            overall_score: Math.round(overall),
+            verdict: verdict,
+            inspection_date: new Date().toISOString()
+        };
+
+        document.getElementById('overallScore').innerHTML = `${Math.round(overall)}%`;
+        const verdictClass = verdict === 'PASS' ? 'pass' : (verdict === 'PASS with Notes' ? 'warning' : 'fail');
+        document.getElementById('verdictBadge').innerHTML = `<span class="${verdictClass}" style="font-size:24px;font-weight:bold;">${verdict}</span>`;
+
+        document.getElementById('summaryStats').innerHTML = `
+            <div class="checklist-item"><span>🔧 Engine</span><span>${Math.round(scores.engine)}%</span></div>
+            <div class="checklist-item"><span>⚙️ Transmission</span><span>${Math.round(scores.transmission)}%</span></div>
+            <div class="checklist-item"><span>🛑 Brakes & Suspension</span><span>${Math.round(scores.brakes)}%</span></div>
+            <div class="checklist-item"><span>⚡ Electrical</span><span>${Math.round(scores.electrical)}%</span></div>
+            <div class="checklist-item"><span>🛞 Tyres & Wheels</span><span>${Math.round(scores.tyres)}%</span></div>
+            <div class="checklist-item"><span>🚗 Body & Interior</span><span>${Math.round(scores.body)}%</span></div>
+        `;
+
+        let detailed = '';
+        for (const [cat, items] of Object.entries(categories)) {
+            detailed += `<h4>${cat.toUpperCase()}</h4>`;
+            items.forEach(item => {
+                const value = document.getElementById(item).value;
+                const label = document.querySelector(`label[for="${item}"]`).innerText;
+                const statusClass = value === 'Pass' ? 'pass' : (value === 'Warning' ? 'warning' : 'fail');
+                detailed += `<div class="checklist-item"><span>${label}</span><span class="${statusClass}">${value}</span></div>`;
+            });
+        }
+        document.getElementById('detailedResults').innerHTML = detailed;
+
+        nextStep(3);
+        btn.disabled = false;
+        btn.innerHTML = 'Generate Report';
+    }
+
+    async function saveInspection() {
+        const saveBtn = event.target;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+        try {
+            const { error } = await supabase.from('inspections').insert([{
                 user_id: currentUser.id,
-                registration_number: registration,
-                make: make,
-                model: model,
-                year: parseInt(year),
-                vin: vin || null,
-                engine_number: engine || null,
-                created_at: new Date().toISOString()
-            }])
-            .select();
-        
-        if (error) {
-            if (error.code === '23505') {
-                throw new Error('Vehicle with this registration already exists');
-            }
-            throw error;
-        }
-        
-        if (data && data[0]) {
-            selectedVehicle = {
-                id: data[0].id,
-                registration: data[0].registration_number,
-                make: data[0].make,
-                model: data[0].model,
-                year: data[0].year,
-                vin: data[0].vin || '',
-                engine: data[0].engine_number || ''
-            };
-            
-            document.getElementById('registration').value = selectedVehicle.registration;
-            document.getElementById('make').value = selectedVehicle.make;
-            document.getElementById('model').value = selectedVehicle.model;
-            document.getElementById('year').value = selectedVehicle.year;
-            document.getElementById('vin').value = selectedVehicle.vin || '';
-            document.getElementById('engineNo').value = selectedVehicle.engine || '';
-            
-            document.getElementById('successMsg').innerHTML = '✓ Vehicle added successfully!';
+                registration: inspectionData.registration,
+                vin: inspectionData.vin,
+                make: inspectionData.make,
+                model: inspectionData.model,
+                year: inspectionData.year,
+                mileage: inspectionData.mileage,
+                scores: inspectionData.scores,
+                overall_score: inspectionData.overall_score,
+                verdict: inspectionData.verdict,
+                inspector_name: document.getElementById('inspectorName').value,
+                inspector_notes: document.getElementById('inspectorNotes').value,
+                inspection_date: new Date().toISOString(),
+                status: 'completed'
+            }]);
+
+            if (error) throw error;
+            document.getElementById('successMsg').innerHTML = '✓ Inspection saved successfully!';
             document.getElementById('successMsg').style.display = 'block';
-            
-            await loadVehicles();
-            setTimeout(() => nextStep(2), 1500);
+        } catch (error) {
+            document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
+            document.getElementById('errorMsg').style.display = 'block';
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = 'Save Inspection';
         }
-        
-    } catch (error) {
-        document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
-        document.getElementById('errorMsg').style.display = 'block';
-        addBtn.disabled = false;
-        addBtn.innerHTML = '+ Add Vehicle & Continue';
     }
-}
 
-function hideError() {
-    document.getElementById('errorMsg').style.display = 'none';
-    document.getElementById('successMsg').style.display = 'none';
-}
-
-function showTab(tab) {
-    if (tab === 'select') {
-        document.getElementById('tabSelectPanel').style.display = 'block';
-        document.getElementById('tabAddPanel').style.display = 'none';
-        document.getElementById('tabSelectBtn').className = 'tab-btn active';
-        document.getElementById('tabAddBtn').className = 'tab-btn';
-        document.getElementById('nextBtn').style.display = 'block';
-    } else {
-        document.getElementById('tabSelectPanel').style.display = 'none';
-        document.getElementById('tabAddPanel').style.display = 'block';
-        document.getElementById('tabSelectBtn').className = 'tab-btn';
-        document.getElementById('tabAddBtn').className = 'tab-btn active';
-        document.getElementById('nextBtn').style.display = 'none';
+    function generatePDF() {
+        const element = document.getElementById('inspectionResult');
+        html2pdf().set({ margin: 0.5, filename: `Inspection_${inspectionData.registration}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } }).from(element).save();
     }
-}
 
-function previewPhoto(input, previewId) {
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const img = document.getElementById(previewId);
-            img.src = e.target.result;
-            img.style.display = 'block';
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-
-function nextStep(step) {
-    currentStep = step;
-    for (let i = 1; i <= 11; i++) {
-        const el = document.getElementById(`step${i}`);
-        if (el) el.style.display = i === step ? 'block' : 'none';
-    }
-    document.getElementById('progressFill').style.width = `${((step - 1) / 10) * 100}%`;
-}
-
-function prevStep(step) {
-    nextStep(step);
-}
-
-function validateAndNext() {
-    const select = document.getElementById('vehicleSelect');
-    if (!select.value) {
-        document.getElementById('errorMsg').innerHTML = 'Please select a vehicle or add a new one';
-        document.getElementById('errorMsg').style.display = 'block';
-        setTimeout(() => hideError(), 3000);
-        return;
-    }
-    nextStep(2);
-}
-
-// ============================================
-// CALCULATE INSPECTION RESULT
-// ============================================
-function calculateInspectionResult() {
-    const roadTestScores = [
-        parseInt(document.getElementById('accelScore').value),
-        parseInt(document.getElementById('brakeScore').value),
-        parseInt(document.getElementById('steerScore').value),
-        parseInt(document.getElementById('suspComfort').value),
-        parseInt(document.getElementById('enginePerf').value)
-    ];
-    const avgRoadTest = roadTestScores.reduce((a,b) => a+b, 0) / 5;
-    const overall = Math.round(avgRoadTest * 10);
-    document.getElementById('overallScore').innerHTML = `${overall}%`;
-    
-    let rating = '';
-    let ratingClass = '';
-    if (overall >= 85) { rating = 'Excellent'; ratingClass = 'condition-excellent'; }
-    else if (overall >= 70) { rating = 'Good'; ratingClass = 'condition-good'; }
-    else if (overall >= 50) { rating = 'Fair'; ratingClass = 'condition-fair'; }
-    else { rating = 'Poor'; ratingClass = 'condition-poor'; }
-    
-    document.getElementById('ratingBadge').innerHTML = `<span class="condition-badge ${ratingClass}">Rating: ${rating}</span>`;
-    
-    document.getElementById('sectionScores').innerHTML = `
-        <div class="breakdown-item"><span>🔧 Mechanical</span><span>${Math.min(95, overall + 5)}%</span></div>
-        <div class="breakdown-item"><span>🛡️ Safety</span><span>${Math.min(95, overall)}%</span></div>
-        <div class="breakdown-item"><span>🚘 Body</span><span>${Math.min(90, overall - 5)}%</span></div>
-        <div class="breakdown-item"><span>⚡ Electrical</span><span>${Math.min(92, overall - 3)}%</span></div>
-        <div class="breakdown-item"><span>📋 Compliance</span><span>${Math.min(96, overall + 2)}%</span></div>
-    `;
-    
-    nextStep(11);
-}
-
-// ============================================
-// SAVE TO SUPABASE
-// ============================================
-async function saveInspection() {
-    const saveBtn = event.target;
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
-    
-    try {
-        const record = {
-            user_id: currentUser.id,
-            vehicle_id: selectedVehicle.id,
-            inspection_number: document.getElementById('inspectionNo').value,
-            inspection_date: document.getElementById('inspectionDate').value,
-            inspection_type: document.getElementById('inspectionType').value,
-            inspector_name: document.getElementById('inspectorName').value,
-            inspector_license: document.getElementById('inspectorLicense').value,
-            customer_name: document.getElementById('customerName').value,
-            registration: selectedVehicle.registration,
-            make: selectedVehicle.make,
-            model: selectedVehicle.model,
-            year: selectedVehicle.year,
-            vin: selectedVehicle.vin,
-            mileage: parseInt(document.getElementById('mileage').value) || 0,
-            overall_score: parseInt(document.getElementById('overallScore').innerText),
-            final_verdict: document.getElementById('finalVerdict').value,
-            major_defects: document.getElementById('majorDefects').value,
-            minor_defects: document.getElementById('minorDefects').value,
-            repair_cost: parseInt(document.getElementById('repairCost').value) || 0,
-            inspector_signature: document.getElementById('inspectorSignature').value,
-            inspection_date_completed: new Date().toISOString()
-        };
-        
-        const { error } = await sb.from('inspections').insert([record]);
-        if (error) throw error;
-        
-        document.getElementById('successMsg').innerHTML = '✓ Inspection saved! Generating report...';
-        document.getElementById('successMsg').style.display = 'block';
-        
-        setTimeout(() => generatePDF(), 1500);
-        
-    } catch (error) {
-        document.getElementById('errorMsg').innerHTML = 'Error: ' + error.message;
-        document.getElementById('errorMsg').style.display = 'block';
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = 'Save Inspection';
-    }
-}
-
-// ============================================
-// GENERATE PDF
-// ============================================
-function generatePDF() {
-    const element = document.getElementById('inspectionResult');
-    const opt = {
-        margin: [0.5, 0.5, 0.5, 0.5],
-        filename: `Inspection_Report_${selectedVehicle?.registration || 'vehicle'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, backgroundColor: '#0a0a0a' },
-        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().set(opt).from(element).save();
-}
-
-// ============================================
-// INITIALIZE - FIXED WITH ERROR HANDLING
-// ============================================
-async function init() {
-    try {
-        const isAuth = await checkAuth();
-        if (!isAuth) return;
-        
+    async function init() {
+        if (!await checkAuth()) return;
         populateYears();
-        await loadVehicles();
-        
-        document.getElementById('tabSelectBtn').addEventListener('click', () => showTab('select'));
-        document.getElementById('tabAddBtn').addEventListener('click', () => showTab('add'));
-        document.getElementById('nextBtn').addEventListener('click', () => validateAndNext());
-        
-        showTab('select');
         nextStep(1);
-        
-        console.log('AUTO-V Inspection initialized successfully');
-        
-    } catch (err) {
-        console.error('Initialization Error:', err);
-        document.getElementById('errorMsg').innerHTML = 'System initialization failed: ' + err.message;
-        document.getElementById('errorMsg').style.display = 'block';
     }
-}
 
-document.addEventListener('DOMContentLoaded', init);
-
+    document.addEventListener('DOMContentLoaded', init);
 </script>
-
 </body>
 </html>
