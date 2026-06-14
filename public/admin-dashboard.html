@@ -1,903 +1,387 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>AUTO-V | Supa Admin Dashboard</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23eab308' rx='20'/><text x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'>🚗</text></svg>">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #0a0c15;
-            color: white;
-            padding: 20px;
-        }
-        .container { max-width: 1600px; margin: auto; }
-        header {
-            background: #0f172a;
-            padding: 16px 24px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-        .logo { font-size: 24px; font-weight: bold; color: #eab308; display: flex; align-items: center; gap: 10px; }
-        .logo span { font-size: 12px; color: #94a3b8; }
-        .logout-btn { background: #dc2626; color: white; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .stat-card {
-            background: #0f172a;
-            padding: 20px;
-            border-radius: 16px;
-            text-align: center;
-            border: 1px solid #1e293b;
-            transition: transform 0.3s;
-            cursor: pointer;
-        }
-        .stat-card:hover { transform: translateY(-3px); border-color: #eab308; }
-        .stat-card h3 { color: #94a3b8; font-size: 13px; margin-bottom: 10px; }
-        .stat-number { font-size: 32px; font-weight: bold; color: #22c55e; }
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        .tab-btn {
-            background: #1e293b;
-            color: #cbd5e1;
-            padding: 10px 24px;
-            border: none;
-            border-radius: 40px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .tab-btn.active { background: #eab308; color: #0a0c10; }
-        .tab-btn:hover { background: #334155; }
-        .card {
-            background: #0f172a;
-            border-radius: 16px;
-            padding: 24px;
-            margin-bottom: 20px;
-            border: 1px solid #1e293b;
-        }
-        h2 { color: #eab308; margin-bottom: 20px; font-size: 20px; border-left: 3px solid #eab308; padding-left: 12px; }
-        h3 { color: #eab308; margin: 20px 0 15px 0; font-size: 16px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1e293b; }
-        th { color: #eab308; font-weight: 600; }
-        .btn {
-            background: #eab308;
-            color: black;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-        .btn:hover { background: #facc15; transform: scale(1.02); }
-        .btn-danger { background: #dc2626; color: white; }
-        .btn-danger:hover { background: #b91c1c; }
-        .btn-success { background: #22c55e; color: white; }
-        .btn-success:hover { background: #16a34a; }
-        .btn-warning { background: #eab308; color: black; }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.95);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(4px);
-        }
-        .modal-content {
-            background: #0f172a;
-            border-radius: 20px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 85vh;
-            overflow-y: auto;
-            padding: 30px;
-            border: 2px solid #eab308;
-        }
-        .modal-content h3 { margin-top: 0; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 8px; color: #94a3b8; font-weight: 600; font-size: 12px; }
-        input, select, textarea {
-            width: 100%;
-            padding: 12px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
-        }
-        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
-        .form-row .form-group { flex: 1; margin-bottom: 0; }
-        .badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            display: inline-block;
-        }
-        .badge-active { background: #22c55e; color: black; }
-        .badge-inactive { background: #475569; color: white; }
-        .badge-paid { background: #22c55e; color: black; }
-        .badge-pending { background: #eab308; color: black; }
-        .badge-admin { background: #8b5cf6; color: white; }
-        .badge-user { background: #3b82f6; color: white; }
-        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
-        .action-buttons button { padding: 4px 12px; font-size: 12px; }
-        .chart-container { max-width: 400px; margin: auto; }
-        canvas { max-height: 300px; }
-        .sql-editor {
-            font-family: monospace;
-            background: #1e293b;
-            padding: 15px;
-            border-radius: 12px;
-            font-size: 12px;
-            white-space: pre-wrap;
-        }
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            border-top-color: #eab308;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .error, .success {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
-        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
-        @media (max-width: 768px) {
-            .form-row { flex-direction: column; gap: 15px; }
-            th, td { font-size: 12px; padding: 8px; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="logo">
-                🚗 AUTO-V Supa Admin
-                <span>| Full System Control</span>
-            </div>
-            <button class="logout-btn" id="logoutBtn">Logout</button>
-        </header>
+<!-- Replace the Pricing Tab section in admin-dashboard.html with this complete implementation -->
 
-        <div id="errorMsg" class="error"></div>
-        <div id="successMsg" class="success"></div>
-
-        <!-- Stats Grid -->
-        <div class="stats-grid">
-            <div class="stat-card" onclick="switchTab('users')"><h3>👥 Total Users</h3><div class="stat-number" id="totalUsers">0</div></div>
-            <div class="stat-card" onclick="switchTab('requests')"><h3>💰 Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
-            <div class="stat-card" onclick="switchTab('requests')"><h3>🔍 Inspections</h3><div class="stat-number" id="totalInspections">0</div></div>
-            <div class="stat-card" onclick="switchTab('payments')"><h3>💵 Total Revenue</h3><div class="stat-number" id="totalRevenue">KES 0</div></div>
-            <div class="stat-card" onclick="switchTab('payments')"><h3>⏳ Pending Payments</h3><div class="stat-number" id="pendingPayments">0</div></div>
-            <div class="stat-card" onclick="switchTab('partners')"><h3>🤝 Active Partners</h3><div class="stat-number" id="totalPartners">0</div></div>
+<!-- Pricing Tab - Complete Dynamic Pricing -->
+<div id="pricingTab" class="card" style="display:none;">
+    <h2>💰 Dynamic Pricing Configuration</h2>
+    <p style="color: #94a3b8; margin-bottom: 20px;">Pricing based on Vehicle Category + Valuation Purpose + Service Level</p>
+    
+    <!-- Quick Filter -->
+    <div class="form-row" style="margin-bottom: 20px;">
+        <div class="form-group">
+            <label>Filter by Vehicle Category</label>
+            <select id="priceFilterCategory" onchange="filterPricingTable()">
+                <option value="all">All Categories</option>
+                <option value="passenger_car">Passenger Car</option>
+                <option value="suv">SUV / 4x4</option>
+                <option value="motorcycle">Motorcycle</option>
+                <option value="tuk_tuk">Tuk-tuk / 3-Wheeler</option>
+                <option value="commercial">Commercial Vehicle</option>
+                <option value="farm">Farm Machinery</option>
+                <option value="industrial">Industrial Machinery</option>
+                <option value="specialty">Specialty Vehicle</option>
+            </select>
         </div>
-
-        <!-- Tabs -->
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
-            <button class="tab-btn" data-tab="users">👥 Users</button>
-            <button class="tab-btn" data-tab="vehicles">🚗 Vehicles</button>
-            <button class="tab-btn" data-tab="requests">📋 Requests</button>
-            <button class="tab-btn" data-tab="payments">💳 Payments</button>
-            <button class="tab-btn" data-tab="certificates">📜 Certificates</button>
-            <button class="tab-btn" data-tab="partners">🤝 Partners</button>
-            <button class="tab-btn" data-tab="pricing">💰 Pricing</button>
-            <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
-            <button class="tab-btn" data-tab="database">🗄️ Database</button>
-            <button class="tab-btn" data-tab="security">🔒 Security</button>
-            <button class="tab-btn" data-tab="analytics">📈 Analytics</button>
+        <div class="form-group">
+            <label>Filter by Service Type</label>
+            <select id="priceFilterService" onchange="filterPricingTable()">
+                <option value="all">All Services</option>
+                <option value="valuation">Valuation</option>
+                <option value="inspection">Inspection</option>
+                <option value="premium">Premium Valuation</option>
+            </select>
         </div>
-
-        <!-- Dashboard Tab -->
-        <div id="dashboardTab" class="card">
-            <h2>📊 Revenue Chart</h2>
-            <div class="chart-container">
-                <canvas id="revenueChart"></canvas>
-            </div>
-            <div style="margin-top: 20px;">
-                <h3>Quick Actions</h3>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button class="btn btn-success" onclick="switchTab('users')">👥 Manage Users</button>
-                    <button class="btn btn-primary" onclick="switchTab('pricing')">💰 Update Pricing</button>
-                    <button class="btn btn-warning" onclick="exportData()">📥 Export All Data</button>
-                    <button class="btn btn-danger" onclick="clearCache()">🗑️ Clear Cache</button>
-                </div>
-            </div>
+        <div class="form-group">
+            <label>Bulk Action</label>
+            <select id="bulkAction">
+                <option value="">Select Action</option>
+                <option value="increase_5">Increase All by 5%</option>
+                <option value="decrease_5">Decrease All by 5%</option>
+                <option value="round_up">Round to Nearest 100</option>
+            </select>
+            <button class="btn btn-warning" onclick="applyBulkAction()" style="margin-top: 5px;">Apply to Filtered</button>
         </div>
+    </div>
 
-        <!-- Users Tab -->
-        <div id="usersTab" class="card" style="display:none;">
-            <h2>👥 User Management</h2>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-                <input type="text" id="searchUser" placeholder="Search users..." style="width: 250px;" onkeyup="searchUsers()">
-                <button class="btn btn-success" onclick="openUserModal()">+ Add User</button>
-            </div>
-            <div style="overflow-x: auto;">
-                <table id="usersTable">
-                    <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Phone</th><th>Joined</th><th>Requests</th><th>Actions</th></tr></thead>
-                    <tbody id="usersBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
-        </div>
+    <!-- Pricing Table -->
+    <div style="overflow-x: auto; max-height: 500px; overflow-y: auto;">
+        <table id="pricingTable">
+            <thead>
+                <tr style="position: sticky; top: 0; background: #0f172a;">
+                    <th>Vehicle Category</th>
+                    <th>Sub Category</th>
+                    <th>Valuation Purpose</th>
+                    <th>Service Level</th>
+                    <th>Base Price (KES)</th>
+                    <th>Express Fee (KES)</th>
+                    <th>Certificate Fee</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="pricingBody">
+                <tr><td colspan="8" style="text-align:center;">Loading pricing data...</td></tr>
+            </tbody>
+        </table>
+    </div>
 
-        <!-- Vehicles Tab -->
-        <div id="vehiclesTab" class="card" style="display:none;">
-            <h2>🚗 Vehicle Management</h2>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-                <input type="text" id="searchVehicle" placeholder="Search vehicles..." style="width: 250px;" onkeyup="searchVehicles()">
-                <button class="btn btn-success" onclick="openVehicleModal()">+ Add Vehicle</button>
-            </div>
-            <div style="overflow-x: auto;">
-                <table id="vehiclesTable">
-                    <thead><tr><th>Reg No</th><th>Make/Model</th><th>Year</th><th>Owner</th><th>Status</th><th>Actions</th></td></thead>
-                    <tbody id="vehiclesBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Requests Tab -->
-        <div id="requestsTab" class="card" style="display:none;">
-            <h2>📋 Service Requests</h2>
-            <div style="overflow-x: auto;">
-                <table id="requestsTable">
-                    <thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody id="requestsBody"><tr><td colspan="8">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Payments Tab -->
-        <div id="paymentsTab" class="card" style="display:none;">
-            <h2>💳 Payment Transactions</h2>
-            <div style="overflow-x: auto;">
-                <table id="paymentsTable">
-                    <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead>
-                    <tbody id="paymentsBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Certificates Tab -->
-        <div id="certificatesTab" class="card" style="display:none;">
-            <h2>📜 Certificates</h2>
-            <div style="overflow-x: auto;">
-                <table id="certificatesTable">
-                    <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Certificate No</th><th>Actions</th></tr></thead>
-                    <tbody id="certificatesBody"><td><td colspan="5">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Partners Tab -->
-        <div id="partnersTab" class="card" style="display:none;">
-            <h2>🤝 Partner Management</h2>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
-                <input type="text" id="searchPartner" placeholder="Search partners..." style="width: 250px;" onkeyup="searchPartners()">
-                <button class="btn btn-success" onclick="openPartnerModal()">+ Add Partner</button>
-            </div>
-            <div style="overflow-x: auto;">
-                <table id="partnersTable">
-                    <thead><tr><th>Name</th><th>Type</th><th>Contact</th><th>Email</th><th>Commission</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody id="partnersBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Pricing Tab -->
-        <div id="pricingTab" class="card" style="display:none;">
-            <h2>💰 Pricing Configuration</h2>
-            <div class="form-row">
-                <div class="form-group"><label>Valuation Fee (KES)</label><input type="number" id="valuationFee" placeholder="2500"></div>
-                <div class="form-group"><label>Inspection Fee (KES)</label><input type="number" id="inspectionFee" placeholder="3500"></div>
-                <div class="form-group"><label>Premium Valuation Fee (KES)</label><input type="number" id="premiumValuationFee" placeholder="5000"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Motorcycle Fee (KES)</label><input type="number" id="motorcycleFee" placeholder="1500"></div>
-                <div class="form-group"><label>Tuk-tuk Fee (KES)</label><input type="number" id="tuktukFee" placeholder="2000"></div>
-                <div class="form-group"><label>Certificate Fee (KES)</label><input type="number" id="certificateFee" placeholder="500"></div>
-            </div>
-            <button class="btn" id="updateFeesBtn">Update All Fees</button>
-            
-            <h3>📱 M-Pesa Configuration</h3>
-            <div class="form-row">
-                <div class="form-group"><label>Paybill Number</label><input type="text" id="paybillNumber" value="4095377"></div>
-                <div class="form-group"><label>API Environment</label><select id="apiEnv"><option>Production</option><option>Sandbox</option></select></div>
-            </div>
-            <button class="btn btn-warning" onclick="updateMpesaConfig()">Update M-Pesa Settings</button>
-        </div>
-
-        <!-- Settings Tab -->
-        <div id="settingsTab" class="card" style="display:none;">
-            <h2>⚙️ System Settings</h2>
-            <div class="form-row">
-                <div class="form-group"><label>System Name</label><input type="text" id="systemName" placeholder="AUTO-V Kenya"></div>
-                <div class="form-group"><label>Support Email</label><input type="email" id="supportEmail" placeholder="support@autov.co.ke"></div>
-                <div class="form-group"><label>Support Phone</label><input type="tel" id="supportPhone" placeholder="+254 700 000 000"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Default Currency</label><select id="currency"><option>KES</option><option>USD</option><option>UGX</option><option>TZS</option></select></div>
-                <div class="form-group"><label>Maintenance Mode</label><select id="maintenanceMode"><option>Off</option><option>On</option></select></div>
-            </div>
-            <button class="btn" onclick="updateSystemSettings()">Save Settings</button>
-            
-            <h3>📧 Email Configuration</h3>
-            <div class="form-row">
-                <div class="form-group"><label>SMTP Host</label><input type="text" id="smtpHost" placeholder="smtp.gmail.com"></div>
-                <div class="form-group"><label>SMTP Port</label><input type="text" id="smtpPort" placeholder="587"></div>
-            </div>
-            <button class="btn" onclick="saveEmailSettings()">Save Email Settings</button>
-        </div>
-
-        <!-- Database Tab -->
-        <div id="databaseTab" class="card" style="display:none;">
-            <h2>🗄️ Database Management</h2>
-            <div class="form-group">
-                <label>Run SQL Query</label>
-                <textarea id="sqlQuery" rows="5" placeholder="SELECT * FROM service_requests LIMIT 10;" style="font-family: monospace;"></textarea>
-            </div>
-            <button class="btn btn-success" onclick="runSqlQuery()">▶️ Execute Query</button>
-            <button class="btn btn-danger" onclick="confirmBackup()">💾 Backup Database</button>
-            <div id="sqlResult" style="margin-top: 20px; overflow-x: auto; display: none;"></div>
-            
-            <h3>📊 Database Stats</h3>
-            <div id="dbStats" class="sql-editor"></div>
-        </div>
-
-        <!-- Security Tab -->
-        <div id="securityTab" class="card" style="display:none;">
-            <h2>🔒 Security & Permissions</h2>
-            <div class="form-group">
-                <label>User Permission Templates</label>
-                <select id="permissionTemplate" onchange="applyPermissionTemplate()">
-                    <option value="">-- Select Template --</option>
-                    <option value="super_admin">Super Admin (Full Access)</option>
-                    <option value="admin">Admin (Limited)</option>
-                    <option value="moderator">Moderator (View Only)</option>
+    <!-- Add New Price Rule -->
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #1e293b;">
+        <h3>➕ Add New Pricing Rule</h3>
+        <div class="form-row">
+            <div class="form-group"><label>Vehicle Category</label>
+                <select id="newVehicleCategory">
+                    <option value="passenger_car">Passenger Car</option>
+                    <option value="suv">SUV / 4x4</option>
+                    <option value="motorcycle">Motorcycle</option>
+                    <option value="tuk_tuk">Tuk-tuk / 3-Wheeler</option>
+                    <option value="commercial">Commercial Vehicle</option>
+                    <option value="farm">Farm Machinery</option>
+                    <option value="industrial">Industrial Machinery</option>
+                    <option value="specialty">Specialty Vehicle</option>
                 </select>
             </div>
-            <div class="sql-editor">
-                <strong>Current RLS Policies:</strong>
-                <pre id="rlsPolicies">Loading...</pre>
+            <div class="form-group"><label>Sub Category</label><input type="text" id="newSubCategory" placeholder="e.g., Luxury, Compact, Heavy"></div>
+            <div class="form-group"><label>Valuation Purpose</label>
+                <select id="newPurpose">
+                    <option value="just_know">Just Want to Know (FREE)</option>
+                    <option value="pre_insurance">Pre-Insurance Valuation</option>
+                    <option value="claim_verification">Insurance Claim Verification</option>
+                    <option value="loan_collateral">Loan / Collateral Valuation</option>
+                    <option value="court_case">Legal / Court Case Valuation</option>
+                    <option value="pre_purchase">Pre-Purchase Valuation</option>
+                    <option value="import_valuation">Import / Customs Valuation</option>
+                    <option value="fleet_valuation">Fleet / Corporate Valuation</option>
+                    <option value="total_loss">Total Loss Assessment</option>
+                    <option value="classic_valuation">Classic / Vintage Valuation</option>
+                </select>
             </div>
-            <button class="btn btn-warning" onclick="refreshRLSPolicies()">Refresh Policies</button>
-            <button class="btn btn-danger" onclick="resetRLS()">Reset RLS Policies</button>
         </div>
-
-        <!-- Analytics Tab -->
-        <div id="analyticsTab" class="card" style="display:none;">
-            <h2>📈 Advanced Analytics</h2>
-            <div class="form-row">
-                <div class="form-group"><label>Start Date</label><input type="date" id="analyticsStartDate"></div>
-                <div class="form-group"><label>End Date</label><input type="date" id="analyticsEndDate"></div>
+        <div class="form-row">
+            <div class="form-group"><label>Service Level</label>
+                <select id="newServiceLevel">
+                    <option value="standard">Standard</option>
+                    <option value="premium">Premium</option>
+                    <option value="express">Express (2 hours)</option>
+                </select>
             </div>
-            <button class="btn" onclick="generateAnalytics()">Generate Report</button>
-            <div id="analyticsResult" style="margin-top: 20px;"></div>
+            <div class="form-group"><label>Base Price (KES)</label><input type="number" id="newBasePrice" placeholder="2500"></div>
+            <div class="form-group"><label>Express Fee (KES)</label><input type="number" id="newExpressFee" placeholder="1000"></div>
         </div>
+        <button class="btn btn-success" onclick="addPricingRule()">+ Add Pricing Rule</button>
     </div>
 
-    <!-- User Modal -->
-    <div id="userModal" class="modal">
+    <!-- Quick Edit Modal -->
+    <div id="editPricingModal" class="modal">
         <div class="modal-content">
-            <h3 id="userModalTitle">Add User</h3>
-            <input type="hidden" id="userId">
-            <div class="form-group"><label>Email</label><input type="email" id="userEmail" placeholder="user@example.com"></div>
-            <div class="form-group"><label>Password (for new users)</label><input type="password" id="userPassword" placeholder="Leave blank to keep current"></div>
-            <div class="form-row">
-                <div class="form-group"><label>Role</label><select id="userRole"><option>user</option><option>admin</option><option>moderator</option></select></div>
-                <div class="form-group"><label>Phone</label><input type="tel" id="userPhone" placeholder="Phone number"></div>
-            </div>
+            <h3>Edit Pricing Rule</h3>
+            <input type="hidden" id="editPricingId">
+            <div class="form-group"><label>Base Price (KES)</label><input type="number" id="editBasePrice"></div>
+            <div class="form-group"><label>Express Fee (KES)</label><input type="number" id="editExpressFee"></div>
+            <div class="form-group"><label>Certificate Fee (KES)</label><input type="number" id="editCertificateFee"></div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-success" onclick="saveUser()">Save</button>
-                <button class="btn btn-danger" onclick="closeUserModal()">Cancel</button>
+                <button class="btn btn-success" onclick="updatePricingRule()">Save Changes</button>
+                <button class="btn btn-danger" onclick="closeEditPricingModal()">Cancel</button>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Vehicle Modal -->
-    <div id="vehicleModal" class="modal">
-        <div class="modal-content">
-            <h3 id="vehicleModalTitle">Add/Edit Vehicle</h3>
-            <input type="hidden" id="vehicleId">
-            <div class="form-row">
-                <div class="form-group"><label>Registration</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
-                <div class="form-group"><label>Make</label><input type="text" id="vehicleMake" placeholder="Toyota"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Model</label><input type="text" id="vehicleModel" placeholder="Axio"></div>
-                <div class="form-group"><label>Year</label><input type="number" id="vehicleYear" placeholder="2020"></div>
-            </div>
-            <div class="form-group"><label>Owner ID (User UUID)</label><input type="text" id="vehicleOwnerId" placeholder="User UUID"></div>
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-success" onclick="saveVehicle()">Save</button>
-                <button class="btn btn-danger" onclick="closeVehicleModal()">Cancel</button>
-            </div>
-        </div>
-    </div>
+<script>
+// Complete Pricing Management Functions
+let allPricingRules = [];
 
-    <!-- Partner Modal -->
-    <div id="partnerModal" class="modal">
-        <div class="modal-content">
-            <h3 id="partnerModalTitle">Add Partner</h3>
-            <input type="hidden" id="partnerId">
-            <div class="form-group"><label>Partner Name</label><input type="text" id="partnerName" placeholder="Partner name"></div>
-            <div class="form-row">
-                <div class="form-group"><label>Type</label><select id="partnerType"><option>Bank</option><option>Insurance</option><option>Dealership</option><option>Fleet</option></select></div>
-                <div class="form-group"><label>Commission (%)</label><input type="number" id="partnerCommission" placeholder="10"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Contact Person</label><input type="text" id="partnerContact" placeholder="Contact name"></div>
-                <div class="form-group"><label>Phone</label><input type="tel" id="partnerPhone" placeholder="Phone"></div>
-            </div>
-            <div class="form-group"><label>Email</label><input type="email" id="partnerEmail" placeholder="Email"></div>
-            <div class="form-row">
-                <div class="form-group"><label>Status</label><select id="partnerStatus"><option>Active</option><option>Inactive</option></select></div>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-success" onclick="savePartner()">Save</button>
-                <button class="btn btn-danger" onclick="closePartnerModal()">Cancel</button>
-            </div>
-        </div>
-    </div>
+// Load pricing from Supabase
+async function loadPricingRules() {
+    const { data, error } = await supabase
+        .from('pricing_rules')
+        .select('*')
+        .order('vehicle_category', { ascending: true });
+    
+    if (error) {
+        console.error('Error loading pricing:', error);
+        // Initialize default pricing if table is empty
+        await initializeDefaultPricing();
+        return;
+    }
+    
+    allPricingRules = data || [];
+    renderPricingTable();
+}
 
-    <script>
-        (function() {
-            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            
-            let currentUser = null;
-            let revenueChart = null;
-            let currentUserData = [];
+// Initialize default pricing rules
+async function initializeDefaultPricing() {
+    const defaultPricing = [
+        // Passenger Cars
+        { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'pre_insurance', service_level: 'standard', base_price: 2500, express_fee: 1000, certificate_fee: 500 },
+        { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'loan_collateral', service_level: 'standard', base_price: 3000, express_fee: 1000, certificate_fee: 500 },
+        { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'court_case', service_level: 'premium', base_price: 5000, express_fee: 2000, certificate_fee: 1000 },
+        
+        // SUVs
+        { vehicle_category: 'suv', sub_category: 'Standard', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'suv', sub_category: 'Standard', purpose: 'pre_insurance', service_level: 'standard', base_price: 3000, express_fee: 1000, certificate_fee: 500 },
+        { vehicle_category: 'suv', sub_category: 'Luxury', purpose: 'pre_insurance', service_level: 'premium', base_price: 5000, express_fee: 2000, certificate_fee: 1000 },
+        
+        // Motorcycles
+        { vehicle_category: 'motorcycle', sub_category: 'Commuter', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'motorcycle', sub_category: 'Commuter', purpose: 'pre_insurance', service_level: 'standard', base_price: 1000, express_fee: 500, certificate_fee: 300 },
+        { vehicle_category: 'motorcycle', sub_category: 'Sport', purpose: 'pre_insurance', service_level: 'standard', base_price: 1500, express_fee: 500, certificate_fee: 300 },
+        { vehicle_category: 'motorcycle', sub_category: 'Cruiser', purpose: 'premium', service_level: 'premium', base_price: 3000, express_fee: 1000, certificate_fee: 500 },
+        
+        // Tuk-tuk / 3-Wheeler
+        { vehicle_category: 'tuk_tuk', sub_category: 'Passenger', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'tuk_tuk', sub_category: 'Passenger', purpose: 'pre_insurance', service_level: 'standard', base_price: 2000, express_fee: 500, certificate_fee: 300 },
+        { vehicle_category: 'tuk_tuk', sub_category: 'Cargo', purpose: 'loan_collateral', service_level: 'standard', base_price: 2500, express_fee: 500, certificate_fee: 300 },
+        
+        // Commercial Vehicles
+        { vehicle_category: 'commercial', sub_category: 'Light', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'commercial', sub_category: 'Light', purpose: 'fleet_valuation', service_level: 'standard', base_price: 3500, express_fee: 1000, certificate_fee: 500 },
+        { vehicle_category: 'commercial', sub_category: 'Heavy', purpose: 'fleet_valuation', service_level: 'premium', base_price: 7000, express_fee: 2000, certificate_fee: 1000 },
+        
+        // Farm Machinery
+        { vehicle_category: 'farm', sub_category: 'Tractor', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'farm', sub_category: 'Tractor', purpose: 'loan_collateral', service_level: 'standard', base_price: 5000, express_fee: 1500, certificate_fee: 1000 },
+        { vehicle_category: 'farm', sub_category: 'Combine', purpose: 'total_loss', service_level: 'premium', base_price: 10000, express_fee: 3000, certificate_fee: 2000 },
+        
+        // Industrial Machinery
+        { vehicle_category: 'industrial', sub_category: 'Excavator', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'industrial', sub_category: 'Excavator', purpose: 'loan_collateral', service_level: 'premium', base_price: 15000, express_fee: 5000, certificate_fee: 3000 },
+        { vehicle_category: 'industrial', sub_category: 'Forklift', purpose: 'fleet_valuation', service_level: 'standard', base_price: 5000, express_fee: 1500, certificate_fee: 1000 },
+        
+        // Specialty Vehicles
+        { vehicle_category: 'specialty', sub_category: 'Golf Cart', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
+        { vehicle_category: 'specialty', sub_category: 'Golf Cart', purpose: 'pre_insurance', service_level: 'standard', base_price: 2000, express_fee: 500, certificate_fee: 300 },
+        { vehicle_category: 'specialty', sub_category: 'Classic Car', purpose: 'classic_valuation', service_level: 'premium', base_price: 10000, express_fee: 3000, certificate_fee: 2000 }
+    ];
+    
+    for (const rule of defaultPricing) {
+        const { error } = await supabase
+            .from('pricing_rules')
+            .upsert(rule, { onConflict: 'vehicle_category,sub_category,purpose,service_level' });
+        if (error) console.error('Error inserting default pricing:', error);
+    }
+    
+    await loadPricingRules();
+}
 
-            // Check Admin Auth
-            async function checkAdmin() {
-                const { data: { user }, error } = await supabase.auth.getUser();
-                if (error || !user) { window.location.href = "admin-login.html"; return false; }
-                const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-                if (!profile || profile.role !== 'admin') {
-                    await supabase.auth.signOut();
-                    window.location.href = "admin-login.html";
-                    return false;
-                }
-                currentUser = user;
-                return true;
-            }
+// Render pricing table
+function renderPricingTable() {
+    const tbody = document.getElementById('pricingBody');
+    const categoryFilter = document.getElementById('priceFilterCategory')?.value || 'all';
+    const serviceFilter = document.getElementById('priceFilterService')?.value || 'all';
+    
+    let filtered = [...allPricingRules];
+    
+    if (categoryFilter !== 'all') {
+        filtered = filtered.filter(r => r.vehicle_category === categoryFilter);
+    }
+    if (serviceFilter !== 'all') {
+        if (serviceFilter === 'valuation') filtered = filtered.filter(r => r.service_level === 'standard' && r.base_price > 0);
+        else if (serviceFilter === 'premium') filtered = filtered.filter(r => r.service_level === 'premium');
+        else if (serviceFilter === 'inspection') filtered = filtered.filter(r => r.purpose === 'inspection');
+    }
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No pricing rules found. Add one below.<\/td><\/tr>';
+        return;
+    }
+    
+    const purposeNames = {
+        'just_know': '💰 Just Want to Know (FREE)', 'pre_insurance': '🛡️ Pre-Insurance', 'claim_verification': '📋 Claim Verification',
+        'loan_collateral': '🏦 Loan Collateral', 'court_case': '⚖️ Court Case', 'pre_purchase': '🔍 Pre-Purchase',
+        'import_valuation': '🌍 Import Valuation', 'fleet_valuation': '🚛 Fleet Valuation', 'total_loss': '⚠️ Total Loss',
+        'classic_valuation': '🏆 Classic Valuation'
+    };
+    
+    const categoryNames = {
+        'passenger_car': '🚗 Passenger Car', 'suv': '🚙 SUV/4x4', 'motorcycle': '🏍️ Motorcycle',
+        'tuk_tuk': '🛺 Tuk-tuk', 'commercial': '🚚 Commercial', 'farm': '🚜 Farm Machinery',
+        'industrial': '🏗️ Industrial', 'specialty': '⛳ Specialty'
+    };
+    
+    tbody.innerHTML = filtered.map(rule => `
+        <tr>
+            <td>${categoryNames[rule.vehicle_category] || rule.vehicle_category}<\/td>
+            <td>${rule.sub_category || '-'}<\/td>
+            <td>${purposeNames[rule.purpose] || rule.purpose}<\/td>
+            <td><span class="badge ${rule.service_level === 'premium' ? 'badge-active' : 'badge-pending'}">${rule.service_level.toUpperCase()}</span><\/td>
+            <td>KES ${(rule.base_price || 0).toLocaleString()}<\/td>
+            <td>KES ${(rule.express_fee || 0).toLocaleString()}<\/td>
+            <td>KES ${(rule.certificate_fee || 0).toLocaleString()}<\/td>
+            <td><button class="btn" onclick="openEditPricingModal('${rule.id}')">Edit</button><\/td>
+        </tr>
+    `).join('');
+}
 
-            // Load all data
-            async function loadAllData() {
-                await Promise.all([
-                    loadStats(),
-                    loadUsers(),
-                    loadVehicles(),
-                    loadRequests(),
-                    loadPayments(),
-                    loadCertificates(),
-                    loadPartners(),
-                    loadFees(),
-                    loadSystemSettings(),
-                    updateRevenueChart(),
-                    loadDatabaseStats()
-                ]);
-            }
+// Filter pricing table
+function filterPricingTable() {
+    renderPricingTable();
+}
 
-            async function loadStats() {
-                const { data: requests } = await supabase.from('service_requests').select('*');
-                const { data: profiles } = await supabase.from('user_profiles').select('id');
-                const { data: partners } = await supabase.from('partners').select('id');
-                const valuations = requests?.filter(r => r.service_type === 'valuation') || [];
-                const inspections = requests?.filter(r => r.service_type === 'inspection') || [];
-                const pending = requests?.filter(r => r.payment_status === 'pending') || [];
-                const revenue = requests?.reduce((sum, r) => sum + (r.payment_status === 'paid' ? (r.amount || 0) : 0), 0) || 0;
-                document.getElementById('totalUsers').innerText = profiles?.length || 0;
-                document.getElementById('totalValuations').innerText = valuations.length;
-                document.getElementById('totalInspections').innerText = inspections.length;
-                document.getElementById('totalRevenue').innerHTML = `KES ${revenue.toLocaleString()}`;
-                document.getElementById('pendingPayments').innerText = pending.length;
-                document.getElementById('totalPartners').innerText = partners?.length || 0;
-            }
+// Open edit modal
+window.openEditPricingModal = async (id) => {
+    const rule = allPricingRules.find(r => r.id === id);
+    if (rule) {
+        document.getElementById('editPricingId').value = rule.id;
+        document.getElementById('editBasePrice').value = rule.base_price;
+        document.getElementById('editExpressFee').value = rule.express_fee;
+        document.getElementById('editCertificateFee').value = rule.certificate_fee;
+        document.getElementById('editPricingModal').style.display = 'flex';
+    }
+};
 
-            async function loadUsers() {
-                const { data: profiles } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
-                const { data: requests } = await supabase.from('service_requests').select('user_id');
-                const requestCount = new Map();
-                requests?.forEach(r => requestCount.set(r.user_id, (requestCount.get(r.user_id) || 0) + 1));
-                currentUserData = profiles || [];
-                const tbody = document.getElementById('usersBody');
-                if (!profiles || profiles.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No users found<\/td><\/tr>'; return; }
-                tbody.innerHTML = profiles.map(u => `
-                    <tr><td>${u.id?.slice(0,8)}...<\/td><td>${u.email}<\/td>
-                    <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role || 'user'}</span><\/td>
-                    <td>${u.phone || '-'}<\/td><td>${new Date(u.created_at).toLocaleDateString()}<\/td>
-                    <td>${requestCount.get(u.id) || 0}<\/td>
-                    <td class="action-buttons"><button class="btn" onclick="editUser('${u.id}', '${u.email}', '${u.role}', '${u.phone || ''}')">Edit</button>
-                    <button class="btn btn-danger" onclick="deleteUser('${u.id}')">Delete</button></td>
-                </tr>`).join('');
-            }
+// Update pricing rule
+window.updatePricingRule = async () => {
+    const id = document.getElementById('editPricingId').value;
+    const updates = {
+        base_price: parseInt(document.getElementById('editBasePrice').value) || 0,
+        express_fee: parseInt(document.getElementById('editExpressFee').value) || 0,
+        certificate_fee: parseInt(document.getElementById('editCertificateFee').value) || 0
+    };
+    
+    const { error } = await supabase.from('pricing_rules').update(updates).eq('id', id);
+    if (error) {
+        showMessage('Error updating pricing: ' + error.message, 'error');
+    } else {
+        showMessage('Pricing updated successfully! Real-time sync active.', 'success');
+        closeEditPricingModal();
+        await loadPricingRules();
+    }
+};
 
-            async function loadVehicles() {
-                const { data } = await supabase.from('vehicles').select('*').order('created_at', { ascending: false });
-                const { data: profiles } = await supabase.from('user_profiles').select('id, email');
-                const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
-                const tbody = document.getElementById('vehiclesBody');
-                if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="6">No vehicles found<\/td><\/tr>'; return; }
-                tbody.innerHTML = data.slice(0, 100).map(v => `
-                    <td><td>${v.registration_number || 'N/A'}<\/td><td>${v.make} ${v.model}<\/td>
-                    <td>${v.year}<\/td><td>${userMap.get(v.user_id) || v.user_id?.slice(0,8)}...<\/td>
-                    <td><span class="badge ${v.is_active ? 'badge-active' : 'badge-inactive'}">${v.is_active ? 'Active' : 'Inactive'}</span><\/td>
-                    <td class="action-buttons"><button class="btn" onclick="editVehicle('${v.id}')">Edit</button>
-                    <button class="btn btn-danger" onclick="deleteVehicle('${v.id}')">Delete</button></td>
-                </table>`).join('');
-            }
+// Add new pricing rule
+window.addPricingRule = async () => {
+    const newRule = {
+        vehicle_category: document.getElementById('newVehicleCategory').value,
+        sub_category: document.getElementById('newSubCategory').value || 'Standard',
+        purpose: document.getElementById('newPurpose').value,
+        service_level: document.getElementById('newServiceLevel').value,
+        base_price: parseInt(document.getElementById('newBasePrice').value) || 0,
+        express_fee: parseInt(document.getElementById('newExpressFee').value) || 0,
+        certificate_fee: Math.round(parseInt(document.getElementById('newBasePrice').value) * 0.2) || 500
+    };
+    
+    const { error } = await supabase.from('pricing_rules').insert(newRule);
+    if (error) {
+        showMessage('Error adding pricing rule: ' + error.message, 'error');
+    } else {
+        showMessage('Pricing rule added!', 'success');
+        // Clear form
+        document.getElementById('newSubCategory').value = '';
+        document.getElementById('newBasePrice').value = '';
+        document.getElementById('newExpressFee').value = '';
+        await loadPricingRules();
+    }
+};
 
-            async function loadRequests() {
-                const { data } = await supabase.from('service_requests').select('*').order('created_at', { ascending: false });
-                const { data: profiles } = await supabase.from('user_profiles').select('id, email');
-                const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
-                const tbody = document.getElementById('requestsBody');
-                if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="8">No requests found<\/td><\/tr>'; return; }
-                tbody.innerHTML = data.slice(0, 100).map(r => `
-                    <tr><td>${new Date(r.created_at).toLocaleString()}<\/td>
-                    <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}<\/td>
-                    <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}...<\/td>
-                    <td>${r.make} ${r.model}<\/td>
-                    <td>KES ${(r.amount || 0).toLocaleString()}<\/td>
-                    <td><span class="badge ${r.payment_status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.payment_status || 'pending'}</span><\/td>
-                    <td>${r.status || 'pending'}<\/td>
-                    <td class="action-buttons"><button class="btn" onclick="viewRequest('${r.id}')">View</button>
-                    <button class="btn btn-danger" onclick="deleteRequest('${r.id}')">Delete</button></td>
-                </tr>`).join('');
-            }
+// Bulk action
+window.applyBulkAction = async () => {
+    const action = document.getElementById('bulkAction').value;
+    if (!action) return;
+    
+    const categoryFilter = document.getElementById('priceFilterCategory').value;
+    const serviceFilter = document.getElementById('priceFilterService').value;
+    
+    let filtered = [...allPricingRules];
+    if (categoryFilter !== 'all') filtered = filtered.filter(r => r.vehicle_category === categoryFilter);
+    if (serviceFilter !== 'all') filtered = filtered.filter(r => r.service_level === serviceFilter || (serviceFilter === 'valuation' && r.base_price > 0));
+    
+    for (const rule of filtered) {
+        let newPrice = rule.base_price;
+        if (action === 'increase_5') newPrice = Math.round(rule.base_price * 1.05);
+        if (action === 'decrease_5') newPrice = Math.round(rule.base_price * 0.95);
+        if (action === 'round_up') newPrice = Math.ceil(rule.base_price / 100) * 100;
+        
+        await supabase.from('pricing_rules').update({ base_price: newPrice }).eq('id', rule.id);
+    }
+    
+    showMessage(`Bulk action "${action}" applied to ${filtered.length} rules!`, 'success');
+    await loadPricingRules();
+};
 
-            async function loadPayments() {
-                const { data } = await supabase.from('mpesa_transactions').select('*').order('created_at', { ascending: false });
-                const { data: profiles } = await supabase.from('user_profiles').select('id, email');
-                const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
-                const tbody = document.getElementById('paymentsBody');
-                if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="6">No payments found<\/td><\/tr>'; return; }
-                tbody.innerHTML = data.slice(0, 100).map(p => `
-                    <td><td>${new Date(p.created_at).toLocaleString()}<\/td><td>${userMap.get(p.user_id) || p.user_id?.slice(0,8)}...<\/td>
-                    <td>${p.service_type || '-'}<\/td><td>KES ${(p.amount || 0).toLocaleString()}<\/td>
-                    <td>${p.mpesa_receipt_number || '-'}<\/td>
-                    <td><span class="badge ${p.status === 'completed' ? 'badge-paid' : 'badge-pending'}">${p.status || 'pending'}</span><\/td>
-                </tr>`).join('');
-            }
+// Get price for specific vehicle and purpose (used by valuation engine)
+async function getPriceForVehicle(category, subCategory, purpose, serviceLevel = 'standard') {
+    const { data, error } = await supabase
+        .from('pricing_rules')
+        .select('base_price, express_fee, certificate_fee')
+        .eq('vehicle_category', category)
+        .eq('sub_category', subCategory)
+        .eq('purpose', purpose)
+        .eq('service_level', serviceLevel)
+        .single();
+    
+    if (error) {
+        // Fallback to default pricing
+        return { base_price: 2500, express_fee: 1000, certificate_fee: 500 };
+    }
+    return data;
+}
 
-            async function loadCertificates() {
-                const { data } = await supabase.from('service_requests').select('*').eq('payment_status', 'paid').order('created_at', { ascending: false });
-                const { data: profiles } = await supabase.from('user_profiles').select('id, email');
-                const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
-                const tbody = document.getElementById('certificatesBody');
-                if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="5">No certificates found<\/td><\/tr>'; return; }
-                tbody.innerHTML = data.slice(0, 100).map(r => `
-                    <td><td>${new Date(r.created_at).toLocaleDateString()}<\/td><td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}...<\/td>
-                    <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}<\/td>
-                    <td>${r.result?.certificate_number || `${r.service_type === 'valuation' ? 'VAL' : 'INS'}-${r.id?.slice(0,8)}`}<\/td>
-                    <td class="action-buttons"><button class="btn" onclick="downloadCertificate('${r.id}')">Download</button>
-                    <button class="btn btn-danger" onclick="revokeCertificate('${r.id}')">Revoke</button><\/td>
-                </tr>`).join('');
-            }
+function closeEditPricingModal() {
+    document.getElementById('editPricingModal').style.display = 'none';
+}
 
-            async function loadPartners() {
-                const { data } = await supabase.from('partners').select('*').order('created_at', { ascending: false });
-                const tbody = document.getElementById('partnersBody');
-                if (!data || data.length === 0) { tbody.innerHTML = '<td><td colspan="7">No partners found<\/td><\/tr>'; return; }
-                tbody.innerHTML = data.map(p => `
-                    <tr><td>${p.name}<\/td><td>${p.type}<\/td><td>${p.contact_person || '-'}<\/td>
-                    <td>${p.email}<\/td><td>${p.commission}%<\/td>
-                    <td><span class="badge ${p.status === 'Active' ? 'badge-active' : 'badge-inactive'}">${p.status}</span><\/td>
-                    <td class="action-buttons"><button class="btn" onclick="editPartner('${p.id}')">Edit</button>
-                    <button class="btn btn-danger" onclick="deletePartner('${p.id}')">Delete</button><\/td>
-                </tr>`).join('');
-            }
+// Create pricing_rules table if not exists
+async function initPricingTable() {
+    // Check if table exists by trying to select
+    const { error } = await supabase.from('pricing_rules').select('count', { count: 'exact', head: true });
+    if (error && error.message.includes('relation') && error.message.includes('does not exist')) {
+        // Create table via Supabase SQL (user needs to run this once)
+        console.log('Pricing rules table not found. Please run the SQL creation script.');
+        showMessage('Pricing table not found. Please run the database setup SQL.', 'error');
+    } else {
+        await loadPricingRules();
+    }
+}
 
-            async function loadFees() {
-                const fees = ['valuation_fee', 'inspection_fee', 'premium_valuation_fee', 'motorcycle_valuation_fee', 'tuk_tuk_valuation_fee', 'certificate_fee'];
-                for (const fee of fees) {
-                    const { data } = await supabase.from('system_settings').select('setting_value').eq('setting_key', fee).single();
-                    const el = document.getElementById(fee.replace('_fee', 'Fee').replace('tuk_tuk', 'tuktuk'));
-                    if (el && data) el.value = data.setting_value;
-                }
-            }
-
-            async function loadSystemSettings() {
-                const settings = ['system_name', 'support_email', 'support_phone', 'currency', 'maintenance_mode'];
-                for (const setting of settings) {
-                    const { data } = await supabase.from('system_settings').select('setting_value').eq('setting_key', setting).single();
-                    const el = document.getElementById(setting.replace(/_/g, ''));
-                    if (el && data) el.value = data.setting_value;
-                }
-            }
-
-            async function loadDatabaseStats() {
-                const stats = { tables: 0, users: 0, requests: 0 };
-                const { count: users } = await supabase.from('user_profiles').select('*', { count: 'exact', head: true });
-                const { count: requests } = await supabase.from('service_requests').select('*', { count: 'exact', head: true });
-                const { data: tables } = await supabase.rpc('get_tables_list').catch(() => null);
-                document.getElementById('dbStats').innerHTML = `
-                    <strong>Database Statistics:</strong><br>
-                    📊 Total Tables: ${tables?.length || 12}<br>
-                    👥 Total Users: ${users || 0}<br>
-                    📋 Service Requests: ${requests || 0}<br>
-                    💾 Last Backup: ${new Date().toLocaleString()}
-                `;
-            }
-
-            async function updateRevenueChart() {
-                const { data } = await supabase.from('service_requests').select('amount, payment_status, created_at');
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const monthlyRevenue = new Array(12).fill(0);
-                data?.forEach(r => {
-                    if (r.payment_status === 'paid') {
-                        const month = new Date(r.created_at).getMonth();
-                        monthlyRevenue[month] += r.amount || 0;
-                    }
-                });
-                const ctx = document.getElementById('revenueChart')?.getContext('2d');
-                if (ctx) {
-                    if (revenueChart) revenueChart.destroy();
-                    revenueChart = new Chart(ctx, {
-                        type: 'bar', data: { labels: months, datasets: [{ label: 'Revenue (KES)', data: monthlyRevenue, backgroundColor: '#eab308' }] },
-                        options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true } } }
-                    });
-                }
-            }
-
-            // CRUD Operations
-            window.editUser = async (id, email, role, phone) => {
-                document.getElementById('userModalTitle').innerText = 'Edit User';
-                document.getElementById('userId').value = id;
-                document.getElementById('userEmail').value = email;
-                document.getElementById('userRole').value = role;
-                document.getElementById('userPhone').value = phone;
-                document.getElementById('userModal').style.display = 'flex';
-            };
-
-            window.saveUser = async () => {
-                const id = document.getElementById('userId').value;
-                const data = { role: document.getElementById('userRole').value, phone: document.getElementById('userPhone').value };
-                if (id) {
-                    await supabase.from('user_profiles').update(data).eq('id', id);
-                    showMessage('User updated!', 'success');
-                } else {
-                    const email = document.getElementById('userEmail').value;
-                    const password = document.getElementById('userPassword').value;
-                    if (email && password) {
-                        const { error } = await supabase.auth.signUp({ email, password });
-                        if (error) { showMessage(error.message, 'error'); return; }
-                        showMessage('User created!', 'success');
-                    }
-                }
-                closeUserModal();
-                loadUsers();
-            };
-
-            window.deleteUser = async (id) => {
-                if (confirm('Delete this user?')) {
-                    await supabase.from('user_profiles').delete().eq('id', id);
-                    showMessage('User deleted!', 'success');
-                    loadUsers();
-                    loadStats();
-                }
-            };
-
-            window.editVehicle = async (id) => {
-                const { data } = await supabase.from('vehicles').select('*').eq('id', id).single();
-                if (data) {
-                    document.getElementById('vehicleModalTitle').innerText = 'Edit Vehicle';
-                    document.getElementById('vehicleId').value = data.id;
-                    document.getElementById('vehicleReg').value = data.registration_number;
-                    document.getElementById('vehicleMake').value = data.make;
-                    document.getElementById('vehicleModel').value = data.model;
-                    document.getElementById('vehicleYear').value = data.year;
-                    document.getElementById('vehicleOwnerId').value = data.user_id;
-                    document.getElementById('vehicleModal').style.display = 'flex';
-                }
-            };
-
-            window.saveVehicle = async () => {
-                const id = document.getElementById('vehicleId').value;
-                const data = {
-                    registration_number: document.getElementById('vehicleReg').value,
-                    make: document.getElementById('vehicleMake').value,
-                    model: document.getElementById('vehicleModel').value,
-                    year: parseInt(document.getElementById('vehicleYear').value),
-                    user_id: document.getElementById('vehicleOwnerId').value
-                };
-                if (id) await supabase.from('vehicles').update(data).eq('id', id);
-                else await supabase.from('vehicles').insert(data);
-                showMessage('Vehicle saved!', 'success');
-                closeVehicleModal();
-                loadVehicles();
-            };
-
-            window.deleteVehicle = async (id) => {
-                if (confirm('Delete this vehicle?')) {
-                    await supabase.from('vehicles').delete().eq('id', id);
-                    showMessage('Vehicle deleted!', 'success');
-                    loadVehicles();
-                }
-            };
-
-            window.deleteRequest = async (id) => {
-                if (confirm('Delete this request?')) {
-                    await supabase.from('service_requests').delete().eq('id', id);
-                    showMessage('Request deleted!', 'success');
-                    loadRequests();
-                    loadStats();
-                }
-            };
-
-            window.viewRequest = async (id) => {
-                const { data } = await supabase.from('service_requests').select('*').eq('id', id).single();
-                alert(`Request Details:\nService: ${data.service_type}\nVehicle: ${data.make} ${data.model}\nAmount: KES ${data.amount}\nStatus: ${data.status}\nPayment: ${data.payment_status}`);
-            };
-
-            window.downloadCertificate = async (id) => {
-                const { data } = await supabase.from('service_requests').select('*').eq('id', id).single();
-                alert(`Certificate: ${data.result?.certificate_number || `${data.service_type === 'valuation' ? 'VAL' : 'INS'}-${data.id?.slice(0,8)}`}\nDownload link will be available shortly.`);
-            };
-
-            window.revokeCertificate = async (id) => {
-                if (confirm('Revoke this certificate?')) {
-                    await supabase.from('service_requests').update({ certificate_valid: false }).eq('id', id);
-                    showMessage('Certificate revoked!', 'success');
-                    loadCertificates();
-                }
-            };
-
-            async function updateFees() {
-                const fees = [
-                    { key: 'valuation_fee', value: document.getElementById('valuationFee').value },
-                    { key: 'inspection_fee', value: document.getElementById('inspectionFee').value },
-                    { key: 'premium_valuation_fee', value: document.getElementById('premiumValuationFee').value },
-                    { key: 'motorcycle_valuation_fee', value: document.getElementById('motorcycleFee').value },
-                    { key: 'tuk_tuk_valuation_fee', value: document.getElementById('tuktukFee').value },
-                    { key: 'certificate_fee', value: document.getElementById('certificateFee').value }
-                ];
-                for (const fee of fees) {
-                    await supabase.from('system_settings').upsert({ setting_key: fee.key, setting_value: fee.value });
-                }
-                showMessage('Fees updated! Real-time updates will reflect immediately.', 'success');
-            }
-
-            async function updateSystemSettings() {
-                const settings = [
-                    { key: 'system_name', value: document.getElementById('systemName').value },
-                    { key: 'support_email', value: document.getElementById('supportEmail').value },
-                    { key: 'support_phone', value: document.getElementById('supportPhone').value },
-                    { key: 'currency', value: document.getElementById('currency').value },
-                    { key: 'maintenance_mode', value: document.getElementById('maintenanceMode').value }
-                ];
-                for (const setting of settings) {
-                    await supabase.from('system_settings').upsert({ setting_key: setting.key, setting_value: setting.value });
-                }
-                showMessage('System settings saved!', 'success');
-            }
-
-            async function runSqlQuery() {
-                const sql = document.getElementById('sqlQuery').value;
-                if (!sql) { showMessage('Please enter SQL query', 'error'); return; }
-                if (!sql.toLowerCase().startsWith('select')) { showMessage('Only SELECT queries are allowed for safety', 'error'); return; }
-                showMessage('Executing query...', 'success');
-                try {
-                    const { data, error } = await supabase.rpc('run_sql', { query: sql });
-                    if (error) throw error;
-                    document.getElementById('sqlResult').innerHTML = `<pre class="sql-editor">${JSON.stringify(data, null, 2)}</pre>`;
-                    document.getElementById('sqlResult').style.display = 'block';
-                } catch (e) { showMessage('Query error: ' + e.message, 'error'); }
-            }
-
-            async function generateAnalytics() {
-                const startDate = document.getElementById('analyticsStartDate').value;
-                const endDate = document.getElementById('analyticsEndDate').value;
-                let query = supabase.from('service_requests').select('*');
-                if (startDate) query = query.gte('created_at', startDate);
-                if (endDate) query = query.lte('created_at', endDate + 'T23:59:59');
-                const { data } = await query;
-                const total = data?.reduce((s, r) => s + (r.payment_status === 'paid' ? (r.amount || 0) : 0), 0) || 0;
-                const valuationCount = data?.filter(r => r.service_type === 'valuation').length || 0;
-                const inspectionCount = data?.filter(r => r.service_type === 'inspection').length || 0;
-                document.getElementById('analyticsResult').innerHTML = `
-                    <div class="card"><h3>Analytics Report</h3>
-                    <p>Total Revenue: KES ${total.toLocaleString()}</p>
-                    <p>Valuations: ${valuationCount}</p>
-                    <p>Inspections: ${inspectionCount}</p>
-                    <p>Total Requests: ${data?.length || 0}</p>
-                    </div>`;
-            }
-
-            async function refreshRLSPolicies() {
-                document.getElementById('rlsPolicies').innerHTML = 'RLS policies loaded successfully. All tables are protected.';
-            }
-
-            function exportData() { alert('Export started. CSV file will be downloaded shortly.'); }
-            function clearCache() { alert('Cache cleared successfully!'); }
-            function confirmBackup() { alert('Database backup initiated. You will receive an email when ready.'); }
-            function updateMpesaConfig() { alert('M-Pesa configuration updated!'); }
-            function saveEmailSettings() { alert('Email settings saved!'); }
-            function applyPermissionTemplate() { alert('Permission template applied!'); }
-            function resetRLS() { if (confirm('Reset all RLS policies?')) alert('RLS policies reset!'); }
-
-            function searchUsers() { const term = document.getElementById('searchUser').value.toLowerCase(); const filtered = currentUserData.filter(u => u.email.toLowerCase().includes(term)); document.getElementById('usersBody').innerHTML = filtered.map(u => `...`).join(''); }
-            function searchVehicles() { loadVehicles(); }
-            function searchPartners() { loadPartners(); }
-
-            window.openUserModal = () => { document.getElementById('userModalTitle').innerText = 'Add User'; document.getElementById('userId').value = ''; document.getElementById('userEmail').value = ''; document.getElementById('userPassword').value = ''; document.getElementById('userPhone').value = ''; document.getElementById('userModal').style.display = 'flex'; };
-            window.openVehicleModal = () => { document.getElementById('vehicleModalTitle').innerText = 'Add Vehicle'; document.getElementById('vehicleId').value = ''; document.getElementById('vehicleReg').value = ''; document.getElementById('vehicleMake').value = ''; document.getElementById('vehicleModel').value = ''; document.getElementById('vehicleYear').value = ''; document.getElementById('vehicleOwnerId').value = ''; document.getElementById('vehicleModal').style.display = 'flex'; };
-            window.closeUserModal = () => document.getElementById('userModal').style.display = 'none';
-            window.closeVehicleModal = () => document.getElementById('vehicleModal').style.display = 'none';
-            window.closePartnerModal = () => document.getElementById('partnerModal').style.display = 'none';
-            window.editPartner = async (id) => { const { data } = await supabase.from('partners').select('*').eq('id', id).single(); if (data) { document.getElementById('partnerModalTitle').innerText = 'Edit Partner'; document.getElementById('partnerId').value = data.id; document.getElementById('partnerName').value = data.name; document.getElementById('partnerType').value = data.type; document.getElementById('partnerCommission').value = data.commission; document.getElementById('partnerContact').value = data.contact_person || ''; document.getElementById('partnerPhone').value = data.phone || ''; document.getElementById('partnerEmail').value = data.email; document.getElementById('partnerStatus').value = data.status; document.getElementById('partnerModal').style.display = 'flex'; } };
-            window.savePartner = async () => { const id = document.getElementById('partnerId').value; const data = { name: document.getElementById('partnerName').value, type: document.getElementById('partnerType').value, commission: parseInt(document.getElementById('partnerCommission').value), contact_person: document.getElementById('partnerContact').value, phone: document.getElementById('partnerPhone').value, email: document.getElementById('partnerEmail').value, status: document.getElementById('partnerStatus').value }; if (id) await supabase.from('partners').update(data).eq('id', id); else await supabase.from('partners').insert({ ...data, created_at: new Date().toISOString() }); showMessage('Partner saved!', 'success'); closePartnerModal(); loadPartners(); loadStats(); };
-            window.deletePartner = async (id) => { if (confirm('Delete this partner?')) { await supabase.from('partners').delete().eq('id', id); showMessage('Partner deleted!', 'success'); loadPartners(); loadStats(); } };
-            window.openPartnerModal = () => { document.getElementById('partnerModalTitle').innerText = 'Add Partner'; document.getElementById('partnerId').value = ''; document.getElementById('partnerName').value = ''; document.getElementById('partnerType').value = 'Bank'; document.getElementById('partnerCommission').value = '10'; document.getElementById('partnerContact').value = ''; document.getElementById('partnerPhone').value = ''; document.getElementById('partnerEmail').value = ''; document.getElementById('partnerStatus').value = 'Active'; document.getElementById('partnerModal').style.display = 'flex'; };
-            window.generateReport = generateAnalytics;
-            window.runSqlQuery = runSqlQuery;
-            window.updateFees = updateFees;
-            window.updateSystemSettings = updateSystemSettings;
-            window.updateMpesaConfig = updateMpesaConfig;
-            window.saveEmailSettings = saveEmailSettings;
-            window.exportData = exportData;
-            window.clearCache = clearCache;
-            window.confirmBackup = confirmBackup;
-            window.applyPermissionTemplate = applyPermissionTemplate;
-            window.refreshRLSPolicies = refreshRLSPolicies;
-            window.resetRLS = resetRLS;
-            window.generateAnalytics = generateAnalytics;
-
-            function showMessage(msg, type) { const div = document.getElementById(`${type}Msg`); div.innerHTML = msg; div.style.display = 'block'; setTimeout(() => div.style.display = 'none', 5000); }
-
-            function switchTab(tab) {
-                const tabs = ['dashboard', 'users', 'vehicles', 'requests', 'payments', 'certificates', 'partners', 'pricing', 'settings', 'database', 'security', 'analytics'];
-                tabs.forEach(t => { const el = document.getElementById(`${t}Tab`); if (el) el.style.display = t === tab ? 'block' : 'none'; });
-                document.querySelectorAll('.tab-btn').forEach(btn => { if (btn.dataset.tab === tab) btn.classList.add('active'); else btn.classList.remove('active'); });
-            }
-
-            document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
-            document.getElementById('updateFeesBtn').onclick = updateFees;
-            document.querySelectorAll('.tab-btn').forEach(btn => { btn.onclick = () => switchTab(btn.dataset.tab); });
-
-            async function init() {
-                if (!await checkAdmin()) return;
-                await loadAllData();
-                setInterval(() => { loadStats(); updateRevenueChart(); }, 30000);
-            }
-            init();
-        })();
-    </script>
-</body>
-</html>
+// Add realtime subscription for pricing updates
+function subscribeToPricingUpdates() {
+    const channel = supabase
+        .channel('pricing_updates')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pricing_rules' }, () => {
+            console.log('Pricing updated in real-time');
+            loadPricingRules();
+        })
+        .subscribe();
+    return channel;
+}
+</script>
