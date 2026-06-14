@@ -2,11 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Admin Dashboard</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23eab308' rx='20'/><text x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'>🚗</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -24,9 +23,12 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
         }
-        .logo { font-size: 24px; font-weight: bold; color: #eab308; }
-        .logout-btn { background: #dc2626; color: white; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; }
+        .logo { font-size: 24px; font-weight: bold; color: #eab308; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 12px; color: #94a3b8; }
+        .logout-btn { background: #dc2626; color: white; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -39,8 +41,32 @@
             border-radius: 16px;
             text-align: center;
             border: 1px solid #1e293b;
+            transition: transform 0.3s;
         }
+        .stat-card:hover { transform: translateY(-3px); border-color: #eab308; }
+        .stat-card h3 { color: #94a3b8; font-size: 13px; margin-bottom: 10px; }
         .stat-number { font-size: 32px; font-weight: bold; color: #22c55e; }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            background: #1e293b;
+            color: #cbd5e1;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .tab-btn.active {
+            background: #eab308;
+            color: #0a0c10;
+        }
+        .tab-btn:hover { background: #334155; }
         .card {
             background: #0f172a;
             border-radius: 16px;
@@ -48,104 +74,628 @@
             margin-bottom: 20px;
             border: 1px solid #1e293b;
         }
-        h2 { color: #eab308; margin-bottom: 20px; }
+        h2 { color: #eab308; margin-bottom: 20px; font-size: 20px; border-left: 3px solid #eab308; padding-left: 12px; }
+        h3 { color: #eab308; margin: 20px 0 15px 0; font-size: 16px; }
         table { width: 100%; border-collapse: collapse; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1e293b; }
-        th { color: #eab308; }
-        .btn { background: #eab308; color: black; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; }
+        th { color: #eab308; font-weight: 600; }
+        .btn {
+            background: #eab308;
+            color: black;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn:hover { background: #facc15; transform: scale(1.02); }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-success:hover { background: #16a34a; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: #0f172a;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            padding: 30px;
+            border: 2px solid #eab308;
+        }
+        .modal-content h3 { margin-top: 0; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 8px; color: #94a3b8; font-weight: 600; font-size: 12px; }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+        }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-row .form-group { flex: 1; margin-bottom: 0; }
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .badge-active { background: #22c55e; color: black; }
+        .badge-inactive { background: #475569; color: white; }
+        .badge-paid { background: #22c55e; color: black; }
+        .badge-pending { background: #eab308; color: black; }
+        .action-buttons { display: flex; gap: 8px; }
+        .action-buttons button { padding: 4px 8px; font-size: 12px; }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error, .success {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
+        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
+        @media (max-width: 768px) {
+            .form-row { flex-direction: column; gap: 15px; }
+            .form-row .form-group { margin-bottom: 0; }
+            th, td { font-size: 12px; padding: 8px; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <div class="logo">🚗 AUTO-V Admin</div>
+            <div class="logo">
+                🚗 AUTO-V Admin
+                <span>| Full Control Panel</span>
+            </div>
             <button class="logout-btn" id="logoutBtn">Logout</button>
         </header>
-        
+
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+
+        <!-- Stats Grid -->
         <div class="stats-grid">
+            <div class="stat-card"><h3>Total Users</h3><div class="stat-number" id="totalUsers">0</div></div>
             <div class="stat-card"><h3>Total Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
             <div class="stat-card"><h3>Total Inspections</h3><div class="stat-number" id="totalInspections">0</div></div>
             <div class="stat-card"><h3>Total Revenue</h3><div class="stat-number" id="totalRevenue">KES 0</div></div>
-            <div class="stat-card"><h3>Total Users</h3><div class="stat-number" id="totalUsers">0</div></div>
+            <div class="stat-card"><h3>Pending Payments</h3><div class="stat-number" id="pendingPayments">0</div></div>
+            <div class="stat-card"><h3>Active Partners</h3><div class="stat-number" id="totalPartners">0</div></div>
         </div>
-        
-        <div class="card">
-            <h2>💰 Set Service Fees</h2>
-            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                <div><label>Valuation Fee (KES)</label><input type="number" id="valuationFee" style="padding:10px; margin-left:10px;"></div>
-                <div><label>Inspection Fee (KES)</label><input type="number" id="inspectionFee" style="padding:10px; margin-left:10px;"></div>
-                <button class="btn" id="updateFeesBtn">Update Fees</button>
-            </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="requests">📋 Requests</button>
+            <button class="tab-btn" data-tab="users">👥 Users</button>
+            <button class="tab-btn" data-tab="payments">💳 Payments</button>
+            <button class="tab-btn" data-tab="certificates">📜 Certificates</button>
+            <button class="tab-btn" data-tab="partners">🤝 Partners</button>
+            <button class="tab-btn" data-tab="prices">💰 Prices</button>
+            <button class="tab-btn" data-tab="reports">📊 Reports</button>
         </div>
-        
-        <div class="card">
-            <h2>📊 Recent Requests</h2>
+
+        <!-- Requests Tab -->
+        <div id="requestsTab" class="card">
+            <h2>📋 Service Requests</h2>
             <div style="overflow-x: auto;">
                 <table id="requestsTable">
-                    <thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th></tr></thead>
-                    <tbody id="requestsBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+                    <thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="requestsBody"><tr><td colspan="8">Loading...<\/td><\/tr></tbody>
                 </table>
             </div>
         </div>
+
+        <!-- Users Tab -->
+        <div id="usersTab" class="card" style="display:none;">
+            <h2>👥 User Management</h2>
+            <div style="overflow-x: auto;">
+                <table id="usersTable">
+                    <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Phone</th><th>Joined</th><th>Requests</th><th>Actions</th></tr></thead>
+                    <tbody id="usersBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Payments Tab -->
+        <div id="paymentsTab" class="card" style="display:none;">
+            <h2>💳 Payment Transactions</h2>
+            <div style="overflow-x: auto;">
+                <table id="paymentsTable">
+                    <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead>
+                    <tbody id="paymentsBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Certificates Tab -->
+        <div id="certificatesTab" class="card" style="display:none;">
+            <h2>📜 Certificates & Reports</h2>
+            <div style="overflow-x: auto;">
+                <table id="certificatesTable">
+                    <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Certificate No</th><th>Type</th><th>Actions</th></tr></thead>
+                    <tbody id="certificatesBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Partners Tab -->
+        <div id="partnersTab" class="card" style="display:none;">
+            <h2>🤝 Partner Management</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="searchPartner" placeholder="Search partners..." style="width: 250px;">
+                    <button class="btn" onclick="searchPartners()">Search</button>
+                </div>
+                <button class="btn btn-success" onclick="openPartnerModal()">+ Add Partner</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="partnersTable">
+                    <thead><tr><th>Name</th><th>Type</th><th>Contact</th><th>Email</th><th>Commission</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="partnersBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Prices Tab -->
+        <div id="pricesTab" class="card" style="display:none;">
+            <h2>💰 Service Fees</h2>
+            <div class="form-row">
+                <div class="form-group"><label>Valuation Fee (KES)</label><input type="number" id="valuationFee" placeholder="2500"></div>
+                <div class="form-group"><label>Inspection Fee (KES)</label><input type="number" id="inspectionFee" placeholder="3500"></div>
+                <div class="form-group"><label>Certificate Fee (KES)</label><input type="number" id="certificateFee" placeholder="500"></div>
+            </div>
+            <button class="btn" id="updateFeesBtn">Update Fees</button>
+            
+            <h3>📱 M-Pesa Configuration</h3>
+            <div class="form-row">
+                <div class="form-group"><label>Paybill Number</label><input type="text" id="paybillNumber" placeholder="4095377" readonly></div>
+                <div class="form-group"><label>API Status</label><input type="text" id="apiStatus" value="Production" readonly style="color:#22c55e;"></div>
+            </div>
+        </div>
+
+        <!-- Reports Tab -->
+        <div id="reportsTab" class="card" style="display:none;">
+            <h2>📊 Reports & Analytics</h2>
+            <div class="form-row">
+                <div class="form-group"><label>Start Date</label><input type="date" id="reportStartDate"></div>
+                <div class="form-group"><label>End Date</label><input type="date" id="reportEndDate"></div>
+                <div class="form-group"><label>Report Type</label>
+                    <select id="reportType">
+                        <option value="revenue">Revenue Report</option>
+                        <option value="users">User Report</option>
+                        <option value="services">Services Report</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn" onclick="generateReport()">Generate Report</button>
+            <div id="reportResult" style="margin-top: 20px; display: none;"></div>
+        </div>
     </div>
+
+    <!-- Partner Modal -->
+    <div id="partnerModal" class="modal">
+        <div class="modal-content">
+            <h3 id="partnerModalTitle">Add Partner</h3>
+            <input type="hidden" id="partnerId">
+            <div class="form-group"><label>Partner Name</label><input type="text" id="partnerName" placeholder="Partner name"></div>
+            <div class="form-row">
+                <div class="form-group"><label>Type</label>
+                    <select id="partnerType">
+                        <option>Bank</option><option>Insurance</option><option>Dealership</option><option>Fleet</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Commission (%)</label><input type="number" id="partnerCommission" placeholder="10"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Contact Person</label><input type="text" id="partnerContact" placeholder="Contact name"></div>
+                <div class="form-group"><label>Phone</label><input type="tel" id="partnerPhone" placeholder="Phone"></div>
+            </div>
+            <div class="form-group"><label>Email</label><input type="email" id="partnerEmail" placeholder="Email"></div>
+            <div class="form-row">
+                <div class="form-group"><label>Status</label>
+                    <select id="partnerStatus"><option>Active</option><option>Inactive</option></select>
+                </div>
+                <div class="form-group"><label>API Key</label><input type="text" id="partnerApiKey" placeholder="Auto-generated"></div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-success" onclick="savePartner()">Save</button>
+                <button class="btn btn-danger" onclick="closePartnerModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        const supabase = window.AUTO_V_CONFIG?.supabase || window.supabase.createClient(
-            "https://tsvejnzxrxrrecgquxbq.supabase.co",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ"
-        );
-        
-        async function loadData() {
-            const { data: valuations } = await supabase.from('service_requests').select('*').eq('service_type', 'valuation').order('created_at', { ascending: false });
-            const { data: inspections } = await supabase.from('service_requests').select('*').eq('service_type', 'inspection').order('created_at', { ascending: false });
-            const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+        (function() {
+            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
-            const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
-            const all = [...(valuations || []), ...(inspections || [])].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+            let currentUser = null;
+            let currentTab = 'requests';
+
+            // Check Admin Auth
+            async function checkAdmin() {
+                const { data: { user }, error } = await supabase.auth.getUser();
+                if (error || !user) { window.location.href = "admin-login.html"; return false; }
+                
+                // Check if user has admin role
+                const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+                if (!profile || profile.role !== 'admin') {
+                    await supabase.auth.signOut();
+                    window.location.href = "admin-login.html";
+                    return false;
+                }
+                currentUser = user;
+                return true;
+            }
+
+            // Load all dashboard data
+            async function loadAllData() {
+                await Promise.all([
+                    loadStats(),
+                    loadRequests(),
+                    loadUsers(),
+                    loadPayments(),
+                    loadCertificates(),
+                    loadPartners(),
+                    loadFees()
+                ]);
+            }
+
+            // Load Stats
+            async function loadStats() {
+                const { data: requests } = await supabase.from('service_requests').select('*');
+                const { data: profiles } = await supabase.from('user_profiles').select('id');
+                const { data: partners } = await supabase.from('partners').select('id');
+                
+                const valuations = requests?.filter(r => r.service_type === 'valuation') || [];
+                const inspections = requests?.filter(r => r.service_type === 'inspection') || [];
+                const pending = requests?.filter(r => r.payment_status === 'pending') || [];
+                const revenue = requests?.reduce((sum, r) => sum + (r.payment_status === 'paid' ? (r.amount || 0) : 0), 0) || 0;
+                
+                document.getElementById('totalUsers').innerText = profiles?.length || 0;
+                document.getElementById('totalValuations').innerText = valuations.length;
+                document.getElementById('totalInspections').innerText = inspections.length;
+                document.getElementById('totalRevenue').innerHTML = `KES ${revenue.toLocaleString()}`;
+                document.getElementById('pendingPayments').innerText = pending.length;
+                document.getElementById('totalPartners').innerText = partners?.length || 0;
+            }
+
+            // Load Service Requests
+            async function loadRequests() {
+                const { data } = await supabase.from('service_requests').select('*').order('created_at', { ascending: false });
+                const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+                const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+                
+                const tbody = document.getElementById('requestsBody');
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8">No requests found<\/td><\/tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.slice(0, 100).map(r => `
+                    <tr>
+                        <td>${new Date(r.created_at).toLocaleString()}<\/td>
+                        <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}<\/td>
+                        <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}...<\/td>
+                        <td>${r.make} ${r.model} (${r.registration_number || 'N/A'})<\/td>
+                        <td>KES ${(r.amount || 0).toLocaleString()}<\/td>
+                        <td><span class="badge ${r.payment_status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.payment_status || 'pending'}</span><\/td>
+                        <td>${r.status || 'pending'}<\/td>
+                        <td><div class="action-buttons"><button class="btn" onclick="viewRequest('${r.id}')">View</button></div><\/td>
+                    </tr>
+                `).join('');
+            }
+
+            // Load Users
+            async function loadUsers() {
+                const { data: profiles } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
+                const { data: requests } = await supabase.from('service_requests').select('user_id');
+                const requestCount = new Map();
+                requests?.forEach(r => requestCount.set(r.user_id, (requestCount.get(r.user_id) || 0) + 1));
+                
+                const tbody = document.getElementById('usersBody');
+                if (!profiles || profiles.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">No users found<\/td><\/tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = profiles.map(u => `
+                    <tr>
+                        <td>${u.id?.slice(0,8)}...<\/td>
+                        <td>${u.email}<\/td>
+                        <td><span class="badge ${u.role === 'admin' ? 'badge-active' : 'badge-pending'}">${u.role || 'user'}</span><\/td>
+                        <td>${u.phone || '-'}<\/td>
+                        <td>${new Date(u.created_at).toLocaleDateString()}<\/td>
+                        <td>${requestCount.get(u.id) || 0}<\/td>
+                        <td><div class="action-buttons"><button class="btn" onclick="editUser('${u.id}', '${u.email}', '${u.role}')">Edit</button></div><\/td>
+                    </tr>
+                `).join('');
+            }
+
+            // Load Payments
+            async function loadPayments() {
+                const { data } = await supabase.from('mpesa_transactions').select('*').order('created_at', { ascending: false });
+                const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+                const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+                
+                const tbody = document.getElementById('paymentsBody');
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6">No payments found<\/td><\/tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.slice(0, 100).map(p => `
+                    <tr>
+                        <td>${new Date(p.created_at).toLocaleString()}<\/td>
+                        <td>${userMap.get(p.user_id) || p.user_id?.slice(0,8)}...<\/td>
+                        <td>${p.service_type || '-'}<\/td>
+                        <td>KES ${(p.amount || 0).toLocaleString()}<\/td>
+                        <td>${p.mpesa_receipt_number || '-'}<\/td>
+                        <td><span class="badge ${p.status === 'completed' ? 'badge-paid' : 'badge-pending'}">${p.status || 'pending'}</span><\/td>
+                    </tr>
+                `).join('');
+            }
+
+            // Load Certificates
+            async function loadCertificates() {
+                const { data } = await supabase.from('service_requests').select('*').eq('payment_status', 'paid').order('created_at', { ascending: false });
+                const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+                const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+                
+                const tbody = document.getElementById('certificatesBody');
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6">No certificates found<\/td><\/tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.slice(0, 100).map(r => {
+                    const certNumber = r.result?.certificate_number || `${r.service_type === 'valuation' ? 'VAL' : 'INS'}-${r.id?.slice(0,8)}`;
+                    return `
+                        <tr>
+                            <td>${new Date(r.created_at).toLocaleDateString()}<\/td>
+                            <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}...<\/td>
+                            <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}<\/td>
+                            <td>${certNumber}<\/td>
+                            <td>PDF<\/td>
+                            <td><div class="action-buttons"><button class="btn" onclick="downloadCertificate('${r.id}')">Download</button></div><\/td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            // Load Partners
+            async function loadPartners() {
+                const { data } = await supabase.from('partners').select('*').order('created_at', { ascending: false });
+                const tbody = document.getElementById('partnersBody');
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">No partners found<\/td><\/tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.map(p => `
+                    <tr>
+                        <td>${p.name}<\/td>
+                        <td>${p.type}<\/td>
+                        <td>${p.contact_person || '-'}<\/td>
+                        <td>${p.email}<\/td>
+                        <td>${p.commission}%<\/td>
+                        <td><span class="badge ${p.status === 'Active' ? 'badge-active' : 'badge-inactive'}">${p.status}</span><\/td>
+                        <td><div class="action-buttons"><button class="btn" onclick="editPartner('${p.id}')">Edit</button><button class="btn btn-danger" onclick="deletePartner('${p.id}')">Delete</button></div><\/td>
+                    </tr>
+                `).join('');
+            }
+
+            // Load Fees
+            async function loadFees() {
+                const { data: v } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
+                const { data: i } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
+                const { data: c } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'certificate_fee').single();
+                if (v) document.getElementById('valuationFee').value = v.setting_value;
+                if (i) document.getElementById('inspectionFee').value = i.setting_value;
+                if (c) document.getElementById('certificateFee').value = c.setting_value;
+            }
+
+            // Update Fees
+            async function updateFees() {
+                const valuationFee = document.getElementById('valuationFee').value;
+                const inspectionFee = document.getElementById('inspectionFee').value;
+                const certificateFee = document.getElementById('certificateFee').value;
+                
+                await supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: valuationFee });
+                await supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: inspectionFee });
+                await supabase.from('system_settings').upsert({ setting_key: 'certificate_fee', setting_value: certificateFee });
+                showMessage('Fees updated successfully!', 'success');
+            }
+
+            // Partner Functions
+            window.openPartnerModal = function(partner = null) {
+                const modal = document.getElementById('partnerModal');
+                if (partner) {
+                    document.getElementById('partnerModalTitle').innerText = 'Edit Partner';
+                    document.getElementById('partnerId').value = partner.id;
+                    document.getElementById('partnerName').value = partner.name;
+                    document.getElementById('partnerType').value = partner.type;
+                    document.getElementById('partnerCommission').value = partner.commission;
+                    document.getElementById('partnerContact').value = partner.contact_person || '';
+                    document.getElementById('partnerPhone').value = partner.phone || '';
+                    document.getElementById('partnerEmail').value = partner.email;
+                    document.getElementById('partnerStatus').value = partner.status;
+                } else {
+                    document.getElementById('partnerModalTitle').innerText = 'Add Partner';
+                    document.getElementById('partnerId').value = '';
+                    document.getElementById('partnerName').value = '';
+                    document.getElementById('partnerType').value = 'Bank';
+                    document.getElementById('partnerCommission').value = '10';
+                    document.getElementById('partnerContact').value = '';
+                    document.getElementById('partnerPhone').value = '';
+                    document.getElementById('partnerEmail').value = '';
+                    document.getElementById('partnerStatus').value = 'Active';
+                }
+                modal.style.display = 'flex';
+            }
             
-            document.getElementById('totalValuations').innerText = valuations?.length || 0;
-            document.getElementById('totalInspections').innerText = inspections?.length || 0;
+            window.closePartnerModal = function() {
+                document.getElementById('partnerModal').style.display = 'none';
+            }
             
-            const revenue = (valuations || []).reduce((s,v) => s + (v.amount || 0), 0) + (inspections || []).reduce((s,i) => s + (i.amount || 0), 0);
-            document.getElementById('totalRevenue').innerHTML = `KES ${revenue.toLocaleString()}`;
-            document.getElementById('totalUsers').innerText = userMap.size;
+            async function savePartner() {
+                const id = document.getElementById('partnerId').value;
+                const data = {
+                    name: document.getElementById('partnerName').value,
+                    type: document.getElementById('partnerType').value,
+                    commission: parseInt(document.getElementById('partnerCommission').value),
+                    contact_person: document.getElementById('partnerContact').value,
+                    phone: document.getElementById('partnerPhone').value,
+                    email: document.getElementById('partnerEmail').value,
+                    status: document.getElementById('partnerStatus').value
+                };
+                
+                if (id) {
+                    await supabase.from('partners').update(data).eq('id', id);
+                    showMessage('Partner updated!', 'success');
+                } else {
+                    data.created_at = new Date().toISOString();
+                    await supabase.from('partners').insert(data);
+                    showMessage('Partner added!', 'success');
+                }
+                closePartnerModal();
+                loadPartners();
+                loadStats();
+            }
             
-            const tbody = document.getElementById('requestsBody');
-            if (all.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No requests<\/td><\/tr>'; return; }
-            tbody.innerHTML = all.slice(0, 50).map(r => `
-                <tr>
-                    <td>${new Date(r.created_at).toLocaleString()}</td>
-                    <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
-                    <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}...</td>
-                    <td>${r.make} ${r.model} ($ {r.registration_number})</td>
-                    <td>KES ${(r.amount || 0).toLocaleString()}</td>
-                    <td><span style="background:${r.payment_status === 'paid' ? '#22c55e' : '#eab308'}; padding:4px 12px; border-radius:20px;">${r.payment_status || 'pending'}</span></td>
-                    <td>${r.status || 'pending'}</td>
-                </tr>
-            `).join('');
-        }
-        
-        async function updateFees() {
-            const valuationFee = document.getElementById('valuationFee').value;
-            const inspectionFee = document.getElementById('inspectionFee').value;
-            await supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: valuationFee });
-            await supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: inspectionFee });
-            alert('Fees updated!');
-        }
-        
-        async function loadFees() {
-            const { data: v } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
-            const { data: i } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
-            if (v) document.getElementById('valuationFee').value = v.setting_value;
-            if (i) document.getElementById('inspectionFee').value = i.setting_value;
-        }
-        
-        document.getElementById('updateFeesBtn').onclick = updateFees;
-        document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
-        
-        supabase.auth.getUser().then(({ data: { user }, error }) => {
-            if (error || !user) window.location.href = 'admin-login.html';
-            else { loadFees(); loadData(); setInterval(loadData, 30000); }
-        });
+            window.editPartner = async function(id) {
+                const { data } = await supabase.from('partners').select('*').eq('id', id).single();
+                if (data) openPartnerModal(data);
+            }
+            
+            window.deletePartner = async function(id) {
+                if (confirm('Delete this partner?')) {
+                    await supabase.from('partners').delete().eq('id', id);
+                    showMessage('Partner deleted!', 'success');
+                    loadPartners();
+                    loadStats();
+                }
+            }
+            
+            window.editUser = async function(id, email, role) {
+                const newRole = role === 'admin' ? 'user' : 'admin';
+                if (confirm(`Change ${email} role to ${newRole}?`)) {
+                    await supabase.from('user_profiles').update({ role: newRole }).eq('id', id);
+                    showMessage('User role updated!', 'success');
+                    loadUsers();
+                }
+            }
+            
+            window.viewRequest = async function(id) {
+                const { data } = await supabase.from('service_requests').select('*').eq('id', id).single();
+                alert(`Request Details:\n\nService: ${data.service_type}\nVehicle: ${data.make} ${data.model}\nAmount: KES ${data.amount}\nStatus: ${data.status}\nPayment: ${data.payment_status}`);
+            }
+            
+            window.downloadCertificate = async function(id) {
+                const { data } = await supabase.from('service_requests').select('*').eq('id', id).single();
+                const certNumber = data.result?.certificate_number || `${data.service_type === 'valuation' ? 'VAL' : 'INS'}-${data.id?.slice(0,8)}`;
+                alert(`Certificate: ${certNumber}\nService: ${data.service_type}\nVehicle: ${data.make} ${data.model}\nPDF download feature coming soon.`);
+            }
+            
+            async function generateReport() {
+                const startDate = document.getElementById('reportStartDate').value;
+                const endDate = document.getElementById('reportEndDate').value;
+                const type = document.getElementById('reportType').value;
+                
+                let query = supabase.from('service_requests').select('*');
+                if (startDate) query = query.gte('created_at', startDate);
+                if (endDate) query = query.lte('created_at', endDate + 'T23:59:59');
+                const { data } = await query;
+                
+                const resultDiv = document.getElementById('reportResult');
+                if (type === 'revenue') {
+                    const total = data?.reduce((s, r) => s + (r.payment_status === 'paid' ? (r.amount || 0) : 0), 0) || 0;
+                    const paid = data?.filter(r => r.payment_status === 'paid').length || 0;
+                    const pending = data?.filter(r => r.payment_status === 'pending').length || 0;
+                    resultDiv.innerHTML = `<div class="card"><h3>Revenue Report</h3><p>Total Revenue: KES ${total.toLocaleString()}</p><p>Paid Requests: ${paid}</p><p>Pending: ${pending}</p></div>`;
+                } else if (type === 'users') {
+                    const uniqueUsers = new Set(data?.map(r => r.user_id));
+                    resultDiv.innerHTML = `<div class="card"><h3>User Report</h3><p>Active Users: ${uniqueUsers.size}</p><p>Total Requests: ${data?.length || 0}</p></div>`;
+                } else {
+                    const valuations = data?.filter(r => r.service_type === 'valuation').length || 0;
+                    const inspections = data?.filter(r => r.service_type === 'inspection').length || 0;
+                    resultDiv.innerHTML = `<div class="card"><h3>Services Report</h3><p>Valuations: ${valuations}</p><p>Inspections: ${inspections}</p><p>Total: ${(valuations + inspections)}</p></div>`;
+                }
+                resultDiv.style.display = 'block';
+            }
+
+            function showMessage(msg, type) {
+                const div = document.getElementById(`${type}Msg`);
+                div.innerHTML = msg;
+                div.style.display = 'block';
+                setTimeout(() => div.style.display = 'none', 5000);
+            }
+
+            // Tab Management
+            function switchTab(tab) {
+                currentTab = tab;
+                const tabs = ['requests', 'users', 'payments', 'certificates', 'partners', 'prices', 'reports'];
+                tabs.forEach(t => {
+                    const el = document.getElementById(`${t}Tab`);
+                    if (el) el.style.display = t === tab ? 'block' : 'none';
+                });
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    if (btn.dataset.tab === tab) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                });
+            }
+
+            // Event Listeners
+            document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
+            document.getElementById('updateFeesBtn').onclick = updateFees;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.onclick = () => switchTab(btn.dataset.tab);
+            });
+            
+            window.generateReport = generateReport;
+            window.savePartner = savePartner;
+            window.searchPartners = () => loadPartners();
+
+            // Initialize
+            async function init() {
+                const isAdmin = await checkAdmin();
+                if (!isAdmin) return;
+                await loadAllData();
+                setInterval(loadStats, 30000);
+            }
+            
+            init();
+        })();
     </script>
 </body>
 </html>
