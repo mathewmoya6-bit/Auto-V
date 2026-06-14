@@ -221,7 +221,7 @@
 
         <div id="paymentsTab" class="card" style="display:none;">
             <h2>💳 Payments</h2>
-            <div style="overflow-x: auto;"><table id="paymentsTable"><thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead><tbody id="paymentsBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody></table></div>
+            <div style="overflow-x: auto;"><table id="paymentsTable"><thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead><tbody id="paymentsBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody><table></div>
         </div>
 
         <div id="pricingTab" class="card" style="display:none;">
@@ -250,11 +250,13 @@
     <div id="partnerModal" class="modal"><div class="modal-content"><h3>Partner</h3><input type="hidden" id="partnerId"><div class="form-group"><label>Name</label><input type="text" id="partnerName"></div><div class="form-row"><div class="form-group"><label>Type</label><select id="partnerType"><option>Bank</option><option>Insurance</option></select></div><div class="form-group"><label>Commission</label><input type="number" id="partnerCommission"></div></div><div class="form-group"><label>Email</label><input type="email" id="partnerEmail"></div><div class="action-buttons"><button class="btn btn-success" onclick="savePartner()">Save</button><button class="btn btn-danger" onclick="closeModal('partnerModal')">Cancel</button></div></div></div>
 
 <script>
-// SINGLE SUPABASE CLIENT - NO DUPLICATE
-// Using window.supabase from CDN, not redeclaring
-const _SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const _SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-const supabase = window.supabase.createClient(_SUPABASE_URL, _SUPABASE_ANON_KEY);
+// ✅ SINGLE SUPABASE CLIENT - NO DUPLICATE
+// ⚠️ IMPORTANT: Make sure there is NO <script src="supabase.js"> in this file
+// ⚠️ Also remove any other script that declares a 'supabase' variable
+
+const supabaseUrl = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+const _supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 let currentUser = null;
 let revenueChart = null;
@@ -264,10 +266,10 @@ let serviceChart = null;
 // AUTHENTICATION
 // ============================================
 async function checkAdmin() {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await _supabase.auth.getUser();
     if (error || !user) { window.location.href = "admin-login.html"; return false; }
-    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-    if (!profile || profile.role !== 'admin') { await supabase.auth.signOut(); window.location.href = "admin-login.html"; return false; }
+    const { data: profile } = await _supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    if (!profile || profile.role !== 'admin') { await _supabase.auth.signOut(); window.location.href = "admin-login.html"; return false; }
     currentUser = user;
     return true;
 }
@@ -276,9 +278,9 @@ async function checkAdmin() {
 // LOAD DATA
 // ============================================
 async function loadStats() {
-    const { data: requests } = await supabase.from('service_requests').select('*');
-    const { data: profiles } = await supabase.from('user_profiles').select('id');
-    const { data: partners } = await supabase.from('partners').select('id');
+    const { data: requests } = await _supabase.from('service_requests').select('*');
+    const { data: profiles } = await _supabase.from('user_profiles').select('id');
+    const { data: partners } = await _supabase.from('partners').select('id');
     const valuations = requests?.filter(r => r.service_type === 'valuation') || [];
     const inspections = requests?.filter(r => r.service_type === 'inspection') || [];
     const pending = requests?.filter(r => r.payment_status === 'pending') || [];
@@ -292,7 +294,7 @@ async function loadStats() {
 }
 
 async function loadUsers() {
-    const { data } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
+    const { data } = await _supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
     document.getElementById('usersBody').innerHTML = (data || []).map(u => `
         <tr>
             <td>${u.id?.slice(0,8)}...<\/td>
@@ -306,8 +308,8 @@ async function loadUsers() {
 }
 
 async function loadRequests() {
-    const { data } = await supabase.from('service_requests').select('*').order('created_at', { ascending: false });
-    const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+    const { data } = await _supabase.from('service_requests').select('*').order('created_at', { ascending: false });
+    const { data: profiles } = await _supabase.from('user_profiles').select('id, email');
     const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
     document.getElementById('requestsBody').innerHTML = (data || []).slice(0, 100).map(r => `
         <tr>
@@ -323,8 +325,8 @@ async function loadRequests() {
 }
 
 async function loadPayments() {
-    const { data } = await supabase.from('mpesa_transactions').select('*').order('created_at', { ascending: false });
-    const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+    const { data } = await _supabase.from('mpesa_transactions').select('*').order('created_at', { ascending: false });
+    const { data: profiles } = await _supabase.from('user_profiles').select('id, email');
     const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
     document.getElementById('paymentsBody').innerHTML = (data || []).slice(0, 100).map(p => `
         <tr>
@@ -339,7 +341,7 @@ async function loadPayments() {
 }
 
 async function loadPartners() {
-    const { data } = await supabase.from('partners').select('*');
+    const { data } = await _supabase.from('partners').select('*');
     document.getElementById('partnersBody').innerHTML = (data || []).map(p => `
         <tr>
             <td>${p.name}<\/td>
@@ -348,7 +350,7 @@ async function loadPartners() {
             <td>${p.commission}%<\/td>
             <td><span class="badge ${p.status === 'Active' ? 'badge-active' : 'badge-pending'}">${p.status}</span><\/td>
             <td class="action-buttons"><button class="btn" onclick="editPartner('${p.id}')">Edit</button><button class="btn btn-danger" onclick="deletePartner('${p.id}')">Delete</button><\/td>
-        </table>
+        </tr>
     `).join('');
 }
 
@@ -360,34 +362,34 @@ async function loadFees() {
         { key: 'tuk_tuk_valuation_fee', id: 'tuktukFee' }
     ];
     for (const fee of fees) {
-        const { data } = await supabase.from('system_settings').select('setting_value').eq('setting_key', fee.key).single();
+        const { data } = await _supabase.from('system_settings').select('setting_value').eq('setting_key', fee.key).single();
         if (data) document.getElementById(fee.id).value = data.setting_value;
     }
 }
 
 async function loadSystemSettings() {
-    const { data: name } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'system_name').single();
-    const { data: email } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_email').single();
+    const { data: name } = await _supabase.from('system_settings').select('setting_value').eq('setting_key', 'system_name').single();
+    const { data: email } = await _supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_email').single();
     if (name?.setting_value) document.getElementById('systemName').value = name.setting_value;
     if (email?.setting_value) document.getElementById('supportEmail').value = email.setting_value;
 }
 
 async function updateFees() {
-    await supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: document.getElementById('valuationFee').value });
-    await supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: document.getElementById('inspectionFee').value });
-    await supabase.from('system_settings').upsert({ setting_key: 'motorcycle_valuation_fee', setting_value: document.getElementById('motorcycleFee').value });
-    await supabase.from('system_settings').upsert({ setting_key: 'tuk_tuk_valuation_fee', setting_value: document.getElementById('tuktukFee').value });
+    await _supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: document.getElementById('valuationFee').value });
+    await _supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: document.getElementById('inspectionFee').value });
+    await _supabase.from('system_settings').upsert({ setting_key: 'motorcycle_valuation_fee', setting_value: document.getElementById('motorcycleFee').value });
+    await _supabase.from('system_settings').upsert({ setting_key: 'tuk_tuk_valuation_fee', setting_value: document.getElementById('tuktukFee').value });
     showMessage('Fees updated!', 'success');
 }
 
 async function updateSystemSettings() {
-    await supabase.from('system_settings').upsert({ setting_key: 'system_name', setting_value: document.getElementById('systemName').value });
-    await supabase.from('system_settings').upsert({ setting_key: 'support_email', setting_value: document.getElementById('supportEmail').value });
+    await _supabase.from('system_settings').upsert({ setting_key: 'system_name', setting_value: document.getElementById('systemName').value });
+    await _supabase.from('system_settings').upsert({ setting_key: 'support_email', setting_value: document.getElementById('supportEmail').value });
     showMessage('Settings saved!', 'success');
 }
 
 async function updateCharts() {
-    const { data } = await supabase.from('service_requests').select('amount, payment_status, created_at, service_type');
+    const { data } = await _supabase.from('service_requests').select('amount, payment_status, created_at, service_type');
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthlyRevenue = new Array(12).fill(0);
     const valuationCount = new Array(12).fill(0);
@@ -403,7 +405,7 @@ async function updateCharts() {
 // CRUD FUNCTIONS
 // ============================================
 window.editUser = async (id) => {
-    const { data } = await supabase.from('user_profiles').select('*').eq('id', id).single();
+    const { data } = await _supabase.from('user_profiles').select('*').eq('id', id).single();
     if (data) {
         document.getElementById('userId').value = data.id;
         document.getElementById('userEmail').value = data.email;
@@ -417,13 +419,13 @@ window.saveUser = async () => {
     const id = document.getElementById('userId').value;
     const data = { role: document.getElementById('userRole').value, phone: document.getElementById('userPhone').value };
     if (id) {
-        await supabase.from('user_profiles').update(data).eq('id', id);
+        await _supabase.from('user_profiles').update(data).eq('id', id);
         showMessage('User updated!', 'success');
     } else {
         const email = document.getElementById('userEmail').value;
         const password = document.getElementById('userPassword').value;
         if (email && password) {
-            const { error } = await supabase.auth.signUp({ email, password });
+            const { error } = await _supabase.auth.signUp({ email, password });
             if (error) { showMessage(error.message, 'error'); return; }
             showMessage('User created!', 'success');
         }
@@ -435,7 +437,7 @@ window.saveUser = async () => {
 
 window.deleteUser = async (id) => {
     if (confirm('Delete this user?')) {
-        await supabase.from('user_profiles').delete().eq('id', id);
+        await _supabase.from('user_profiles').delete().eq('id', id);
         showMessage('User deleted', 'success');
         loadUsers();
         loadStats();
@@ -443,7 +445,7 @@ window.deleteUser = async (id) => {
 };
 
 window.editPartner = async (id) => {
-    const { data } = await supabase.from('partners').select('*').eq('id', id).single();
+    const { data } = await _supabase.from('partners').select('*').eq('id', id).single();
     if (data) {
         document.getElementById('partnerId').value = data.id;
         document.getElementById('partnerName').value = data.name;
@@ -463,8 +465,8 @@ window.savePartner = async () => {
         email: document.getElementById('partnerEmail').value,
         status: 'Active'
     };
-    if (id) await supabase.from('partners').update(data).eq('id', id);
-    else await supabase.from('partners').insert(data);
+    if (id) await _supabase.from('partners').update(data).eq('id', id);
+    else await _supabase.from('partners').insert(data);
     showMessage('Partner saved!', 'success');
     closeModal('partnerModal');
     loadPartners();
@@ -473,7 +475,7 @@ window.savePartner = async () => {
 
 window.deletePartner = async (id) => {
     if (confirm('Delete partner?')) {
-        await supabase.from('partners').delete().eq('id', id);
+        await _supabase.from('partners').delete().eq('id', id);
         showMessage('Partner deleted', 'success');
         loadPartners();
         loadStats();
@@ -535,7 +537,7 @@ function switchTab(tab) {
 
 // Event Listeners
 document.getElementById('logoutBtn').onclick = async () => {
-    await supabase.auth.signOut();
+    await _supabase.auth.signOut();
     window.location.href = 'admin-login.html';
 };
 
