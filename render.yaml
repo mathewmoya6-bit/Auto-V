@@ -1,14 +1,26 @@
-# render.yaml
+# render.yaml - Python Backend with AI/ML Services
 services:
+  # Main Python Backend API
   - type: web
-    name: auto-v-backend
-    runtime: node           # ← MUST be "node", NOT "python"
-    repo: https://github.com/mathewmoya6-bit/auto-v-backend
-    buildCommand: npm install
-    startCommand: node server.js
+    name: auto-v-api
+    runtime: python
+    repo: https://github.com/mathewmoya6-bit/Auto-V
+    branch: main
+    buildCommand: |
+      pip install -r requirements.txt
+      python -m spacy download en_core_web_sm
+    startCommand: gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     envVars:
       - key: PORT
-        value: 3000
+        value: 8000
+      - key: PYTHON_VERSION
+        value: 3.11.8
+      - key: SUPABASE_URL
+        value: https://tsvejnzxrxrrecgquxbq.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
       - key: MPESA_CONSUMER_KEY
         value: LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv
       - key: MPESA_CONSUMER_SECRET
@@ -18,8 +30,71 @@ services:
       - key: MPESA_SHORTCODE
         value: 4095377
       - key: MPESA_CALLBACK_URL
-        value: https://auto-v-backend.onrender.com/api/mpesa/callback
+        value: https://auto-v-api.onrender.com/api/mpesa/callback
+      - key: YOLO_MODEL_PATH
+        value: models/yolo/best.pt
+      - key: TESSERACT_PATH
+        value: /usr/bin/tesseract
+      - key: REDIS_URL
+        sync: false
+      - key: CELERY_BROKER_URL
+        sync: false
+
+  # Celery Worker for AI Tasks (OCR, Damage Detection, Valuation)
+  - type: worker
+    name: auto-v-worker
+    runtime: python
+    repo: https://github.com/mathewmoya6-bit/Auto-V
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A main.celery worker --loglevel=info
+    envVars:
       - key: SUPABASE_URL
         value: https://tsvejnzxrxrrecgquxbq.supabase.co
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: YOLO_MODEL_PATH
+        value: models/yolo/best.pt
+
+  # Redis for Caching & Queues
+  - type: redis
+    name: auto-v-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+
+  # Supabase Edge Function (M-Pesa Callback)
+  - type: web
+    name: auto-v-mpesa-callback
+    runtime: node
+    repo: https://github.com/mathewmoya6-bit/Auto-V
+    branch: main
+    rootDir: supabase/functions/mpesa-callback
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: SUPABASE_URL
+        value: https://tsvejnzxrxrrecgquxbq.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ
+
+  # Frontend Static Site
+  - type: web
+    name: auto-v-frontend
+    runtime: static
+    repo: https://github.com/mathewmoya6-bit/Auto-V
+    branch: main
+    buildCommand: echo "No build needed"
+    publishPath: ./
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /login.html
+    envVars:
+      - key: SUPABASE_URL
+        value: https://tsvejnzxrxrrecgquxbq.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ
+      - key: VITE_API_URL
+        value: https://auto-v-api.onrender.com
