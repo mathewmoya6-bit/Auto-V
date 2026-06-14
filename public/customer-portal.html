@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Customer Portal</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23eab308' rx='20'/><text x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'>🚗</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0b1120;
+            color: #fff;
+            min-height: 100vh;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: #111827;
+            border-bottom: 2px solid #eab308;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .logo { font-size: 24px; font-weight: bold; color: #eab308; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 12px; color: #94a3b8; }
+        .logout-btn { background: #dc2626; color: #fff; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .logout-btn:hover { background: #b91c1c; }
+        .container { max-width: 1200px; margin: auto; padding: 24px; }
+        .card {
+            background: #111827;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid #1f2937;
+        }
+        h2 { color: #eab308; margin-bottom: 20px; font-size: 22px; border-left: 4px solid #eab308; padding-left: 15px; }
+        .step { display: none; }
+        .step.active { display: block; }
+        .progress-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            background: #1e293b;
+            border-radius: 40px;
+            padding: 5px;
+            flex-wrap: wrap;
+        }
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            border-radius: 40px;
+            color: #94a3b8;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .progress-step.active { background: #eab308; color: #000; }
+        .progress-step.completed { background: #22c55e; color: #000; }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px; font-weight: 600; }
+        label.required:after { content: " *"; color: #ef4444; }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1e293b;
+            color: white;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            font-size: 14px;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #eab308;
+            box-shadow: 0 0 0 2px rgba(234,179,8,0.2);
+        }
+        .btn {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary { background: #eab308; color: #0a0c10; }
+        .btn-primary:hover { background: #facc15; transform: translateY(-2px); }
+        .btn-secondary { background: #334155; color: white; }
+        .btn-secondary:hover { background: #475569; }
+        .btn-success { background: #22c55e; color: white; }
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 30px; }
+        .service-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .service-card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .service-card:hover { border-color: #eab308; transform: translateY(-5px); }
+        .service-card.selected { border-color: #eab308; background: #2d3a4e; }
+        .service-icon { font-size: 48px; margin-bottom: 10px; }
+        .service-card h3 { color: #eab308; margin-bottom: 10px; }
+        .service-price { font-size: 24px; font-weight: bold; color: #22c55e; margin: 10px 0; }
+        .purpose-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #1e293b;
+            border-radius: 12px;
+        }
+        .purpose-item {
+            padding: 10px 15px;
+            background: #0f172a;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .purpose-item:hover { background: #334155; }
+        .purpose-item.selected { background: #eab308; color: #000; }
+        .result-box {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 2px solid #eab308;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+        }
+        .result-value { font-size: 48px; font-weight: 800; color: #22c55e; margin: 20px 0; }
+        .result-detail { margin: 15px 0; padding: 15px; background: #1e293b; border-radius: 12px; }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error, .success {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
+        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .nav-buttons { flex-direction: column; gap: 10px; }
+            .nav-buttons button { width: 100%; }
+            .progress-step { font-size: 10px; padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">🚗 AUTO-V <span>| Customer Portal</span></div>
+        <button class="logout-btn" id="logoutBtn">Logout</button>
+    </header>
+    <div class="container">
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+
+        <div class="progress-bar">
+            <div class="progress-step" data-step="1">1. Customer Info</div>
+            <div class="progress-step" data-step="2">2. Select Service</div>
+            <div class="progress-step" data-step="3">3. Vehicle Details</div>
+            <div class="progress-step" data-step="4">4. Valuation Purpose</div>
+            <div class="progress-step" data-step="5">5. Payment</div>
+            <div class="progress-step" data-step="6">6. Results</div>
+        </div>
+
+        <!-- Step 1 -->
+        <div id="step1" class="card step active">
+            <h2>👤 Customer Information</h2>
+            <div class="form-grid">
+                <div class="form-group"><label class="required">Full Name</label><input type="text" id="custName" placeholder="John Doe"></div>
+                <div class="form-group"><label class="required">ID / Passport</label><input type="text" id="custId" placeholder="ID number"></div>
+                <div class="form-group"><label class="required">Phone Number</label><input type="tel" id="custPhone" placeholder="0712345678"></div>
+                <div class="form-group"><label class="required">Email Address</label><input type="email" id="custEmail" placeholder="john@example.com"></div>
+            </div>
+            <div class="nav-buttons"><div></div><button class="btn btn-primary" id="next1">Next →</button></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div id="step2" class="card step">
+            <h2>🔧 Select Service Type</h2>
+            <div class="service-cards">
+                <div class="service-card" data-service="valuation">
+                    <div class="service-icon">💰</div>
+                    <h3>Vehicle Valuation</h3>
+                    <div class="service-price" id="valuationPrice">KES 2,500</div>
+                </div>
+                <div class="service-card" data-service="inspection">
+                    <div class="service-icon">🔍</div>
+                    <h3>Vehicle Inspection</h3>
+                    <div class="service-price" id="inspectionPrice">KES 3,500</div>
+                </div>
+            </div>
+            <div id="selectedServiceMsg" style="margin-top: 15px; text-align: center; color: #eab308;"></div>
+            <div class="nav-buttons"><button class="btn btn-secondary" id="back2">← Back</button><button class="btn btn-primary" id="next2">Next →</button></div>
+        </div>
+
+        <!-- Step 3 -->
+        <div id="step3" class="card step">
+            <h2>🚗 Vehicle Information</h2>
+            <div class="form-grid">
+                <div class="form-group"><label class="required">Registration</label><input type="text" id="reg" placeholder="KCA 123A"></div>
+                <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vin" placeholder="JTEGD34V000123456"></div>
+                <div class="form-group"><label class="required">Make</label><input type="text" id="make" placeholder="Toyota"></div>
+                <div class="form-group"><label class="required">Model</label><input type="text" id="model" placeholder="Axio"></div>
+                <div class="form-group"><label class="required">Year</label><select id="year"></select></div>
+                <div class="form-group"><label class="required">Odometer (km)</label><input type="number" id="odometer" placeholder="50000"></div>
+            </div>
+            <div class="nav-buttons"><button class="btn btn-secondary" id="back3">← Back</button><button class="btn btn-primary" id="next3">Next →</button></div>
+        </div>
+
+        <!-- Step 4 -->
+        <div id="step4" class="card step">
+            <h2>🎯 Valuation Purpose</h2>
+            <div class="purpose-list" id="purposeList"></div>
+            <div class="nav-buttons"><button class="btn btn-secondary" id="back4">← Back</button><button class="btn btn-primary" id="next4">Next →</button></div>
+        </div>
+
+        <!-- Step 5 -->
+        <div id="step5" class="card step">
+            <h2>💳 Payment</h2>
+            <div class="form-group"><label class="required">M-Pesa Phone Number</label><input type="tel" id="mpesaPhone" placeholder="0712345678"></div>
+            <div class="result-box" style="margin-top: 20px;">
+                <h3>Order Summary</h3>
+                <div class="result-detail">
+                    <div style="display: flex; justify-content: space-between;"><span>Service:</span><strong id="summaryService">-</strong></div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 10px;"><span>Amount:</span><strong id="summaryAmount" style="color: #22c55e;">KES 0</strong></div>
+                </div>
+            </div>
+            <div class="nav-buttons"><button class="btn btn-secondary" id="back5">← Back</button><button class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
+        </div>
+
+        <!-- Step 6 -->
+        <div id="step6" class="card step">
+            <h2>📊 Valuation Results</h2>
+            <div id="resultsContainer" class="result-box">
+                <div class="spinner"></div>
+                <p>Processing your valuation...</p>
+            </div>
+            <div class="nav-buttons"><button class="btn btn-secondary" id="resetBtn">Start New</button></div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let currentUser = null;
+        let currentStep = 1;
+        let selectedService = null;
+        let selectedPurpose = null;
+        let valuationFee = 2500;
+        let inspectionFee = 3500;
+
+        const purposes = [
+            "Market Value", "Insurance Valuation", "Forced Sale Value", "Trade-In Valuation",
+            "Loan / Security Valuation", "Pre-Purchase Inspection", "Fleet Valuation",
+            "Import Duty Assessment", "Tax Assessment", "Court Evidence", "Legal Dispute",
+            "Estate / Probate", "Divorce Settlement", "Auction", "Leasing"
+        ];
+
+        function showStep(step) {
+            currentStep = step;
+            for (let i = 1; i <= 6; i++) {
+                const el = document.getElementById(`step${i}`);
+                if (el) el.classList.remove('active');
+                const prog = document.querySelector(`.progress-step[data-step="${i}"]`);
+                if (prog) {
+                    prog.classList.remove('active', 'completed');
+                    if (i < step) prog.classList.add('completed');
+                    if (i === step) prog.classList.add('active');
+                }
+            }
+            document.getElementById(`step${step}`).classList.add('active');
+        }
+
+        async function loadFees() {
+            try {
+                const { data: v } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
+                const { data: i } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
+                if (v) valuationFee = parseInt(v.setting_value);
+                if (i) inspectionFee = parseInt(i.setting_value);
+                document.getElementById('valuationPrice').innerHTML = `KES ${valuationFee.toLocaleString()}`;
+                document.getElementById('inspectionPrice').innerHTML = `KES ${inspectionFee.toLocaleString()}`;
+            } catch(e) { console.log('Using defaults'); }
+        }
+
+        function populateYears() {
+            const yearSelect = document.getElementById('year');
+            const currentYear = new Date().getFullYear();
+            for (let y = currentYear; y >= 1950; y--) {
+                yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+            }
+        }
+
+        function populatePurposes() {
+            const container = document.getElementById('purposeList');
+            container.innerHTML = purposes.map(p => `<div class="purpose-item" data-purpose="${p}">${p}</div>`).join('');
+            document.querySelectorAll('.purpose-item').forEach(item => {
+                item.onclick = () => {
+                    document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                    item.classList.add('selected');
+                    selectedPurpose = item.dataset.purpose;
+                };
+            });
+        }
+
+        function updateSummary() {
+            const price = selectedService === 'valuation' ? valuationFee : inspectionFee;
+            document.getElementById('summaryService').innerHTML = selectedService === 'valuation' ? 'Vehicle Valuation' : 'Vehicle Inspection';
+            document.getElementById('summaryAmount').innerHTML = `KES ${price.toLocaleString()}`;
+        }
+
+        async function checkAuth() {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error || !user) { window.location.href = "login.html"; return false; }
+            currentUser = user;
+            document.getElementById('custEmail').value = user.email;
+            return true;
+        }
+
+        async function processPayment() {
+            const payBtn = document.getElementById('payBtn');
+            payBtn.disabled = true;
+            payBtn.innerHTML = '<span class="spinner"></span> Processing...';
+
+            try {
+                const name = document.getElementById('custName').value;
+                const phone = document.getElementById('custPhone').value;
+                const email = document.getElementById('custEmail').value;
+                const reg = document.getElementById('reg').value;
+                const make = document.getElementById('make').value;
+                const model = document.getElementById('model').value;
+                const year = parseInt(document.getElementById('year').value);
+                const odometer = parseInt(document.getElementById('odometer').value);
+                const mpesaPhone = document.getElementById('mpesaPhone').value;
+
+                if (!selectedService) throw new Error('Select a service');
+                if (!selectedPurpose) throw new Error('Select a purpose');
+                if (!reg || !make || !model || !year) throw new Error('Fill vehicle details');
+                if (!mpesaPhone) throw new Error('Enter M-Pesa number');
+
+                const amount = selectedService === 'valuation' ? valuationFee : inspectionFee;
+                const age = new Date().getFullYear() - year;
+                let marketValue = Math.max(300000, 2000000 - (2000000 * Math.min(age * 0.08, 0.7)));
+                if (make.toLowerCase() === 'toyota') marketValue = Math.round(marketValue * 1.1);
+
+                const result = {
+                    market_value: marketValue,
+                    insurance_value: Math.round(marketValue * 1.1),
+                    trade_in_value: Math.round(marketValue * 0.8),
+                    forced_sale_value: Math.round(marketValue * 0.7),
+                    certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+                };
+
+                const { data, error } = await supabase.from('service_requests').insert({
+                    user_id: currentUser.id,
+                    service_type: selectedService,
+                    customer_name: name,
+                    customer_phone: phone,
+                    customer_email: email,
+                    registration_number: reg,
+                    vin: document.getElementById('vin').value,
+                    make: make,
+                    model: model,
+                    year: year,
+                    odometer: odometer,
+                    valuation_purpose: selectedPurpose,
+                    amount: amount,
+                    phone: mpesaPhone,
+                    payment_status: 'completed',
+                    status: 'completed',
+                    result: result,
+                    certificate_number: result.certificate_number
+                });
+
+                if (error) throw error;
+
+                document.getElementById('resultsContainer').innerHTML = `
+                    <div class="result-value">KES ${marketValue.toLocaleString()}</div>
+                    <p style="color:#eab308;">Estimated Market Value</p>
+                    <div class="result-detail">
+                        <div style="display:flex; justify-content:space-between;"><span>Insurance Value:</span><strong>KES ${result.insurance_value.toLocaleString()}</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-top:8px;"><span>Trade-In Value:</span><strong>KES ${result.trade_in_value.toLocaleString()}</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-top:8px;"><span>Certificate No:</span><strong>${result.certificate_number}</strong></div>
+                    </div>
+                    <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
+                        <p style="color:#22c55e;">✅ Valuation Complete! Your certificate has been generated.</p>
+                    </div>
+                `;
+                
+                showStep(6);
+                document.getElementById('successMsg').innerHTML = '✓ Payment successful! Valuation ready.';
+                document.getElementById('successMsg').style.display = 'block';
+                
+            } catch (err) {
+                document.getElementById('errorMsg').innerHTML = err.message;
+                document.getElementById('errorMsg').style.display = 'block';
+            } finally {
+                payBtn.disabled = false;
+                payBtn.innerHTML = '💳 Pay Now';
+            }
+        }
+
+        // Event handlers
+        document.getElementById('next1').onclick = () => showStep(2);
+        document.getElementById('back2').onclick = () => showStep(1);
+        document.getElementById('next2').onclick = () => { if(selectedService) showStep(3); else alert('Select a service'); };
+        document.getElementById('back3').onclick = () => showStep(2);
+        document.getElementById('next3').onclick = () => { const r=document.getElementById('reg').value,m=document.getElementById('make').value,mo=document.getElementById('model').value; if(r&&m&&mo) showStep(4); else alert('Fill vehicle details'); };
+        document.getElementById('back4').onclick = () => showStep(3);
+        document.getElementById('next4').onclick = () => { if(selectedPurpose) showStep(5); else alert('Select a purpose'); };
+        document.getElementById('back5').onclick = () => showStep(4);
+        document.getElementById('payBtn').onclick = processPayment;
+        document.getElementById('resetBtn').onclick = () => window.location.href = 'dashboard.html';
+        document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = "login.html"; };
+
+        // Service selection
+        document.querySelectorAll('.service-card').forEach(card => {
+            card.onclick = () => {
+                document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedService = card.dataset.service;
+                updateSummary();
+                document.getElementById('selectedServiceMsg').innerHTML = `Selected: ${selectedService === 'valuation' ? 'Valuation' : 'Inspection'} - KES ${selectedService === 'valuation' ? valuationFee : inspectionFee}`;
+            };
+        });
+
+        async function init() {
+            if (!await checkAuth()) return;
+            populateYears();
+            populatePurposes();
+            await loadFees();
+            showStep(1);
+        }
+        init();
+    </script>
+</body>
+</html>
