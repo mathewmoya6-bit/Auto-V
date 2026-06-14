@@ -1,440 +1,125 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AUTO-V Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #0b1120;
-            color: #fff;
-            min-height: 100vh;
-        }
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 24px;
-            background: #111827;
-            border-bottom: 2px solid #eab308;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-        .logo { font-weight: bold; font-size: 24px; color: #eab308; }
-        .logout-btn {
-            background: #dc2626;
-            color: #fff;
-            border: 0;
-            padding: 8px 20px;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .container { max-width: 1100px; margin: auto; padding: 24px; }
-        .card {
-            background: #111827;
-            border: 1px solid #1f2937;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 20px;
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-        }
-        .service-card {
-            background: #111827;
-            border: 1px solid #1f2937;
-            border-radius: 12px;
-            padding: 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .service-card:hover {
-            border-color: #eab308;
-            transform: translateY(-5px);
-        }
-        .service-icon { font-size: 48px; margin-bottom: 10px; }
-        .service-card h3 { color: #eab308; margin-bottom: 10px; }
-        .price { font-size: 24px; font-weight: bold; color: #22c55e; margin: 10px 0; }
-        button {
-            background: #eab308;
-            color: #000;
-            border: 0;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-        }
-        button:hover { background: #facc15; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; border-bottom: 1px solid #1f2937; text-align: left; }
-        th { color: #eab308; }
-        .badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            display: inline-block;
-        }
-        .badge-pending { background: #eab308; color: #000; }
-        .badge-paid { background: #22c55e; color: #000; }
-        .badge-completed { background: #8b5cf6; color: #fff; }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.95);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background: #111827;
-            border-radius: 16px;
-            max-width: 500px;
-            width: 90%;
-            padding: 30px;
-            border: 2px solid #eab308;
-        }
-        .modal-content h2 { color: #eab308; margin-bottom: 20px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; color: #94a3b8; font-weight: 600; }
-        input, select {
-            width: 100%;
-            padding: 12px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            color: #fff;
-            font-size: 14px;
-        }
-        input:focus { outline: none; border-color: #eab308; }
-        .btn-success {
-            background: #22c55e;
-            color: #fff;
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 10px;
-            font-weight: bold;
-        }
-        .btn-secondary {
-            background: #475569;
-            color: #fff;
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .error, .success {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
-        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
-        .payment-status {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #111827;
-            padding: 15px 25px;
-            border-radius: 12px;
-            border-left: 4px solid #eab308;
-            display: none;
-            z-index: 1000;
-        }
-    </style>
-</head>
-<body>
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-<header>
-    <div class="logo">🚗 AUTO-V Dashboard</div>
-    <button class="logout-btn" id="logoutBtn">Logout</button>
-</header>
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
-<div class="container">
-    <div class="card">
-        <h2>Welcome to AUTO-V</h2>
-        <div id="email">Loading...</div>
-        <p style="color: #94a3b8; margin-top: 5px;">Pay via M-Pesa → Get instant results</p>
-    </div>
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
 
-    <div id="errorMsg" class="error"></div>
-    <div id="successMsg" class="success"></div>
-
-    <div class="grid">
-        <div class="service-card" id="valuationCard">
-            <div class="service-icon">💰</div>
-            <h3>Vehicle Valuation</h3>
-            <p>Get accurate market value with certificate</p>
-            <div class="price" id="valuationPrice">Loading...</div>
-            <button id="valuationBtn">Pay & Start →</button>
-        </div>
-
-        <div class="service-card" id="inspectionCard">
-            <div class="service-icon">🔍</div>
-            <h3>Vehicle Inspection</h3>
-            <p>150+ point comprehensive inspection</p>
-            <div class="price" id="inspectionPrice">Loading...</div>
-            <button id="inspectionBtn">Pay & Start →</button>
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>📋 My Requests</h2>
-        <div style="overflow-x: auto;">
-            <table id="requestsTable">
-                <thead>
-                    <tr><th>Date</th><th>Service</th><th>Vehicle</th><th>Amount</th><th>Status</th><th>Payment</th><th>Result</th></tr>
-                </thead>
-                <tbody id="requestsBody"><tr><td colspan="7" style="text-align:center;padding:40px;">Loading...<\/td><\/tr></tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Valuation Modal -->
-<div id="valuationModal" class="modal">
-    <div class="modal-content">
-        <h2>💰 Vehicle Valuation</h2>
-        <div class="form-group"><label>Registration</label><input type="text" id="valReg" placeholder="KCA 123A"></div>
-        <div class="form-group"><label>Make</label><input type="text" id="valMake" placeholder="Toyota"></div>
-        <div class="form-group"><label>Model</label><input type="text" id="valModel" placeholder="Axio"></div>
-        <div class="form-group"><label>Year</label><input type="number" id="valYear" placeholder="2020"></div>
-        <div class="form-group"><label>Purpose</label><select id="valPurpose"><option>Insurance</option><option>Sale</option><option>Bank Loan</option></select></div>
-        <div class="form-group"><label>M-Pesa Phone</label><input type="tel" id="valPhone" placeholder="0712345678"></div>
-        <div class="form-group"><label>Amount</label><input type="text" id="valAmount" readonly style="background:#22c55e20;color:#22c55e;font-weight:bold;"></div>
-        <button class="btn-success" id="submitValuationBtn">💳 Pay with M-Pesa</button>
-        <button class="btn-secondary" onclick="closeModal('valuationModal')">Cancel</button>
-    </div>
-</div>
-
-<!-- Inspection Modal -->
-<div id="inspectionModal" class="modal">
-    <div class="modal-content">
-        <h2>🔍 Vehicle Inspection</h2>
-        <div class="form-group"><label>Registration</label><input type="text" id="insReg" placeholder="KCA 123A"></div>
-        <div class="form-group"><label>Make</label><input type="text" id="insMake" placeholder="Toyota"></div>
-        <div class="form-group"><label>Model</label><input type="text" id="insModel" placeholder="Axio"></div>
-        <div class="form-group"><label>Year</label><input type="number" id="insYear" placeholder="2020"></div>
-        <div class="form-group"><label>Mileage</label><input type="number" id="insMileage" placeholder="50000"></div>
-        <div class="form-group"><label>M-Pesa Phone</label><input type="tel" id="insPhone" placeholder="0712345678"></div>
-        <div class="form-group"><label>Amount</label><input type="text" id="insAmount" readonly style="background:#22c55e20;color:#22c55e;font-weight:bold;"></div>
-        <button class="btn-success" id="submitInspectionBtn">💳 Pay with M-Pesa</button>
-        <button class="btn-secondary" onclick="closeModal('inspectionModal')">Cancel</button>
-    </div>
-</div>
-
-<div id="paymentStatus" class="payment-status">⏳ Processing payment...</div>
-
-<script>
-    const { supabase, requireAuth, logout, createServiceRequest, getServiceRequests, loadFees, initiatePayment, subscribeToServiceUpdates } = window.autoV;
-
-    let currentUser = null;
-    let valuationFee = 2500;
-    let inspectionFee = 3500;
-    let isProcessing = false;
-    let subscription = null;
-
-    async function init() {
-        currentUser = await requireAuth();
-        if (!currentUser) return;
-        
-        document.getElementById("email").textContent = `Logged in as: ${currentUser.email}`;
-        
-        const fees = await loadFees();
-        valuationFee = fees.valuationFee;
-        inspectionFee = fees.inspectionFee;
-        
-        document.getElementById('valuationPrice').textContent = `KES ${valuationFee.toLocaleString()}`;
-        document.getElementById('inspectionPrice').textContent = `KES ${inspectionFee.toLocaleString()}`;
-        
-        await loadHistory();
-        setupRealtime();
-    }
-
-    async function loadHistory() {
-        try {
-            const requests = await getServiceRequests(currentUser.id);
-            const tbody = document.getElementById('requestsBody');
-            
-            if (!requests || requests.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;">No requests yet. Pay for a service above!<\/td><\/tr>';
-                return;
-            }
-
-            tbody.innerHTML = requests.map(r => {
-                let statusBadge = `badge-${r.status || 'pending'}`;
-                let paymentBadge = `badge-${r.payment_status || 'pending'}`;
-                
-                let resultText = '-';
-                if (r.result) {
-                    if (r.service_type === 'valuation') {
-                        resultText = `KES ${Number(r.result.market_value).toLocaleString()}`;
-                    } else {
-                        resultText = `${r.result.overall_score}% - ${r.result.verdict || ''}`;
-                    }
-                }
-
-                return `<tr>
-                    <td>${new Date(r.created_at).toLocaleString()}</td>
-                    <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
-                    <td>${r.make} ${r.model} (${r.registration_number})</td>
-                    <td>KES ${Number(r.amount).toLocaleString()}</td>
-                    <td><span class="badge ${statusBadge}">${r.status}</span></td>
-                    <td><span class="badge ${paymentBadge}">${r.payment_status}</span></td>
-                    <td><strong>${resultText}</strong></td>
-                </tr>`;
-            }).join('');
-        } catch (e) { console.error(e); }
-    }
-
-    function setupRealtime() {
-        if (subscription) subscription.unsubscribe();
-        subscription = subscribeToServiceUpdates(currentUser.id, () => loadHistory());
-    }
-
-    function showPaymentStatus(msg, show = true) {
-        const div = document.getElementById('paymentStatus');
-        div.textContent = msg;
-        div.style.display = show ? 'block' : 'none';
-        if (show) setTimeout(() => div.style.display = 'none', 10000);
-    }
-
-    async function createAndRedirect(serviceData) {
-        if (isProcessing) { showMessage('Please wait...', 'error'); return; }
-        isProcessing = true;
-        
-        try {
-            const request = await createServiceRequest(serviceData);
-            showPaymentStatus('⏳ Initiating M-Pesa payment...');
-            
-            const reference = `${serviceData.service_type === 'valuation' ? 'VAL' : 'INS'}${request.id.substring(0, 8)}`;
-            const result = await initiatePayment(request.id, serviceData.amount, serviceData.phone, reference);
-            
-            if (result.ResponseCode === '0') {
-                showPaymentStatus('📱 M-Pesa prompt sent! Check your phone and enter PIN.');
-                showMessage('✅ Payment initiated! Check your phone for M-Pesa prompt.', 'success');
-                
-                // Start polling for status update
-                const checkInterval = setInterval(async () => {
-                    const { data: updated } = await supabase
-                        .from('service_requests')
-                        .select('payment_status, status, result')
-                        .eq('id', request.id)
-                        .single();
-                    
-                    if (updated.payment_status === 'paid') {
-                        clearInterval(checkInterval);
-                        showPaymentStatus('✅ Payment confirmed! Generating results...', false);
-                        showMessage('✅ Payment confirmed! Your results are ready.', 'success');
-                        loadHistory();
-                        isProcessing = false;
-                    }
-                }, 3000);
-                
-                setTimeout(() => {
-                    if (isProcessing) {
-                        clearInterval(checkInterval);
-                        showPaymentStatus('⏳ Payment pending. Check back later.', false);
-                        isProcessing = false;
-                    }
-                }, 120000);
-            } else {
-                throw new Error(result.ResponseDescription || 'Payment initiation failed');
-            }
-            
-            closeModal('valuationModal');
-            closeModal('inspectionModal');
-            
-        } catch (e) {
-            showMessage('Error: ' + e.message, 'error');
-            showPaymentStatus('❌ Payment failed: ' + e.message, false);
-            isProcessing = false;
-        }
-    }
-
-    function openValuation() {
-        document.getElementById('valAmount').value = `KES ${valuationFee.toLocaleString()}`;
-        document.getElementById('valuationModal').style.display = 'flex';
-    }
-
-    function openInspection() {
-        document.getElementById('insAmount').value = `KES ${inspectionFee.toLocaleString()}`;
-        document.getElementById('inspectionModal').style.display = 'flex';
-    }
-
-    async function submitValuation() {
-        const reg = document.getElementById('valReg').value;
-        const make = document.getElementById('valMake').value;
-        const model = document.getElementById('valModel').value;
-        const year = document.getElementById('valYear').value;
-        const purpose = document.getElementById('valPurpose').value;
-        const phone = document.getElementById('valPhone').value;
-        if (!reg || !make || !model || !year || !phone) { showMessage('Please fill all fields', 'error'); return; }
-        
-        closeModal('valuationModal');
-        await createAndRedirect({
-            user_id: currentUser.id, service_type: 'valuation',
-            registration_number: reg, make, model, year: parseInt(year),
-            purpose, amount: valuationFee, phone
-        });
-    }
-
-    async function submitInspection() {
-        const reg = document.getElementById('insReg').value;
-        const make = document.getElementById('insMake').value;
-        const model = document.getElementById('insModel').value;
-        const year = document.getElementById('insYear').value;
-        const mileage = document.getElementById('insMileage').value;
-        const phone = document.getElementById('insPhone').value;
-        if (!reg || !make || !model || !year || !mileage || !phone) { showMessage('Please fill all fields', 'error'); return; }
-        
-        closeModal('inspectionModal');
-        await createAndRedirect({
-            user_id: currentUser.id, service_type: 'inspection',
-            registration_number: reg, make, model, year: parseInt(year),
-            mileage: parseInt(mileage), amount: inspectionFee, phone
-        });
-    }
-
-    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-    function showMessage(msg, type) {
-        const div = document.getElementById(`${type}Msg`);
-        div.textContent = msg;
-        div.style.display = 'block';
-        setTimeout(() => div.style.display = 'none', 5000);
-    }
-
-    // Event listeners
-    document.getElementById('valuationBtn').onclick = openValuation;
-    document.getElementById('inspectionBtn').onclick = openInspection;
-    document.getElementById('submitValuationBtn').onclick = submitValuation;
-    document.getElementById('submitInspectionBtn').onclick = submitInspection;
-    document.getElementById('logoutBtn').onclick = logout;
+  try {
+    const { Body } = await req.json()
+    const { stkCallback } = Body
     
-    document.querySelectorAll('.modal').forEach(modal => {
-        modal.onclick = (e) => { if (e.target === modal) closeModal(modal.id); };
-    });
-
-    init();
-</script>
-</body>
-</html>
+    const { ResultCode, ResultDesc, CheckoutRequestID, CallbackMetadata } = stkCallback
+    
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    )
+    
+    if (ResultCode === 0) {
+      // Payment successful
+      const items = CallbackMetadata.Item
+      const receiptNumber = items.find(i => i.Name === 'MpesaReceiptNumber')?.Value
+      const amount = items.find(i => i.Name === 'Amount')?.Value
+      const transactionDate = items.find(i => i.Name === 'TransactionDate')?.Value
+      
+      // Get the service request
+      const { data: service } = await supabaseClient
+        .from('service_requests')
+        .select('*')
+        .eq('mpesa_checkout_request_id', CheckoutRequestID)
+        .single()
+      
+      if (service) {
+        // Generate result based on service type
+        let result = null
+        
+        if (service.service_type === 'valuation') {
+          const currentYear = new Date().getFullYear()
+          const age = currentYear - service.year
+          const baseValue = 2000000
+          let marketValue = Math.max(300000, baseValue - (baseValue * age * 0.1))
+          
+          if (service.make?.toLowerCase() === 'toyota') marketValue *= 1.1
+          if (service.make?.toLowerCase() === 'mercedes') marketValue *= 1.2
+          if (service.make?.toLowerCase() === 'bmw') marketValue *= 1.15
+          
+          result = {
+            market_value: Math.round(marketValue),
+            age_years: age,
+            depreciation_rate: age * 10,
+            certificate_number: `AUTO-VAL-${service.id.substring(0, 8)}`,
+            valuation_date: new Date().toISOString()
+          }
+        } else {
+          const score = Math.floor(Math.random() * 25) + 75
+          result = {
+            overall_score: score,
+            verdict: score >= 85 ? 'Excellent' : (score >= 70 ? 'Good' : 'Fair'),
+            certificate_number: `AUTO-INS-${service.id.substring(0, 8)}`,
+            inspection_date: new Date().toISOString()
+          }
+        }
+        
+        // Update service request
+        await supabaseClient
+          .from('service_requests')
+          .update({
+            payment_status: 'paid',
+            status: 'completed',
+            mpesa_receipt_number: receiptNumber,
+            result: result,
+            paid_at: new Date().toISOString(),
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', service.id)
+        
+        // Record transaction
+        await supabaseClient
+          .from('mpesa_transactions')
+          .insert({
+            checkout_request_id: CheckoutRequestID,
+            result_code: ResultCode,
+            result_desc: ResultDesc,
+            amount: amount,
+            mpesa_receipt_number: receiptNumber,
+            transaction_date: new Date(parseInt(transactionDate)),
+            phone_number: service.phone,
+            service_id: service.id,
+            status: 'completed'
+          })
+        
+        console.log(`✅ Payment completed: ${receiptNumber} for ${service.id}`)
+      }
+    } else {
+      // Payment failed
+      await supabaseClient
+        .from('mpesa_transactions')
+        .insert({
+          checkout_request_id: CheckoutRequestID,
+          result_code: ResultCode,
+          result_desc: ResultDesc,
+          status: 'failed'
+        })
+      
+      console.log(`❌ Payment failed: ${ResultDesc}`)
+    }
+    
+    return new Response(JSON.stringify({ ResultCode: 0, ResultDesc: 'Success' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+    
+  } catch (error) {
+    console.error('Callback error:', error)
+    return new Response(JSON.stringify({ ResultCode: 1, ResultDesc: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+  }
+})
