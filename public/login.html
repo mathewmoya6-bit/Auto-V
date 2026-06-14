@@ -100,18 +100,20 @@
         
         <div id="messageBox" class="message"></div>
         
-        <div class="form-group">
-            <label>Email Address</label>
-            <input type="email" id="email" placeholder="your@email.com">
-        </div>
-        <div class="form-group">
-            <label>Password</label>
-            <input type="password" id="password" placeholder="••••••••">
-        </div>
-        <button onclick="handleLogin()">Login</button>
+        <form id="loginForm">
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="email" name="email" placeholder="your@email.com" required>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" name="password" placeholder="••••••••" required>
+            </div>
+            <button type="submit">Login</button>
+        </form>
         
         <div class="signup-link">
-            Don't have an account? <a onclick="showSignup()">Sign up</a>
+            Don't have an account? <a id="signupLink">Sign up</a>
         </div>
         
         <div class="mpesa-badge">
@@ -120,56 +122,91 @@
     </div>
 
     <script>
+        // Initialize Supabase client
         const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        async function handleLogin() {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
+        // Get DOM elements
+        const form = document.getElementById('loginForm');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const messageBox = document.getElementById('messageBox');
+        
+        // Handle login
+        async function handleLogin(email, password) {
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            
+            if (error) {
+                showMessage(error.message, 'error');
+                return false;
+            }
+            
+            showMessage('Login successful! Redirecting...', 'success');
+            setTimeout(() => {
+                window.location.href = "dashboard.html";
+            }, 1500);
+            return true;
+        }
+        
+        // Handle signup
+        async function handleSignup(email, password) {
+            const { error } = await supabase.auth.signUp({ email, password });
+            
+            if (error) {
+                showMessage(error.message, 'error');
+                return false;
+            }
+            
+            showMessage('Signup successful! Check your email to verify, then login.', 'success');
+            return true;
+        }
+        
+        // Show message helper
+        function showMessage(text, type) {
+            messageBox.textContent = text;
+            messageBox.className = `message ${type}-message`;
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Form submit handler
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
             
             if (!email || !password) {
                 showMessage('Please enter email and password', 'error');
                 return;
             }
             
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-            
-            if (error) {
-                showMessage(error.message, 'error');
-            } else {
-                showMessage('Login successful! Redirecting...', 'success');
-                setTimeout(() => window.location.href = "dashboard.html", 1500);
-            }
-        }
+            await handleLogin(email, password);
+        });
         
-        async function showSignup() {
+        // Signup handler
+        document.getElementById('signupLink').addEventListener('click', async () => {
             const email = prompt('Enter your email:');
-            const password = prompt('Enter your password (min 6 characters):');
+            if (!email) return;
             
-            if (email && password && password.length >= 6) {
-                const { error } = await supabase.auth.signUp({ email, password });
-                if (error) {
-                    showMessage(error.message, 'error');
-                } else {
-                    showMessage('Signup successful! Check your email to verify, then login.', 'success');
-                }
-            } else {
+            const password = prompt('Enter your password (min 6 characters):');
+            if (!password || password.length < 6) {
                 showMessage('Password must be at least 6 characters', 'error');
+                return;
             }
-        }
+            
+            await handleSignup(email, password);
+        });
         
-        function showMessage(text, type) {
-            const msgBox = document.getElementById('messageBox');
-            msgBox.textContent = text;
-            msgBox.className = `message ${type}-message`;
-            msgBox.style.display = 'block';
-            setTimeout(() => msgBox.style.display = 'none', 5000);
-        }
-        
+        // Check if already logged in
         async function checkSession() {
             const { data: { session } } = await supabase.auth.getSession();
-            if (session) window.location.href = "dashboard.html";
+            if (session) {
+                window.location.href = "dashboard.html";
+            }
         }
         
         checkSession();
