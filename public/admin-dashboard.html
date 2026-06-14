@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>AUTO-V | Admin Dashboard - Dynamic Pricing</title>
+    <title>AUTO-V | Admin Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23eab308' rx='20'/><text x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'>🚗</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -95,7 +94,6 @@
         .btn:hover { background: #facc15; transform: scale(1.02); }
         .btn-danger { background: #dc2626; color: white; }
         .btn-success { background: #22c55e; color: white; }
-        .btn-primary { background: #eab308; color: black; }
         .modal {
             display: none;
             position: fixed;
@@ -112,7 +110,7 @@
         .modal-content {
             background: #0f172a;
             border-radius: 20px;
-            max-width: 550px;
+            max-width: 500px;
             width: 90%;
             padding: 25px;
             border: 2px solid #eab308;
@@ -164,13 +162,6 @@
         }
         .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
         .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
-        .price-preview {
-            background: #1e293b;
-            padding: 15px;
-            border-radius: 12px;
-            margin-top: 15px;
-            text-align: center;
-        }
         @media (max-width: 768px) {
             .form-row { flex-direction: column; gap: 10px; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -183,14 +174,13 @@
 <body>
     <div class="container">
         <header>
-            <div class="logo">🚗 AUTO-V Admin <span>| Dynamic Pricing Control</span></div>
+            <div class="logo">🚗 AUTO-V Admin <span>| Full Control</span></div>
             <div><span id="adminBadge" style="background:#eab308; color:black; padding:5px 15px; border-radius:20px; font-size:12px; margin-right:10px;">ADMIN</span><button class="logout-btn" id="logoutBtn">Logout</button></div>
         </header>
 
         <div id="errorMsg" class="error"></div>
         <div id="successMsg" class="success"></div>
 
-        <!-- Stats Grid -->
         <div class="stats-grid">
             <div class="stat-card" onclick="switchTab('users')"><h3>👥 Users</h3><div class="stat-number" id="totalUsers">0</div></div>
             <div class="stat-card" onclick="switchTab('requests')"><h3>💰 Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
@@ -200,193 +190,67 @@
             <div class="stat-card" onclick="switchTab('partners')"><h3>🤝 Partners</h3><div class="stat-number" id="totalPartners">0</div></div>
         </div>
 
-        <!-- Tabs -->
         <div class="tabs">
             <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
-            <button class="tab-btn" data-tab="pricing">💰 Pricing Matrix</button>
             <button class="tab-btn" data-tab="users">👥 Users</button>
             <button class="tab-btn" data-tab="requests">📋 Requests</button>
             <button class="tab-btn" data-tab="payments">💳 Payments</button>
+            <button class="tab-btn" data-tab="pricing">💰 Pricing</button>
             <button class="tab-btn" data-tab="partners">🤝 Partners</button>
             <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
         </div>
 
-        <!-- Dashboard Tab -->
         <div id="dashboardTab" class="card">
-            <h2>📊 System Dashboard</h2>
+            <h2>📊 Dashboard</h2>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div><canvas id="revenueChart" style="max-height: 250px;"></canvas></div>
                 <div><canvas id="serviceChart" style="max-height: 250px;"></canvas></div>
             </div>
         </div>
 
-        <!-- PRICING MATRIX TAB - MAIN FEATURE -->
-        <div id="pricingTab" class="card" style="display:none;">
-            <h2>💰 Pricing Matrix (Vehicle Type + Valuation Purpose)</h2>
-            <p style="color: #94a3b8; margin-bottom: 20px;">Set prices based on vehicle category AND valuation purpose. Changes reflect instantly.</p>
-
-            <!-- Price Preview Calculator -->
-            <div class="price-preview">
-                <h3>📱 Quick Price Preview</h3>
-                <div class="form-row">
-                    <div class="form-group"><label>Vehicle Category</label>
-                        <select id="previewCategory" onchange="previewPrice()">
-                            <option value="passenger_car">🚗 Passenger Car</option>
-                            <option value="suv">🚙 SUV / 4x4</option>
-                            <option value="motorcycle">🏍️ Motorcycle</option>
-                            <option value="tuk_tuk">🛺 Tuk-tuk / 3-Wheeler</option>
-                            <option value="commercial">🚚 Commercial Vehicle</option>
-                            <option value="farm">🚜 Farm Machinery</option>
-                            <option value="industrial">🏗️ Industrial Machinery</option>
-                        </select>
-                    </div>
-                    <div class="form-group"><label>Valuation Purpose</label>
-                        <select id="previewPurpose" onchange="previewPrice()">
-                            <option value="just_know">💰 Just Want to Know (FREE)</option>
-                            <option value="pre_insurance">🛡️ Pre-Insurance</option>
-                            <option value="loan_collateral">🏦 Loan Collateral</option>
-                            <option value="court_case">⚖️ Court Case</option>
-                            <option value="fleet_valuation">🚛 Fleet Valuation</option>
-                        </select>
-                    </div>
-                    <div class="form-group"><label>Service Level</label>
-                        <select id="previewLevel" onchange="previewPrice()">
-                            <option value="standard">Standard</option>
-                            <option value="express">Express (+50%)</option>
-                            <option value="premium">Premium (+100%)</option>
-                        </select>
-                    </div>
-                </div>
-                <div id="previewResult" style="margin-top: 15px; font-size: 18px;">
-                    <strong>Base Price: KES 0</strong> | Express: KES 0 | <strong style="color:#22c55e;">Total: KES 0</strong>
-                </div>
-            </div>
-
-            <!-- Pricing Table -->
-            <div style="overflow-x: auto; margin-top: 20px; max-height: 500px; overflow-y: auto;">
-                <table id="pricingTable">
-                    <thead>
-                        <tr>
-                            <th>Vehicle Category</th>
-                            <th>Valuation Purpose</th>
-                            <th>Base Price (KES)</th>
-                            <th>Express Fee</th>
-                            <th>Premium Fee</th>
-                            <th>Certificate Fee</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pricingBody">
-                        <tr><td colspan="7" style="text-align:center;">Loading pricing matrix...<\/td><\/tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Add New Pricing Rule -->
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #1e293b;">
-                <h3>➕ Add New Pricing Rule</h3>
-                <div class="form-row">
-                    <div class="form-group"><label>Vehicle Category</label>
-                        <select id="newCategory">
-                            <option value="passenger_car">Passenger Car</option>
-                            <option value="suv">SUV</option>
-                            <option value="motorcycle">Motorcycle</option>
-                            <option value="tuk_tuk">Tuk-tuk</option>
-                            <option value="commercial">Commercial</option>
-                            <option value="farm">Farm</option>
-                            <option value="industrial">Industrial</option>
-                        </select>
-                    </div>
-                    <div class="form-group"><label>Valuation Purpose</label>
-                        <select id="newPurpose">
-                            <option value="just_know">Just Want to Know</option>
-                            <option value="pre_insurance">Pre-Insurance</option>
-                            <option value="loan_collateral">Loan Collateral</option>
-                            <option value="court_case">Court Case</option>
-                            <option value="fleet_valuation">Fleet Valuation</option>
-                        </select>
-                    </div>
-                    <div class="form-group"><label>Base Price (KES)</label><input type="number" id="newBasePrice" placeholder="2500"></div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group"><label>Express Fee (KES)</label><input type="number" id="newExpressFee" placeholder="1000"></div>
-                    <div class="form-group"><label>Premium Fee (KES)</label><input type="number" id="newPremiumFee" placeholder="5000"></div>
-                    <div class="form-group"><label>Certificate Fee (KES)</label><input type="number" id="newCertFee" placeholder="500"></div>
-                </div>
-                <button class="btn btn-success" onclick="addPricingRule()">+ Add Rule</button>
-            </div>
-        </div>
-
-        <!-- Users Tab -->
         <div id="usersTab" class="card" style="display:none;">
-            <h2>👥 User Management</h2>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                <input type="text" id="searchUser" placeholder="Search users..." style="width: 250px;" onkeyup="searchUsers()">
-                <button class="btn btn-success" onclick="openUserModal()">+ Add User</button>
-            </div>
-            <div style="overflow-x: auto;">
-                <table id="usersTable">
-                    <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Phone</th><th>Joined</th><th>Actions</th></tr></thead>
-                    <tbody id="usersBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
+            <h2>👥 Users</h2>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;"><input type="text" id="searchUser" placeholder="Search..." style="width: 250px;" onkeyup="searchUsers()"><button class="btn btn-success" onclick="openUserModal()">+ Add User</button></div>
+            <div style="overflow-x: auto;"><table id="usersTable"><thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Phone</th><th>Joined</th><th>Actions</th></tr></thead><tbody id="usersBody"><tr><td colspan="6">Loading...</td></tr></tbody></table></div>
         </div>
 
-        <!-- Requests Tab -->
         <div id="requestsTab" class="card" style="display:none;">
-            <h2>📋 Service Requests</h2>
-            <div style="overflow-x: auto;">
-                <table id="requestsTable">
-                    <thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th></tr></thead>
-                    <tbody id="requestsBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
+            <h2>📋 Requests</h2>
+            <div style="overflow-x: auto;"><table id="requestsTable"><thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th></tr></thead><tbody id="requestsBody"><tr><td colspan="7">Loading...</td></tr></tbody></table></div>
         </div>
 
-        <!-- Payments Tab -->
         <div id="paymentsTab" class="card" style="display:none;">
-            <h2>💳 Payment Transactions</h2>
-            <div style="overflow-x: auto;">
-                <table id="paymentsTable">
-                    <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead>
-                    <tbody id="paymentsBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
+            <h2>💳 Payments</h2>
+            <div style="overflow-x: auto;"><table id="paymentsTable"><thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead><tbody id="paymentsBody"><tr><td colspan="6">Loading...</td></tr></tbody></table></div>
         </div>
 
-        <!-- Partners Tab -->
+        <div id="pricingTab" class="card" style="display:none;">
+            <h2>💰 Pricing Configuration</h2>
+            <div class="form-row"><div class="form-group"><label>🚗 Valuation Fee</label><input type="number" id="valuationFee"></div><div class="form-group"><label>🔍 Inspection Fee</label><input type="number" id="inspectionFee"></div></div>
+            <div class="form-row"><div class="form-group"><label>🏍️ Motorcycle</label><input type="number" id="motorcycleFee"></div><div class="form-group"><label>🛺 Tuk-tuk Fee</label><input type="number" id="tuktukFee"></div><div class="form-group"><label>📜 Certificate Fee</label><input type="number" id="certificateFee"></div></div>
+            <button class="btn btn-primary" id="updateFeesBtn">Update Fees</button>
+        </div>
+
         <div id="partnersTab" class="card" style="display:none;">
             <h2>🤝 Partners</h2>
-            <button class="btn btn-success" onclick="openPartnerModal()" style="margin-bottom: 15px;">+ Add Partner</button>
-            <div style="overflow-x: auto;">
-                <table id="partnersTable">
-                    <thead><tr><th>Name</th><th>Type</th><th>Email</th><th>Commission</th><th>Status</th><th>Actions</th></tr></thead>
-                    <tbody id="partnersBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
-                </table>
-            </div>
+            <button class="btn btn-success" onclick="openPartnerModal()" style="margin-bottom:15px;">+ Add Partner</button>
+            <div style="overflow-x: auto;"><table id="partnersTable"><thead><tr><th>Name</th><th>Type</th><th>Email</th><th>Commission</th><th>Status</th><th>Actions</th></tr></thead><tbody id="partnersBody"><tr><td colspan="6">Loading...</td></tr></tbody></table></div>
         </div>
 
-        <!-- Settings Tab -->
         <div id="settingsTab" class="card" style="display:none;">
-            <h2>⚙️ System Settings</h2>
-            <div class="form-row">
-                <div class="form-group"><label>System Name</label><input type="text" id="systemName"></div>
-                <div class="form-group"><label>Support Email</label><input type="email" id="supportEmail"></div>
-                <div class="form-group"><label>Support Phone</label><input type="tel" id="supportPhone"></div>
-            </div>
-            <button class="btn btn-primary" id="updateSettingsBtn">Save Settings</button>
+            <h2>⚙️ Settings</h2>
+            <div class="form-row"><div class="form-group"><label>System Name</label><input type="text" id="systemName"></div><div class="form-group"><label>Support Email</label><input type="email" id="supportEmail"></div></div>
+            <button class="btn btn-primary" id="updateSettingsBtn">Save</button>
         </div>
     </div>
 
     <!-- Modals -->
-    <div id="userModal" class="modal"><div class="modal-content"><h3>Add/Edit User</h3><input type="hidden" id="userId"><div class="form-group"><label>Email</label><input type="email" id="userEmail"></div><div class="form-group"><label>Password</label><input type="password" id="userPassword"></div><div class="form-group"><label>Role</label><select id="userRole"><option>user</option><option>admin</option></select></div><div class="form-group"><label>Phone</label><input type="tel" id="userPhone"></div><div class="action-buttons"><button class="btn btn-success" onclick="saveUser()">Save</button><button class="btn btn-danger" onclick="closeModal('userModal')">Cancel</button></div></div></div>
+    <div id="userModal" class="modal"><div class="modal-content"><h3>User</h3><input type="hidden" id="userId"><div class="form-group"><label>Email</label><input type="email" id="userEmail"></div><div class="form-group"><label>Password</label><input type="password" id="userPassword"></div><div class="form-group"><label>Role</label><select id="userRole"><option>user</option><option>admin</option></select></div><div class="form-group"><label>Phone</label><input type="tel" id="userPhone"></div><div class="action-buttons"><button class="btn btn-success" onclick="saveUser()">Save</button><button class="btn btn-danger" onclick="closeModal('userModal')">Cancel</button></div></div></div>
 
-    <div id="partnerModal" class="modal"><div class="modal-content"><h3>Add Partner</h3><input type="hidden" id="partnerId"><div class="form-group"><label>Name</label><input type="text" id="partnerName"></div><div class="form-row"><div class="form-group"><label>Type</label><select id="partnerType"><option>Bank</option><option>Insurance</option><option>Dealership</option></select></div><div class="form-group"><label>Commission (%)</label><input type="number" id="partnerCommission"></div></div><div class="form-group"><label>Email</label><input type="email" id="partnerEmail"></div><div class="action-buttons"><button class="btn btn-success" onclick="savePartner()">Save</button><button class="btn btn-danger" onclick="closeModal('partnerModal')">Cancel</button></div></div></div>
+    <div id="partnerModal" class="modal"><div class="modal-content"><h3>Partner</h3><input type="hidden" id="partnerId"><div class="form-group"><label>Name</label><input type="text" id="partnerName"></div><div class="form-row"><div class="form-group"><label>Type</label><select id="partnerType"><option>Bank</option><option>Insurance</option></select></div><div class="form-group"><label>Commission</label><input type="number" id="partnerCommission"></div></div><div class="form-group"><label>Email</label><input type="email" id="partnerEmail"></div><div class="action-buttons"><button class="btn btn-success" onclick="savePartner()">Save</button><button class="btn btn-danger" onclick="closeModal('partnerModal')">Cancel</button></div></div></div>
 
 <script>
-// ============================================
-// SUPABASE SINGLE SOURCE OF TRUTH
-// ============================================
+// SINGLE SUPABASE CLIENT - NO DUPLICATE
 const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -394,7 +258,6 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let revenueChart = null;
 let serviceChart = null;
-let allPricing = [];
 
 // ============================================
 // AUTHENTICATION
@@ -403,112 +266,13 @@ async function checkAdmin() {
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) { window.location.href = "admin-login.html"; return false; }
     const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-    if (!profile || profile.role !== 'admin') {
-        await supabase.auth.signOut();
-        window.location.href = "admin-login.html";
-        return false;
-    }
+    if (!profile || profile.role !== 'admin') { await supabase.auth.signOut(); window.location.href = "admin-login.html"; return false; }
     currentUser = user;
     return true;
 }
 
 // ============================================
-// PRICING MATRIX - CORE FUNCTIONALITY
-// ============================================
-async function loadPricingMatrix() {
-    const { data, error } = await supabase.from('pricing_matrix').select('*').order('vehicle_category', { ascending: true });
-    if (error) {
-        await initPricingMatrix();
-        return;
-    }
-    allPricing = data || [];
-    renderPricingTable();
-}
-
-async function initPricingMatrix() {
-    const defaultPricing = [
-        { vehicle_category: 'passenger_car', purpose: 'just_know', base_price: 0, express_fee: 0, premium_fee: 0, certificate_fee: 0 },
-        { vehicle_category: 'passenger_car', purpose: 'pre_insurance', base_price: 2500, express_fee: 1000, premium_fee: 5000, certificate_fee: 500 },
-        { vehicle_category: 'passenger_car', purpose: 'loan_collateral', base_price: 3000, express_fee: 1000, premium_fee: 6000, certificate_fee: 500 },
-        { vehicle_category: 'passenger_car', purpose: 'court_case', base_price: 5000, express_fee: 2000, premium_fee: 10000, certificate_fee: 1000 },
-        { vehicle_category: 'suv', purpose: 'pre_insurance', base_price: 3500, express_fee: 1500, premium_fee: 7000, certificate_fee: 500 },
-        { vehicle_category: 'suv', purpose: 'loan_collateral', base_price: 4000, express_fee: 1500, premium_fee: 8000, certificate_fee: 500 },
-        { vehicle_category: 'motorcycle', purpose: 'pre_insurance', base_price: 1000, express_fee: 500, premium_fee: 2000, certificate_fee: 300 },
-        { vehicle_category: 'motorcycle', purpose: 'loan_collateral', base_price: 1500, express_fee: 500, premium_fee: 3000, certificate_fee: 300 },
-        { vehicle_category: 'tuk_tuk', purpose: 'pre_insurance', base_price: 2000, express_fee: 500, premium_fee: 4000, certificate_fee: 300 },
-        { vehicle_category: 'commercial', purpose: 'fleet_valuation', base_price: 3500, express_fee: 1000, premium_fee: 7000, certificate_fee: 500 },
-        { vehicle_category: 'farm', purpose: 'loan_collateral', base_price: 5000, express_fee: 1500, premium_fee: 10000, certificate_fee: 1000 },
-        { vehicle_category: 'industrial', purpose: 'loan_collateral', base_price: 10000, express_fee: 3000, premium_fee: 20000, certificate_fee: 2000 }
-    ];
-    
-    for (const rule of defaultPricing) {
-        await supabase.from('pricing_matrix').upsert(rule, { onConflict: 'vehicle_category,purpose' });
-    }
-    await loadPricingMatrix();
-}
-
-function renderPricingTable() {
-    const tbody = document.getElementById('pricingBody');
-    const categoryNames = { passenger_car: '🚗 Passenger Car', suv: '🚙 SUV', motorcycle: '🏍️ Motorcycle', tuk_tuk: '🛺 Tuk-tuk', commercial: '🚚 Commercial', farm: '🚜 Farm', industrial: '🏗️ Industrial' };
-    const purposeNames = { just_know: '💰 Just Know (FREE)', pre_insurance: '🛡️ Pre-Insurance', loan_collateral: '🏦 Loan Collateral', court_case: '⚖️ Court Case', fleet_valuation: '🚛 Fleet Valuation' };
-    
-    tbody.innerHTML = allPricing.map(p => `
-        <tr>
-            <td>${categoryNames[p.vehicle_category] || p.vehicle_category}</td>
-            <td>${purposeNames[p.purpose] || p.purpose}</td>
-            <td><input type="number" id="price_${p.id}" value="${p.base_price}" style="width:100px;" onchange="updatePrice('${p.id}', 'base_price', this.value)"></td>
-            <td><input type="number" id="express_${p.id}" value="${p.express_fee}" style="width:100px;" onchange="updatePrice('${p.id}', 'express_fee', this.value)"></td>
-            <td><input type="number" id="premium_${p.id}" value="${p.premium_fee}" style="width:100px;" onchange="updatePrice('${p.id}', 'premium_fee', this.value)"></td>
-            <td><input type="number" id="cert_${p.id}" value="${p.certificate_fee}" style="width:100px;" onchange="updatePrice('${p.id}', 'certificate_fee', this.value)"></td>
-            <td><button class="btn btn-danger" onclick="deletePriceRule('${p.id}')">Delete</button></td>
-        </tr>
-    `).join('');
-}
-
-async function updatePrice(id, field, value) {
-    const { error } = await supabase.from('pricing_matrix').update({ [field]: parseInt(value) || 0 }).eq('id', id);
-    if (!error) showMessage('Price updated!', 'success');
-    else showMessage('Error updating price', 'error');
-}
-
-async function addPricingRule() {
-    const newRule = {
-        vehicle_category: document.getElementById('newCategory').value,
-        purpose: document.getElementById('newPurpose').value,
-        base_price: parseInt(document.getElementById('newBasePrice').value) || 0,
-        express_fee: parseInt(document.getElementById('newExpressFee').value) || 0,
-        premium_fee: parseInt(document.getElementById('newPremiumFee').value) || 0,
-        certificate_fee: parseInt(document.getElementById('newCertFee').value) || 0
-    };
-    const { error } = await supabase.from('pricing_matrix').insert(newRule);
-    if (error) showMessage('Error: ' + error.message, 'error');
-    else { showMessage('Pricing rule added!', 'success'); loadPricingMatrix(); }
-}
-
-async function deletePriceRule(id) {
-    if (confirm('Delete this pricing rule?')) {
-        await supabase.from('pricing_matrix').delete().eq('id', id);
-        showMessage('Rule deleted', 'success');
-        loadPricingMatrix();
-    }
-}
-
-async function previewPrice() {
-    const category = document.getElementById('previewCategory').value;
-    const purpose = document.getElementById('previewPurpose').value;
-    const level = document.getElementById('previewLevel').value;
-    
-    const { data } = await supabase.from('pricing_matrix').select('*').eq('vehicle_category', category).eq('purpose', purpose).single();
-    if (data) {
-        let total = data.base_price;
-        if (level === 'express') total += data.express_fee;
-        if (level === 'premium') total = data.premium_fee;
-        document.getElementById('previewResult').innerHTML = `<strong>Base: KES ${data.base_price.toLocaleString()}</strong> | Express: KES ${data.express_fee.toLocaleString()} | Premium: KES ${data.premium_fee.toLocaleString()} | <strong style="color:#22c55e;">Total: KES ${total.toLocaleString()}</strong>`;
-    }
-}
-
-// ============================================
-// STATS & DATA LOADING
+// LOAD DATA
 // ============================================
 async function loadStats() {
     const { data: requests } = await supabase.from('service_requests').select('*');
@@ -529,14 +293,9 @@ async function loadStats() {
 async function loadUsers() {
     const { data } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
     document.getElementById('usersBody').innerHTML = (data || []).map(u => `
-        <tr>
-            <td>${u.id?.slice(0,8)}...</td>
-            <td>${u.email}</td>
-            <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role || 'user'}</span></td>
-            <td>${u.phone || '-'}</td>
-            <td>${new Date(u.created_at).toLocaleDateString()}</td>
-            <td class="action-buttons"><button class="btn" onclick="editUser('${u.id}')">Edit</button><button class="btn btn-danger" onclick="deleteUser('${u.id}')">Delete</button></td>
-        </tr>
+        <tr><td>${u.id?.slice(0,8)}...</td><td>${u.email}</td><td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role || 'user'}</span></td>
+        <td>${u.phone || '-'}</td><td>${new Date(u.created_at).toLocaleDateString()}</td>
+        <td class="action-buttons"><button class="btn" onclick="editUser('${u.id}')">Edit</button><button class="btn btn-danger" onclick="deleteUser('${u.id}')">Delete</button></td></tr>
     `).join('');
 }
 
@@ -545,15 +304,11 @@ async function loadRequests() {
     const { data: profiles } = await supabase.from('user_profiles').select('id, email');
     const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
     document.getElementById('requestsBody').innerHTML = (data || []).slice(0, 100).map(r => `
-        <tr>
-            <td>${new Date(r.created_at).toLocaleString()}</td>
-            <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
-            <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}</td>
-            <td>${r.make} ${r.model}</td>
-            <td>KES ${(r.amount || 0).toLocaleString()}</td>
-            <td><span class="badge ${r.payment_status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.payment_status}</span></td>
-            <td>${r.status || 'pending'}</td>
-        </tr>
+        <tr><td>${new Date(r.created_at).toLocaleString()}</td><td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
+        <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}</td><td>${r.make} ${r.model}</td>
+        <td>KES ${(r.amount || 0).toLocaleString()}</td>
+        <td><span class="badge ${r.payment_status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.payment_status || 'pending'}</span></td>
+        <td>${r.status || 'pending'}</td></tr>
     `).join('');
 }
 
@@ -562,50 +317,52 @@ async function loadPayments() {
     const { data: profiles } = await supabase.from('user_profiles').select('id, email');
     const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
     document.getElementById('paymentsBody').innerHTML = (data || []).slice(0, 100).map(p => `
-        <tr>
-            <td>${new Date(p.created_at).toLocaleString()}</td>
-            <td>${userMap.get(p.user_id) || p.user_id?.slice(0,8)}</td>
-            <td>${p.service_type || '-'}</td>
-            <td>KES ${(p.amount || 0).toLocaleString()}</td>
-            <td>${p.mpesa_receipt_number || '-'}</td>
-            <td><span class="badge ${p.status === 'completed' ? 'badge-paid' : 'badge-pending'}">${p.status}</span></td>
-        </tr>
+        <tr><td>${new Date(p.created_at).toLocaleString()}</td><td>${userMap.get(p.user_id) || p.user_id?.slice(0,8)}</td>
+        <td>${p.service_type || '-'}</td><td>KES ${(p.amount || 0).toLocaleString()}</td>
+        <td>${p.mpesa_receipt_number || '-'}</td><td><span class="badge ${p.status === 'completed' ? 'badge-paid' : 'badge-pending'}">${p.status}</span></td></tr>
     `).join('');
 }
 
 async function loadPartners() {
     const { data } = await supabase.from('partners').select('*');
     document.getElementById('partnersBody').innerHTML = (data || []).map(p => `
-        <td><td>${p.name}</td><td>${p.type}</td><td>${p.email}</td><td>${p.commission}%</td>
+        <tr><td>${p.name}</td><td>${p.type}</td><td>${p.email}</td><td>${p.commission}%</td>
         <td><span class="badge ${p.status === 'Active' ? 'badge-active' : 'badge-pending'}">${p.status}</span></td>
-        <td class="action-buttons"><button class="btn" onclick="editPartner('${p.id}')">Edit</button><button class="btn btn-danger" onclick="deletePartner('${p.id}')">Delete</button></td>
+        <td class="action-buttons"><button class="btn" onclick="editPartner('${p.id}')">Edit</button><button class="btn btn-danger" onclick="deletePartner('${p.id}')">Delete</button></td></tr>
     `).join('');
+}
+
+async function loadFees() {
+    const fees = ['valuation_fee', 'inspection_fee', 'motorcycle_valuation_fee', 'tuk_tuk_valuation_fee', 'certificate_fee'];
+    for (const fee of fees) {
+        const { data } = await supabase.from('system_settings').select('setting_value').eq('setting_key', fee).single();
+        const id = fee.replace('_fee', 'Fee').replace('tuk_tuk', 'tuktuk');
+        const el = document.getElementById(id);
+        if (el && data) el.value = data.setting_value;
+    }
 }
 
 async function loadSystemSettings() {
     const { data: name } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'system_name').single();
     const { data: email } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_email').single();
-    const { data: phone } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_phone').single();
     if (name?.setting_value) document.getElementById('systemName').value = name.setting_value;
     if (email?.setting_value) document.getElementById('supportEmail').value = email.setting_value;
-    if (phone?.setting_value) document.getElementById('supportPhone').value = phone.setting_value;
 }
 
-// ============================================
-// CRUD OPERATIONS
-// ============================================
-window.editUser = async (id) => { const { data } = await supabase.from('user_profiles').select('*').eq('id', id).single(); if (data) { document.getElementById('userId').value = data.id; document.getElementById('userEmail').value = data.email; document.getElementById('userRole').value = data.role; document.getElementById('userPhone').value = data.phone || ''; document.getElementById('userModal').style.display = 'flex'; } };
-window.saveUser = async () => { const id = document.getElementById('userId').value; const data = { role: document.getElementById('userRole').value, phone: document.getElementById('userPhone').value }; if (id) await supabase.from('user_profiles').update(data).eq('id', id); else { const email = document.getElementById('userEmail').value; const password = document.getElementById('userPassword').value; if (email && password) await supabase.auth.signUp({ email, password }); } showMessage('User saved!', 'success'); closeModal('userModal'); loadUsers(); loadStats(); };
-window.deleteUser = async (id) => { if (confirm('Delete user?')) { await supabase.from('user_profiles').delete().eq('id', id); showMessage('User deleted', 'success'); loadUsers(); loadStats(); } };
-window.editPartner = async (id) => { const { data } = await supabase.from('partners').select('*').eq('id', id).single(); if (data) { document.getElementById('partnerId').value = data.id; document.getElementById('partnerName').value = data.name; document.getElementById('partnerType').value = data.type; document.getElementById('partnerCommission').value = data.commission; document.getElementById('partnerEmail').value = data.email; document.getElementById('partnerModal').style.display = 'flex'; } };
-window.savePartner = async () => { const id = document.getElementById('partnerId').value; const data = { name: document.getElementById('partnerName').value, type: document.getElementById('partnerType').value, commission: parseInt(document.getElementById('partnerCommission').value), email: document.getElementById('partnerEmail').value, status: 'Active' }; if (id) await supabase.from('partners').update(data).eq('id', id); else await supabase.from('partners').insert(data); showMessage('Partner saved!', 'success'); closeModal('partnerModal'); loadPartners(); loadStats(); };
-window.deletePartner = async (id) => { if (confirm('Delete partner?')) { await supabase.from('partners').delete().eq('id', id); showMessage('Partner deleted', 'success'); loadPartners(); loadStats(); } };
-async function updateSystemSettings() { await supabase.from('system_settings').upsert({ setting_key: 'system_name', setting_value: document.getElementById('systemName').value }); await supabase.from('system_settings').upsert({ setting_key: 'support_email', setting_value: document.getElementById('supportEmail').value }); await supabase.from('system_settings').upsert({ setting_key: 'support_phone', setting_value: document.getElementById('supportPhone').value }); showMessage('Settings saved!', 'success'); }
-function searchUsers() { const term = document.getElementById('searchUser').value.toLowerCase(); const rows = document.querySelectorAll('#usersBody tr'); rows.forEach(row => { row.style.display = row.innerText.toLowerCase().includes(term) ? '' : 'none'; }); }
-function openUserModal() { document.getElementById('userId').value = ''; document.getElementById('userEmail').value = ''; document.getElementById('userPassword').value = ''; document.getElementById('userRole').value = 'user'; document.getElementById('userPhone').value = ''; document.getElementById('userModal').style.display = 'flex'; }
-function openPartnerModal() { document.getElementById('partnerId').value = ''; document.getElementById('partnerName').value = ''; document.getElementById('partnerType').value = 'Bank'; document.getElementById('partnerCommission').value = '10'; document.getElementById('partnerEmail').value = ''; document.getElementById('partnerModal').style.display = 'flex'; }
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-function showMessage(msg, type) { const div = document.getElementById(`${type}Msg`); div.innerHTML = msg; div.style.display = 'block'; setTimeout(() => div.style.display = 'none', 5000); }
+async function updateFees() {
+    await supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: document.getElementById('valuationFee').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: document.getElementById('inspectionFee').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'motorcycle_valuation_fee', setting_value: document.getElementById('motorcycleFee').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'tuk_tuk_valuation_fee', setting_value: document.getElementById('tuktukFee').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'certificate_fee', setting_value: document.getElementById('certificateFee').value });
+    showMessage('Fees updated!', 'success');
+}
+
+async function updateSystemSettings() {
+    await supabase.from('system_settings').upsert({ setting_key: 'system_name', setting_value: document.getElementById('systemName').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'support_email', setting_value: document.getElementById('supportEmail').value });
+    showMessage('Settings saved!', 'success');
+}
 
 async function updateCharts() {
     const { data } = await supabase.from('service_requests').select('amount, payment_status, created_at, service_type');
@@ -620,21 +377,37 @@ async function updateCharts() {
     if (ctx2) { if (serviceChart) serviceChart.destroy(); serviceChart = new Chart(ctx2, { type: 'line', data: { labels: months, datasets: [{ label: 'Valuations', data: valuationCount, borderColor: '#22c55e', fill: false }, { label: 'Inspections', data: inspectionCount, borderColor: '#3b82f6', fill: false }] }, options: { responsive: true } }); }
 }
 
+// ============================================
+// CRUD
+// ============================================
+window.editUser = async (id) => { const { data } = await supabase.from('user_profiles').select('*').eq('id', id).single(); if (data) { document.getElementById('userId').value = data.id; document.getElementById('userEmail').value = data.email; document.getElementById('userRole').value = data.role; document.getElementById('userPhone').value = data.phone || ''; document.getElementById('userModal').style.display = 'flex'; } };
+window.saveUser = async () => { const id = document.getElementById('userId').value; const data = { role: document.getElementById('userRole').value, phone: document.getElementById('userPhone').value }; if (id) await supabase.from('user_profiles').update(data).eq('id', id); else { const email = document.getElementById('userEmail').value; const password = document.getElementById('userPassword').value; if (email && password) await supabase.auth.signUp({ email, password }); } showMessage('User saved!', 'success'); closeModal('userModal'); loadUsers(); loadStats(); };
+window.deleteUser = async (id) => { if (confirm('Delete user?')) { await supabase.from('user_profiles').delete().eq('id', id); showMessage('User deleted', 'success'); loadUsers(); loadStats(); } };
+window.editPartner = async (id) => { const { data } = await supabase.from('partners').select('*').eq('id', id).single(); if (data) { document.getElementById('partnerId').value = data.id; document.getElementById('partnerName').value = data.name; document.getElementById('partnerType').value = data.type; document.getElementById('partnerCommission').value = data.commission; document.getElementById('partnerEmail').value = data.email; document.getElementById('partnerModal').style.display = 'flex'; } };
+window.savePartner = async () => { const id = document.getElementById('partnerId').value; const data = { name: document.getElementById('partnerName').value, type: document.getElementById('partnerType').value, commission: parseInt(document.getElementById('partnerCommission').value) || 10, email: document.getElementById('partnerEmail').value, status: 'Active' }; if (id) await supabase.from('partners').update(data).eq('id', id); else await supabase.from('partners').insert(data); showMessage('Partner saved!', 'success'); closeModal('partnerModal'); loadPartners(); loadStats(); };
+window.deletePartner = async (id) => { if (confirm('Delete partner?')) { await supabase.from('partners').delete().eq('id', id); showMessage('Partner deleted', 'success'); loadPartners(); loadStats(); } };
+function searchUsers() { const term = document.getElementById('searchUser').value.toLowerCase(); const rows = document.querySelectorAll('#usersBody tr'); rows.forEach(row => { row.style.display = row.innerText.toLowerCase().includes(term) ? '' : 'none'; }); }
+function openUserModal() { document.getElementById('userId').value = ''; document.getElementById('userEmail').value = ''; document.getElementById('userPassword').value = ''; document.getElementById('userRole').value = 'user'; document.getElementById('userPhone').value = ''; document.getElementById('userModal').style.display = 'flex'; }
+function openPartnerModal() { document.getElementById('partnerId').value = ''; document.getElementById('partnerName').value = ''; document.getElementById('partnerType').value = 'Bank'; document.getElementById('partnerCommission').value = '10'; document.getElementById('partnerEmail').value = ''; document.getElementById('partnerModal').style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function showMessage(msg, type) { const div = document.getElementById(`${type}Msg`); div.innerHTML = msg; div.style.display = 'block'; setTimeout(() => div.style.display = 'none', 5000); }
+
 function switchTab(tab) {
-    const tabs = ['dashboard', 'pricing', 'users', 'requests', 'payments', 'partners', 'settings'];
+    const tabs = ['dashboard', 'users', 'requests', 'payments', 'pricing', 'partners', 'settings'];
     tabs.forEach(t => { const el = document.getElementById(`${t}Tab`); if (el) el.style.display = t === tab ? 'block' : 'none'; });
-    document.querySelectorAll('.tab-btn').forEach(btn => { if (btn.dataset.tab === tab) btn.classList.add('active'); else btn.classList.remove('active'); });
-    if (tab === 'pricing') loadPricingMatrix();
+    document.querySelectorAll('.tab-btn').forEach(btn => { if (btn.getAttribute('data-tab') === tab) btn.classList.add('active'); else btn.classList.remove('active'); });
     if (tab === 'users') loadUsers();
     if (tab === 'requests') loadRequests();
     if (tab === 'payments') loadPayments();
     if (tab === 'partners') loadPartners();
+    if (tab === 'pricing') loadFees();
     if (tab === 'dashboard') updateCharts();
 }
 
 document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
+document.getElementById('updateFeesBtn').onclick = updateFees;
 document.getElementById('updateSettingsBtn').onclick = updateSystemSettings;
-document.querySelectorAll('.tab-btn').forEach(btn => { btn.onclick = () => switchTab(btn.dataset.tab); });
+document.querySelectorAll('.tab-btn').forEach(btn => { btn.onclick = () => switchTab(btn.getAttribute('data-tab')); });
 
 async function init() {
     if (!await checkAdmin()) return;
@@ -643,6 +416,7 @@ async function init() {
     await loadRequests();
     await loadPayments();
     await loadPartners();
+    await loadFees();
     await loadSystemSettings();
     await updateCharts();
     setInterval(() => { loadStats(); updateCharts(); }, 30000);
