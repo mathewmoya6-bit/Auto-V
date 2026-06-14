@@ -36,7 +36,7 @@
         }
         .logo p { color: #94a3b8; font-size: 13px; margin-top: 5px; }
         .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500; }
+        label { display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500; font-size: 13px; }
         input {
             width: 100%;
             padding: 14px 16px;
@@ -45,6 +45,7 @@
             border-radius: 16px;
             color: white;
             font-size: 15px;
+            transition: all 0.3s;
         }
         input:focus {
             outline: none;
@@ -64,7 +65,7 @@
             transition: all 0.3s;
         }
         button:hover { background: #facc15; transform: translateY(-2px); }
-        button:disabled { background: #475569; cursor: not-allowed; }
+        button:disabled { background: #475569; cursor: not-allowed; transform: none; }
         .message {
             padding: 12px 16px;
             border-radius: 12px;
@@ -151,10 +152,10 @@
                 loginBtn.innerHTML = '<span class="spinner"></span> Authenticating...';
 
                 try {
-                    // STEP 1: Sign in with Supabase
-                    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ 
-                        email, 
-                        password 
+                    // Step 1: Login with Supabase Auth
+                    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                        email,
+                        password
                     });
 
                     if (authError) {
@@ -179,59 +180,23 @@
 
                     const user = authData.user;
 
-                    // STEP 2: Check if profile exists - use maybeSingle() to avoid 406 error
+                    // Step 2: Read existing profile only (NO INSERT)
                     const { data: profile, error: profileError } = await supabase
                         .from('user_profiles')
-                        .select('*')
+                        .select('id, email, role')
                         .eq('id', user.id)
-                        .maybeSingle();
+                        .single();
 
-                    // STEP 3: If profile doesn't exist, create it using upsert (no conflict)
-                    if (!profile) {
-                        const { error: upsertError } = await supabase
-                            .from('user_profiles')
-                            .upsert(
-                                {
-                                    id: user.id,
-                                    email: user.email,
-                                    role: 'user',  // Default role, will be updated if admin
-                                    created_at: new Date().toISOString()
-                                },
-                                { onConflict: 'id' }
-                            );
-
-                        if (upsertError) {
-                            console.error('Profile creation error:', upsertError);
-                            showMessage('Failed to setup user profile. Please contact support.', 'error');
-                            await supabase.auth.signOut();
-                            loginBtn.disabled = false;
-                            loginBtn.innerHTML = 'Admin Login';
-                            return;
-                        }
-                        
-                        // Fetch the newly created profile
-                        const { data: newProfile } = await supabase
-                            .from('user_profiles')
-                            .select('*')
-                            .eq('id', user.id)
-                            .maybeSingle();
-                            
-                        if (newProfile && newProfile.role === 'admin') {
-                            showMessage('Admin login successful! Redirecting...', 'success');
-                            setTimeout(() => {
-                                window.location.href = "admin-dashboard.html";
-                            }, 1500);
-                            return;
-                        } else {
-                            showMessage('Account created. Admin access not granted.', 'info');
-                            await supabase.auth.signOut();
-                            loginBtn.disabled = false;
-                            loginBtn.innerHTML = 'Admin Login';
-                            return;
-                        }
+                    if (profileError) {
+                        console.error('Profile error:', profileError);
+                        showMessage('User profile not found. Please contact support.', 'error');
+                        await supabase.auth.signOut();
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = 'Admin Login';
+                        return;
                     }
 
-                    // STEP 4: Verify admin role
+                    // Step 3: Verify admin role
                     if (profile.role !== 'admin') {
                         showMessage('Access denied. Admin privileges required.', 'error');
                         await supabase.auth.signOut();
@@ -240,7 +205,7 @@
                         return;
                     }
 
-                    // STEP 5: Success - redirect to admin dashboard
+                    // Step 4: Success - redirect to admin dashboard
                     showMessage('Admin login successful! Redirecting...', 'success');
                     setTimeout(() => {
                         window.location.href = "admin-dashboard.html";
@@ -262,7 +227,7 @@
                             .from('user_profiles')
                             .select('role')
                             .eq('id', session.user.id)
-                            .maybeSingle();
+                            .single();
                         
                         if (profile && profile.role === 'admin') {
                             window.location.href = "admin-dashboard.html";
