@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Login</title>
-    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -27,10 +26,10 @@
             max-width: 450px;
             border: 1px solid #1e293b;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            transition: transform 0.3s;
+            transition: transform 0.3s ease;
         }
         .login-container:hover {
-            transform: translateY(-5px);
+            transform: translateY(-3px);
         }
         .logo { text-align: center; margin-bottom: 30px; }
         .logo h1 {
@@ -46,7 +45,7 @@
             margin-top: 5px;
         }
         .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500; }
+        label { display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500; font-size: 13px; }
         input {
             width: 100%;
             padding: 14px 16px;
@@ -85,7 +84,7 @@
             transform: none;
         }
         .message {
-            padding: 12px;
+            padding: 12px 16px;
             border-radius: 12px;
             margin-bottom: 20px;
             display: none;
@@ -94,6 +93,7 @@
         }
         .error-message { background: #7f1d1d; color: #fecaca; border-left: 3px solid #ef4444; }
         .success-message { background: #14532d; color: #bbf7d0; border-left: 3px solid #22c55e; }
+        .info-message { background: #1e293b; color: #eab308; border-left: 3px solid #eab308; }
         .signup-link { text-align: center; margin-top: 24px; color: #94a3b8; font-size: 14px; }
         .signup-link a { color: #eab308; cursor: pointer; text-decoration: none; font-weight: 600; }
         .signup-link a:hover { text-decoration: underline; }
@@ -144,7 +144,7 @@
             Don't have an account? <a id="signupBtn">Sign up</a>
         </div>
         <div class="mpesa-badge">
-            💳 Pay with M-Pesa Paybill: <strong>4095377</strong>
+            💳 M-Pesa Paybill: <strong>4095377</strong> | AUTO-V Kenya
         </div>
     </div>
 
@@ -162,7 +162,7 @@
         const messageBox = document.getElementById('messageBox');
 
         // Show message helper
-        function showMessage(text, type) {
+        function showMessage(text, type = 'error') {
             messageBox.textContent = text;
             messageBox.className = `message ${type}-message`;
             messageBox.style.display = 'block';
@@ -192,7 +192,13 @@
             loginBtn.innerHTML = 'Login';
 
             if (error) {
-                showMessage(error.message, 'error');
+                if (error.message === 'Invalid login credentials') {
+                    showMessage('Invalid email or password. Please try again.', 'error');
+                } else if (error.message.includes('Email not confirmed')) {
+                    showMessage('Please verify your email address before logging in.', 'info');
+                } else {
+                    showMessage(error.message, 'error');
+                }
             } else {
                 showMessage('Login successful! Redirecting...', 'success');
                 setTimeout(() => {
@@ -206,6 +212,11 @@
             const email = prompt('Enter your email:');
             if (!email) return;
 
+            if (!email.includes('@') || !email.includes('.')) {
+                showMessage('Please enter a valid email address', 'error');
+                return;
+            }
+
             const password = prompt('Enter your password (min 6 characters):');
             if (!password || password.length < 6) {
                 showMessage('Password must be at least 6 characters', 'error');
@@ -213,7 +224,7 @@
             }
 
             signupBtn.disabled = true;
-            signupBtn.textContent = '⏳ Creating account...';
+            signupBtn.innerHTML = '<span class="spinner"></span> Creating account...';
 
             const { data, error } = await supabase.auth.signUp({ 
                 email, 
@@ -224,12 +235,16 @@
             });
 
             signupBtn.disabled = false;
-            signupBtn.textContent = 'Sign up';
+            signupBtn.innerHTML = 'Sign up';
 
             if (error) {
-                showMessage(error.message, 'error');
+                if (error.message.includes('User already registered')) {
+                    showMessage('User already registered. Please login instead.', 'info');
+                } else {
+                    showMessage(error.message, 'error');
+                }
             } else {
-                showMessage('Signup successful! Check your email to verify, then login.', 'success');
+                showMessage('Signup successful! Check your email to verify your account.', 'success');
             }
         }
 
@@ -253,7 +268,7 @@
             if (e.key === 'Enter') handleLogin();
         });
 
-        // Check existing session
+        // Check existing session on page load
         checkSession();
     </script>
 </body>
