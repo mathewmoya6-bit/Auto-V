@@ -1,50 +1,58 @@
-<!-- Replace the Pricing Tab section in admin-dashboard.html with this complete implementation -->
-
-<!-- Pricing Tab - Complete Dynamic Pricing -->
+<!-- Pricing Tab - Complete Dynamic Pricing with Vehicle Type + Purpose -->
 <div id="pricingTab" class="card" style="display:none;">
     <h2>💰 Dynamic Pricing Configuration</h2>
-    <p style="color: #94a3b8; margin-bottom: 20px;">Pricing based on Vehicle Category + Valuation Purpose + Service Level</p>
-    
-    <!-- Quick Filter -->
-    <div class="form-row" style="margin-bottom: 20px;">
-        <div class="form-group">
-            <label>Filter by Vehicle Category</label>
-            <select id="priceFilterCategory" onchange="filterPricingTable()">
-                <option value="all">All Categories</option>
-                <option value="passenger_car">Passenger Car</option>
-                <option value="suv">SUV / 4x4</option>
-                <option value="motorcycle">Motorcycle</option>
-                <option value="tuk_tuk">Tuk-tuk / 3-Wheeler</option>
-                <option value="commercial">Commercial Vehicle</option>
-                <option value="farm">Farm Machinery</option>
-                <option value="industrial">Industrial Machinery</option>
-                <option value="specialty">Specialty Vehicle</option>
-            </select>
+    <p style="color: #94a3b8; margin-bottom: 20px;">Prices are determined by <strong>Vehicle Category</strong> + <strong>Valuation Purpose</strong> + <strong>Service Level</strong> | <strong style="color:#22c55e;">✅ Supabase SSOT</strong></p>
+
+    <!-- Quick Price Preview Calculator -->
+    <div style="background: #1e293b; padding: 20px; border-radius: 16px; margin-bottom: 20px;">
+        <h3>📱 Quick Price Calculator</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Vehicle Category</label>
+                <select id="previewVehicleCategory" onchange="updatePricePreview()">
+                    <option value="passenger_car">🚗 Passenger Car</option>
+                    <option value="suv">🚙 SUV / 4x4</option>
+                    <option value="motorcycle">🏍️ Motorcycle</option>
+                    <option value="tuk_tuk">🛺 Tuk-tuk / 3-Wheeler</option>
+                    <option value="commercial">🚚 Commercial Vehicle</option>
+                    <option value="farm">🚜 Farm Machinery</option>
+                    <option value="industrial">🏗️ Industrial Machinery</option>
+                    <option value="specialty">⛳ Specialty Vehicle</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Valuation Purpose</label>
+                <select id="previewPurpose" onchange="updatePricePreview()">
+                    <option value="just_know">💰 Just Want to Know (FREE)</option>
+                    <option value="pre_insurance">🛡️ Pre-Insurance Valuation</option>
+                    <option value="claim_verification">📋 Insurance Claim Verification</option>
+                    <option value="loan_collateral">🏦 Loan / Collateral Valuation</option>
+                    <option value="court_case">⚖️ Legal / Court Case Valuation</option>
+                    <option value="pre_purchase">🔍 Pre-Purchase Valuation</option>
+                    <option value="import_valuation">🌍 Import / Customs Valuation</option>
+                    <option value="fleet_valuation">🚛 Fleet / Corporate Valuation</option>
+                    <option value="total_loss">⚠️ Total Loss Assessment</option>
+                    <option value="classic_valuation">🏆 Classic / Vintage Valuation</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Service Level</label>
+                <select id="previewServiceLevel" onchange="updatePricePreview()">
+                    <option value="standard">Standard (24-48 hours)</option>
+                    <option value="express">Express (2-4 hours)</option>
+                    <option value="premium">Premium (1 hour + Certificate)</option>
+                </select>
+            </div>
         </div>
-        <div class="form-group">
-            <label>Filter by Service Type</label>
-            <select id="priceFilterService" onchange="filterPricingTable()">
-                <option value="all">All Services</option>
-                <option value="valuation">Valuation</option>
-                <option value="inspection">Inspection</option>
-                <option value="premium">Premium Valuation</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Bulk Action</label>
-            <select id="bulkAction">
-                <option value="">Select Action</option>
-                <option value="increase_5">Increase All by 5%</option>
-                <option value="decrease_5">Decrease All by 5%</option>
-                <option value="round_up">Round to Nearest 100</option>
-            </select>
-            <button class="btn btn-warning" onclick="applyBulkAction()" style="margin-top: 5px;">Apply to Filtered</button>
+        <div id="pricePreviewResult" style="background: #0f172a; padding: 15px; border-radius: 12px; margin-top: 15px; text-align: center;">
+            <p>💰 <strong id="previewBasePrice">KES 0</strong> + <span id="previewExpressFee">KES 0</span> express fee = <strong id="previewTotal">KES 0</strong></p>
+            <p style="font-size: 12px; color: #94a3b8;">Certificate Fee: <span id="previewCertFee">KES 0</span></p>
         </div>
     </div>
 
-    <!-- Pricing Table -->
+    <!-- Pricing Matrix Table -->
     <div style="overflow-x: auto; max-height: 500px; overflow-y: auto;">
-        <table id="pricingTable">
+        <table id="pricingMatrixTable">
             <thead>
                 <tr style="position: sticky; top: 0; background: #0f172a;">
                     <th>Vehicle Category</th>
@@ -52,56 +60,43 @@
                     <th>Valuation Purpose</th>
                     <th>Service Level</th>
                     <th>Base Price (KES)</th>
-                    <th>Express Fee (KES)</th>
+                    <th>Express Fee</th>
                     <th>Certificate Fee</th>
                     <th>Actions</th>
                 </tr>
             </thead>
-            <tbody id="pricingBody">
-                <tr><td colspan="8" style="text-align:center;">Loading pricing data...</td></tr>
+            <tbody id="pricingMatrixBody">
+                <tr><td colspan="8" style="text-align:center;">Loading pricing matrix...<\/td><\/tr>
             </tbody>
         </table>
     </div>
 
-    <!-- Add New Price Rule -->
+    <!-- Add New Pricing Rule -->
     <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #1e293b;">
         <h3>➕ Add New Pricing Rule</h3>
         <div class="form-row">
             <div class="form-group"><label>Vehicle Category</label>
                 <select id="newVehicleCategory">
-                    <option value="passenger_car">Passenger Car</option>
-                    <option value="suv">SUV / 4x4</option>
-                    <option value="motorcycle">Motorcycle</option>
-                    <option value="tuk_tuk">Tuk-tuk / 3-Wheeler</option>
-                    <option value="commercial">Commercial Vehicle</option>
-                    <option value="farm">Farm Machinery</option>
-                    <option value="industrial">Industrial Machinery</option>
-                    <option value="specialty">Specialty Vehicle</option>
+                    <option value="passenger_car">🚗 Passenger Car</option><option value="suv">🚙 SUV</option>
+                    <option value="motorcycle">🏍️ Motorcycle</option><option value="tuk_tuk">🛺 Tuk-tuk</option>
+                    <option value="commercial">🚚 Commercial</option><option value="farm">🚜 Farm</option>
+                    <option value="industrial">🏗️ Industrial</option><option value="specialty">⛳ Specialty</option>
                 </select>
             </div>
-            <div class="form-group"><label>Sub Category</label><input type="text" id="newSubCategory" placeholder="e.g., Luxury, Compact, Heavy"></div>
+            <div class="form-group"><label>Sub Category</label><input type="text" id="newSubCategory" placeholder="e.g., Luxury, Commuter"></div>
             <div class="form-group"><label>Valuation Purpose</label>
                 <select id="newPurpose">
-                    <option value="just_know">Just Want to Know (FREE)</option>
-                    <option value="pre_insurance">Pre-Insurance Valuation</option>
-                    <option value="claim_verification">Insurance Claim Verification</option>
-                    <option value="loan_collateral">Loan / Collateral Valuation</option>
-                    <option value="court_case">Legal / Court Case Valuation</option>
-                    <option value="pre_purchase">Pre-Purchase Valuation</option>
-                    <option value="import_valuation">Import / Customs Valuation</option>
-                    <option value="fleet_valuation">Fleet / Corporate Valuation</option>
-                    <option value="total_loss">Total Loss Assessment</option>
-                    <option value="classic_valuation">Classic / Vintage Valuation</option>
+                    <option value="just_know">Just Want to Know (FREE)</option><option value="pre_insurance">Pre-Insurance</option>
+                    <option value="claim_verification">Claim Verification</option><option value="loan_collateral">Loan Collateral</option>
+                    <option value="court_case">Court Case</option><option value="pre_purchase">Pre-Purchase</option>
+                    <option value="import_valuation">Import Valuation</option><option value="fleet_valuation">Fleet Valuation</option>
+                    <option value="total_loss">Total Loss</option><option value="classic_valuation">Classic Valuation</option>
                 </select>
             </div>
         </div>
         <div class="form-row">
             <div class="form-group"><label>Service Level</label>
-                <select id="newServiceLevel">
-                    <option value="standard">Standard</option>
-                    <option value="premium">Premium</option>
-                    <option value="express">Express (2 hours)</option>
-                </select>
+                <select id="newServiceLevel"><option value="standard">Standard</option><option value="express">Express</option><option value="premium">Premium</option></select>
             </div>
             <div class="form-group"><label>Base Price (KES)</label><input type="number" id="newBasePrice" placeholder="2500"></div>
             <div class="form-group"><label>Express Fee (KES)</label><input type="number" id="newExpressFee" placeholder="1000"></div>
@@ -109,28 +104,45 @@
         <button class="btn btn-success" onclick="addPricingRule()">+ Add Pricing Rule</button>
     </div>
 
-    <!-- Quick Edit Modal -->
-    <div id="editPricingModal" class="modal">
-        <div class="modal-content">
-            <h3>Edit Pricing Rule</h3>
-            <input type="hidden" id="editPricingId">
-            <div class="form-group"><label>Base Price (KES)</label><input type="number" id="editBasePrice"></div>
-            <div class="form-group"><label>Express Fee (KES)</label><input type="number" id="editExpressFee"></div>
-            <div class="form-group"><label>Certificate Fee (KES)</label><input type="number" id="editCertificateFee"></div>
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-success" onclick="updatePricingRule()">Save Changes</button>
-                <button class="btn btn-danger" onclick="closeEditPricingModal()">Cancel</button>
+    <!-- Bulk Update -->
+    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #1e293b;">
+        <h3>⚡ Bulk Update</h3>
+        <div class="form-row">
+            <div class="form-group"><label>Apply to Category</label>
+                <select id="bulkCategory"><option value="all">All Categories</option><option value="passenger_car">Passenger Car</option><option value="suv">SUV</option><option value="motorcycle">Motorcycle</option></select>
             </div>
+            <div class="form-group"><label>Operation</label>
+                <select id="bulkOperation"><option value="increase_10">Increase by 10%</option><option value="decrease_10">Decrease by 10%</option><option value="round_up">Round to nearest 100</option></select>
+            </div>
+            <div class="form-group"><button class="btn btn-warning" onclick="applyBulkUpdate()" style="margin-top: 24px;">Apply Bulk Update</button></div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Pricing Modal -->
+<div id="editPricingModal" class="modal">
+    <div class="modal-content">
+        <h3>✏️ Edit Pricing Rule</h3>
+        <input type="hidden" id="editRuleId">
+        <div class="form-group"><label>Base Price (KES)</label><input type="number" id="editBasePrice"></div>
+        <div class="form-group"><label>Express Fee (KES)</label><input type="number" id="editExpressFee"></div>
+        <div class="form-group"><label>Certificate Fee (KES)</label><input type="number" id="editCertificateFee"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button class="btn btn-success" onclick="updatePricingRule()">Save Changes</button>
+            <button class="btn btn-danger" onclick="closeEditPricingModal()">Cancel</button>
         </div>
     </div>
 </div>
 
 <script>
-// Complete Pricing Management Functions
+// ============================================
+// PRICING MANAGEMENT - SUPABASE SSOT
+// ============================================
+
 let allPricingRules = [];
 
 // Load pricing from Supabase
-async function loadPricingRules() {
+async function loadPricingMatrix() {
     const { data, error } = await supabase
         .from('pricing_rules')
         .select('*')
@@ -138,107 +150,91 @@ async function loadPricingRules() {
     
     if (error) {
         console.error('Error loading pricing:', error);
-        // Initialize default pricing if table is empty
-        await initializeDefaultPricing();
+        await initializePricingMatrix();
         return;
     }
     
     allPricingRules = data || [];
-    renderPricingTable();
+    renderPricingMatrix();
+    updatePricePreview();
 }
 
-// Initialize default pricing rules
-async function initializeDefaultPricing() {
+// Initialize default pricing matrix
+async function initializePricingMatrix() {
     const defaultPricing = [
-        // Passenger Cars
+        // Passenger Car
         { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'pre_insurance', service_level: 'standard', base_price: 2500, express_fee: 1000, certificate_fee: 500 },
         { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'loan_collateral', service_level: 'standard', base_price: 3000, express_fee: 1000, certificate_fee: 500 },
-        { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'court_case', service_level: 'premium', base_price: 5000, express_fee: 2000, certificate_fee: 1000 },
+        { vehicle_category: 'passenger_car', sub_category: 'Luxury', purpose: 'pre_insurance', service_level: 'premium', base_price: 5000, express_fee: 2000, certificate_fee: 1000 },
+        { vehicle_category: 'passenger_car', sub_category: 'Standard', purpose: 'court_case', service_level: 'premium', base_price: 7500, express_fee: 2500, certificate_fee: 1500 },
         
-        // SUVs
+        // SUV
         { vehicle_category: 'suv', sub_category: 'Standard', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'suv', sub_category: 'Standard', purpose: 'pre_insurance', service_level: 'standard', base_price: 3000, express_fee: 1000, certificate_fee: 500 },
-        { vehicle_category: 'suv', sub_category: 'Luxury', purpose: 'pre_insurance', service_level: 'premium', base_price: 5000, express_fee: 2000, certificate_fee: 1000 },
+        { vehicle_category: 'suv', sub_category: 'Luxury', purpose: 'pre_insurance', service_level: 'premium', base_price: 6000, express_fee: 2000, certificate_fee: 1000 },
+        { vehicle_category: 'suv', sub_category: 'Standard', purpose: 'loan_collateral', service_level: 'standard', base_price: 3500, express_fee: 1000, certificate_fee: 500 },
         
-        // Motorcycles
+        // Motorcycle
         { vehicle_category: 'motorcycle', sub_category: 'Commuter', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'motorcycle', sub_category: 'Commuter', purpose: 'pre_insurance', service_level: 'standard', base_price: 1000, express_fee: 500, certificate_fee: 300 },
         { vehicle_category: 'motorcycle', sub_category: 'Sport', purpose: 'pre_insurance', service_level: 'standard', base_price: 1500, express_fee: 500, certificate_fee: 300 },
         { vehicle_category: 'motorcycle', sub_category: 'Cruiser', purpose: 'premium', service_level: 'premium', base_price: 3000, express_fee: 1000, certificate_fee: 500 },
         
-        // Tuk-tuk / 3-Wheeler
+        // Tuk-tuk
         { vehicle_category: 'tuk_tuk', sub_category: 'Passenger', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'tuk_tuk', sub_category: 'Passenger', purpose: 'pre_insurance', service_level: 'standard', base_price: 2000, express_fee: 500, certificate_fee: 300 },
         { vehicle_category: 'tuk_tuk', sub_category: 'Cargo', purpose: 'loan_collateral', service_level: 'standard', base_price: 2500, express_fee: 500, certificate_fee: 300 },
         
-        // Commercial Vehicles
+        // Commercial
         { vehicle_category: 'commercial', sub_category: 'Light', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'commercial', sub_category: 'Light', purpose: 'fleet_valuation', service_level: 'standard', base_price: 3500, express_fee: 1000, certificate_fee: 500 },
-        { vehicle_category: 'commercial', sub_category: 'Heavy', purpose: 'fleet_valuation', service_level: 'premium', base_price: 7000, express_fee: 2000, certificate_fee: 1000 },
+        { vehicle_category: 'commercial', sub_category: 'Heavy', purpose: 'fleet_valuation', service_level: 'premium', base_price: 7500, express_fee: 2000, certificate_fee: 1000 },
         
         // Farm Machinery
         { vehicle_category: 'farm', sub_category: 'Tractor', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'farm', sub_category: 'Tractor', purpose: 'loan_collateral', service_level: 'standard', base_price: 5000, express_fee: 1500, certificate_fee: 1000 },
         { vehicle_category: 'farm', sub_category: 'Combine', purpose: 'total_loss', service_level: 'premium', base_price: 10000, express_fee: 3000, certificate_fee: 2000 },
         
-        // Industrial Machinery
+        // Industrial
         { vehicle_category: 'industrial', sub_category: 'Excavator', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'industrial', sub_category: 'Excavator', purpose: 'loan_collateral', service_level: 'premium', base_price: 15000, express_fee: 5000, certificate_fee: 3000 },
         { vehicle_category: 'industrial', sub_category: 'Forklift', purpose: 'fleet_valuation', service_level: 'standard', base_price: 5000, express_fee: 1500, certificate_fee: 1000 },
         
-        // Specialty Vehicles
+        // Specialty
         { vehicle_category: 'specialty', sub_category: 'Golf Cart', purpose: 'just_know', service_level: 'standard', base_price: 0, express_fee: 0, certificate_fee: 0 },
         { vehicle_category: 'specialty', sub_category: 'Golf Cart', purpose: 'pre_insurance', service_level: 'standard', base_price: 2000, express_fee: 500, certificate_fee: 300 },
-        { vehicle_category: 'specialty', sub_category: 'Classic Car', purpose: 'classic_valuation', service_level: 'premium', base_price: 10000, express_fee: 3000, certificate_fee: 2000 }
+        { vehicle_category: 'specialty', sub_category: 'Classic', purpose: 'classic_valuation', service_level: 'premium', base_price: 10000, express_fee: 3000, certificate_fee: 2000 }
     ];
     
     for (const rule of defaultPricing) {
-        const { error } = await supabase
-            .from('pricing_rules')
-            .upsert(rule, { onConflict: 'vehicle_category,sub_category,purpose,service_level' });
-        if (error) console.error('Error inserting default pricing:', error);
+        await supabase.from('pricing_rules').upsert(rule, { onConflict: 'vehicle_category,sub_category,purpose,service_level' });
     }
-    
-    await loadPricingRules();
+    await loadPricingMatrix();
 }
 
-// Render pricing table
-function renderPricingTable() {
-    const tbody = document.getElementById('pricingBody');
-    const categoryFilter = document.getElementById('priceFilterCategory')?.value || 'all';
-    const serviceFilter = document.getElementById('priceFilterService')?.value || 'all';
-    
-    let filtered = [...allPricingRules];
-    
-    if (categoryFilter !== 'all') {
-        filtered = filtered.filter(r => r.vehicle_category === categoryFilter);
-    }
-    if (serviceFilter !== 'all') {
-        if (serviceFilter === 'valuation') filtered = filtered.filter(r => r.service_level === 'standard' && r.base_price > 0);
-        else if (serviceFilter === 'premium') filtered = filtered.filter(r => r.service_level === 'premium');
-        else if (serviceFilter === 'inspection') filtered = filtered.filter(r => r.purpose === 'inspection');
-    }
-    
-    if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No pricing rules found. Add one below.<\/td><\/tr>';
+// Render pricing matrix table
+function renderPricingMatrix() {
+    const tbody = document.getElementById('pricingMatrixBody');
+    if (!allPricingRules.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No pricing rules found.<\/td><\/tr>';
         return;
     }
     
-    const purposeNames = {
-        'just_know': '💰 Just Want to Know (FREE)', 'pre_insurance': '🛡️ Pre-Insurance', 'claim_verification': '📋 Claim Verification',
-        'loan_collateral': '🏦 Loan Collateral', 'court_case': '⚖️ Court Case', 'pre_purchase': '🔍 Pre-Purchase',
-        'import_valuation': '🌍 Import Valuation', 'fleet_valuation': '🚛 Fleet Valuation', 'total_loss': '⚠️ Total Loss',
-        'classic_valuation': '🏆 Classic Valuation'
-    };
-    
     const categoryNames = {
-        'passenger_car': '🚗 Passenger Car', 'suv': '🚙 SUV/4x4', 'motorcycle': '🏍️ Motorcycle',
-        'tuk_tuk': '🛺 Tuk-tuk', 'commercial': '🚚 Commercial', 'farm': '🚜 Farm Machinery',
+        'passenger_car': '🚗 Passenger Car', 'suv': '🚙 SUV', 'motorcycle': '🏍️ Motorcycle',
+        'tuk_tuk': '🛺 Tuk-tuk', 'commercial': '🚚 Commercial', 'farm': '🚜 Farm',
         'industrial': '🏗️ Industrial', 'specialty': '⛳ Specialty'
     };
     
-    tbody.innerHTML = filtered.map(rule => `
+    const purposeNames = {
+        'just_know': '💰 Just Know', 'pre_insurance': '🛡️ Pre-Insurance', 'claim_verification': '📋 Claim',
+        'loan_collateral': '🏦 Loan', 'court_case': '⚖️ Court', 'pre_purchase': '🔍 Pre-Purchase',
+        'import_valuation': '🌍 Import', 'fleet_valuation': '🚛 Fleet', 'total_loss': '⚠️ Total Loss',
+        'classic_valuation': '🏆 Classic'
+    };
+    
+    tbody.innerHTML = allPricingRules.map(rule => `
         <tr>
             <td>${categoryNames[rule.vehicle_category] || rule.vehicle_category}<\/td>
             <td>${rule.sub_category || '-'}<\/td>
@@ -247,21 +243,43 @@ function renderPricingTable() {
             <td>KES ${(rule.base_price || 0).toLocaleString()}<\/td>
             <td>KES ${(rule.express_fee || 0).toLocaleString()}<\/td>
             <td>KES ${(rule.certificate_fee || 0).toLocaleString()}<\/td>
-            <td><button class="btn" onclick="openEditPricingModal('${rule.id}')">Edit</button><\/td>
+            <td><button class="btn" onclick="openEditPricingModal('${rule.id}')">✏️ Edit</button><\/td>
         </tr>
     `).join('');
 }
 
-// Filter pricing table
-function filterPricingTable() {
-    renderPricingTable();
+// Update price preview
+async function updatePricePreview() {
+    const category = document.getElementById('previewVehicleCategory').value;
+    const purpose = document.getElementById('previewPurpose').value;
+    const serviceLevel = document.getElementById('previewServiceLevel').value;
+    
+    const { data } = await supabase
+        .from('pricing_rules')
+        .select('base_price, express_fee, certificate_fee')
+        .eq('vehicle_category', category)
+        .eq('purpose', purpose)
+        .eq('service_level', serviceLevel)
+        .maybeSingle();
+    
+    if (data) {
+        document.getElementById('previewBasePrice').innerHTML = `KES ${data.base_price.toLocaleString()}`;
+        document.getElementById('previewExpressFee').innerHTML = `KES ${data.express_fee.toLocaleString()}`;
+        document.getElementById('previewTotal').innerHTML = `KES ${(data.base_price + data.express_fee).toLocaleString()}`;
+        document.getElementById('previewCertFee').innerHTML = `KES ${data.certificate_fee.toLocaleString()}`;
+    } else {
+        document.getElementById('previewBasePrice').innerHTML = 'KES 0';
+        document.getElementById('previewExpressFee').innerHTML = 'KES 0';
+        document.getElementById('previewTotal').innerHTML = 'KES 0';
+        document.getElementById('previewCertFee').innerHTML = 'KES 0';
+    }
 }
 
 // Open edit modal
-window.openEditPricingModal = async (id) => {
+window.openEditPricingModal = (id) => {
     const rule = allPricingRules.find(r => r.id === id);
     if (rule) {
-        document.getElementById('editPricingId').value = rule.id;
+        document.getElementById('editRuleId').value = rule.id;
         document.getElementById('editBasePrice').value = rule.base_price;
         document.getElementById('editExpressFee').value = rule.express_fee;
         document.getElementById('editCertificateFee').value = rule.certificate_fee;
@@ -271,7 +289,7 @@ window.openEditPricingModal = async (id) => {
 
 // Update pricing rule
 window.updatePricingRule = async () => {
-    const id = document.getElementById('editPricingId').value;
+    const id = document.getElementById('editRuleId').value;
     const updates = {
         base_price: parseInt(document.getElementById('editBasePrice').value) || 0,
         express_fee: parseInt(document.getElementById('editExpressFee').value) || 0,
@@ -282,9 +300,9 @@ window.updatePricingRule = async () => {
     if (error) {
         showMessage('Error updating pricing: ' + error.message, 'error');
     } else {
-        showMessage('Pricing updated successfully! Real-time sync active.', 'success');
+        showMessage('✅ Pricing updated! Real-time sync active.', 'success');
         closeEditPricingModal();
-        await loadPricingRules();
+        await loadPricingMatrix();
     }
 };
 
@@ -302,86 +320,76 @@ window.addPricingRule = async () => {
     
     const { error } = await supabase.from('pricing_rules').insert(newRule);
     if (error) {
-        showMessage('Error adding pricing rule: ' + error.message, 'error');
+        showMessage('Error adding rule: ' + error.message, 'error');
     } else {
-        showMessage('Pricing rule added!', 'success');
-        // Clear form
+        showMessage('✅ Pricing rule added!', 'success');
         document.getElementById('newSubCategory').value = '';
         document.getElementById('newBasePrice').value = '';
         document.getElementById('newExpressFee').value = '';
-        await loadPricingRules();
+        await loadPricingMatrix();
     }
 };
 
-// Bulk action
-window.applyBulkAction = async () => {
-    const action = document.getElementById('bulkAction').value;
-    if (!action) return;
-    
-    const categoryFilter = document.getElementById('priceFilterCategory').value;
-    const serviceFilter = document.getElementById('priceFilterService').value;
+// Apply bulk update
+window.applyBulkUpdate = async () => {
+    const category = document.getElementById('bulkCategory').value;
+    const operation = document.getElementById('bulkOperation').value;
     
     let filtered = [...allPricingRules];
-    if (categoryFilter !== 'all') filtered = filtered.filter(r => r.vehicle_category === categoryFilter);
-    if (serviceFilter !== 'all') filtered = filtered.filter(r => r.service_level === serviceFilter || (serviceFilter === 'valuation' && r.base_price > 0));
+    if (category !== 'all') filtered = filtered.filter(r => r.vehicle_category === category);
     
     for (const rule of filtered) {
         let newPrice = rule.base_price;
-        if (action === 'increase_5') newPrice = Math.round(rule.base_price * 1.05);
-        if (action === 'decrease_5') newPrice = Math.round(rule.base_price * 0.95);
-        if (action === 'round_up') newPrice = Math.ceil(rule.base_price / 100) * 100;
+        if (operation === 'increase_10') newPrice = Math.round(rule.base_price * 1.1);
+        if (operation === 'decrease_10') newPrice = Math.round(rule.base_price * 0.9);
+        if (operation === 'round_up') newPrice = Math.ceil(rule.base_price / 100) * 100;
         
         await supabase.from('pricing_rules').update({ base_price: newPrice }).eq('id', rule.id);
     }
     
-    showMessage(`Bulk action "${action}" applied to ${filtered.length} rules!`, 'success');
-    await loadPricingRules();
+    showMessage(`✅ Bulk update applied to ${filtered.length} rules!`, 'success');
+    await loadPricingMatrix();
 };
 
-// Get price for specific vehicle and purpose (used by valuation engine)
-async function getPriceForVehicle(category, subCategory, purpose, serviceLevel = 'standard') {
-    const { data, error } = await supabase
+// Get price by vehicle and purpose (used by valuation engine)
+window.getPricingByVehicleAndPurpose = async (category, purpose, serviceLevel = 'standard') => {
+    const { data } = await supabase
         .from('pricing_rules')
         .select('base_price, express_fee, certificate_fee')
         .eq('vehicle_category', category)
-        .eq('sub_category', subCategory)
         .eq('purpose', purpose)
         .eq('service_level', serviceLevel)
-        .single();
+        .maybeSingle();
     
-    if (error) {
-        // Fallback to default pricing
-        return { base_price: 2500, express_fee: 1000, certificate_fee: 500 };
-    }
-    return data;
-}
+    return data || { base_price: 2500, express_fee: 1000, certificate_fee: 500 };
+};
 
 function closeEditPricingModal() {
     document.getElementById('editPricingModal').style.display = 'none';
 }
 
-// Create pricing_rules table if not exists
-async function initPricingTable() {
-    // Check if table exists by trying to select
-    const { error } = await supabase.from('pricing_rules').select('count', { count: 'exact', head: true });
-    if (error && error.message.includes('relation') && error.message.includes('does not exist')) {
-        // Create table via Supabase SQL (user needs to run this once)
-        console.log('Pricing rules table not found. Please run the SQL creation script.');
-        showMessage('Pricing table not found. Please run the database setup SQL.', 'error');
-    } else {
-        await loadPricingRules();
-    }
+function showMessage(msg, type) {
+    const div = document.getElementById(`${type}Msg`);
+    div.innerHTML = msg;
+    div.style.display = 'block';
+    setTimeout(() => div.style.display = 'none', 5000);
 }
 
-// Add realtime subscription for pricing updates
+// Initialize pricing on tab load
+document.getElementById('pricingTab').addEventListener('click', () => {
+    loadPricingMatrix();
+});
+
+// Subscribe to realtime pricing updates
 function subscribeToPricingUpdates() {
-    const channel = supabase
-        .channel('pricing_updates')
+    supabase.channel('pricing_updates')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pricing_rules' }, () => {
-            console.log('Pricing updated in real-time');
-            loadPricingRules();
+            console.log('🔄 Pricing updated in real-time');
+            loadPricingMatrix();
         })
         .subscribe();
-    return channel;
 }
+
+// Call this in main init
+subscribeToPricingUpdates();
 </script>
