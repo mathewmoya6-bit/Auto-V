@@ -2,16 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | M-Pesa Payment</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23eab308' rx='20'/><text x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'>🚗</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #0a0c15 0%, #1a1a2e 100%);
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -27,33 +26,11 @@
         }
         .logo { text-align: center; margin-bottom: 30px; }
         .logo h1 { font-size: 28px; background: linear-gradient(135deg, #eab308, #facc15); -webkit-background-clip: text; background-clip: text; color: transparent; }
-        .service-details {
-            background: #1e293b;
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #334155;
-        }
-        .amount {
-            font-size: 36px;
-            font-weight: 800;
-            color: #22c55e;
-            text-align: center;
-            margin: 20px 0;
-        }
-        .paybill-info {
-            background: #0f172a;
-            border-radius: 16px;
-            padding: 15px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        .paybill-number { font-size: 28px; font-weight: 800; color: #22c55e; }
+        .service-details { background: #1e293b; border-radius: 20px; padding: 20px; margin-bottom: 30px; }
+        .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #334155; }
+        .amount { font-size: 36px; font-weight: 800; color: #22c55e; text-align: center; margin: 20px 0; }
+        .paybill-info { background: #0f172a; border-radius: 16px; padding: 15px; margin: 20px 0; text-align: center; }
+        .paybill-number { font-size: 28px; font-weight: 800; color: #22c55e; letter-spacing: 2px; }
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 8px; color: #94a3b8; }
         input {
@@ -77,14 +54,7 @@
         .btn-primary { background: #eab308; color: #0a0c10; }
         .btn-primary:disabled { background: #475569; cursor: not-allowed; }
         .btn-secondary { background: #334155; color: white; margin-top: 10px; }
-        .status-box {
-            background: #1e293b;
-            border-radius: 16px;
-            padding: 20px;
-            margin-top: 20px;
-            display: none;
-            text-align: center;
-        }
+        .status-box { background: #1e293b; border-radius: 16px; padding: 20px; margin-top: 20px; display: none; text-align: center; }
         .spinner {
             display: inline-block;
             width: 24px;
@@ -97,116 +67,163 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         .success-icon { font-size: 48px; color: #22c55e; }
         .error-icon { font-size: 48px; color: #ef4444; }
+        .timer { font-size: 12px; color: #94a3b8; margin-top: 10px; }
     </style>
 </head>
 <body>
 <div class="payment-container">
     <div class="payment-card">
         <div class="logo"><h1>💳 M-Pesa Payment</h1></div>
-        <div class="service-details">
+        
+        <div id="serviceDetails" class="service-details">
             <div class="detail-row"><span>Service</span><span id="serviceType">Loading...</span></div>
-            <div class="detail-row"><span>Vehicle</span><span id="vehicleInfo">Loading...</span></div>
+            <div class="detail-row"><span>Reference</span><span id="reference">Loading...</span></div>
             <div class="amount" id="amount">KES 0</div>
         </div>
+        
         <div class="paybill-info">
-            <div>Paybill Number</div>
+            <div style="font-size: 12px;">Paybill Number</div>
             <div class="paybill-number">4095377</div>
-            <div>AUTO-V Kenya</div>
+            <div style="font-size: 11px; margin-top: 5px;">AUTO-V Kenya</div>
         </div>
+        
         <div class="form-group">
-            <label>📱 M-Pesa Number</label>
+            <label>📱 M-Pesa Phone Number</label>
             <input type="tel" id="phoneNumber" placeholder="0712345678">
         </div>
-        <button class="btn btn-primary" id="payBtn" onclick="pay()">Pay Now</button>
+        
+        <button class="btn btn-primary" id="payBtn">Pay Now</button>
         <button class="btn btn-secondary" onclick="window.location.href='dashboard.html'">Cancel</button>
+        
         <div id="statusBox" class="status-box"></div>
     </div>
 </div>
+
 <script>
-const { supabase, RENDER_API_URL } = window.AUTO_V_CONFIG || {};
-
-if (!supabase) {
-    console.error('Supabase not loaded');
-    window.location.href = 'login.html';
-}
-
-let serviceRequest = null;
-let pollInterval = null;
-
-async function getService() {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get('id');
-    if (!id) return;
-    const { data } = await supabase.from('service_requests').select('*').eq('id', id).single();
-    if (data) {
-        serviceRequest = data;
-        document.getElementById('serviceType').innerHTML = data.service_type === 'valuation' ? 'Valuation' : 'Inspection';
-        document.getElementById('vehicleInfo').innerHTML = `${data.make} ${data.model}`;
-        document.getElementById('amount').innerHTML = `KES ${data.amount.toLocaleString()}`;
-    }
-}
-
-function showStatus(msg, type) {
-    const box = document.getElementById('statusBox');
-    box.style.display = 'block';
-    box.innerHTML = type === 'pending' ? `<div class="spinner"></div><p>${msg}</p>` :
-                    type === 'success' ? `<div class="success-icon">✅</div><p>${msg}</p>` :
-                    `<div class="error-icon">❌</div><p>${msg}</p>`;
-    if (type === 'success') setTimeout(() => window.location.href = 'dashboard.html', 3000);
-}
-
-async function pay() {
-    const phone = document.getElementById('phoneNumber').value;
-    if (!phone.match(/^07\d{8}$/)) {
-        alert('Enter valid M-Pesa number (07XXXXXXXX)');
-        return;
-    }
-    const btn = document.getElementById('payBtn');
-    btn.disabled = true;
-    btn.innerHTML = 'Processing...';
-    showStatus('Initiating payment...', 'pending');
-
-    try {
-        const ref = `${serviceRequest.service_type === 'valuation' ? 'VAL' : 'INS'}${serviceRequest.id.slice(0, 8)}`;
-        
-        const response = await fetch(`${RENDER_API_URL}/api/mpesa/stkpush`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                phone: phone,
-                amount: serviceRequest.amount,
-                accountRef: ref,
-                description: `AUTO-V ${serviceRequest.service_type}`,
-                serviceId: serviceRequest.id,
-                serviceType: serviceRequest.service_type
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.ResponseCode === '0') {
-            await supabase.from('service_requests').update({ mpesa_checkout_request_id: result.CheckoutRequestID }).eq('id', serviceRequest.id);
-            showStatus('STK Push sent! Check your phone and enter PIN.', 'pending');
-            
-            pollInterval = setInterval(async () => {
-                const { data } = await supabase.from('service_requests').select('payment_status').eq('id', serviceRequest.id).single();
-                if (data?.payment_status === 'paid') {
-                    clearInterval(pollInterval);
-                    showStatus('Payment successful! Redirecting...', 'success');
-                }
-            }, 3000);
-        } else {
-            throw new Error(result.ResponseDescription || result.error);
+    const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // Python Backend URL (Update with your Render backend URL)
+    const API_URL = "https://your-python-backend.onrender.com/api/mpesa/stkpush";
+    
+    let serviceRequest = null;
+    let pollInterval = null;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const serviceId = urlParams.get('id');
+    const serviceType = urlParams.get('type');
+    const amount = urlParams.get('amount');
+    const reference = urlParams.get('ref');
+    
+    async function loadServiceRequest() {
+        if (!serviceId) return;
+        const { data } = await supabase.from('service_requests').select('*').eq('id', serviceId).single();
+        if (data) {
+            serviceRequest = data;
+            document.getElementById('serviceType').innerHTML = serviceType === 'valuation' ? 'Vehicle Valuation' : 'Vehicle Inspection';
+            document.getElementById('reference').innerHTML = reference || `AUTO-${serviceId.slice(0, 8)}`;
+            document.getElementById('amount').innerHTML = `KES ${parseInt(amount || data.amount || 0).toLocaleString()}`;
+            if (data.phone) document.getElementById('phoneNumber').value = data.phone;
         }
-    } catch (err) {
-        console.error('Payment error:', err);
-        showStatus(err.message, 'error');
-        btn.disabled = false;
-        btn.innerHTML = 'Pay Now';
     }
-}
-
-getService();
+    
+    function showStatus(message, type = 'pending') {
+        const box = document.getElementById('statusBox');
+        box.style.display = 'block';
+        if (type === 'pending') {
+            box.innerHTML = `<div class="spinner"></div><p>${message}</p><div class="timer">Please check your phone and enter M-Pesa PIN</div>`;
+        } else if (type === 'success') {
+            box.innerHTML = `<div class="success-icon">✅</div><p style="font-size: 18px; font-weight: bold;">Payment Successful!</p><p>${message}</p><div class="timer">Redirecting in 3 seconds...</div>`;
+            setTimeout(() => window.location.href = 'dashboard.html', 3000);
+        } else {
+            box.innerHTML = `<div class="error-icon">❌</div><p style="font-size: 18px; font-weight: bold;">Payment Failed</p><p>${message}</p><button class="btn btn-primary" onclick="location.reload()" style="margin-top: 15px;">Try Again</button>`;
+        }
+    }
+    
+    async function initiatePayment() {
+        const phone = document.getElementById('phoneNumber').value.trim();
+        const payBtn = document.getElementById('payBtn');
+        
+        if (!phone) { alert('Enter M-Pesa number'); return; }
+        if (!phone.match(/^07\d{8}$/) && !phone.match(/^01\d{8}$/)) { alert('Enter valid M-Pesa number (07XXXXXXXX)'); return; }
+        
+        payBtn.disabled = true;
+        payBtn.innerHTML = '<span class="spinner"></span> Processing...';
+        showStatus('Initiating payment...', 'pending');
+        
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: phone,
+                    amount: parseInt(amount),
+                    accountRef: reference,
+                    description: `AUTO-V ${serviceType}`,
+                    serviceId: serviceId
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.ResponseCode === '0') {
+                showStatus('STK Push sent! Check your phone and enter PIN.', 'pending');
+                
+                pollInterval = setInterval(async () => {
+                    const { data } = await supabase
+                        .from('service_requests')
+                        .select('payment_status')
+                        .eq('id', serviceId)
+                        .single();
+                    
+                    if (data?.payment_status === 'paid') {
+                        clearInterval(pollInterval);
+                        showStatus('Payment confirmed! Your results are ready.', 'success');
+                    }
+                }, 3000);
+                
+                setTimeout(() => {
+                    if (pollInterval) clearInterval(pollInterval);
+                    if (serviceRequest?.payment_status !== 'paid') {
+                        showStatus('Payment timeout. Please check your M-Pesa statement.', 'error');
+                        payBtn.disabled = false;
+                        payBtn.innerHTML = 'Pay Now';
+                    }
+                }, 120000);
+                
+            } else {
+                throw new Error(result.ResponseDescription || 'STK Push failed');
+            }
+            
+        } catch (err) {
+            showStatus(err.message, 'error');
+            payBtn.disabled = false;
+            payBtn.innerHTML = 'Pay Now';
+        }
+    }
+    
+    // Realtime subscription
+    function setupRealtime() {
+        supabase
+            .channel(`payment_${serviceId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'service_requests',
+                filter: `id=eq.${serviceId}`
+            }, (payload) => {
+                if (payload.new.payment_status === 'paid') {
+                    if (pollInterval) clearInterval(pollInterval);
+                    showStatus('Payment confirmed! Redirecting...', 'success');
+                }
+            })
+            .subscribe();
+    }
+    
+    document.getElementById('payBtn').onclick = initiatePayment;
+    loadServiceRequest();
+    if (serviceId) setupRealtime();
 </script>
 </body>
 </html>
