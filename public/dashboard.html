@@ -287,4 +287,164 @@
 </div>
 
 <!-- Result Modal -->
-<div id="resultModal" class="modal"><div class="modal-content
+<div id="resultModal" class="modal"><div class="modal-content result-modal-content"><h2 id="resultTitle">Result</h2><div id="resultContent"></div><button class="btn-secondary" onclick="closeModal('resultModal')" style="width:100%;">Close</button></div></div>
+
+<script>
+    // Wait for autoV to load
+    function waitForAutoV(callback) {
+        if (typeof window.autoV !== 'undefined') { callback(); }
+        else { setTimeout(() => waitForAutoV(callback), 100); }
+    }
+
+    waitForAutoV(async function() {
+        const { requireAuth, logout, createServiceRequest, getServiceRequests, getServiceRequestById, loadFees, initiatePayment, checkPaymentStatus, subscribeToServiceUpdates } = window.autoV;
+
+        let currentUser = null;
+        let valuationFee = 2500, inspectionFee = 3500;
+        let isProcessing = false;
+        let pollingInterval = null;
+
+        async function init() {
+            currentUser = await requireAuth();
+            if (!currentUser) return;
+            document.getElementById("userEmail").textContent = currentUser.email;
+            const fees = await loadFees();
+            valuationFee = fees.valuationFee;
+            inspectionFee = fees.inspectionFee;
+            document.getElementById('valuationPrice').textContent = `KES ${valuationFee.toLocaleString()}`;
+            document.getElementById('inspectionPrice').textContent = `KES ${inspectionFee.toLocaleString()}`;
+            await loadHistory();
+            setupRealtime();
+        }
+
+        async function loadHistory() {
+            try {
+                const requests = await getServiceRequests(currentUser.id);
+                const tbody = document.getElementById('historyBody');
+                if (!requests || requests.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No requests yet. Start a service above!<\/td><\/tr>';
+                    return;
+                }
+                tbody.innerHTML = requests.map(r => {
+                    const statusBadge = `badge-${r.status || 'pending'}`;
+                    const paymentBadge = `badge-${r.payment_status || 'pending'}`;
+                    let resultText = '-';
+                    if (r.result) {
+                        if (r.service_type === 'valuation') resultText = `KES ${r.result.market_value?.toLocaleString() || 'N/A'}`;
+                        else resultText = `${r.result.overall_score || 'N/A'}%`;
+                    }
+                    return `<tr><td>${new Date(r.created_at).toLocaleString()}</td><td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td><td>${r.make} ${r.model} (${r.registration_number})</td><td>KES ${(r.amount || 0).toLocaleString()}</td><td><span class="badge ${statusBadge}">${r.status}</span></td><td><span class="badge ${paymentBadge}">${r.payment_status}</span></td><td>${r.result ? `<span class="result-link" onclick="viewResult('${r.id}', '${r.service_type}')">View →</span>` : '-'}</td></tr>`;
+                }).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        window.viewResult = async function(serviceId, serviceType) {
+            try {
+                const request = await getServiceRequestById(serviceId);
+                const result = request.result;
+                const title = document.getElementById('resultTitle');
+                const content = document.getElementById('resultContent');
+                title.innerHTML = serviceType === 'valuation' ? '💰 Valuation Result' : '🔍 Inspection Report';
+                if (serviceType === 'valuation') {
+                    content.innerHTML = `<div class="result-value">KES ${result.market_value?.toLocaleString() || 'N/A'}</div><div class="result-details"><div class="result-detail-row"><span class="result-label">Age of Vehicle</span><span class="result-value-text">${result.age_years || 'N/A'} years</span></div><div class="result-detail-row"><span class="result-label">Depreciation Rate</span><span class="result-value-text">${result.depreciation_rate || 'N/A'}%</span></div><div class="result-detail-row"><span class="result-label">Certificate Number</span><span class="result-value-text">${result.certificate_number || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Valuation Date</span><span class="result-value-text">${new Date(result.valuation_date || Date.now()).toLocaleDateString()}</span></div></div><p style="text-align:center;color:#22c55e;margin-top:16px;">✅ Official valuation certificate generated</p>`;
+                } else {
+                    content.innerHTML = `<div class="result-value">${result.overall_score || 'N/A'}%</div><div class="result-details"><div class="result-detail-row"><span class="result-label">Verdict</span><span class="result-value-text">${result.verdict || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Certificate Number</span><span class="result-value-text">${result.certificate_number || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Inspection Date</span><span class="result-value-text">${new Date(result.inspection_date || Date.now()).toLocaleDateString()}</span></div></div>${result.categories ? `<div class="result-details"><div class="result-detail-row"><span class="result-label">Engine</span><span class="result-value-text">${result.categories.engine || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Transmission</span><span class="result-value-text">${result.categories.transmission || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Brakes</span><span class="result-value-text">${result.categories.brakes || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Electrical</span><span class="result-value-text">${result.categories.electrical || 'N/A'}</span></div></div>` : ''}<p style="text-align:center;color:#22c55e;margin-top:16px;">✅ Full inspection report available</p>`;
+                }
+                document.getElementById('resultModal').style.display = 'flex';
+            } catch (e) { showToast("Failed to load result", "error"); }
+        };
+
+        function setupRealtime() {
+            subscribeToServiceUpdates(currentUser.id, () => { loadHistory(); showToast("Your request has been updated!", "success"); });
+        }
+
+        function showToast(msg, type = "info") {
+            const existing = document.querySelector(".toast");
+            if (existing) existing.remove();
+            const toast = document.createElement("div");
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `<span>${type === "success" ? "✅" : type === "error" ? "❌" : "ℹ️"}</span><span>${msg}</span>`;
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.style.animation = "slideOut 0.3s ease"; setTimeout(() => toast.remove(), 300); }, 5000);
+        }
+
+        async function handleSubmit(serviceData, btnId, modalId) {
+            if (isProcessing) { showToast("Please wait...", "error"); return; }
+            isProcessing = true;
+            const btn = document.getElementById(btnId);
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Processing...';
+            try {
+                const request = await createServiceRequest(serviceData);
+                showToast("✅ Request created! Initiating payment...", "success");
+                const result = await initiatePayment(request.id, serviceData.amount, serviceData.phone, '', serviceData.service_type);
+                if (result.ResponseCode === '0') {
+                    showToast("📱 STK Push sent! Check your phone and enter PIN.", "info");
+                    if (pollingInterval) clearInterval(pollingInterval);
+                    pollingInterval = setInterval(async () => {
+                        const status = await checkPaymentStatus(request.id);
+                        if (status.payment_status === 'paid') {
+                            clearInterval(pollingInterval);
+                            showToast("✅ Payment confirmed! Your results are ready.", "success");
+                            loadHistory();
+                            isProcessing = false;
+                            btn.disabled = false;
+                            btn.innerHTML = originalText;
+                        }
+                    }, 3000);
+                    setTimeout(() => {
+                        if (isProcessing) {
+                            clearInterval(pollingInterval);
+                            isProcessing = false;
+                            btn.disabled = false;
+                            btn.innerHTML = originalText;
+                        }
+                    }, 120000);
+                } else {
+                    throw new Error(result.ResponseDescription || "Payment initiation failed");
+                }
+                closeModal(modalId);
+            } catch (e) {
+                showToast("Error: " + e.message, "error");
+                isProcessing = false;
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        function openValuationModal() { document.getElementById('valAmount').value = `KES ${valuationFee.toLocaleString()}`; document.getElementById('valuationModal').style.display = 'flex'; }
+        function openInspectionModal() { document.getElementById('insAmount').value = `KES ${inspectionFee.toLocaleString()}`; document.getElementById('inspectionModal').style.display = 'flex'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        async function submitValuation() {
+            const reg = document.getElementById('valReg').value, make = document.getElementById('valMake').value, model = document.getElementById('valModel').value, year = document.getElementById('valYear').value, purpose = document.getElementById('valPurpose').value, phone = document.getElementById('valPhone').value;
+            if (!reg || !make || !model || !year || !phone) { showToast("Please fill all fields", "error"); return; }
+            if (!phone.match(/^07\d{8}$/) && !phone.match(/^01\d{8}$/)) { showToast("Enter valid M-Pesa number (07XXXXXXXX)", "error"); return; }
+            closeModal('valuationModal');
+            await handleSubmit({ user_id: currentUser.id, service_type: 'valuation', registration_number: reg, make, model, year: parseInt(year), purpose, amount: valuationFee, phone }, 'submitValuationBtn', 'valuationModal');
+            ['valReg', 'valMake', 'valModel', 'valYear', 'valPhone'].forEach(id => document.getElementById(id).value = '');
+        }
+
+        async function submitInspection() {
+            const reg = document.getElementById('insReg').value, make = document.getElementById('insMake').value, model = document.getElementById('insModel').value, year = document.getElementById('insYear').value, mileage = document.getElementById('insMileage').value, phone = document.getElementById('insPhone').value;
+            if (!reg || !make || !model || !year || !mileage || !phone) { showToast("Please fill all fields", "error"); return; }
+            if (!phone.match(/^07\d{8}$/) && !phone.match(/^01\d{8}$/)) { showToast("Enter valid M-Pesa number (07XXXXXXXX)", "error"); return; }
+            closeModal('inspectionModal');
+            await handleSubmit({ user_id: currentUser.id, service_type: 'inspection', registration_number: reg, make, model, year: parseInt(year), mileage: parseInt(mileage), amount: inspectionFee, phone }, 'submitInspectionBtn', 'inspectionModal');
+            ['insReg', 'insMake', 'insModel', 'insYear', 'insMileage', 'insPhone'].forEach(id => document.getElementById(id).value = '');
+        }
+
+        document.getElementById('valuationBtn').onclick = openValuationModal;
+        document.getElementById('inspectionBtn').onclick = openInspectionModal;
+        document.getElementById('submitValuationBtn').onclick = submitValuation;
+        document.getElementById('submitInspectionBtn').onclick = submitInspection;
+        document.getElementById('logoutBtn').onclick = logout;
+        document.querySelectorAll('.modal').forEach(modal => { modal.onclick = (e) => { if (e.target === modal) closeModal(modal.id); }; });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.modal').forEach(m => { if (m.style.display === 'flex') closeModal(m.id); }); });
+
+        init();
+    });
+</script>
+</body>
+</html>
