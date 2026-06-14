@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Dashboard</title>
+    <!-- Load Supabase CDN FIRST -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Load supabase.js SECOND (it uses the CDN) -->
     <script src="supabase.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -245,10 +247,8 @@
         <h2>📋 My Service History</h2>
         <div class="table-container">
             <table id="historyTable">
-                <thead>
-                    <tr><th>Date</th><th>Service</th><th>Vehicle</th><th>Amount</th><th>Status</th><th>Payment</th><th>Result</th></tr>
-                </thead>
-                <tbody id="historyBody"><tr><td colspan="7" class="empty-state">Loading your requests...<\/td><\/tr></tbody>
+                <thead><tr><th>Date</th><th>Service</th><th>Vehicle</th><th>Amount</th><th>Status</th><th>Payment</th><th>Result</th></tr></thead>
+                <tbody id="historyBody"><tr><td colspan="7" class="empty-state">Loading your requests...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -290,13 +290,19 @@
 <div id="resultModal" class="modal"><div class="modal-content result-modal-content"><h2 id="resultTitle">Result</h2><div id="resultContent"></div><button class="btn-secondary" onclick="closeModal('resultModal')" style="width:100%;">Close</button></div></div>
 
 <script>
-    // Wait for autoV to load
+    // Wait for autoV to load from supabase.js
     function waitForAutoV(callback) {
-        if (typeof window.autoV !== 'undefined') { callback(); }
-        else { setTimeout(() => waitForAutoV(callback), 100); }
+        if (typeof window.autoV !== 'undefined') {
+            callback();
+        } else {
+            console.log('Waiting for autoV...');
+            setTimeout(() => waitForAutoV(callback), 100);
+        }
     }
 
     waitForAutoV(async function() {
+        console.log('autoV loaded, initializing dashboard...');
+        
         const { requireAuth, logout, createServiceRequest, getServiceRequests, getServiceRequestById, loadFees, initiatePayment, checkPaymentStatus, subscribeToServiceUpdates } = window.autoV;
 
         let currentUser = null;
@@ -333,7 +339,15 @@
                         if (r.service_type === 'valuation') resultText = `KES ${r.result.market_value?.toLocaleString() || 'N/A'}`;
                         else resultText = `${r.result.overall_score || 'N/A'}%`;
                     }
-                    return `<tr><td>${new Date(r.created_at).toLocaleString()}</td><td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td><td>${r.make} ${r.model} (${r.registration_number})</td><td>KES ${(r.amount || 0).toLocaleString()}</td><td><span class="badge ${statusBadge}">${r.status}</span></td><td><span class="badge ${paymentBadge}">${r.payment_status}</span></td><td>${r.result ? `<span class="result-link" onclick="viewResult('${r.id}', '${r.service_type}')">View →</span>` : '-'}</td></tr>`;
+                    return `<tr>
+                        <td>${new Date(r.created_at).toLocaleString()}</td>
+                        <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
+                        <td>${r.make} ${r.model} (${r.registration_number})</td>
+                        <td>KES ${(r.amount || 0).toLocaleString()}</td>
+                        <td><span class="badge ${statusBadge}">${r.status}</span></td>
+                        <td><span class="badge ${paymentBadge}">${r.payment_status}</span></td>
+                        <td>${r.result ? `<span class="result-link" onclick="window.viewResult('${r.id}', '${r.service_type}')">View →</span>` : '-'}</td>
+                    </tr>`;
                 }).join('');
             } catch (e) { console.error(e); }
         }
@@ -346,9 +360,28 @@
                 const content = document.getElementById('resultContent');
                 title.innerHTML = serviceType === 'valuation' ? '💰 Valuation Result' : '🔍 Inspection Report';
                 if (serviceType === 'valuation') {
-                    content.innerHTML = `<div class="result-value">KES ${result.market_value?.toLocaleString() || 'N/A'}</div><div class="result-details"><div class="result-detail-row"><span class="result-label">Age of Vehicle</span><span class="result-value-text">${result.age_years || 'N/A'} years</span></div><div class="result-detail-row"><span class="result-label">Depreciation Rate</span><span class="result-value-text">${result.depreciation_rate || 'N/A'}%</span></div><div class="result-detail-row"><span class="result-label">Certificate Number</span><span class="result-value-text">${result.certificate_number || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Valuation Date</span><span class="result-value-text">${new Date(result.valuation_date || Date.now()).toLocaleDateString()}</span></div></div><p style="text-align:center;color:#22c55e;margin-top:16px;">✅ Official valuation certificate generated</p>`;
+                    content.innerHTML = `<div class="result-value">KES ${result.market_value?.toLocaleString() || 'N/A'}</div>
+                        <div class="result-details">
+                            <div class="result-detail-row"><span class="result-label">Age of Vehicle</span><span class="result-value-text">${result.age_years || 'N/A'} years</span></div>
+                            <div class="result-detail-row"><span class="result-label">Depreciation Rate</span><span class="result-value-text">${result.depreciation_rate || 'N/A'}%</span></div>
+                            <div class="result-detail-row"><span class="result-label">Certificate Number</span><span class="result-value-text">${result.certificate_number || 'N/A'}</span></div>
+                            <div class="result-detail-row"><span class="result-label">Valuation Date</span><span class="result-value-text">${new Date(result.valuation_date || Date.now()).toLocaleDateString()}</span></div>
+                        </div>
+                        <p style="text-align:center;color:#22c55e;margin-top:16px;">✅ Official valuation certificate generated</p>`;
                 } else {
-                    content.innerHTML = `<div class="result-value">${result.overall_score || 'N/A'}%</div><div class="result-details"><div class="result-detail-row"><span class="result-label">Verdict</span><span class="result-value-text">${result.verdict || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Certificate Number</span><span class="result-value-text">${result.certificate_number || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Inspection Date</span><span class="result-value-text">${new Date(result.inspection_date || Date.now()).toLocaleDateString()}</span></div></div>${result.categories ? `<div class="result-details"><div class="result-detail-row"><span class="result-label">Engine</span><span class="result-value-text">${result.categories.engine || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Transmission</span><span class="result-value-text">${result.categories.transmission || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Brakes</span><span class="result-value-text">${result.categories.brakes || 'N/A'}</span></div><div class="result-detail-row"><span class="result-label">Electrical</span><span class="result-value-text">${result.categories.electrical || 'N/A'}</span></div></div>` : ''}<p style="text-align:center;color:#22c55e;margin-top:16px;">✅ Full inspection report available</p>`;
+                    content.innerHTML = `<div class="result-value">${result.overall_score || 'N/A'}%</div>
+                        <div class="result-details">
+                            <div class="result-detail-row"><span class="result-label">Verdict</span><span class="result-value-text">${result.verdict || 'N/A'}</span></div>
+                            <div class="result-detail-row"><span class="result-label">Certificate Number</span><span class="result-value-text">${result.certificate_number || 'N/A'}</span></div>
+                            <div class="result-detail-row"><span class="result-label">Inspection Date</span><span class="result-value-text">${new Date(result.inspection_date || Date.now()).toLocaleDateString()}</span></div>
+                        </div>
+                        ${result.categories ? `<div class="result-details">
+                            <div class="result-detail-row"><span class="result-label">Engine</span><span class="result-value-text">${result.categories.engine || 'N/A'}</span></div>
+                            <div class="result-detail-row"><span class="result-label">Transmission</span><span class="result-value-text">${result.categories.transmission || 'N/A'}</span></div>
+                            <div class="result-detail-row"><span class="result-label">Brakes</span><span class="result-value-text">${result.categories.brakes || 'N/A'}</span></div>
+                            <div class="result-detail-row"><span class="result-label">Electrical</span><span class="result-value-text">${result.categories.electrical || 'N/A'}</span></div>
+                        </div>` : ''}
+                        <p style="text-align:center;color:#22c55e;margin-top:16px;">✅ Full inspection report available</p>`;
                 }
                 document.getElementById('resultModal').style.display = 'flex';
             } catch (e) { showToast("Failed to load result", "error"); }
