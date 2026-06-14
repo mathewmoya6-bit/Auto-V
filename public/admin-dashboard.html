@@ -66,4 +66,86 @@
             <div class="stat-card"><h3>Total Valuations</h3><div class="stat-number" id="totalValuations">0</div></div>
             <div class="stat-card"><h3>Total Inspections</h3><div class="stat-number" id="totalInspections">0</div></div>
             <div class="stat-card"><h3>Total Revenue</h3><div class="stat-number" id="totalRevenue">KES 0</div></div>
-            <div class="stat-card"><h3>Total Users</h3><div class="stat-number" id="totalUsers
+            <div class="stat-card"><h3>Total Users</h3><div class="stat-number" id="totalUsers">0</div></div>
+        </div>
+        
+        <div class="card">
+            <h2>💰 Set Service Fees</h2>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div><label>Valuation Fee (KES)</label><input type="number" id="valuationFee" style="padding:10px; margin-left:10px;"></div>
+                <div><label>Inspection Fee (KES)</label><input type="number" id="inspectionFee" style="padding:10px; margin-left:10px;"></div>
+                <button class="btn" id="updateFeesBtn">Update Fees</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📊 Recent Requests</h2>
+            <div style="overflow-x: auto;">
+                <table id="requestsTable">
+                    <thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th></tr></thead>
+                    <tbody id="requestsBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>
+        const supabase = window.AUTO_V_CONFIG?.supabase || window.supabase.createClient(
+            "https://tsvejnzxrxrrecgquxbq.supabase.co",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ"
+        );
+        
+        async function loadData() {
+            const { data: valuations } = await supabase.from('service_requests').select('*').eq('service_type', 'valuation').order('created_at', { ascending: false });
+            const { data: inspections } = await supabase.from('service_requests').select('*').eq('service_type', 'inspection').order('created_at', { ascending: false });
+            const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+            
+            const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+            const all = [...(valuations || []), ...(inspections || [])].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            document.getElementById('totalValuations').innerText = valuations?.length || 0;
+            document.getElementById('totalInspections').innerText = inspections?.length || 0;
+            
+            const revenue = (valuations || []).reduce((s,v) => s + (v.amount || 0), 0) + (inspections || []).reduce((s,i) => s + (i.amount || 0), 0);
+            document.getElementById('totalRevenue').innerHTML = `KES ${revenue.toLocaleString()}`;
+            document.getElementById('totalUsers').innerText = userMap.size;
+            
+            const tbody = document.getElementById('requestsBody');
+            if (all.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No requests<\/td><\/tr>'; return; }
+            tbody.innerHTML = all.slice(0, 50).map(r => `
+                <tr>
+                    <td>${new Date(r.created_at).toLocaleString()}</td>
+                    <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}</td>
+                    <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}...</td>
+                    <td>${r.make} ${r.model} ($ {r.registration_number})</td>
+                    <td>KES ${(r.amount || 0).toLocaleString()}</td>
+                    <td><span style="background:${r.payment_status === 'paid' ? '#22c55e' : '#eab308'}; padding:4px 12px; border-radius:20px;">${r.payment_status || 'pending'}</span></td>
+                    <td>${r.status || 'pending'}</td>
+                </tr>
+            `).join('');
+        }
+        
+        async function updateFees() {
+            const valuationFee = document.getElementById('valuationFee').value;
+            const inspectionFee = document.getElementById('inspectionFee').value;
+            await supabase.from('system_settings').upsert({ setting_key: 'valuation_fee', setting_value: valuationFee });
+            await supabase.from('system_settings').upsert({ setting_key: 'inspection_fee', setting_value: inspectionFee });
+            alert('Fees updated!');
+        }
+        
+        async function loadFees() {
+            const { data: v } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'valuation_fee').single();
+            const { data: i } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'inspection_fee').single();
+            if (v) document.getElementById('valuationFee').value = v.setting_value;
+            if (i) document.getElementById('inspectionFee').value = i.setting_value;
+        }
+        
+        document.getElementById('updateFeesBtn').onclick = updateFees;
+        document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
+        
+        supabase.auth.getUser().then(({ data: { user }, error }) => {
+            if (error || !user) window.location.href = 'admin-login.html';
+            else { loadFees(); loadData(); setInterval(loadData, 30000); }
+        });
+    </script>
+</body>
+</html>
