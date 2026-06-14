@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Complete Admin Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23eab308' rx='20'/><text x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'>🚗</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0c15;
+            color: #ffffff;
+            padding: 20px;
+        }
+        .container { max-width: 1600px; margin: auto; }
+        header {
+            background: #0f172a;
+            padding: 16px 24px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            border: 1px solid #1e293b;
+        }
+        .logo { font-size: 24px; font-weight: bold; color: #eab308; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 11px; color: #94a3b8; }
+        .logout-btn { background: #dc2626; color: white; padding: 8px 20px; border: none; border-radius: 40px; cursor: pointer; font-weight: 600; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 16px;
+            text-align: center;
+            border: 1px solid #1e293b;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .stat-card:hover { transform: translateY(-3px); border-color: #eab308; background: #1e293b; }
+        .stat-card h3 { color: #94a3b8; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-number { font-size: 28px; font-weight: 800; color: #22c55e; }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            background: #1e293b;
+            color: #cbd5e1;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+        .tab-btn.active { background: #eab308; color: #0a0c10; }
+        .tab-btn:hover { background: #334155; }
+        .card {
+            background: #0f172a;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid #1e293b;
+        }
+        h2 { color: #eab308; margin-bottom: 20px; font-size: 20px; border-left: 4px solid #eab308; padding-left: 15px; }
+        h3 { color: #eab308; margin: 20px 0 15px 0; font-size: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid #1e293b; }
+        th { color: #eab308; font-weight: 600; background: #0f172a; position: sticky; top: 0; }
+        .btn {
+            background: #eab308;
+            color: black;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        .btn:hover { background: #facc15; transform: scale(1.02); }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-warning { background: #eab308; color: black; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .form-group { flex: 1; min-width: 180px; margin-bottom: 15px; }
+        label { display: block; margin-bottom: 6px; color: #94a3b8; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: white;
+            font-size: 13px;
+        }
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .badge-active { background: #22c55e; color: black; }
+        .badge-pending { background: #eab308; color: black; }
+        .badge-paid { background: #22c55e; color: black; }
+        .badge-admin { background: #8b5cf6; color: white; }
+        .badge-user { background: #475569; color: white; }
+        .badge-super_admin { background: #ef4444; color: white; }
+        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: #0f172a;
+            border-radius: 20px;
+            max-width: 550px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 25px;
+            border: 2px solid #eab308;
+        }
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.6s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error, .success {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+            font-size: 13px;
+        }
+        .error { background: #7f1d1d; color: #ef4444; border-left: 4px solid #ef4444; }
+        .success { background: #14532d; color: #22c55e; border-left: 4px solid #22c55e; }
+        .chart-container { max-height: 300px; }
+        @media (max-width: 768px) {
+            .form-row { flex-direction: column; gap: 10px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            th, td { font-size: 11px; padding: 8px 4px; }
+            .tabs { gap: 5px; }
+            .tab-btn { padding: 6px 12px; font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div class="logo">🚗 AUTO-V Admin <span>| Complete Control Panel</span></div>
+        <div><span id="adminBadge" style="background:#eab308; color:black; padding:5px 15px; border-radius:20px; font-size:12px; margin-right:10px;">ADMIN</span><button class="logout-btn" id="logoutBtn">Logout</button></div>
+    </header>
+
+    <div id="errorMsg" class="error"></div>
+    <div id="successMsg" class="success"></div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <div class="stat-card" onclick="switchTab('dashboard')"><h3>📊 Revenue</h3><div class="stat-number" id="totalRevenue">KES 0</div></div>
+        <div class="stat-card" onclick="switchTab('users')"><h3>👥 Users</h3><div class="stat-number" id="totalUsers">0</div></div>
+        <div class="stat-card" onclick="switchTab('requests')"><h3>📋 Requests</h3><div class="stat-number" id="totalRequests">0</div></div>
+        <class="stat-card" onclick="switchTab('payments')"><h3>💳 Payments</h3><div class="stat-number" id="totalPayments">0</div></div>
+        <div class="stat-card" onclick="switchTab('pricing')"><h3>💰 Pricing Rules</h3><div class="stat-number" id="totalRules">0</div></div>
+        <div class="stat-card" onclick="switchTab('partners')"><h3>🤝 Partners</h3><div class="stat-number" id="totalPartners">0</div></div>
+        <div class="stat-card" onclick="switchTab('vehicles')"><h3>🚗 Vehicles</h3><div class="stat-number" id="totalVehicles">0</div></div>
+        <div class="stat-card" onclick="switchTab('certificates')"><h3>📜 Certificates</h3><div class="stat-number" id="totalCertificates">0</div></div>
+    </div>
+
+    <!-- Tabs - 12 Sections -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+        <button class="tab-btn" data-tab="users">👥 Users</button>
+        <button class="tab-btn" data-tab="vehicles">🚗 Vehicles</button>
+        <button class="tab-btn" data-tab="requests">📋 Requests</button>
+        <button class="tab-btn" data-tab="payments">💳 Payments</button>
+        <button class="tab-btn" data-tab="pricing">💰 Pricing</button>
+        <button class="tab-btn" data-tab="certificates">📜 Certificates</button>
+        <button class="tab-btn" data-tab="partners">🤝 Partners</button>
+        <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
+        <button class="tab-btn" data-tab="analytics">📈 Analytics</button>
+        <button class="tab-btn" data-tab="reports">📄 Reports</button>
+        <button class="tab-btn" data-tab="audit">📝 Audit</button>
+    </div>
+
+    <!-- Dashboard Tab -->
+    <div id="dashboardTab" class="card">
+        <h2>📊 Revenue & Activity Dashboard</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div><canvas id="revenueChart" class="chart-container"></canvas></div>
+            <div><canvas id="serviceChart" class="chart-container"></canvas></div>
+        </div>
+        <div style="margin-top: 20px;">
+            <h3>Quick Actions</h3>
+            <div class="action-buttons">
+                <button class="btn btn-success" onclick="switchTab('users')">👥 Manage Users</button>
+                <button class="btn btn-primary" onclick="switchTab('pricing')">💰 Update Pricing</button>
+                <button class="btn btn-warning" onclick="exportData()">📥 Export All Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Tab -->
+    <div id="usersTab" class="card" style="display:none;">
+        <h2>👥 User Management</h2>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+            <input type="text" id="searchUser" placeholder="Search users..." style="width: 250px;" onkeyup="searchUsers()">
+            <button class="btn btn-success" onclick="openUserModal()">+ Add User</button>
+        </div>
+        <div style="overflow-x: auto;">
+            <table id="usersTable">
+                <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Phone</th><th>Joined</th><th>Requests</th><th>Actions</th></tr></thead>
+                <tbody id="usersBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Vehicles Tab -->
+    <div id="vehiclesTab" class="card" style="display:none;">
+        <h2>🚗 Vehicle Management</h2>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+            <input type="text" id="searchVehicle" placeholder="Search vehicles..." style="width: 250px;" onkeyup="searchVehicles()">
+            <button class="btn btn-success" onclick="openVehicleModal()">+ Add Vehicle</button>
+        </div>
+        <div style="overflow-x: auto;">
+            <table id="vehiclesTable">
+                <thead><tr><th>Reg No</th><th>Make/Model</th><th>Year</th><th>Owner</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="vehiclesBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Requests Tab -->
+    <div id="requestsTab" class="card" style="display:none;">
+        <h2>📋 Service Requests</h2>
+        <div style="overflow-x: auto;">
+            <table id="requestsTable">
+                <thead><tr><th>Date</th><th>Type</th><th>User</th><th>Vehicle</th><th>Amount</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="requestsBody"><td><td colspan="8">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Payments Tab -->
+    <div id="paymentsTab" class="card" style="display:none;">
+        <h2>💳 Payment Transactions</h2>
+        <div style="overflow-x: auto;">
+            <table id="paymentsTable">
+                <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>Receipt</th><th>Status</th></tr></thead>
+                <tbody id="paymentsBody"><tr><td colspan="6">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pricing Tab -->
+    <div id="pricingTab" class="card" style="display:none;">
+        <h2>💰 Pricing Matrix</h2>
+        <p style="color:#94a3b8; margin-bottom:15px;">Prices based on Vehicle Category + Valuation Purpose</p>
+        <div style="background:#1e293b; padding:20px; border-radius:16px; margin-bottom:20px;">
+            <h3 style="margin-top:0;">➕ Add New Pricing Rule</h3>
+            <div class="form-row">
+                <div class="form-group"><label>Vehicle Category</label>
+                    <select id="newCategory">
+                        <option value="passenger_car">🚗 Passenger Car</option>
+                        <option value="suv">🚙 SUV</option>
+                        <option value="motorcycle">🏍️ Motorcycle</option>
+                        <option value="tuk_tuk">🛺 Tuk-tuk</option>
+                        <option value="commercial">🚚 Commercial</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Purpose</label>
+                    <select id="newPurpose">
+                        <option value="pre_insurance">🛡️ Pre-Insurance</option>
+                        <option value="loan_collateral">🏦 Loan</option>
+                        <option value="court_case">⚖️ Court</option>
+                        <option value="fleet_valuation">🚛 Fleet</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Base Price</label><input type="number" id="newBasePrice" value="2500"></div>
+            </div>
+            <button class="btn btn-success" id="addRuleBtn">+ Add Rule</button>
+        </div>
+        <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+            <table id="pricingTable">
+                <thead><tr><th>Category</th><th>Purpose</th><th>Base</th><th>Express</th><th>Premium</th><th>Certificate</th><th>Actions</th></td></thead>
+                <tbody id="pricingBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Certificates Tab -->
+    <div id="certificatesTab" class="card" style="display:none;">
+        <h2>📜 Certificates Issued</h2>
+        <div style="overflow-x: auto;">
+            <table id="certificatesTable">
+                <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Certificate No</th><th>Actions</th></tr></thead>
+                <tbody id="certificatesBody"><td><td colspan="5">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Partners Tab -->
+    <div id="partnersTab" class="card" style="display:none;">
+        <h2>🤝 Partner Management</h2>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+            <button class="btn btn-success" onclick="openPartnerModal()">+ Add Partner</button>
+        </div>
+        <div style="overflow-x: auto;">
+            <table id="partnersTable">
+                <thead><tr><th>Name</th><th>Type</th><th>Contact</th><th>Email</th><th>Commission</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="partnersBody"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div id="settingsTab" class="card" style="display:none;">
+        <h2>⚙️ System Settings</h2>
+        <div class="form-row">
+            <div class="form-group"><label>System Name</label><input type="text" id="systemName" placeholder="AUTO-V Kenya"></div>
+            <div class="form-group"><label>Support Email</label><input type="email" id="supportEmail" placeholder="support@autov.co.ke"></div>
+            <div class="form-group"><label>Support Phone</label><input type="tel" id="supportPhone" placeholder="+254700000000"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Currency</label><select id="currency"><option>KES</option><option>USD</option><option>UGX</option><option>TZS</option></select></div>
+            <div class="form-group"><label>Maintenance Mode</label><select id="maintenanceMode"><option>Off</option><option>On</option></select></div>
+        </div>
+        <button class="btn btn-primary" id="updateSettingsBtn">Save Settings</button>
+    </div>
+
+    <!-- Analytics Tab -->
+    <div id="analyticsTab" class="card" style="display:none;">
+        <h2>📈 Advanced Analytics</h2>
+        <div class="form-row">
+            <div class="form-group"><label>Start Date</label><input type="date" id="analyticsStart"></div>
+            <div class="form-group"><label>End Date</label><input type="date" id="analyticsEnd"></div>
+            <div class="form-group"><label>Report Type</label>
+                <select id="reportType">
+                    <option value="revenue">Revenue Report</option>
+                    <option value="users">User Activity</option>
+                    <option value="services">Services Report</option>
+                </select>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="generateAnalytics()">Generate Report</button>
+        <div id="analyticsResult" style="margin-top:20px;"></div>
+    </div>
+
+    <!-- Reports Tab -->
+    <div id="reportsTab" class="card" style="display:none;">
+        <h2>📄 Export Reports</h2>
+        <div class="form-row">
+            <div class="form-group"><label>Report Type</label>
+                <select id="exportType">
+                    <option value="users">Users List</option>
+                    <option value="requests">Service Requests</option>
+                    <option value="payments">Payment Transactions</option>
+                    <option value="pricing">Pricing Rules</option>
+                </select>
+            </div>
+            <div class="form-group"><label>Format</label>
+                <select id="exportFormat">
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                </select>
+            </div>
+        </div>
+        <button class="btn btn-success" onclick="exportReport()">Export Report</button>
+    </div>
+
+    <!-- Audit Tab -->
+    <div id="auditTab" class="card" style="display:none;">
+        <h2>📝 Audit Logs</h2>
+        <div style="overflow-x: auto;">
+            <table id="auditTable">
+                <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th></td></thead>
+                <tbody id="auditBody"><tr><td colspan="4">Loading...<\/td><\/tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<div id="userModal" class="modal"><div class="modal-content"><h3>Add/Edit User</h3><input type="hidden" id="userId"><div class="form-group"><label>Email</label><input type="email" id="userEmail"></div><div class="form-group"><label>Password</label><input type="password" id="userPassword"></div><div class="form-group"><label>Role</label><select id="userRole"><option>user</option><option>admin</option><option>super_admin</option></select></div><div class="form-group"><label>Phone</label><input type="tel" id="userPhone"></div><div class="action-buttons"><button class="btn btn-success" onclick="saveUser()">Save</button><button class="btn btn-danger" onclick="closeModal('userModal')">Cancel</button></div></div></div>
+
+<div id="vehicleModal" class="modal"><div class="modal-content"><h3>Add Vehicle</h3><input type="hidden" id="vehicleId"><div class="form-row"><div class="form-group"><label>Reg No</label><input type="text" id="vehicleReg"></div><div class="form-group"><label>Make</label><input type="text" id="vehicleMake"></div></div><div class="form-row"><div class="form-group"><label>Model</label><input type="text" id="vehicleModel"></div><div class="form-group"><label>Year</label><input type="number" id="vehicleYear"></div></div><div class="form-group"><label>Owner ID</label><input type="text" id="vehicleOwnerId"></div><div class="action-buttons"><button class="btn btn-success" onclick="saveVehicle()">Save</button><button class="btn btn-danger" onclick="closeModal('vehicleModal')">Cancel</button></div></div></div>
+
+<div id="partnerModal" class="modal"><div class="modal-content"><h3>Add Partner</h3><input type="hidden" id="partnerId"><div class="form-group"><label>Name</label><input type="text" id="partnerName"></div><div class="form-row"><div class="form-group"><label>Type</label><select id="partnerType"><option>Bank</option><option>Insurance</option><option>Dealership</option></select></div><div class="form-group"><label>Commission (%)</label><input type="number" id="partnerCommission"></div></div><div class="form-group"><label>Email</label><input type="email" id="partnerEmail"></div><div class="form-group"><label>Phone</label><input type="tel" id="partnerPhone"></div><div class="action-buttons"><button class="btn btn-success" onclick="savePartner()">Save</button><button class="btn btn-danger" onclick="closeModal('partnerModal')">Cancel</button></div></div></div>
+
+<script>
+// ============================================
+// SUPABASE SINGLE SOURCE OF TRUTH
+// ============================================
+const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let allUsers = [];
+let allPricingRules = [];
+let revenueChart = null;
+let serviceChart = null;
+
+// ============================================
+// AUTHENTICATION
+// ============================================
+async function checkAdmin() {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) { window.location.href = "admin-login.html"; return false; }
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+        await supabase.auth.signOut();
+        window.location.href = "admin-login.html";
+        return false;
+    }
+    currentUser = user;
+    document.getElementById('adminBadge').innerHTML = profile.role === 'super_admin' ? '👑 SUPER ADMIN' : '👤 ADMIN';
+    return true;
+}
+
+// ============================================
+// STATS
+// ============================================
+async function loadStats() {
+    const { data: users } = await supabase.from('user_profiles').select('id');
+    const { data: requests } = await supabase.from('service_requests').select('*');
+    const { data: payments } = await supabase.from('mpesa_transactions').select('id');
+    const { data: partners } = await supabase.from('partners').select('id');
+    const { data: vehicles } = await supabase.from('vehicles').select('id');
+    const { data: certificates } = await supabase.from('certificates').select('id');
+    
+    const revenue = requests?.reduce((sum, r) => sum + (r.payment_status === 'paid' ? (r.amount || 0) : 0), 0) || 0;
+    document.getElementById('totalUsers').innerText = users?.length || 0;
+    document.getElementById('totalRequests').innerText = requests?.length || 0;
+    document.getElementById('totalRevenue').innerHTML = `KES ${revenue.toLocaleString()}`;
+    document.getElementById('totalPayments').innerText = payments?.length || 0;
+    document.getElementById('totalPartners').innerText = partners?.length || 0;
+    document.getElementById('totalVehicles').innerText = vehicles?.length || 0;
+    document.getElementById('totalCertificates').innerText = certificates?.length || 0;
+}
+
+// ============================================
+// USERS
+// ============================================
+async function loadUsers() {
+    const { data: profiles } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
+    const { data: requests } = await supabase.from('service_requests').select('user_id');
+    const reqCount = new Map();
+    requests?.forEach(r => reqCount.set(r.user_id, (reqCount.get(r.user_id) || 0) + 1));
+    allUsers = profiles || [];
+    document.getElementById('usersBody').innerHTML = allUsers.map(u => `
+        <tr>
+            <td>${u.id?.slice(0,8)}...<\/td>
+            <td>${u.email}<\/td>
+            <td><span class="badge ${u.role === 'super_admin' ? 'badge-super_admin' : (u.role === 'admin' ? 'badge-admin' : 'badge-user')}">${u.role || 'user'}</span><\/td>
+            <td>${u.phone || '-'}<\/td>
+            <td>${new Date(u.created_at).toLocaleDateString()}<\/td>
+            <td>${reqCount.get(u.id) || 0}<\/td>
+            <td class="action-buttons"><button class="btn" onclick="editUser('${u.id}','${u.email}','${u.role}','${u.phone || ''}')">Edit</button><button class="btn btn-danger" onclick="deleteUser('${u.id}')">Delete</button><\/td>
+        </tr>
+    `).join('');
+}
+
+async function toggleUserRole(userId, currentRole) {
+    const newRole = currentRole === 'admin' ? 'user' : (currentRole === 'super_admin' ? 'admin' : 'admin');
+    if (confirm(`Change user role to ${newRole}?`)) {
+        await supabase.from('user_profiles').update({ role: newRole }).eq('id', userId);
+        showMessage('Role updated!', 'success');
+        loadUsers();
+    }
+}
+
+// ============================================
+// VEHICLES
+// ============================================
+async function loadVehicles() {
+    const { data } = await supabase.from('vehicles').select('*').order('created_at', { ascending: false });
+    const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+    const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+    document.getElementById('vehiclesBody').innerHTML = (data || []).slice(0, 100).map(v => `
+        <tr>
+            <td>${v.registration_number || 'N/A'}<\/td>
+            <td>${v.make} ${v.model}<\/td>
+            <td>${v.year}<\/td>
+            <td>${userMap.get(v.user_id) || v.user_id?.slice(0,8)}<\/td>
+            <td><span class="badge ${v.is_active ? 'badge-active' : 'badge-pending'}">${v.is_active ? 'Active' : 'Inactive'}</span><\/td>
+            <td class="action-buttons"><button class="btn" onclick="editVehicle('${v.id}')">Edit</button><button class="btn btn-danger" onclick="deleteVehicle('${v.id}')">Delete</button><\/td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// REQUESTS
+// ============================================
+async function loadRequests() {
+    const { data } = await supabase.from('service_requests').select('*').order('created_at', { ascending: false });
+    const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+    const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+    document.getElementById('requestsBody').innerHTML = (data || []).slice(0, 100).map(r => `
+        <tr>
+            <td>${new Date(r.created_at).toLocaleString()}<\/td>
+            <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}<\/td>
+            <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}<\/td>
+            <td>${r.make} ${r.model}<\/td>
+            <td>KES ${(r.amount || 0).toLocaleString()}<\/td>
+            <td><span class="badge ${r.payment_status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.payment_status}</span><\/td>
+            <td>${r.status}<\/td>
+            <td class="action-buttons"><button class="btn" onclick="viewRequest('${r.id}')">View</button><button class="btn btn-danger" onclick="deleteRequest('${r.id}')">Delete</button><\/td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// PAYMENTS
+// ============================================
+async function loadPayments() {
+    const { data } = await supabase.from('mpesa_transactions').select('*').order('created_at', { ascending: false });
+    const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+    const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+    document.getElementById('paymentsBody').innerHTML = (data || []).slice(0, 100).map(p => `
+        <tr>
+            <td>${new Date(p.created_at).toLocaleString()}<\/td>
+            <td>${userMap.get(p.user_id) || p.user_id?.slice(0,8)}<\/td>
+            <td>${p.service_type || '-'}<\/td>
+            <td>KES ${(p.amount || 0).toLocaleString()}<\/td>
+            <td>${p.mpesa_receipt_number || '-'}<\/td>
+            <td><span class="badge ${p.status === 'completed' ? 'badge-paid' : 'badge-pending'}">${p.status}</span><\/td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// PRICING RULES
+// ============================================
+async function loadPricingRules() {
+    const { data } = await supabase.from('pricing_rules').select('*').order('vehicle_category');
+    allPricingRules = data || [];
+    document.getElementById('totalRules').innerText = allPricingRules.length;
+    const cats = { passenger_car: '🚗 Car', suv: '🚙 SUV', motorcycle: '🏍️ Bike', tuk_tuk: '🛺 Tuk-tuk', commercial: '🚚 Commercial' };
+    const purposes = { pre_insurance: 'Pre-Insurance', loan_collateral: 'Loan', court_case: 'Court', fleet_valuation: 'Fleet' };
+    const tbody = document.getElementById('pricingBody');
+    if (!allPricingRules.length) { tbody.innerHTML = '<tr><td colspan="7">No rules. Add one.<?td><\/tr>'; return; }
+    tbody.innerHTML = allPricingRules.map(r => `
+        <tr>
+            <td>${cats[r.vehicle_category] || r.vehicle_category}<\/td>
+            <td>${purposes[r.purpose] || r.purpose}<\/td>
+            <td><input type="number" id="base_${r.id}" value="${r.base_price}" style="width:90px;" onchange="updatePrice('${r.id}', 'base_price', this.value)"><\/td>
+            <td><input type="number" id="exp_${r.id}" value="${r.express_fee}" style="width:90px;" onchange="updatePrice('${r.id}', 'express_fee', this.value)"><\/td>
+            <td><input type="number" id="prem_${r.id}" value="${r.premium_fee}" style="width:90px;" onchange="updatePrice('${r.id}', 'premium_fee', this.value)"><\/td>
+            <td><input type="number" id="cert_${r.id}" value="${r.certificate_fee}" style="width:90px;" onchange="updatePrice('${r.id}', 'certificate_fee', this.value)"><\/td>
+            <td class="action-buttons"><button class="btn btn-danger" onclick="deleteRule('${r.id}')">Delete</button><\/td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// CERTIFICATES
+// ============================================
+async function loadCertificates() {
+    const { data } = await supabase.from('service_requests').select('*').eq('payment_status', 'paid').order('created_at', { ascending: false });
+    const { data: profiles } = await supabase.from('user_profiles').select('id, email');
+    const userMap = new Map(); profiles?.forEach(p => userMap.set(p.id, p.email));
+    document.getElementById('certificatesBody').innerHTML = (data || []).slice(0, 100).map(r => `
+        <tr>
+            <td>${new Date(r.created_at).toLocaleDateString()}<\/td>
+            <td>${userMap.get(r.user_id) || r.user_id?.slice(0,8)}<\/td>
+            <td>${r.service_type === 'valuation' ? '💰 Valuation' : '🔍 Inspection'}<\/td>
+            <td>${r.result?.certificate_number || `${r.service_type === 'valuation' ? 'VAL' : 'INS'}-${r.id?.slice(0,8)}`}<\/td>
+            <td class="action-buttons"><button class="btn" onclick="downloadCertificate('${r.id}')">Download</button><\/td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// PARTNERS
+// ============================================
+async function loadPartners() {
+    const { data } = await supabase.from('partners').select('*').order('created_at', { ascending: false });
+    document.getElementById('partnersBody').innerHTML = (data || []).map(p => `
+        <tr>
+            <td>${p.name}<\/td>
+            <td>${p.type}<\/td>
+            <td>${p.contact_person || '-'}<\/td>
+            <td>${p.email}<\/td>
+            <td>${p.commission}%<\/td>
+            <td><span class="badge ${p.status === 'Active' ? 'badge-active' : 'badge-pending'}">${p.status}</span><\/td>
+            <td class="action-buttons"><button class="btn" onclick="editPartner('${p.id}')">Edit</button><button class="btn btn-danger" onclick="deletePartner('${p.id}')">Delete</button><\/td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// SYSTEM SETTINGS
+// ============================================
+async function loadSystemSettings() {
+    const { data: name } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'system_name').single();
+    const { data: email } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_email').single();
+    const { data: phone } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_phone').single();
+    const { data: currency } = await supabase.from('system_settings').select('setting_value').eq('setting_key', 'currency').single();
+    if (name) document.getElementById('systemName').value = name.setting_value;
+    if (email) document.getElementById('supportEmail').value = email.setting_value;
+    if (phone) document.getElementById('supportPhone').value = phone.setting_value;
+    if (currency) document.getElementById('currency').value = currency.setting_value;
+}
+
+async function updateSystemSettings() {
+    await supabase.from('system_settings').upsert({ setting_key: 'system_name', setting_value: document.getElementById('systemName').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'support_email', setting_value: document.getElementById('supportEmail').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'support_phone', setting_value: document.getElementById('supportPhone').value });
+    await supabase.from('system_settings').upsert({ setting_key: 'currency', setting_value: document.getElementById('currency').value });
+    showMessage('Settings saved!', 'success');
+}
+
+// ============================================
+// CHARTS
+// ============================================
+async function updateCharts() {
+    const { data } = await supabase.from('service_requests').select('amount, payment_status, created_at, service_type');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlyRevenue = new Array(12).fill(0);
+    const valuationCount = new Array(12).fill(0);
+    const inspectionCount = new Array(12).fill(0);
+    data?.forEach(r => {
+        const month = new Date(r.created_at).getMonth();
+        if (r.payment_status === 'paid') monthlyRevenue[month] += r.amount || 0;
+        if (r.service_type === 'valuation') valuationCount[month]++;
+        else inspectionCount[month]++;
+    });
+    const ctx1 = document.getElementById('revenueChart')?.getContext('2d');
+    if (ctx1) { if (revenueChart) revenueChart.destroy(); revenueChart = new Chart(ctx1, { type: 'bar', data: { labels: months, datasets: [{ label: 'Revenue (KES)', data: monthlyRevenue, backgroundColor: '#eab308' }] }, options: { responsive: true } }); }
+    const ctx2 = document.getElementById('serviceChart')?.getContext('2d');
+    if (ctx2) { if (serviceChart) serviceChart.destroy(); serviceChart = new Chart(ctx2, { type: 'line', data: { labels: months, datasets: [{ label: 'Valuations', data: valuationCount, borderColor: '#22c55e', fill: false }, { label: 'Inspections', data: inspectionCount, borderColor: '#3b82f6', fill: false }] }, options: { responsive: true } }); }
+}
+
+// ============================================
+// CRUD OPERATIONS
+// ============================================
+window.editUser = (id, email, role, phone) => { document.getElementById('userId').value = id; document.getElementById('userEmail').value = email; document.getElementById('userRole').value = role; document.getElementById('userPhone').value = phone; document.getElementById('userModal').style.display = 'flex'; };
+window.saveUser = async () => { const id = document.getElementById('userId').value; const data = { role: document.getElementById('userRole').value, phone: document.getElementById('userPhone').value }; if (id) await supabase.from('user_profiles').update(data).eq('id', id); else { const email = document.getElementById('userEmail').value; const password = document.getElementById('userPassword').value; if (email && password) await supabase.auth.signUp({ email, password }); } showMessage('User saved!', 'success'); closeModal('userModal'); loadUsers(); loadStats(); };
+window.deleteUser = async (id) => { if (confirm('Delete user?')) { await supabase.from('user_profiles').delete().eq('id', id); showMessage('User deleted', 'success'); loadUsers(); loadStats(); } };
+window.editVehicle = async (id) => { const { data } = await supabase.from('vehicles').select('*').eq('id', id).single(); if (data) { document.getElementById('vehicleId').value = data.id; document.getElementById('vehicleReg').value = data.registration_number; document.getElementById('vehicleMake').value = data.make; document.getElementById('vehicleModel').value = data.model; document.getElementById('vehicleYear').value = data.year; document.getElementById('vehicleOwnerId').value = data.user_id; document.getElementById('vehicleModal').style.display = 'flex'; } };
+window.saveVehicle = async () => { const id = document.getElementById('vehicleId').value; const data = { registration_number: document.getElementById('vehicleReg').value, make: document.getElementById('vehicleMake').value, model: document.getElementById('vehicleModel').value, year: parseInt(document.getElementById('vehicleYear').value), user_id: document.getElementById('vehicleOwnerId').value }; if (id) await supabase.from('vehicles').update(data).eq('id', id); else await supabase.from('vehicles').insert(data); showMessage('Vehicle saved!', 'success'); closeModal('vehicleModal'); loadVehicles(); loadStats(); };
+window.deleteVehicle = async (id) => { if (confirm('Delete vehicle?')) { await supabase.from('vehicles').delete().eq('id', id); showMessage('Vehicle deleted', 'success'); loadVehicles(); } };
+window.deleteRequest = async (id) => { if (confirm('Delete request?')) { await supabase.from('service_requests').delete().eq('id', id); showMessage('Request deleted', 'success'); loadRequests(); loadStats(); } };
+window.viewRequest = async (id) => { const { data } = await supabase.from('service_requests').select('*').eq('id', id).single(); alert(`Request: ${data.service_type}\nVehicle: ${data.make} ${data.model}\nAmount: KES ${data.amount}\nStatus: ${data.status}`); };
+window.downloadCertificate = async (id) => { alert('Certificate download started'); };
+window.editPartner = async (id) => { const { data } = await supabase.from('partners').select('*').eq('id', id).single(); if (data) { document.getElementById('partnerId').value = data.id; document.getElementById('partnerName').value = data.name; document.getElementById('partnerType').value = data.type; document.getElementById('partnerCommission').value = data.commission; document.getElementById('partnerEmail').value = data.email; document.getElementById('partnerPhone').value = data.phone; document.getElementById('partnerModal').style.display = 'flex'; } };
+window.savePartner = async () => { const id = document.getElementById('partnerId').value; const data = { name: document.getElementById('partnerName').value, type: document.getElementById('partnerType').value, commission: parseInt(document.getElementById('partnerCommission').value) || 10, email: document.getElementById('partnerEmail').value, phone: document.getElementById('partnerPhone').value, status: 'Active' }; if (id) await supabase.from('partners').update(data).eq('id', id); else await supabase.from('partners').insert(data); showMessage('Partner saved!', 'success'); closeModal('partnerModal'); loadPartners(); loadStats(); };
+window.deletePartner = async (id) => { if (confirm('Delete partner?')) { await supabase.from('partners').delete().eq('id', id); showMessage('Partner deleted', 'success'); loadPartners(); loadStats(); } };
+window.updatePrice = async (id, field, val) => { await supabase.from('pricing_rules').update({ [field]: parseInt(val) || 0 }).eq('id', id); showMessage('Updated!', 'success'); };
+window.deleteRule = async (id) => { if (confirm('Delete rule?')) { await supabase.from('pricing_rules').delete().eq('id', id); showMessage('Rule deleted', 'success'); loadPricingRules(); } };
+window.addRule = async () => { const newRule = { vehicle_category: document.getElementById('newCategory').value, purpose: document.getElementById('newPurpose').value, base_price: parseInt(document.getElementById('newBasePrice').value) || 0, express_fee: 1000, premium_fee: 5000, certificate_fee: 500 }; await supabase.from('pricing_rules').insert(newRule); showMessage('Rule added!', 'success'); loadPricingRules(); loadStats(); };
+window.generateAnalytics = async () => { const start = document.getElementById('analyticsStart').value; const end = document.getElementById('analyticsEnd').value; const type = document.getElementById('reportType').value; let query = supabase.from('service_requests').select('*'); if (start) query = query.gte('created_at', start); if (end) query = query.lte('created_at', end + 'T23:59:59'); const { data } = await query; let html = '<div class="card"><h3>Report</h3>'; if (type === 'revenue') { const total = data?.reduce((s, r) => s + (r.payment_status === 'paid' ? (r.amount || 0) : 0), 0) || 0; html += `<p>Total Revenue: KES ${total.toLocaleString()}</p><p>Requests: ${data?.length || 0}</p>`; } else if (type === 'users') { const users = new Set(data?.map(r => r.user_id)); html += `<p>Active Users: ${users.size}</p><p>Total Requests: ${data?.length || 0}</p>`; } else { const valuations = data?.filter(r => r.service_type === 'valuation').length || 0; const inspections = data?.filter(r => r.service_type === 'inspection').length || 0; html += `<p>Valuations: ${valuations}</p><p>Inspections: ${inspections}</p>`; } html += '</div>'; document.getElementById('analyticsResult').innerHTML = html; };
+window.exportReport = async () => { const type = document.getElementById('exportType').value; const format = document.getElementById('exportFormat').value; let data = []; if (type === 'users') data = await supabase.from('user_profiles').select('*'); else if (type === 'requests') data = await supabase.from('service_requests').select('*'); else if (type === 'payments') data = await supabase.from('mpesa_transactions').select('*'); else data = await supabase.from('pricing_rules').select('*'); const json = JSON.stringify(data.data, null, 2); if (format === 'csv') { const headers = Object.keys(data.data[0] || {}).join(','); const rows = data.data.map(row => Object.values(row).join(',')).join('\n'); const blob = new Blob([headers + '\n' + rows], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${type}_export.csv`; a.click(); } else { const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${type}_export.json`; a.click(); } showMessage('Export started!', 'success'); };
+window.exportData = () => { showMessage('Export started!', 'success'); };
+function searchUsers() { const term = document.getElementById('searchUser').value.toLowerCase(); const rows = document.querySelectorAll('#usersBody tr'); rows.forEach(row => { row.style.display = row.innerText.toLowerCase().includes(term) ? '' : 'none'; }); }
+function searchVehicles() { loadVehicles(); }
+function openUserModal() { document.getElementById('userId').value = ''; document.getElementById('userEmail').value = ''; document.getElementById('userPassword').value = ''; document.getElementById('userRole').value = 'user'; document.getElementById('userPhone').value = ''; document.getElementById('userModal').style.display = 'flex'; }
+function openVehicleModal() { document.getElementById('vehicleId').value = ''; document.getElementById('vehicleReg').value = ''; document.getElementById('vehicleMake').value = ''; document.getElementById('vehicleModel').value = ''; document.getElementById('vehicleYear').value = ''; document.getElementById('vehicleOwnerId').value = ''; document.getElementById('vehicleModal').style.display = 'flex'; }
+function openPartnerModal() { document.getElementById('partnerId').value = ''; document.getElementById('partnerName').value = ''; document.getElementById('partnerType').value = 'Bank'; document.getElementById('partnerCommission').value = '10'; document.getElementById('partnerEmail').value = ''; document.getElementById('partnerPhone').value = ''; document.getElementById('partnerModal').style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function showMessage(msg, type) { const div = document.getElementById(`${type}Msg`); div.innerHTML = msg; div.style.display = 'block'; setTimeout(() => div.style.display = 'none', 5000); }
+function switchTab(tab) { const tabs = ['dashboard', 'users', 'vehicles', 'requests', 'payments', 'pricing', 'certificates', 'partners', 'settings', 'analytics', 'reports', 'audit']; tabs.forEach(t => { const el = document.getElementById(`${t}Tab`); if (el) el.style.display = t === tab ? 'block' : 'none'; }); document.querySelectorAll('.tab-btn').forEach(btn => { if (btn.dataset.tab === tab) btn.classList.add('active'); else btn.classList.remove('active'); }); if (tab === 'users') loadUsers(); if (tab === 'vehicles') loadVehicles(); if (tab === 'requests') loadRequests(); if (tab === 'payments') loadPayments(); if (tab === 'pricing') loadPricingRules(); if (tab === 'certificates') loadCertificates(); if (tab === 'partners') loadPartners(); if (tab === 'settings') loadSystemSettings(); if (tab === 'dashboard') updateCharts(); }
+
+document.getElementById('logoutBtn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'admin-login.html'; };
+document.getElementById('updateSettingsBtn').onclick = updateSystemSettings;
+document.getElementById('addRuleBtn').onclick = addRule;
+document.querySelectorAll('.tab-btn').forEach(btn => { btn.onclick = () => switchTab(btn.dataset.tab); });
+
+async function init() {
+    if (!await checkAdmin()) return;
+    await loadStats();
+    await loadUsers();
+    await loadVehicles();
+    await loadRequests();
+    await loadPayments();
+    await loadPricingRules();
+    await loadCertificates();
+    await loadPartners();
+    await loadSystemSettings();
+    await updateCharts();
+    setInterval(() => { loadStats(); updateCharts(); }, 30000);
+}
+init();
+</script>
+</body>
+</html>
