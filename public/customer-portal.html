@@ -195,6 +195,9 @@
         <!-- STEP 1: LOGIN -->
         <div id="step1" class="card step active">
             <h2>🔐 Login to Continue</h2>
+            <div class="info-note" style="background:#1e293b; padding:12px; border-radius:8px; margin-bottom:20px; font-size:13px;">
+                ⚠️ After login, you will be redirected to the Dashboard where you can view your history and start new requests.
+            </div>
             <form id="loginForm">
                 <div class="form-group"><label class="required">Email Address</label><input type="email" id="loginEmail" placeholder="your@email.com" autocomplete="email"></div>
                 <div class="form-group"><label class="required">Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"></div>
@@ -308,7 +311,7 @@
     <script>
         // ============================================
         // SUPABASE SINGLE SOURCE OF TRUTH
-        // CUSTOMER PORTAL WITH DASHBOARD REDIRECT
+        // CUSTOMER PORTAL - REDIRECTS TO DASHBOARD AFTER LOGIN
         // ============================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
@@ -400,7 +403,7 @@
             }
 
             // ============================================
-            // LOGIN - Redirects to Dashboard after login
+            // LOGIN - Redirects to Dashboard after successful login
             // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
@@ -412,31 +415,45 @@
                     return;
                 }
                 
+                // Show loading state
+                const loginBtn = document.querySelector('#loginForm button[type="submit"]');
+                const originalText = loginBtn.innerHTML;
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
+                
                 try {
                     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
                     if (error) { 
                         showMessage(error.message, 'error'); 
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = originalText;
                         return; 
                     }
+                    
                     currentUser = data.user;
                     
-                    // Save user info to localStorage for dashboard
+                    // Save user info
                     localStorage.setItem('autoV_user', JSON.stringify({
                         id: currentUser.id,
                         email: currentUser.email
                     }));
                     
                     showMessage('✅ Login successful! Redirecting to dashboard...', 'success');
+                    
+                    // REDIRECT TO DASHBOARD AFTER 1.5 SECONDS
                     setTimeout(() => {
                         window.location.href = "dashboard.html";
                     }, 1500);
+                    
                 } catch (err) {
                     showMessage('Network error. Please try again.', 'error');
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = originalText;
                 }
             }
 
             // ============================================
-            // SIGNUP - Creates account and redirects to login
+            // SIGNUP
             // ============================================
             async function handleSignup(e) {
                 e.preventDefault();
@@ -455,15 +472,21 @@
                     return;
                 }
                 
+                const signupBtn = document.querySelector('#signupForm button[type="submit"]');
+                const originalText = signupBtn.innerHTML;
+                signupBtn.disabled = true;
+                signupBtn.innerHTML = '<span class="spinner"></span> Creating account...';
+                
                 try {
                     const { data, error } = await supabase.auth.signUp({ email, password });
                     if (error) { 
                         showMessage(error.message, 'error'); 
+                        signupBtn.disabled = false;
+                        signupBtn.innerHTML = originalText;
                         return; 
                     }
                     
                     if (data.user) {
-                        // Create user profile
                         await supabase.from('user_profiles').upsert({ 
                             id: data.user.id, 
                             email, 
@@ -475,13 +498,17 @@
                     showMessage('✅ Signup successful! Please check your email to verify, then login.', 'success');
                     document.getElementById('signupSection').style.display = 'none';
                     document.getElementById('loginEmail').value = email;
+                    
                 } catch (err) {
                     showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    signupBtn.disabled = false;
+                    signupBtn.innerHTML = originalText;
                 }
             }
 
             // ============================================
-            // PAYMENT PROCESSING (Simulated for demo)
+            // PAYMENT PROCESSING
             // ============================================
             async function processPayment(e) {
                 e.preventDefault();
@@ -494,7 +521,6 @@
                 payBtn.disabled = true;
                 payBtn.innerHTML = '<span class="spinner"></span> Processing...';
                 
-                // Simulate payment processing
                 setTimeout(() => {
                     showStep(6);
                     showMessage('✓ Payment successful! Enter vehicle details.', 'success');
@@ -521,7 +547,6 @@
                     return; 
                 }
                 
-                // Get current user from session
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) {
                     showMessage('Please login again', 'error');
@@ -553,7 +578,6 @@
                     certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
                 };
                 
-                // Save to Supabase
                 await supabase.from('service_requests').insert({
                     user_id: user.id,
                     service_type: selectedService,
@@ -640,13 +664,13 @@
             async function checkExistingSession() {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
-                    // Already logged in, redirect to dashboard
+                    // Already logged in, redirect to dashboard immediately
                     window.location.href = "dashboard.html";
                 }
             }
 
             async function init() {
-                await checkExistingSession();
+                await checkExistingSession(); // This will redirect if already logged in
                 populateYears();
                 populatePurposes();
                 await loadFees();
