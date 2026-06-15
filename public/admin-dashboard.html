@@ -230,6 +230,7 @@
                     <table id="adminRecentTable">
                         <thead><tr><th>Date</th><th>User</th><th>Type</th><th>Details</th><th>Amount</th></thead>
                         <tbody id="adminRecentBody"><tr><td colspan="5" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -243,6 +244,7 @@
                     <table id="pendingClaimsTable">
                         <thead><tr><th>Date</th><th>Employee</th><th>Email</th><th>Route</th><th>Distance</th><th>Amount</th><th>Actions</th></thead>
                         <tbody id="pendingClaimsBody"><tr><td colspan="7" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -277,6 +279,7 @@
                     <table id="usersTable">
                         <thead><tr><th>Email</th><th>Name</th><th>Phone</th><th>Valuations</th><th>Claims</th><th>Joined</th></thead>
                         <tbody id="usersBody"><tr><td colspan="6" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -290,6 +293,7 @@
                     <table id="adminValuationsTable">
                         <thead><tr><th>Date</th><th>User ID</th><th>Vehicle</th><th>Year</th><th>Value</th><th>Certificate</th></thead>
                         <tbody id="adminValuationsBody"><tr><td colspan="6" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -303,6 +307,7 @@
                     <table id="adminInspectionsTable">
                         <thead><tr><th>Date</th><th>User ID</th><th>Vehicle</th><th>Score</th><th>Rating</th><th>Certificate</th></thead>
                         <tbody id="adminInspectionsBody"><tr><td colspan="6" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -313,499 +318,462 @@
 
     <script>
         // ============================================
-        // PRODUCTION CONFIGURATION
+        // ADMIN DASHBOARD - PRODUCTION READY
         // ============================================
-        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        let currentUser = null;
-        
-        // ============================================
-        // HELPER FUNCTIONS
-        // ============================================
-        function showToast(message, type = 'success') {
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
-        
-        function formatKES(amount) {
-            return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', minimumFractionDigits: 0 }).format(amount || 0);
-        }
-        
-        function showLoading(show) {
-            document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
-        }
-        
-        // ============================================
-        // AUTHENTICATION WITH ADMIN CHECK
-        // ============================================
-        async function checkAuth() {
-            try {
-                const { data: { user }, error } = await supabase.auth.getUser();
-                if (error || !user) {
-                    showToast('Please login to continue', 'warning');
-                    window.location.href = "login.html";
-                    return false;
-                }
-                currentUser = user;
-                document.getElementById('adminEmail').textContent = user.email;
-                
-                // Check if user is admin - you can customize this check
-                // Option 1: Email-based (simple)
-                const isAdmin = user.email === 'admin@autov.com' || user.email.includes('admin');
-                
-                // Option 2: Check role in user_profiles table (more secure)
-                // const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single();
-                // const isAdmin = profile?.role === 'admin';
-                
-                if (!isAdmin) {
-                    showToast('Admin access required. Redirecting to user dashboard...', 'warning');
-                    setTimeout(() => window.location.href = "dashboard.html", 2000);
-                    return false;
-                }
-                return true;
-            } catch (error) {
-                console.error('Auth error:', error);
-                showToast('Authentication error', 'error');
-                return false;
+        (function() {
+            // Check if already initialized
+            if (window.autoVAdminInitialized) return;
+            window.autoVAdminInitialized = true;
+            
+            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+            
+            // Create supabase client only once
+            const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            
+            let currentUser = null;
+            
+            // Helper Functions
+            function showToast(message, type = 'success') {
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
             }
-        }
-        
-        // ============================================
-        // LOAD OVERVIEW STATS
-        // ============================================
-        async function loadOverview() {
-            try {
-                // Get user count
-                const { count: userCount } = await supabase.from('user_profiles').select('*', { count: 'exact', head: true });
-                
-                // Get valuations
-                const { data: valuations } = await supabase.from('service_requests').select('*').eq('service_type', 'valuation');
-                const { data: inspections } = await supabase.from('service_requests').select('*').eq('service_type', 'inspection');
-                const { data: claims } = await supabase.from('mileage_claims').select('*');
-                
-                const pendingClaims = claims?.filter(c => c.status === 'pending') || [];
-                const totalRevenue = (valuations?.reduce((s, v) => s + (v.amount || 2500), 0) || 0) +
-                                     (inspections?.reduce((s, i) => s + (i.amount || 3500), 0) || 0);
-                
-                document.getElementById('totalUsers').textContent = userCount || 0;
-                document.getElementById('adminTotalValuations').textContent = valuations?.length || 0;
-                document.getElementById('adminTotalInspections').textContent = inspections?.length || 0;
-                document.getElementById('adminTotalClaims').textContent = claims?.length || 0;
-                document.getElementById('pendingApprovals').textContent = pendingClaims.length;
-                document.getElementById('totalRevenue').innerHTML = formatKES(totalRevenue);
-                
-                // Recent activity
-                const recent = [];
-                valuations?.forEach(v => recent.push({ 
-                    ...v, type: 'valuation', display: '💰 Valuation', 
-                    date: v.created_at, amount: v.amount || 2500,
-                    details: `${v.make || ''} ${v.model || ''}`
-                }));
-                inspections?.forEach(i => recent.push({ 
-                    ...i, type: 'inspection', display: '🔍 Inspection', 
-                    date: i.created_at, amount: i.amount || 3500,
-                    details: i.vehicle_id || i.registration_number || 'Vehicle'
-                }));
-                claims?.forEach(c => recent.push({ 
-                    ...c, type: 'mileage', display: '📊 Mileage', 
-                    date: c.created_at, amount: c.claim_amount,
-                    details: `${c.start_location || ''} → ${c.end_location || ''}`
-                }));
-                
-                recent.sort((a, b) => new Date(b.date) - new Date(a.date));
-                
-                const tbody = document.getElementById('adminRecentBody');
-                if (recent.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No activity yet</td></tr>';
-                } else {
-                    tbody.innerHTML = recent.slice(0, 15).map(item => `
+            
+            function formatKES(amount) {
+                return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', minimumFractionDigits: 0 }).format(amount || 0);
+            }
+            
+            function showLoading(show) {
+                document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+            }
+            
+            // Authentication with Admin Check
+            async function checkAuth() {
+                try {
+                    const { data: { user }, error } = await _supabase.auth.getUser();
+                    if (error || !user) {
+                        showToast('Please login to continue', 'warning');
+                        window.location.href = "login.html";
+                        return false;
+                    }
+                    currentUser = user;
+                    document.getElementById('adminEmail').textContent = user.email;
+                    
+                    // Check if user is admin - email-based check
+                    const isAdmin = user.email === 'admin@autov.com' || user.email.includes('admin');
+                    
+                    if (!isAdmin) {
+                        showToast('Admin access required. Redirecting to user dashboard...', 'warning');
+                        setTimeout(() => window.location.href = "dashboard.html", 2000);
+                        return false;
+                    }
+                    return true;
+                } catch (error) {
+                    console.error('Auth error:', error);
+                    showToast('Authentication error', 'error');
+                    return false;
+                }
+            }
+            
+            // Load Overview Stats
+            async function loadOverview() {
+                try {
+                    const { count: userCount } = await _supabase.from('user_profiles').select('*', { count: 'exact', head: true });
+                    const { data: valuations } = await _supabase.from('service_requests').select('*').eq('service_type', 'valuation');
+                    const { data: inspections } = await _supabase.from('service_requests').select('*').eq('service_type', 'inspection');
+                    const { data: claims } = await _supabase.from('mileage_claims').select('*');
+                    
+                    const pendingClaims = claims?.filter(c => c.status === 'pending') || [];
+                    const totalRevenue = (valuations?.reduce((s, v) => s + (v.amount || 2500), 0) || 0) +
+                                         (inspections?.reduce((s, i) => s + (i.amount || 3500), 0) || 0);
+                    
+                    document.getElementById('totalUsers').textContent = userCount || 0;
+                    document.getElementById('adminTotalValuations').textContent = valuations?.length || 0;
+                    document.getElementById('adminTotalInspections').textContent = inspections?.length || 0;
+                    document.getElementById('adminTotalClaims').textContent = claims?.length || 0;
+                    document.getElementById('pendingApprovals').textContent = pendingClaims.length;
+                    document.getElementById('totalRevenue').innerHTML = formatKES(totalRevenue);
+                    
+                    // Recent activity
+                    const recent = [];
+                    valuations?.forEach(v => recent.push({ ...v, type: 'valuation', display: '💰 Valuation', date: v.created_at, amount: v.amount || 2500, details: `${v.make || ''} ${v.model || ''}` }));
+                    inspections?.forEach(i => recent.push({ ...i, type: 'inspection', display: '🔍 Inspection', date: i.created_at, amount: i.amount || 3500, details: i.vehicle_id || i.registration_number || 'Vehicle' }));
+                    claims?.forEach(c => recent.push({ ...c, type: 'mileage', display: '📊 Mileage', date: c.created_at, amount: c.claim_amount, details: `${c.start_location || ''} → ${c.end_location || ''}` }));
+                    
+                    recent.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    const tbody = document.getElementById('adminRecentBody');
+                    if (recent.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No activity yet</td></tr>';
+                    } else {
+                        tbody.innerHTML = recent.slice(0, 15).map(item => `
+                            <tr>
+                                <td>${new Date(item.date).toLocaleDateString()}</td>
+                                <td>${item.user_id?.substring(0, 12) || 'Unknown'}</td>
+                                <td>${item.display}</td>
+                                <td>${item.details?.substring(0, 40) || '-'}</td>
+                                <td>${formatKES(item.amount || 0)}</td>
+                            </tr>
+                        `).join('');
+                    }
+                } catch (error) {
+                    console.error('Error loading overview:', error);
+                    showToast('Error loading dashboard data', 'error');
+                }
+            }
+            
+            // Load Pending Claims
+            async function loadPendingClaims() {
+                try {
+                    const { data, error } = await _supabase
+                        .from('mileage_claims')
+                        .select('*')
+                        .eq('status', 'pending')
+                        .order('trip_date', { ascending: false });
+                    
+                    if (error) throw error;
+                    
+                    const tbody = document.getElementById('pendingClaimsBody');
+                    if (!data || data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No pending claims</td></tr>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = data.map(claim => `
                         <tr>
-                            <td>${new Date(item.date).toLocaleDateString()}</td>
-                            <td>${item.user_id?.substring(0, 12) || 'Unknown'}</td>
-                            <td>${item.display}</td>
-                            <td>${item.details?.substring(0, 40) || '-'}</td>
-                            <td>${formatKES(item.amount || 0)}</td>
+                            <td>${new Date(claim.trip_date).toLocaleDateString()}</td>
+                            <td>${claim.employee_name || claim.user_id?.substring(0, 12)}</td>
+                            <td>${claim.user_id?.substring(0, 16) || '-'}</td>
+                            <td>${claim.start_location?.split(',')[0] || ''} → ${claim.end_location?.split(',')[0] || ''}</td>
+                            <td>${(claim.distance_km || 0).toLocaleString()} km</td>
+                            <td><strong>${formatKES(claim.claim_amount || 0)}</strong></td>
+                            <td>
+                                <button class="btn-success" onclick="window.approveClaim('${claim.id}')">✓ Approve</button>
+                                <button class="btn-danger" onclick="window.rejectClaim('${claim.id}')">✗ Reject</button>
+                            </td>
                         </tr>
                     `).join('');
+                } catch (error) {
+                    console.error('Error loading pending claims:', error);
+                    showToast('Error loading pending claims', 'error');
                 }
-            } catch (error) {
-                console.error('Error loading overview:', error);
-                showToast('Error loading dashboard data', 'error');
-            }
-        }
-        
-        // ============================================
-        // PENDING CLAIMS MANAGEMENT
-        // ============================================
-        async function loadPendingClaims() {
-            try {
-                const { data, error } = await supabase
-                    .from('mileage_claims')
-                    .select('*')
-                    .eq('status', 'pending')
-                    .order('trip_date', { ascending: false });
-                
-                if (error) throw error;
-                
-                const tbody = document.getElementById('pendingClaimsBody');
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No pending claims</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = data.map(claim => `
-                    <tr>
-                        <td>${new Date(claim.trip_date).toLocaleDateString()}</td>
-                        <td>${claim.employee_name || claim.user_id?.substring(0, 12)}</td>
-                        <td>${claim.user_id?.substring(0, 16) || '-'}</td>
-                        <td>${claim.start_location?.split(',')[0] || ''} → ${claim.end_location?.split(',')[0] || ''}</td>
-                        <td>${(claim.distance_km || 0).toLocaleString()} km</td>
-                        <td><strong>${formatKES(claim.claim_amount || 0)}</strong></td>
-                        <td>
-                            <button class="btn-success" onclick="approveClaim('${claim.id}')">✓ Approve</button>
-                            <button class="btn-danger" onclick="rejectClaim('${claim.id}')">✗ Reject</button>
-                        </td>
-                    </tr>
-                `).join('');
-            } catch (error) {
-                console.error('Error loading pending claims:', error);
-                showToast('Error loading pending claims', 'error');
-            }
-        }
-        
-        window.approveClaim = async (claimId) => {
-            if (!confirm('Approve this claim? The employee will be notified.')) return;
-            showLoading(true);
-            try {
-                const { error } = await supabase
-                    .from('mileage_claims')
-                    .update({ 
-                        status: 'approved', 
-                        approved_by: currentUser.id, 
-                        approval_date: new Date().toISOString() 
-                    })
-                    .eq('id', claimId);
-                
-                if (error) throw error;
-                showToast('Claim approved successfully!');
-                await loadPendingClaims();
-                await loadOverview();
-            } catch (error) {
-                console.error('Error approving claim:', error);
-                showToast('Error approving claim', 'error');
-            } finally {
-                showLoading(false);
-            }
-        };
-        
-        window.rejectClaim = async (claimId) => {
-            if (!confirm('Reject this claim? The employee will be notified.')) return;
-            showLoading(true);
-            try {
-                const { error } = await supabase
-                    .from('mileage_claims')
-                    .update({ status: 'rejected' })
-                    .eq('id', claimId);
-                
-                if (error) throw error;
-                showToast('Claim rejected');
-                await loadPendingClaims();
-                await loadOverview();
-            } catch (error) {
-                console.error('Error rejecting claim:', error);
-                showToast('Error rejecting claim', 'error');
-            } finally {
-                showLoading(false);
-            }
-        };
-        
-        // ============================================
-        // RATE MANAGEMENT
-        // ============================================
-        async function loadRates() {
-            try {
-                const { data, error } = await supabase
-                    .from('mileage_rates')
-                    .select('*')
-                    .eq('is_active', true)
-                    .order('rate_per_km');
-                
-                if (error) throw error;
-                
-                const container = document.getElementById('adminRatesContainer');
-                if (!data || data.length === 0) {
-                    container.innerHTML = '<p class="empty-state">No rates found. Add some above.</p>';
-                    return;
-                }
-                
-                container.innerHTML = data.map(rate => `
-                    <div class="rate-card">
-                        <div class="category">${rate.vehicle_category}</div>
-                        <div class="rate">${formatKES(rate.rate_per_km)}/km</div>
-                        <div class="effective">Eff: ${new Date(rate.effective_from).toLocaleDateString()}</div>
-                        <div style="margin-top:10px;">
-                            <button class="btn-secondary" onclick="deactivateRate('${rate.id}')">Deactivate</button>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (error) {
-                console.error('Error loading rates:', error);
-                showToast('Error loading rates', 'error');
-            }
-        }
-        
-        document.getElementById('addRateBtn')?.addEventListener('click', async () => {
-            const category = document.getElementById('rateCategory').value.trim();
-            const rate = parseFloat(document.getElementById('rateValue').value);
-            const effectiveFrom = document.getElementById('rateEffectiveFrom').value;
-            
-            if (!category || !rate || !effectiveFrom) {
-                showToast('Please fill all required fields (Category, Rate, Effective From)', 'warning');
-                return;
             }
             
-            if (rate <= 0) {
-                showToast('Rate must be greater than 0', 'warning');
-                return;
-            }
-            
-            showLoading(true);
-            try {
-                const { error } = await supabase.from('mileage_rates').insert({
-                    vehicle_category: category,
-                    rate_per_km: rate,
-                    effective_from: effectiveFrom,
-                    effective_to: document.getElementById('rateEffectiveTo').value || null,
-                    is_active: true
-                });
-                
-                if (error) throw error;
-                
-                showToast('Rate added successfully!');
-                document.getElementById('rateCategory').value = '';
-                document.getElementById('rateValue').value = '';
-                document.getElementById('rateEffectiveFrom').value = '';
-                document.getElementById('rateEffectiveTo').value = '';
-                await loadRates();
-                await loadOverview();
-            } catch (error) {
-                console.error('Error adding rate:', error);
-                showToast('Error adding rate: ' + error.message, 'error');
-            } finally {
-                showLoading(false);
-            }
-        });
-        
-        window.deactivateRate = async (rateId) => {
-            if (!confirm('Deactivate this rate? It will no longer be available for claims.')) return;
-            showLoading(true);
-            try {
-                const { error } = await supabase
-                    .from('mileage_rates')
-                    .update({ is_active: false })
-                    .eq('id', rateId);
-                
-                if (error) throw error;
-                showToast('Rate deactivated');
-                await loadRates();
-            } catch (error) {
-                console.error('Error deactivating rate:', error);
-                showToast('Error deactivating rate', 'error');
-            } finally {
-                showLoading(false);
-            }
-        };
-        
-        // ============================================
-        // USER MANAGEMENT
-        // ============================================
-        async function loadUsers() {
-            try {
-                const { data: profiles, error } = await supabase
-                    .from('user_profiles')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                
-                if (error) throw error;
-                
-                // Get stats for each user
-                const { data: valuations } = await supabase.from('service_requests').select('user_id, service_type');
-                const { data: claims } = await supabase.from('mileage_claims').select('user_id');
-                
-                const userStats = {};
-                valuations?.forEach(v => {
-                    userStats[v.user_id] = userStats[v.user_id] || { vals: 0, claims: 0 };
-                    if (v.service_type === 'valuation') userStats[v.user_id].vals++;
-                });
-                claims?.forEach(c => {
-                    userStats[c.user_id] = userStats[c.user_id] || { vals: 0, claims: 0 };
-                    userStats[c.user_id].claims++;
-                });
-                
-                const tbody = document.getElementById('usersBody');
-                if (!profiles || profiles.length === 0) {
-                    tbody.innerHTML = '<td><td colspan="6" class="empty-state">No users found</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = profiles.map(profile => {
-                    const stats = userStats[profile.id] || { vals: 0, claims: 0 };
-                    return `
-                        <tr>
-                            <td>${profile.email || '-'}</td>
-                            <td>${profile.full_name || '-'}</td>
-                            <td>${profile.phone || '-'}</td>
-                            <td>${stats.vals}</td>
-                            <td>${stats.claims}</td>
-                            <td>${new Date(profile.created_at).toLocaleDateString()}</td>
-                        </tr>
-                    `;
-                }).join('');
-                
-                // Search functionality
-                document.getElementById('userSearch')?.addEventListener('input', (e) => {
-                    const search = e.target.value.toLowerCase();
-                    document.querySelectorAll('#usersBody tr').forEach(row => {
-                        const text = row.textContent.toLowerCase();
-                        row.style.display = text.includes(search) ? '' : 'none';
-                    });
-                });
-            } catch (error) {
-                console.error('Error loading users:', error);
-                showToast('Error loading users', 'error');
-            }
-        }
-        
-        // ============================================
-        // VALUATIONS & INSPECTIONS (Admin View)
-        // ============================================
-        async function loadAdminValuations() {
-            try {
-                const { data, error } = await supabase
-                    .from('service_requests')
-                    .select('*')
-                    .eq('service_type', 'valuation')
-                    .order('created_at', { ascending: false });
-                
-                if (error) throw error;
-                
-                const tbody = document.getElementById('adminValuationsBody');
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No valuations found</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = data.map(v => {
-                    const result = v.result || {};
-                    return `
-                        <tr>
-                            <td>${new Date(v.created_at).toLocaleDateString()}</td>
-                            <td>${v.user_id?.substring(0, 12) || 'Unknown'}</td>
-                            <td>${v.make || '-'} ${v.model || '-'}</td>
-                            <td>${v.year || '-'}</td>
-                            <td><strong>${formatKES(result.market_value || 0)}</strong></td>
-                            <td><span style="font-family:monospace;">${result.certificate_number || 'N/A'}</span></td>
-                        </tr>
-                    `;
-                }).join('');
-            } catch (error) {
-                console.error('Error loading valuations:', error);
-                showToast('Error loading valuations', 'error');
-            }
-        }
-        
-        async function loadAdminInspections() {
-            try {
-                const { data, error } = await supabase
-                    .from('service_requests')
-                    .select('*')
-                    .eq('service_type', 'inspection')
-                    .order('created_at', { ascending: false });
-                
-                if (error) throw error;
-                
-                const tbody = document.getElementById('adminInspectionsBody');
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No inspections found</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = data.map(i => {
-                    const result = i.result || {};
-                    let rating = result.overall_score >= 8.5 ? 'Excellent' : 
-                                result.overall_score >= 7 ? 'Good' : 
-                                result.overall_score >= 5 ? 'Fair' : 'Poor';
-                    return `
-                        <tr>
-                            <td>${new Date(i.created_at).toLocaleDateString()}</td>
-                            <td>${i.user_id?.substring(0, 12) || 'Unknown'}</td>
-                            <td>${i.vehicle_id || i.registration_number || '-'}</td>
-                            <td><strong>${result.overall_score || 0}%</strong></td>
-                            <td>${rating}</td>
-                            <td><span style="font-family:monospace;">${result.certificate_number || 'N/A'}</span></td>
-                        </tr>
-                    `;
-                }).join('');
-            } catch (error) {
-                console.error('Error loading inspections:', error);
-                showToast('Error loading inspections', 'error');
-            }
-        }
-        
-        // ============================================
-        // TAB SWITCHING
-        // ============================================
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-                document.getElementById(btn.dataset.tab).classList.add('active');
-                
-                // Refresh data when switching tabs
-                const tabId = btn.dataset.tab;
-                if (tabId === 'claims-tab') loadPendingClaims();
-                if (tabId === 'rates-tab') loadRates();
-                if (tabId === 'users-tab') loadUsers();
-                if (tabId === 'valuations-tab') loadAdminValuations();
-                if (tabId === 'inspections-tab') loadAdminInspections();
-            });
-        });
-        
-        // ============================================
-        // LOGOUT
-        // ============================================
-        document.getElementById('logoutBtn').onclick = async () => {
-            await supabase.auth.signOut();
-            showToast('Logged out successfully');
-            setTimeout(() => window.location.href = 'login.html', 1000);
-        };
-        
-        // ============================================
-        // INITIALIZATION
-        // ============================================
-        async function init() {
-            if (await checkAuth()) {
+            // Approve Claim
+            window.approveClaim = async (claimId) => {
+                if (!confirm('Approve this claim? The employee will be notified.')) return;
                 showLoading(true);
                 try {
-                    await loadOverview();
+                    const { error } = await _supabase
+                        .from('mileage_claims')
+                        .update({ status: 'approved', approved_by: currentUser.id, approval_date: new Date().toISOString() })
+                        .eq('id', claimId);
+                    if (error) throw error;
+                    showToast('Claim approved successfully!');
                     await loadPendingClaims();
-                    await loadRates();
-                    await loadUsers();
-                    await loadAdminValuations();
-                    await loadAdminInspections();
+                    await loadOverview();
+                } catch (error) {
+                    console.error('Error approving claim:', error);
+                    showToast('Error approving claim', 'error');
                 } finally {
                     showLoading(false);
                 }
+            };
+            
+            // Reject Claim
+            window.rejectClaim = async (claimId) => {
+                if (!confirm('Reject this claim? The employee will be notified.')) return;
+                showLoading(true);
+                try {
+                    const { error } = await _supabase
+                        .from('mileage_claims')
+                        .update({ status: 'rejected' })
+                        .eq('id', claimId);
+                    if (error) throw error;
+                    showToast('Claim rejected');
+                    await loadPendingClaims();
+                    await loadOverview();
+                } catch (error) {
+                    console.error('Error rejecting claim:', error);
+                    showToast('Error rejecting claim', 'error');
+                } finally {
+                    showLoading(false);
+                }
+            };
+            
+            // Load Rates
+            async function loadRates() {
+                try {
+                    const { data, error } = await _supabase
+                        .from('mileage_rates')
+                        .select('*')
+                        .eq('is_active', true)
+                        .order('rate_per_km');
+                    
+                    if (error) throw error;
+                    
+                    const container = document.getElementById('adminRatesContainer');
+                    if (!data || data.length === 0) {
+                        container.innerHTML = '<p class="empty-state">No rates found. Add some above.</p>';
+                        return;
+                    }
+                    
+                    container.innerHTML = data.map(rate => `
+                        <div class="rate-card">
+                            <div class="category">${rate.vehicle_category}</div>
+                            <div class="rate">${formatKES(rate.rate_per_km)}/km</div>
+                            <div class="effective">Eff: ${new Date(rate.effective_from).toLocaleDateString()}</div>
+                            <div style="margin-top:10px;">
+                                <button class="btn-secondary" onclick="window.deactivateRate('${rate.id}')">Deactivate</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } catch (error) {
+                    console.error('Error loading rates:', error);
+                    showToast('Error loading rates', 'error');
+                }
             }
-        }
-        
-        init();
+            
+            // Add Rate
+            document.getElementById('addRateBtn')?.addEventListener('click', async () => {
+                const category = document.getElementById('rateCategory').value.trim();
+                const rate = parseFloat(document.getElementById('rateValue').value);
+                const effectiveFrom = document.getElementById('rateEffectiveFrom').value;
+                
+                if (!category || !rate || !effectiveFrom) {
+                    showToast('Please fill all required fields (Category, Rate, Effective From)', 'warning');
+                    return;
+                }
+                
+                if (rate <= 0) {
+                    showToast('Rate must be greater than 0', 'warning');
+                    return;
+                }
+                
+                showLoading(true);
+                try {
+                    const { error } = await _supabase.from('mileage_rates').insert({
+                        vehicle_category: category,
+                        rate_per_km: rate,
+                        effective_from: effectiveFrom,
+                        effective_to: document.getElementById('rateEffectiveTo').value || null,
+                        is_active: true
+                    });
+                    
+                    if (error) throw error;
+                    
+                    showToast('Rate added successfully!');
+                    document.getElementById('rateCategory').value = '';
+                    document.getElementById('rateValue').value = '';
+                    document.getElementById('rateEffectiveFrom').value = '';
+                    document.getElementById('rateEffectiveTo').value = '';
+                    await loadRates();
+                    await loadOverview();
+                } catch (error) {
+                    console.error('Error adding rate:', error);
+                    showToast('Error adding rate: ' + error.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
+            });
+            
+            // Deactivate Rate
+            window.deactivateRate = async (rateId) => {
+                if (!confirm('Deactivate this rate? It will no longer be available for claims.')) return;
+                showLoading(true);
+                try {
+                    const { error } = await _supabase
+                        .from('mileage_rates')
+                        .update({ is_active: false })
+                        .eq('id', rateId);
+                    
+                    if (error) throw error;
+                    showToast('Rate deactivated');
+                    await loadRates();
+                } catch (error) {
+                    console.error('Error deactivating rate:', error);
+                    showToast('Error deactivating rate', 'error');
+                } finally {
+                    showLoading(false);
+                }
+            };
+            
+            // Load Users
+            async function loadUsers() {
+                try {
+                    const { data: profiles, error } = await _supabase
+                        .from('user_profiles')
+                        .select('*')
+                        .order('created_at', { ascending: false });
+                    
+                    if (error) throw error;
+                    
+                    const { data: valuations } = await _supabase.from('service_requests').select('user_id, service_type');
+                    const { data: claims } = await _supabase.from('mileage_claims').select('user_id');
+                    
+                    const userStats = {};
+                    valuations?.forEach(v => {
+                        userStats[v.user_id] = userStats[v.user_id] || { vals: 0, claims: 0 };
+                        if (v.service_type === 'valuation') userStats[v.user_id].vals++;
+                    });
+                    claims?.forEach(c => {
+                        userStats[c.user_id] = userStats[c.user_id] || { vals: 0, claims: 0 };
+                        userStats[c.user_id].claims++;
+                    });
+                    
+                    const tbody = document.getElementById('usersBody');
+                    if (!profiles || profiles.length === 0) {
+                        tbody.innerHTML = '<td><td colspan="6" class="empty-state">No users found</td></tr>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = profiles.map(profile => {
+                        const stats = userStats[profile.id] || { vals: 0, claims: 0 };
+                        return `
+                            <tr>
+                                <td>${profile.email || '-'}</td>
+                                <td>${profile.full_name || '-'}</td>
+                                <td>${profile.phone || '-'}</td>
+                                <td>${stats.vals}</td>
+                                <td>${stats.claims}</td>
+                                <td>${new Date(profile.created_at).toLocaleDateString()}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                    
+                    // Search functionality
+                    document.getElementById('userSearch')?.addEventListener('input', (e) => {
+                        const search = e.target.value.toLowerCase();
+                        document.querySelectorAll('#usersBody tr').forEach(row => {
+                            const text = row.textContent.toLowerCase();
+                            row.style.display = text.includes(search) ? '' : 'none';
+                        });
+                    });
+                } catch (error) {
+                    console.error('Error loading users:', error);
+                    showToast('Error loading users', 'error');
+                }
+            }
+            
+            // Load Admin Valuations
+            async function loadAdminValuations() {
+                try {
+                    const { data, error } = await _supabase
+                        .from('service_requests')
+                        .select('*')
+                        .eq('service_type', 'valuation')
+                        .order('created_at', { ascending: false });
+                    
+                    if (error) throw error;
+                    
+                    const tbody = document.getElementById('adminValuationsBody');
+                    if (!data || data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No valuations found</td></tr>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = data.map(v => {
+                        const result = v.result || {};
+                        return `
+                            <tr>
+                                <td>${new Date(v.created_at).toLocaleDateString()}</td>
+                                <td>${v.user_id?.substring(0, 12) || 'Unknown'}</td>
+                                <td>${v.make || '-'} ${v.model || '-'}</td>
+                                <td>${v.year || '-'}</td>
+                                <td><strong>${formatKES(result.market_value || 0)}</strong></td>
+                                <td><span style="font-family:monospace;">${result.certificate_number || 'N/A'}</span></td>
+                            </tr>
+                        `;
+                    }).join('');
+                } catch (error) {
+                    console.error('Error loading valuations:', error);
+                    showToast('Error loading valuations', 'error');
+                }
+            }
+            
+            // Load Admin Inspections
+            async function loadAdminInspections() {
+                try {
+                    const { data, error } = await _supabase
+                        .from('service_requests')
+                        .select('*')
+                        .eq('service_type', 'inspection')
+                        .order('created_at', { ascending: false });
+                    
+                    if (error) throw error;
+                    
+                    const tbody = document.getElementById('adminInspectionsBody');
+                    if (!data || data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No inspections found</td></tr>';
+                        return;
+                    }
+                    
+                    tbody.innerHTML = data.map(i => {
+                        const result = i.result || {};
+                        let rating = result.overall_score >= 8.5 ? 'Excellent' : result.overall_score >= 7 ? 'Good' : result.overall_score >= 5 ? 'Fair' : 'Poor';
+                        return `
+                            <tr>
+                                <td>${new Date(i.created_at).toLocaleDateString()}</td>
+                                <td>${i.user_id?.substring(0, 12) || 'Unknown'}</td>
+                                <td>${i.vehicle_id || i.registration_number || '-'}</td>
+                                <td><strong>${result.overall_score || 0}%</strong></td>
+                                <td>${rating}</td>
+                                <td><span style="font-family:monospace;">${result.certificate_number || 'N/A'}</span></td>
+                            </tr>
+                        `;
+                    }).join('');
+                } catch (error) {
+                    console.error('Error loading inspections:', error);
+                    showToast('Error loading inspections', 'error');
+                }
+            }
+            
+            // Tab Switching
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+                    document.getElementById(btn.dataset.tab).classList.add('active');
+                    
+                    // Refresh data when switching tabs
+                    const tabId = btn.dataset.tab;
+                    if (tabId === 'claims-tab') loadPendingClaims();
+                    if (tabId === 'rates-tab') loadRates();
+                    if (tabId === 'users-tab') loadUsers();
+                    if (tabId === 'valuations-tab') loadAdminValuations();
+                    if (tabId === 'inspections-tab') loadAdminInspections();
+                });
+            });
+            
+            // Logout
+            document.getElementById('logoutBtn').onclick = async () => {
+                await _supabase.auth.signOut();
+                showToast('Logged out successfully');
+                setTimeout(() => window.location.href = 'login.html', 1000);
+            };
+            
+            // Initialize Dashboard
+            async function init() {
+                if (await checkAuth()) {
+                    showLoading(true);
+                    try {
+                        await loadOverview();
+                        await loadPendingClaims();
+                        await loadRates();
+                        await loadUsers();
+                        await loadAdminValuations();
+                        await loadAdminInspections();
+                    } finally {
+                        showLoading(false);
+                    }
+                }
+            }
+            
+            init();
+        })();
     </script>
 </body>
 </html>
