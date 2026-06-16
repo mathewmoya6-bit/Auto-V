@@ -296,7 +296,6 @@
             // ============================================
             async function isFirstTimeUser(userId) {
                 try {
-                    // Check if user has a profile with vehicle or has logged in before
                     const { data, error } = await supabase
                         .from('user_profiles')
                         .select('first_login, has_vehicle, login_count')
@@ -305,22 +304,22 @@
                     
                     if (error && error.code !== 'PGRST116') {
                         console.error('Profile check error:', error);
-                        return true; // Assume new user on error
+                        return true;
                     }
                     
                     if (!data) {
-                        return true; // No profile = new user
+                        return true;
                     }
                     
-                    // Check if this is first login or no vehicle registered
-                    if (data.first_login === true || data.login_count === 0 || data.has_vehicle === false) {
+                    // If first_login is true OR no vehicle OR login_count < 2
+                    if (data.first_login === true || data.has_vehicle === false || data.login_count < 2) {
                         return true;
                     }
                     
                     return false;
                 } catch (err) {
                     console.error('Error checking user status:', err);
-                    return true; // Assume new user on error
+                    return true;
                 }
             }
 
@@ -329,40 +328,43 @@
             // ============================================
             async function updateUserProfile(userId, email, name) {
                 try {
-                    // Check if profile exists
                     const { data, error } = await supabase
                         .from('user_profiles')
-                        .select('id')
+                        .select('id, login_count')
                         .eq('id', userId)
                         .single();
                     
                     if (error && error.code === 'PGRST116') {
-                        // Profile doesn't exist - create it
+                        // Create new profile
                         await supabase
                             .from('user_profiles')
                             .insert({
                                 id: userId,
                                 email: email,
                                 full_name: name || email.split('@')[0],
-                                first_login: false,
+                                first_login: true,
                                 has_vehicle: false,
                                 login_count: 1,
                                 created_at: new Date().toISOString(),
                                 updated_at: new Date().toISOString()
                             });
+                        return true;
                     } else if (data) {
-                        // Profile exists - update login count
+                        // Update existing - increment login count
+                        const newCount = (data.login_count || 0) + 1;
                         await supabase
                             .from('user_profiles')
                             .update({
-                                login_count: supabase.rpc('increment', { row_id: userId }),
+                                login_count: newCount,
                                 last_login: new Date().toISOString(),
                                 updated_at: new Date().toISOString()
                             })
                             .eq('id', userId);
+                        return false;
                     }
                 } catch (err) {
                     console.error('Error updating profile:', err);
+                    return false;
                 }
             }
 
@@ -435,13 +437,13 @@
                         name: userName
                     }));
                     
-                    // Update profile
-                    await updateUserProfile(user.id, user.email, userName);
+                    // Update profile and check if new
+                    const isNew = await updateUserProfile(user.id, user.email, userName);
                     
                     // CHECK IF FIRST TIME USER
                     const isFirstTime = await isFirstTimeUser(user.id);
                     
-                    if (isFirstTime) {
+                    if (isFirstTime || isNew) {
                         // FIRST TIME USER → Redirect to Customer Portal
                         showMessage('👋 Welcome! Let\'s set up your account...', 'success');
                         setTimeout(() => {
@@ -515,28 +517,20 @@
                             showMessage(error.message || 'Signup failed. Please try again.', 'error');
                         }
                     } else if (data.user) {
-                        // Create user profile
-                        try {
-                            const { error: profileError } = await supabase
-                                .from('user_profiles')
-                                .insert({
-                                    id: data.user.id,
-                                    email: email,
-                                    full_name: name || email.split('@')[0],
-                                    phone: phone || '',
-                                    first_login: true,
-                                    has_vehicle: false,
-                                    login_count: 0,
-                                    created_at: new Date().toISOString(),
-                                    updated_at: new Date().toISOString()
-                                });
-                            
-                            if (profileError) {
-                                console.error('Profile creation error:', profileError);
-                            }
-                        } catch (profileErr) {
-                            console.log('Profile creation error:', profileErr);
-                        }
+                        // Create user profile with first_login = true
+                        await supabase
+                            .from('user_profiles')
+                            .insert({
+                                id: data.user.id,
+                                email: email,
+                                full_name: name || email.split('@')[0],
+                                phone: phone || '',
+                                first_login: true,
+                                has_vehicle: false,
+                                login_count: 0,
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            });
                         
                         showMessage('✅ Account created! Please check your email to verify.', 'success');
                         signupModal.style.display = 'none';
@@ -548,6 +542,30 @@
                         document.getElementById('signupConfirmPassword').value = '';
                         document.getElementById('signupName').value = '';
                         document.getElementById('signupPhone').value = '';
+                        
+                        // Auto-login after signup
+                        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+                        if (!loginError && loginData.user) {
+                            // Update profile to mark login
+                            await supabase
+                                .from('user_profiles')
+                                .update({ 
+                                    login_count: 1,
+                                    last_login: new Date().toISOString()
+                                })
+                                .eq('id', loginData.user.id);
+                            
+                            localStorage.setItem('autoV_user', JSON.stringify({
+                                id: loginData.user.id,
+                                email: email,
+                                name: name || email.split('@')[0]
+                            }));
+                            
+                            showMessage('👋 Welcome! Redirecting to customer portal...', 'success');
+                            setTimeout(() => {
+                                window.location.href = "pages/customer-portal.html";
+                            }, 1500);
+                        }
                     }
                 } catch (err) {
                     console.error('Signup error:', err);
