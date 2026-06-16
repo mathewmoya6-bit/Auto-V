@@ -1,16 +1,18 @@
 ﻿-- ============================================
--- AUTO-V COMPLETE DATABASE SCHEMA
+-- AUTO-V PRODUCTION DATABASE SCHEMA
 -- ============================================
 
--- Users
+-- User Profiles
 CREATE TABLE IF NOT EXISTS user_profiles (
     id TEXT PRIMARY KEY,
-    email TEXT,
+    email TEXT UNIQUE,
     full_name TEXT,
     phone TEXT,
     role TEXT DEFAULT 'user',
     company TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Vehicles
@@ -23,19 +25,21 @@ CREATE TABLE IF NOT EXISTS vehicles (
     model TEXT NOT NULL,
     year INTEGER NOT NULL,
     engine_cc INTEGER,
-    fuel_type TEXT,
-    transmission TEXT,
+    fuel_type TEXT CHECK (fuel_type IN ('petrol', 'diesel', 'hybrid', 'electric')),
+    transmission TEXT CHECK (transmission IN ('manual', 'automatic', 'cvt')),
     color TEXT,
     current_mileage INTEGER DEFAULT 0,
     status TEXT DEFAULT 'active',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    last_inspection_date DATE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Valuations
 CREATE TABLE IF NOT EXISTS valuations (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     vehicle_id UUID REFERENCES vehicles(id),
-    valuer_id TEXT REFERENCES user_profiles(id),
+    user_id TEXT REFERENCES user_profiles(id),
     valuation_date DATE NOT NULL,
     market_value DECIMAL(12,2),
     insurance_value DECIMAL(12,2),
@@ -101,3 +105,30 @@ INSERT INTO mileage_rates (vehicle_category, rate_per_km, effective_from, is_act
 ('Pickup Truck', 48, '2024-01-01', true),
 ('Motorcycle', 12, '2024-01-01', true)
 ON CONFLICT DO NOTHING;
+
+-- Enable RLS
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vehicles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE valuations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mileage_claims ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Users can view own profile" ON user_profiles
+    FOR SELECT USING (auth.uid()::text = id);
+CREATE POLICY "Users can update own profile" ON user_profiles
+    FOR UPDATE USING (auth.uid()::text = id);
+
+CREATE POLICY "Users can view own vehicles" ON vehicles
+    FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "Users can insert own vehicles" ON vehicles
+    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can view own valuations" ON valuations
+    FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "Users can insert own valuations" ON valuations
+    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can view own claims" ON mileage_claims
+    FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "Users can insert own claims" ON mileage_claims
+    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
