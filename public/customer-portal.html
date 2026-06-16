@@ -162,6 +162,17 @@
             text-decoration: none;
             font-size: 13px;
         }
+        /* Welcome banner for first-time users */
+        .welcome-banner {
+            background: linear-gradient(135deg, #1e293b, #2d3a4e);
+            border: 2px solid #eab308;
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .welcome-banner h3 { color: #eab308; font-size: 20px; margin-bottom: 8px; }
+        .welcome-banner p { color: #94a3b8; font-size: 14px; }
         @media (max-width: 768px) {
             .service-cards { grid-template-columns: 1fr; }
             .purpose-list { grid-template-columns: 1fr; }
@@ -179,6 +190,12 @@
     <div class="container">
         <div id="errorMsg" class="error"></div>
         <div id="successMsg" class="success"></div>
+
+        <!-- Welcome Banner - First Time Users -->
+        <div id="welcomeBanner" class="welcome-banner" style="display:none;">
+            <h3>👋 Welcome to AUTO-V!</h3>
+            <p>Let's get you started with your first vehicle valuation or inspection.</p>
+        </div>
 
         <div class="progress-bar">
             <div class="progress-step" id="step1Prog" data-step="1">1. Login</div>
@@ -296,7 +313,7 @@
             </div>
             <div class="nav-buttons">
                 <button class="btn btn-secondary" id="newRequestBtn">+ New Request</button>
-                <button class="btn btn-primary" id="goToDashboardBtn">📊 Dashboard</button>
+                <button class="btn btn-primary" id="goToDashboardBtn">📊 Go to Dashboard</button>
             </div>
         </div>
     </div>
@@ -319,6 +336,7 @@
             let selectedPurpose = null;
             let valuationFee = 2500;
             let inspectionFee = 3500;
+            let isFirstTimeUser = false;
 
             const purposes = ["Market Value", "Insurance Valuation", "Loan / Security", "Pre-Purchase Inspection", "Fleet Valuation", "Import Duty", "Tax Assessment", "Court Evidence", "Estate / Probate", "Divorce Settlement", "Just Want to Know"];
 
@@ -343,10 +361,8 @@
                 });
             }
 
-            // Fixed: Load fees with proper error handling
             async function loadFees() {
                 try {
-                    // Try to get valuation fee
                     const { data: vData } = await supabase
                         .from('system_settings')
                         .select('setting_value')
@@ -355,7 +371,6 @@
                     
                     if (vData) valuationFee = parseInt(vData.setting_value);
                     
-                    // Try to get inspection fee
                     const { data: iData } = await supabase
                         .from('system_settings')
                         .select('setting_value')
@@ -390,6 +405,7 @@
                     }
                 }
                 document.getElementById(`step${step}`).classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
 
             function showMessage(msg, type = 'success') {
@@ -406,7 +422,77 @@
                 }
             }
 
-            // LOGIN - Redirects to Dashboard
+            // ============================================
+            // CHECK IF USER IS FIRST TIME
+            // ============================================
+            async function checkFirstTimeUser(userId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('first_login, has_vehicle, login_count')
+                        .eq('id', userId)
+                        .single();
+                    
+                    if (error && error.code !== 'PGRST116') {
+                        return true;
+                    }
+                    
+                    if (!data) return true;
+                    
+                    if (data.first_login === true || data.login_count === 0 || data.has_vehicle === false) {
+                        return true;
+                    }
+                    return false;
+                } catch (err) {
+                    return true;
+                }
+            }
+
+            // ============================================
+            // UPDATE PROFILE AFTER LOGIN
+            // ============================================
+            async function updateUserProfile(userId, email, name) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('id')
+                        .eq('id', userId)
+                        .single();
+                    
+                    if (error && error.code === 'PGRST116') {
+                        await supabase
+                            .from('user_profiles')
+                            .insert({
+                                id: userId,
+                                email: email,
+                                full_name: name || email.split('@')[0],
+                                first_login: true,
+                                has_vehicle: false,
+                                login_count: 1,
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            });
+                        return true;
+                    } else if (data) {
+                        await supabase
+                            .from('user_profiles')
+                            .update({
+                                login_count: supabase.rpc('increment', { row_id: userId }),
+                                last_login: new Date().toISOString()
+                            })
+                            .eq('id', userId);
+                        return false;
+                    }
+                    return false;
+                } catch (err) {
+                    console.error('Error updating profile:', err);
+                    return false;
+                }
+            }
+
+            // ============================================
+            // LOGIN - STAYS IN CUSTOMER PORTAL FOR FIRST TIME
+            // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
                 const email = document.getElementById('loginEmail').value;
@@ -432,21 +518,49 @@
                     }
                     
                     currentUser = data.user;
-                    localStorage.setItem('autoV_user', JSON.stringify({ id: currentUser.id, email: currentUser.email }));
-                    showMessage('✅ Login successful! Redirecting to dashboard...', 'success');
+                    const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
                     
-                    setTimeout(() => {
-                        window.location.href = "dashboard.html";
-                    }, 1500);
+                    // Store user info
+                    localStorage.setItem('autoV_user', JSON.stringify({ 
+                        id: currentUser.id, 
+                        email: currentUser.email,
+                        name: userName
+                    }));
+                    
+                    // Update profile and check if first time
+                    const isNew = await updateUserProfile(currentUser.id, currentUser.email, userName);
+                    isFirstTimeUser = await checkFirstTimeUser(currentUser.id);
+                    
+                    if (isFirstTimeUser || isNew) {
+                        // FIRST TIME USER - Show welcome and stay in customer portal
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        showMessage('👋 Welcome to AUTO-V! Let\'s get you started.', 'success');
+                        // Auto-fill email from login
+                        document.getElementById('custEmail').value = currentUser.email;
+                        // Get name from metadata
+                        if (currentUser.user_metadata?.full_name) {
+                            document.getElementById('custName').value = currentUser.user_metadata.full_name;
+                        }
+                        showStep(2);
+                    } else {
+                        // RETURNING USER - Go to dashboard
+                        showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
+                        setTimeout(() => {
+                            window.location.href = "dashboard.html";
+                        }, 1500);
+                    }
                     
                 } catch (err) {
                     showMessage('Network error. Please try again.', 'error');
+                } finally {
                     loginBtn.disabled = false;
                     loginBtn.innerHTML = originalText;
                 }
             }
 
-            // SIGNUP
+            // ============================================
+            // SIGNUP - Creates account and stays in portal
+            // ============================================
             async function handleSignup(e) {
                 e.preventDefault();
                 const email = document.getElementById('signupEmail').value;
@@ -470,21 +584,62 @@
                 signupBtn.innerHTML = '<span class="spinner"></span> Creating account...';
                 
                 try {
-                    const { data, error } = await supabase.auth.signUp({ email, password });
+                    const { data, error } = await supabase.auth.signUp({ 
+                        email, 
+                        password,
+                        options: {
+                            data: { full_name: name, phone: phone }
+                        }
+                    });
+                    
                     if (error) { 
-                        showMessage(error.message, 'error'); 
+                        if (error.message.includes('User already registered')) {
+                            showMessage('User already exists. Please login.', 'error');
+                        } else {
+                            showMessage(error.message, 'error');
+                        }
                         signupBtn.disabled = false;
                         signupBtn.innerHTML = originalText;
                         return; 
                     }
                     
                     if (data.user) {
-                        await supabase.from('user_profiles').upsert({ id: data.user.id, email, full_name: name, phone });
+                        await supabase.from('user_profiles').insert({
+                            id: data.user.id,
+                            email: email,
+                            full_name: name || email.split('@')[0],
+                            phone: phone || '',
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 1,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        });
+                        
+                        // Auto-login after signup
+                        showMessage('✅ Account created! Logging you in...', 'success');
+                        
+                        // Auto-login the user
+                        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+                        if (!loginError && loginData.user) {
+                            currentUser = loginData.user;
+                            localStorage.setItem('autoV_user', JSON.stringify({ 
+                                id: currentUser.id, 
+                                email: currentUser.email,
+                                name: name || email.split('@')[0]
+                            }));
+                            document.getElementById('custEmail').value = email;
+                            if (name) document.getElementById('custName').value = name;
+                            document.getElementById('welcomeBanner').style.display = 'block';
+                            showStep(2);
+                        } else {
+                            // Just show login
+                            document.getElementById('signupSection').style.display = 'none';
+                            document.getElementById('loginEmail').value = email;
+                            showMessage('Account created! Please login.', 'success');
+                            showStep(1);
+                        }
                     }
-                    
-                    showMessage('✅ Signup successful! Please login.', 'success');
-                    document.getElementById('signupSection').style.display = 'none';
-                    document.getElementById('loginEmail').value = email;
                     
                 } catch (err) {
                     showMessage('Network error. Please try again.', 'error');
@@ -494,7 +649,9 @@
                 }
             }
 
+            // ============================================
             // PAYMENT
+            // ============================================
             async function processPayment(e) {
                 e.preventDefault();
                 const mpesaPhone = document.getElementById('mpesaPhone').value;
@@ -502,19 +659,22 @@
                 if (!selectedService) { showMessage('Select service', 'error'); return; }
                 if (!selectedPurpose) { showMessage('Select purpose', 'error'); return; }
                 
-                const payBtn = document.getElementById('payBtn');
+                const payBtn = document.querySelector('#paymentForm button[type="submit"]');
+                const originalText = payBtn.innerHTML;
                 payBtn.disabled = true;
                 payBtn.innerHTML = '<span class="spinner"></span> Processing...';
                 
                 setTimeout(() => {
                     showStep(6);
-                    showMessage('✓ Payment successful!', 'success');
+                    showMessage('✅ Payment successful!', 'success');
                     payBtn.disabled = false;
-                    payBtn.innerHTML = '💳 Pay & Continue';
+                    payBtn.innerHTML = originalText;
                 }, 1500);
             }
 
+            // ============================================
             // VALUATION CALCULATION
+            // ============================================
             async function calculateValuation(e) {
                 e.preventDefault();
                 const reg = document.getElementById('vehicleReg').value;
@@ -542,6 +702,8 @@
                 if (make.toLowerCase() === 'toyota') baseValue = 2800000;
                 else if (make.toLowerCase() === 'mercedes') baseValue = 5000000;
                 else if (make.toLowerCase() === 'bmw') baseValue = 4500000;
+                else if (make.toLowerCase() === 'nissan') baseValue = 2200000;
+                else if (make.toLowerCase() === 'honda') baseValue = 2400000;
                 
                 let conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Good' ? 1.0 : condition === 'Fair' ? 0.85 : 0.7;
                 let accidentFactor = accident === 'None' ? 1.0 : accident === 'Minor' ? 0.85 : accident === 'Moderate' ? 0.65 : 0.4;
@@ -579,22 +741,41 @@
                     result: result
                 });
                 
+                // Update user profile - mark as has_vehicle true
+                await supabase
+                    .from('user_profiles')
+                    .update({ 
+                        has_vehicle: true, 
+                        first_login: false,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', user.id);
+                
                 document.getElementById('resultsContainer').innerHTML = `
                     <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
                     <p style="color:#eab308;">Estimated Market Value</p>
                     <div class="result-detail">
-                        <div><span>Insurance:</span> <strong>KES ${result.insurance_value.toLocaleString()}</strong></div>
-                        <div><span>Trade-In:</span> <strong>KES ${result.trade_in_value.toLocaleString()}</strong></div>
-                        <div><span>Certificate:</span> <strong>${result.certificate_number}</strong></div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e293b;">
+                            <span>Insurance Value:</span> <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e293b;">
+                            <span>Trade-In Value:</span> <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                            <span>Certificate #:</span> <strong style="color:#eab308;">${result.certificate_number}</strong>
+                        </div>
                     </div>
                     <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
-                        <p style="color:#22c55e;">✅ Valuation Complete!</p>
+                        <p style="color:#22c55e; font-weight:600;">✅ Valuation Complete!</p>
+                        <p style="color:#bbf7d0; font-size:13px; margin-top:5px;">Your vehicle has been registered successfully.</p>
                     </div>
                 `;
                 showStep(7);
             }
 
-            // Event Listeners
+            // ============================================
+            // EVENT LISTENERS
+            // ============================================
             document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
             document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
             document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
@@ -624,8 +805,12 @@
                 window.location.href = "login.html"; 
             });
             
-            document.getElementById('showSignup')?.addEventListener('click', () => document.getElementById('signupSection').style.display = 'block');
-            document.getElementById('hideSignup')?.addEventListener('click', () => document.getElementById('signupSection').style.display = 'none');
+            document.getElementById('showSignup')?.addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'block';
+            });
+            document.getElementById('hideSignup')?.addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'none';
+            });
 
             // Service selection
             document.querySelectorAll('.service-card').forEach(card => {
@@ -634,24 +819,43 @@
                     card.classList.add('selected');
                     selectedService = card.dataset.service;
                     updateSummary();
-                    document.getElementById('selectedServiceMsg').innerHTML = `Selected: ${selectedService === 'valuation' ? 'Valuation' : 'Inspection'} - KES ${selectedService === 'valuation' ? valuationFee : inspectionFee}`;
+                    document.getElementById('selectedServiceMsg').innerHTML = `✅ Selected: ${selectedService === 'valuation' ? 'Valuation' : 'Inspection'} - KES ${selectedService === 'valuation' ? valuationFee : inspectionFee}`;
                 };
             });
 
-            // Check existing session
+            // ============================================
+            // CHECK SESSION - First time stays here
+            // ============================================
             async function checkExistingSession() {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
-                    window.location.href = "dashboard.html";
+                    const isFirst = await checkFirstTimeUser(user.id);
+                    if (isFirst) {
+                        // First time - show welcome and stay on customer portal
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = user.email;
+                        if (user.user_metadata?.full_name) {
+                            document.getElementById('custName').value = user.user_metadata.full_name;
+                        }
+                        showStep(2);
+                    } else {
+                        // Returning user - go to dashboard
+                        window.location.href = "dashboard.html";
+                    }
                 }
             }
 
+            // ============================================
+            // INIT
+            // ============================================
             async function init() {
-                await checkExistingSession();
                 populateYears();
                 populatePurposes();
                 await loadFees();
-                showStep(1);
+                await checkExistingSession();
+                if (!document.querySelector('.step.active')) {
+                    showStep(1);
+                }
             }
             init();
         })();
