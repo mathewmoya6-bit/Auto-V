@@ -196,7 +196,7 @@
     <script>
         // ============================================
         // AUTO-V ADMIN LOGIN
-        // FIXED: Removed full_name from queries
+        // FIXED: Redirects to admin-dashboard.html
         // ============================================
         (function() {
             if (window.autoVAdminLoginInitialized) return;
@@ -227,14 +227,14 @@
             }
 
             // ============================================
-            // CREATE ADMIN PROFILE - NO full_name
+            // CREATE/UPDATE ADMIN PROFILE
             // ============================================
             async function ensureAdminProfile(user) {
                 try {
-                    // Check if profile exists - ONLY select columns that exist
+                    // Check if profile exists
                     const { data: profile, error } = await supabase
                         .from('user_profiles')
-                        .select('id, role')  // ✅ Removed full_name
+                        .select('id, role')
                         .eq('id', user.id)
                         .single();
 
@@ -248,12 +248,14 @@
                             
                             if (updateError) {
                                 console.error('Update error:', updateError);
+                                return null;
                             }
+                            profile.role = 'admin';
                         }
                         return profile;
                     }
 
-                    // No profile - create one with ONLY existing columns
+                    // No profile - create one
                     const { data, error: insertError } = await supabase
                         .from('user_profiles')
                         .insert({
@@ -350,15 +352,20 @@
                         return;
                     }
 
-                    // Store admin session
+                    // ✅ Store admin session
                     localStorage.setItem('autoV_admin', JSON.stringify({
                         id: user.id,
                         email: user.email,
-                        role: profile.role
+                        role: profile.role,
+                        isAdmin: true
                     }));
 
-                    showMessage('✅ Admin login successful! Redirecting...', 'success');
+                    // ✅ Remove regular user session to prevent conflict
+                    localStorage.removeItem('autoV_user');
+
+                    showMessage('✅ Admin login successful! Redirecting to Admin Dashboard...', 'success');
                     setTimeout(() => {
+                        // ✅ CORRECT: Redirect to admin-dashboard.html
                         window.location.href = "admin-dashboard.html";
                     }, 1500);
 
@@ -380,11 +387,12 @@
                     if (session && session.user) {
                         const { data: profile } = await supabase
                             .from('user_profiles')
-                            .select('role')  // ✅ Only select role
+                            .select('role')
                             .eq('id', session.user.id)
                             .single();
                         
                         if (profile && profile.role === 'admin') {
+                            // ✅ Redirect to admin dashboard
                             window.location.href = "admin-dashboard.html";
                         }
                     }
