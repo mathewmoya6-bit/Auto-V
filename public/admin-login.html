@@ -207,8 +207,9 @@
 
     <script>
         // ============================================
-        // AUTO-V ADMIN LOGIN
-        // Redirects to admin-dashboard.html
+        // AUTO-V ADMIN LOGIN - FIXED VERSION
+        // ✅ Checks database for admin role
+        // ✅ Redirects to admin-dashboard.html
         // ============================================
         (function() {
             if (window.autoVAdminLoginInitialized) return;
@@ -225,6 +226,9 @@
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
 
+            // ============================================
+            // HELPER FUNCTIONS
+            // ============================================
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
                 messageBox.className = `message ${type}-message`;
@@ -232,7 +236,9 @@
                 setTimeout(() => { messageBox.style.display = 'none'; }, 5000);
             }
             
-            function clearMessage() { messageBox.style.display = 'none'; }
+            function clearMessage() { 
+                messageBox.style.display = 'none'; 
+            }
 
             function isValidEmail(email) {
                 return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
@@ -243,14 +249,17 @@
             // ============================================
             async function checkAdminRole(userId) {
                 try {
-                    // Only select columns that exist
                     const { data, error } = await supabase
                         .from('user_profiles')
-                        .select('role')
+                        .select('id, email, role')
                         .eq('id', userId)
                         .single();
                     
                     if (error) {
+                        // If no profile found, return null
+                        if (error.code === 'PGRST116') {
+                            return null;
+                        }
                         console.error('Error checking admin role:', error);
                         return null;
                     }
@@ -263,11 +272,10 @@
             }
 
             // ============================================
-            // CREATE ADMIN PROFILE IF NOT EXISTS
+            // CREATE ADMIN PROFILE
             // ============================================
             async function createAdminProfile(user) {
                 try {
-                    // Only use columns that exist
                     const { data, error } = await supabase
                         .from('user_profiles')
                         .insert({
@@ -275,7 +283,7 @@
                             email: user.email,
                             role: 'admin'
                         })
-                        .select('role')
+                        .select('id, email, role')
                         .single();
                     
                     if (error) {
@@ -299,7 +307,7 @@
                         .from('user_profiles')
                         .update({ role: 'admin' })
                         .eq('id', userId)
-                        .select('role')
+                        .select('id, email, role')
                         .single();
                     
                     if (error) {
@@ -315,7 +323,7 @@
             }
 
             // ============================================
-            // ADMIN LOGIN HANDLER
+            // MAIN LOGIN HANDLER
             // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
@@ -336,6 +344,7 @@
                     return;
                 }
                 
+                // Disable button and show loading state
                 loginBtn.disabled = true;
                 loginBtn.innerHTML = '<span class="spinner"></span> Authenticating...';
 
@@ -347,12 +356,13 @@
                     });
 
                     if (authError) {
+                        console.error('Auth error:', authError);
                         if (authError.message === 'Invalid login credentials') {
                             showMessage('❌ Invalid email or password.', 'error');
                         } else if (authError.message.includes('Email not confirmed')) {
                             showMessage('📧 Please verify your email first.', 'info');
                         } else {
-                            showMessage(authError.message, 'error');
+                            showMessage('Login failed: ' + authError.message, 'error');
                         }
                         loginBtn.disabled = false;
                         loginBtn.innerHTML = 'Admin Login';
@@ -367,12 +377,15 @@
                     }
 
                     const user = authData.user;
+                    console.log('✅ User authenticated:', user.email);
 
                     // Step 2: Check if user has admin role
                     let profile = await checkAdminRole(user.id);
+                    console.log('📋 Profile check result:', profile);
 
                     // Step 3: If no profile, create one with admin role
                     if (!profile) {
+                        console.log('📝 No profile found, creating admin profile...');
                         profile = await createAdminProfile(user);
                         if (!profile) {
                             showMessage('Error creating admin profile. Please contact support.', 'error');
@@ -381,10 +394,12 @@
                             loginBtn.innerHTML = 'Admin Login';
                             return;
                         }
+                        console.log('✅ Admin profile created:', profile);
                     }
 
                     // Step 4: If profile exists but not admin, update to admin
                     if (profile && profile.role !== 'admin') {
+                        console.log('🔄 Updating user to admin...');
                         profile = await updateToAdmin(user.id);
                         if (!profile) {
                             showMessage('Error updating admin privileges.', 'error');
@@ -393,9 +408,10 @@
                             loginBtn.innerHTML = 'Admin Login';
                             return;
                         }
+                        console.log('✅ User updated to admin:', profile);
                     }
 
-                    // Step 5: Verify admin role
+                    // Step 5: Final admin verification
                     if (!profile || profile.role !== 'admin') {
                         showMessage('⛔ Access denied. Admin privileges required.', 'error');
                         await supabase.auth.signOut();
@@ -409,7 +425,8 @@
                         id: user.id,
                         email: user.email,
                         role: profile.role,
-                        isAdmin: true
+                        isAdmin: true,
+                        loginTime: new Date().toISOString()
                     }));
 
                     // ✅ Remove regular user session to prevent conflict
@@ -421,8 +438,8 @@
                     }, 1500);
 
                 } catch (err) {
-                    console.error('Login error:', err);
-                    showMessage('🌐 Network error. Please try again.', 'error');
+                    console.error('❌ Login error:', err);
+                    showMessage('Network error. Please try again.', 'error');
                     loginBtn.disabled = false;
                     loginBtn.innerHTML = 'Admin Login';
                 }
@@ -433,13 +450,19 @@
             // ============================================
             async function checkExistingSession() {
                 try {
-                    // Check if admin session exists
+                    // Check if admin session exists in localStorage
                     const adminData = localStorage.getItem('autoV_admin');
                     if (adminData) {
-                        const admin = JSON.parse(adminData);
-                        if (admin.isAdmin) {
-                            window.location.href = "admin-dashboard.html";
-                            return;
+                        try {
+                            const admin = JSON.parse(adminData);
+                            if (admin.isAdmin) {
+                                console.log('✅ Admin session found, redirecting...');
+                                window.location.href = "admin-dashboard.html";
+                                return;
+                            }
+                        } catch (e) {
+                            console.error('Error parsing admin data:', e);
+                            localStorage.removeItem('autoV_admin');
                         }
                     }
 
@@ -452,18 +475,28 @@
                     }
                     
                     if (session && session.user) {
+                        console.log('🔍 Active session found for:', session.user.email);
+                        
+                        // Check if user has admin role
                         const profile = await checkAdminRole(session.user.id);
                         
                         if (profile && profile.role === 'admin') {
-                            // ✅ Store admin session and redirect
+                            // Store admin session and redirect
                             localStorage.setItem('autoV_admin', JSON.stringify({
                                 id: session.user.id,
                                 email: session.user.email,
                                 role: profile.role,
-                                isAdmin: true
+                                isAdmin: true,
+                                loginTime: new Date().toISOString()
                             }));
                             localStorage.removeItem('autoV_user');
+                            console.log('✅ Redirecting to admin dashboard...');
                             window.location.href = "admin-dashboard.html";
+                        } else {
+                            // Not admin, but maybe regular user
+                            console.log('👤 User is not admin, staying on login page');
+                            // Pre-fill email for convenience
+                            emailInput.value = session.user.email;
                         }
                     }
                 } catch (err) {
@@ -492,10 +525,10 @@
                 }
             });
             
-            // Focus on email input
+            // Focus on email input after page loads
             setTimeout(() => emailInput.focus(), 100);
 
-            // Check existing admin session
+            // Check existing admin session on page load
             checkExistingSession();
         })();
     </script>
