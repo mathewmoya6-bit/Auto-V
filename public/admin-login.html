@@ -54,7 +54,11 @@
             color: transparent;
             font-weight: 800;
         }
-        .logo p { color: #94a3b8; font-size: 14px; margin-top: 5px; }
+        .logo p { 
+            color: #94a3b8; 
+            font-size: 14px; 
+            margin-top: 5px;
+        }
         .admin-badge {
             display: inline-block;
             background: #dc2626;
@@ -174,19 +178,27 @@
             <p>Administrator Portal</p>
             <span class="admin-badge">🔒 Admin Access</span>
         </div>
+        
         <div id="messageBox" class="message"></div>
+        
         <form id="loginForm" autocomplete="off">
             <div class="form-group">
                 <label>📧 Email Address</label>
                 <input type="email" id="email" placeholder="admin@autov.co.ke" autocomplete="email" required>
             </div>
+            
             <div class="form-group">
                 <label>🔒 Password</label>
                 <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
             </div>
+            
             <button type="submit" id="loginBtn">Admin Login</button>
         </form>
-        <div class="back-link"><a href="login.html">← Back to User Login</a></div>
+        
+        <div class="back-link">
+            <a href="login.html">← Back to User Login</a>
+        </div>
+        
         <div class="mpesa-badge">
             💳 M-Pesa Paybill: <strong>4095377</strong> | Account: <strong>AUTO-V</strong><br>
             <span style="font-size: 10px;">Valuations: KES 2,500 | Inspections: KES 3,500</span>
@@ -196,7 +208,7 @@
     <script>
         // ============================================
         // AUTO-V ADMIN LOGIN
-        // FIXED: Redirects to admin-dashboard.html
+        // Redirects to admin-dashboard.html
         // ============================================
         (function() {
             if (window.autoVAdminLoginInitialized) return;
@@ -227,53 +239,77 @@
             }
 
             // ============================================
-            // CREATE/UPDATE ADMIN PROFILE
+            // CHECK IF USER HAS ADMIN ROLE
             // ============================================
-            async function ensureAdminProfile(user) {
+            async function checkAdminRole(userId) {
                 try {
-                    // Check if profile exists
-                    const { data: profile, error } = await supabase
+                    // Only select columns that exist
+                    const { data, error } = await supabase
                         .from('user_profiles')
-                        .select('id, role')
-                        .eq('id', user.id)
+                        .select('role')
+                        .eq('id', userId)
                         .single();
-
-                    // If profile exists, update role to admin
-                    if (profile) {
-                        if (profile.role !== 'admin') {
-                            const { error: updateError } = await supabase
-                                .from('user_profiles')
-                                .update({ role: 'admin' })
-                                .eq('id', user.id);
-                            
-                            if (updateError) {
-                                console.error('Update error:', updateError);
-                                return null;
-                            }
-                            profile.role = 'admin';
-                        }
-                        return profile;
+                    
+                    if (error) {
+                        console.error('Error checking admin role:', error);
+                        return null;
                     }
+                    
+                    return data;
+                } catch (err) {
+                    console.error('Admin check error:', err);
+                    return null;
+                }
+            }
 
-                    // No profile - create one
-                    const { data, error: insertError } = await supabase
+            // ============================================
+            // CREATE ADMIN PROFILE IF NOT EXISTS
+            // ============================================
+            async function createAdminProfile(user) {
+                try {
+                    // Only use columns that exist
+                    const { data, error } = await supabase
                         .from('user_profiles')
                         .insert({
                             id: user.id,
                             email: user.email,
                             role: 'admin'
                         })
-                        .select('id, role')
+                        .select('role')
                         .single();
-
-                    if (insertError) {
-                        console.error('Insert error:', insertError);
+                    
+                    if (error) {
+                        console.error('Error creating admin profile:', error);
                         return null;
                     }
-
+                    
                     return data;
                 } catch (err) {
-                    console.error('Error in ensureAdminProfile:', err);
+                    console.error('Create profile error:', err);
+                    return null;
+                }
+            }
+
+            // ============================================
+            // UPDATE USER TO ADMIN
+            // ============================================
+            async function updateToAdmin(userId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .update({ role: 'admin' })
+                        .eq('id', userId)
+                        .select('role')
+                        .single();
+                    
+                    if (error) {
+                        console.error('Error updating to admin:', error);
+                        return null;
+                    }
+                    
+                    return data;
+                } catch (err) {
+                    console.error('Update error:', err);
                     return null;
                 }
             }
@@ -304,7 +340,7 @@
                 loginBtn.innerHTML = '<span class="spinner"></span> Authenticating...';
 
                 try {
-                    // Login with Supabase Auth
+                    // Step 1: Login with Supabase Auth
                     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                         email,
                         password
@@ -332,19 +368,35 @@
 
                     const user = authData.user;
 
-                    // Ensure admin profile exists
-                    const profile = await ensureAdminProfile(user);
+                    // Step 2: Check if user has admin role
+                    let profile = await checkAdminRole(user.id);
 
+                    // Step 3: If no profile, create one with admin role
                     if (!profile) {
-                        showMessage('Error with user profile. Please contact support.', 'error');
-                        await supabase.auth.signOut();
-                        loginBtn.disabled = false;
-                        loginBtn.innerHTML = 'Admin Login';
-                        return;
+                        profile = await createAdminProfile(user);
+                        if (!profile) {
+                            showMessage('Error creating admin profile. Please contact support.', 'error');
+                            await supabase.auth.signOut();
+                            loginBtn.disabled = false;
+                            loginBtn.innerHTML = 'Admin Login';
+                            return;
+                        }
                     }
 
-                    // Verify admin role
-                    if (profile.role !== 'admin') {
+                    // Step 4: If profile exists but not admin, update to admin
+                    if (profile && profile.role !== 'admin') {
+                        profile = await updateToAdmin(user.id);
+                        if (!profile) {
+                            showMessage('Error updating admin privileges.', 'error');
+                            await supabase.auth.signOut();
+                            loginBtn.disabled = false;
+                            loginBtn.innerHTML = 'Admin Login';
+                            return;
+                        }
+                    }
+
+                    // Step 5: Verify admin role
+                    if (!profile || profile.role !== 'admin') {
                         showMessage('⛔ Access denied. Admin privileges required.', 'error');
                         await supabase.auth.signOut();
                         loginBtn.disabled = false;
@@ -352,7 +404,7 @@
                         return;
                     }
 
-                    // ✅ Store admin session
+                    // ✅ Step 6: Store admin session
                     localStorage.setItem('autoV_admin', JSON.stringify({
                         id: user.id,
                         email: user.email,
@@ -365,7 +417,6 @@
 
                     showMessage('✅ Admin login successful! Redirecting to Admin Dashboard...', 'success');
                     setTimeout(() => {
-                        // ✅ CORRECT: Redirect to admin-dashboard.html
                         window.location.href = "admin-dashboard.html";
                     }, 1500);
 
@@ -382,17 +433,36 @@
             // ============================================
             async function checkExistingSession() {
                 try {
-                    const { data: { session } } = await supabase.auth.getSession();
+                    // Check if admin session exists
+                    const adminData = localStorage.getItem('autoV_admin');
+                    if (adminData) {
+                        const admin = JSON.parse(adminData);
+                        if (admin.isAdmin) {
+                            window.location.href = "admin-dashboard.html";
+                            return;
+                        }
+                    }
+
+                    // Check Supabase session
+                    const { data: { session }, error } = await supabase.auth.getSession();
+                    
+                    if (error) {
+                        console.error('Session check error:', error);
+                        return;
+                    }
                     
                     if (session && session.user) {
-                        const { data: profile } = await supabase
-                            .from('user_profiles')
-                            .select('role')
-                            .eq('id', session.user.id)
-                            .single();
+                        const profile = await checkAdminRole(session.user.id);
                         
                         if (profile && profile.role === 'admin') {
-                            // ✅ Redirect to admin dashboard
+                            // ✅ Store admin session and redirect
+                            localStorage.setItem('autoV_admin', JSON.stringify({
+                                id: session.user.id,
+                                email: session.user.email,
+                                role: profile.role,
+                                isAdmin: true
+                            }));
+                            localStorage.removeItem('autoV_user');
                             window.location.href = "admin-dashboard.html";
                         }
                     }
@@ -422,7 +492,10 @@
                 }
             });
             
-            emailInput.focus();
+            // Focus on email input
+            setTimeout(() => emailInput.focus(), 100);
+
+            // Check existing admin session
             checkExistingSession();
         })();
     </script>
