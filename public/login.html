@@ -235,7 +235,7 @@
         </div>
     </div>
 
-    <!-- Signup Modal (Hidden by default) -->
+    <!-- Signup Modal -->
     <div id="signupModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center;">
         <div style="background: #0f172a; border-radius: 24px; padding: 32px; max-width: 400px; width: 90%; border: 2px solid #eab308;">
             <h2 style="color: #eab308; margin-bottom: 20px;">📝 Create Account</h2>
@@ -253,7 +253,9 @@
 
     <script>
         // ============================================
-        // LOGIN PAGE - REDIRECTS TO DASHBOARD
+        // AUTO-V LOGIN - Smart Redirect
+        // First-time users → customer-portal.html
+        // Returning users → dashboard.html
         // ============================================
         (function() {
             if (window.autoVLoginInitialized) return;
@@ -288,9 +290,94 @@
                 const emailRegex = /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/;
                 return emailRegex.test(email);
             }
-            
+
             // ============================================
-            // LOGIN HANDLER - Redirects to Dashboard
+            // CHECK IF USER IS NEW (first-time login)
+            // ============================================
+            async function isFirstTimeUser(userId) {
+                try {
+                    // Check if user has a profile with vehicle or has logged in before
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('first_login, has_vehicle, login_count')
+                        .eq('id', userId)
+                        .single();
+                    
+                    if (error && error.code !== 'PGRST116') {
+                        console.error('Profile check error:', error);
+                        return true; // Assume new user on error
+                    }
+                    
+                    if (!data) {
+                        return true; // No profile = new user
+                    }
+                    
+                    // Check if this is first login or no vehicle registered
+                    if (data.first_login === true || data.login_count === 0 || data.has_vehicle === false) {
+                        return true;
+                    }
+                    
+                    return false;
+                } catch (err) {
+                    console.error('Error checking user status:', err);
+                    return true; // Assume new user on error
+                }
+            }
+
+            // ============================================
+            // UPDATE USER PROFILE AFTER LOGIN
+            // ============================================
+            async function updateUserProfile(userId, email, name) {
+                try {
+                    // Check if profile exists
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('id')
+                        .eq('id', userId)
+                        .single();
+                    
+                    if (error && error.code === 'PGRST116') {
+                        // Profile doesn't exist - create it
+                        await supabase
+                            .from('user_profiles')
+                            .insert({
+                                id: userId,
+                                email: email,
+                                full_name: name || email.split('@')[0],
+                                first_login: false,
+                                has_vehicle: false,
+                                login_count: 1,
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            });
+                    } else if (data) {
+                        // Profile exists - update login count
+                        await supabase
+                            .from('user_profiles')
+                            .update({
+                                login_count: supabase.rpc('increment', { row_id: userId }),
+                                last_login: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', userId);
+                    }
+                } catch (err) {
+                    console.error('Error updating profile:', err);
+                }
+            }
+
+            // ============================================
+            // GET USER FULL NAME
+            // ============================================
+            function getUserName(user) {
+                if (user.user_metadata && user.user_metadata.full_name) {
+                    return user.user_metadata.full_name;
+                }
+                return user.email.split('@')[0];
+            }
+
+            // ============================================
+            // LOGIN HANDLER - Smart Redirect
             // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
@@ -334,20 +421,40 @@
                         }
                         loginBtn.disabled = false;
                         loginBtn.innerHTML = 'Login';
+                        return;
+                    }
+                    
+                    // User logged in successfully
+                    const user = data.user;
+                    const userName = getUserName(user);
+                    
+                    // Store user info
+                    localStorage.setItem('autoV_user', JSON.stringify({
+                        id: user.id,
+                        email: user.email,
+                        name: userName
+                    }));
+                    
+                    // Update profile
+                    await updateUserProfile(user.id, user.email, userName);
+                    
+                    // CHECK IF FIRST TIME USER
+                    const isFirstTime = await isFirstTimeUser(user.id);
+                    
+                    if (isFirstTime) {
+                        // FIRST TIME USER → Redirect to Customer Portal
+                        showMessage('👋 Welcome! Let\'s set up your account...', 'success');
+                        setTimeout(() => {
+                            window.location.href = "pages/customer-portal.html";
+                        }, 1500);
                     } else {
-                        // Store user info
-                        localStorage.setItem('autoV_user', JSON.stringify({
-                            id: data.user.id,
-                            email: data.user.email
-                        }));
-                        
-                        showMessage('✅ Login successful! Redirecting to dashboard...', 'success');
-                        
-                        // REDIRECT TO DASHBOARD
+                        // RETURNING USER → Redirect to Dashboard
+                        showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
                         setTimeout(() => {
                             window.location.href = "dashboard.html";
                         }, 1500);
                     }
+                    
                 } catch (err) {
                     console.error('Unexpected error:', err);
                     showMessage('🌐 Network error. Please check your connection and try again.', 'error');
@@ -410,18 +517,28 @@
                     } else if (data.user) {
                         // Create user profile
                         try {
-                            await supabase.from('user_profiles').upsert({
-                                id: data.user.id,
-                                email: email,
-                                full_name: name,
-                                phone: phone,
-                                created_at: new Date().toISOString()
-                            });
+                            const { error: profileError } = await supabase
+                                .from('user_profiles')
+                                .insert({
+                                    id: data.user.id,
+                                    email: email,
+                                    full_name: name || email.split('@')[0],
+                                    phone: phone || '',
+                                    first_login: true,
+                                    has_vehicle: false,
+                                    login_count: 0,
+                                    created_at: new Date().toISOString(),
+                                    updated_at: new Date().toISOString()
+                                });
+                            
+                            if (profileError) {
+                                console.error('Profile creation error:', profileError);
+                            }
                         } catch (profileErr) {
-                            console.log('Profile creation skipped or already exists');
+                            console.log('Profile creation error:', profileErr);
                         }
                         
-                        showMessage('✅ Account created successfully! Please check your email to verify.', 'success');
+                        showMessage('✅ Account created! Please check your email to verify.', 'success');
                         signupModal.style.display = 'none';
                         emailInput.value = email;
                         
@@ -441,7 +558,9 @@
                 }
             }
             
-            // Check if already logged in
+            // ============================================
+            // CHECK SESSION
+            // ============================================
             async function checkSession() {
                 try {
                     const { data: { session }, error } = await supabase.auth.getSession();
@@ -452,18 +571,31 @@
                     }
                     
                     if (session) {
-                        console.log('Active session found, redirecting to dashboard');
-                        showMessage('Already logged in! Redirecting...', 'success');
-                        setTimeout(() => {
-                            window.location.href = "dashboard.html";
-                        }, 1000);
+                        console.log('Active session found, checking user status...');
+                        
+                        // Check if user is first-time
+                        const isFirstTime = await isFirstTimeUser(session.user.id);
+                        
+                        if (isFirstTime) {
+                            showMessage('👋 Welcome! Let\'s set up your account...', 'success');
+                            setTimeout(() => {
+                                window.location.href = "pages/customer-portal.html";
+                            }, 1000);
+                        } else {
+                            showMessage('✅ Welcome back! Redirecting...', 'success');
+                            setTimeout(() => {
+                                window.location.href = "dashboard.html";
+                            }, 1000);
+                        }
                     }
                 } catch (err) {
                     console.error('Session check error:', err);
                 }
             }
             
-            // Event listeners
+            // ============================================
+            // EVENT LISTENERS
+            // ============================================
             document.getElementById('loginForm').addEventListener('submit', handleLogin);
             document.getElementById('signupForm').addEventListener('submit', handleSignup);
             
@@ -475,22 +607,17 @@
                 signupModal.style.display = 'none';
             });
             
-            // Close modal when clicking outside
             signupModal.addEventListener('click', (e) => {
                 if (e.target === signupModal) {
                     signupModal.style.display = 'none';
                 }
             });
             
-            // Enter key support
             emailInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(e); });
             passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(e); });
-            
-            // Clear message on input
             emailInput.addEventListener('input', clearMessage);
             passwordInput.addEventListener('input', clearMessage);
             
-            // Focus on email input on load
             emailInput.focus();
             
             // Check existing session on page load
