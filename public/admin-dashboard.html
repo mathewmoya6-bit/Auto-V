@@ -318,7 +318,8 @@
 
     <script>
         // ============================================
-        // ADMIN DASHBOARD - PRODUCTION READY
+        // ADMIN DASHBOARD - FIXED VERSION
+        // ✅ Uses user_profiles table for admin check
         // ============================================
         (function() {
             // Check if already initialized
@@ -328,7 +329,6 @@
             const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
             const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
             
-            // Create supabase client only once
             const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
             let currentUser = null;
@@ -350,26 +350,46 @@
                 document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
             }
             
-            // Authentication with Admin Check
+            // ✅ FIXED: Authentication with Database Admin Check
             async function checkAuth() {
                 try {
+                    // Get current user
                     const { data: { user }, error } = await _supabase.auth.getUser();
+                    
                     if (error || !user) {
                         showToast('Please login to continue', 'warning');
                         window.location.href = "login.html";
                         return false;
                     }
+                    
                     currentUser = user;
                     document.getElementById('adminEmail').textContent = user.email;
                     
-                    // Check if user is admin - email-based check
-                    const isAdmin = user.email === 'admin@autov.com' || user.email.includes('admin');
+                    // ✅ CHECK ADMIN STATUS FROM DATABASE
+                    const { data: profile, error: profileError } = await _supabase
+                        .from('user_profiles')
+                        .select('role')
+                        .eq('id', user.id)
+                        .single();
                     
-                    if (!isAdmin) {
-                        showToast('Admin access required. Redirecting to user dashboard...', 'warning');
-                        setTimeout(() => window.location.href = "dashboard.html", 2000);
+                    if (profileError) {
+                        console.error('Profile check error:', profileError);
+                        showToast('Error checking admin status', 'error');
+                        // Still allow if email is admin@autov.com as fallback
+                        if (user.email === 'admin@autov.com') {
+                            return true;
+                        }
+                        window.location.href = "dashboard.html";
                         return false;
                     }
+                    
+                    // ✅ Check if user has admin role
+                    if (!profile || profile.role !== 'admin') {
+                        showToast('⛔ Admin access required. Redirecting to user dashboard...', 'warning');
+                        setTimeout(() => window.location.href = "dashboard.html", 1500);
+                        return false;
+                    }
+                    
                     return true;
                 } catch (error) {
                     console.error('Auth error:', error);
@@ -751,6 +771,7 @@
             // Logout
             document.getElementById('logoutBtn').onclick = async () => {
                 await _supabase.auth.signOut();
+                localStorage.removeItem('autoV_admin');
                 showToast('Logged out successfully');
                 setTimeout(() => window.location.href = 'login.html', 1000);
             };
