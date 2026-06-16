@@ -1,0 +1,137 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0a0c15;
+            color: #fff;
+            min-height: 100vh;
+        }
+        .header {
+            background: #0f172a;
+            padding: 16px 24px;
+            border-bottom: 2px solid #eab308;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo { font-size: 24px; font-weight: bold; color: #eab308; }
+        .logout-btn {
+            background: #dc2626;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .card {
+            background: #0f172a;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid #1e293b;
+        }
+        h2 { color: #eab308; margin-bottom: 20px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-number { font-size: 32px; font-weight: bold; color: #22c55e; }
+        .stat-label { color: #94a3b8; font-size: 12px; }
+        .btn {
+            background: #eab308;
+            color: #000;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { background: #facc15; }
+        .btn-secondary { background: #334155; color: #fff; }
+        .btn-secondary:hover { background: #475569; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🚗 AUTO-V</div>
+        <button class="logout-btn" onclick="autoV.logout()">Logout</button>
+    </div>
+    <div class="container">
+        <div class="card">
+            <h2>📊 Dashboard</h2>
+            <div id="userInfo" style="color: #94a3b8; margin-bottom: 20px;">Loading...</div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="vehicleCount">0</div>
+                    <div class="stat-label">Vehicles</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="valuationCount">0</div>
+                    <div class="stat-label">Valuations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="claimCount">0</div>
+                    <div class="stat-label">Mileage Claims</div>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <a href="valuation.html" class="btn">💰 New Valuation</a>
+                <a href="inspection.html" class="btn">🔍 New Inspection</a>
+                <a href="mileage.html" class="btn">📊 Mileage Claim</a>
+                <a href="vehicle-registration.html" class="btn btn-secondary">🚗 Register Vehicle</a>
+                <a href="customer-portal.html" class="btn btn-secondary">📋 Customer Portal</a>
+                <a href="admin.html" class="btn btn-secondary">👑 Admin</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (async function() {
+            const user = await autoV.requireAuth();
+            if (!user) return;
+            
+            document.getElementById('userInfo').innerHTML = Welcome, <strong></strong>!;
+            
+            // Load stats
+            const vehicles = await autoV.getVehicles();
+            document.getElementById('vehicleCount').textContent = vehicles.length || 0;
+            
+            // Get valuations count from service_requests
+            const { data: vals } = await autoV.supabase
+                .from('service_requests')
+                .select('*', { count: 'exact' })
+                .eq('user_id', user.id)
+                .eq('service_type', 'valuation');
+            document.getElementById('valuationCount').textContent = vals?.length || 0;
+            
+            const { data: claims } = await autoV.supabase
+                .from('mileage_claims')
+                .select('*', { count: 'exact' })
+                .eq('user_id', user.id);
+            document.getElementById('claimCount').textContent = claims?.length || 0;
+        })();
+    </script>
+</body>
+</html>
