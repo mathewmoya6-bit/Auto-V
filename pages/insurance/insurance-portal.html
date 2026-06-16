@@ -1,0 +1,97 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V | Insurance Intelligence</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Inter',sans-serif; background:#0a0c15; color:#fff; }
+        .header { background:#0f172a; border-bottom:2px solid #eab308; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; }
+        .logo { font-size:24px; font-weight:bold; color:#eab308; }
+        .container { max-width:1400px; margin:0 auto; padding:24px; }
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:20px; margin-bottom:24px; }
+        .stat-card { background:#0f172a; border-radius:16px; padding:20px; border:1px solid #1e293b; text-align:center; }
+        .stat-number { font-size:32px; font-weight:800; color:#22c55e; }
+        .stat-label { color:#94a3b8; font-size:12px; margin-top:8px; }
+        .risk-low { background:#14532d; color:#22c55e; padding:4px 12px; border-radius:12px; }
+        .risk-medium { background:#713f12; color:#eab308; padding:4px 12px; border-radius:12px; }
+        .risk-high { background:#7f1d1d; color:#ef4444; padding:4px 12px; border-radius:12px; }
+        .card { background:#0f172a; border-radius:16px; padding:24px; border:1px solid #1e293b; margin-bottom:20px; }
+        h2 { color:#eab308; margin-bottom:20px; }
+        table { width:100%; border-collapse:collapse; }
+        th, td { padding:12px; text-align:left; border-bottom:1px solid #1e293b; }
+        th { color:#eab308; }
+        .search-box { display:flex; gap:12px; margin-bottom:20px; }
+        .search-box input { flex:1; padding:12px; background:#1e293b; border:1px solid #334155; border-radius:8px; color:#fff; }
+        .btn { background:#eab308; color:#000; padding:8px 20px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; }
+    </style>
+</head>
+<body>
+    <div class="header"><div class="logo">🛡️ AUTO-V Insurance Portal</div></div>
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-number" id="totalVehicles">0</div><div class="stat-label">Vehicles Assessed</div></div>
+            <div class="stat-card"><div class="stat-number" id="avgRisk">0%</div><div class="stat-label">Average Risk Score</div></div>
+            <div class="stat-card"><div class="stat-number" id="lowRisk">0</div><div class="stat-label">Low Risk</div></div>
+            <div class="stat-card"><div class="stat-number" id="highRisk">0</div><div class="stat-label">High Risk</div></div>
+        </div>
+        
+        <div class="card">
+            <h2>🔍 Risk Assessment</h2>
+            <div class="search-box">
+                <input type="text" id="riskSearch" placeholder="Enter registration number">
+                <button class="btn" onclick="assessRisk()">Assess Risk</button>
+            </div>
+            <div id="riskResult"></div>
+        </div>
+        
+        <div class="card">
+            <h2>📋 Recent Assessments</h2>
+            <div style="overflow-x:auto;"><table><thead><tr><th>Vehicle</th><th>Risk Score</th><th>Risk Level</th><th>Recommendation</th></tr></thead><tbody id="riskTable"><tr><td colspan="4" style="text-align:center;padding:40px;color:#64748b;">No assessments yet</td></tr></tbody></table></div>
+        </div>
+    </div>
+    <script>
+        (async function() {
+            const user = await autoV.requireAuth();
+            if (!user) return;
+            
+            const { data: vehicles } = await autoV.supabase
+                .from('vehicles')
+                .select('*')
+                .limit(50);
+            
+            if (vehicles) {
+                document.getElementById('totalVehicles').textContent = vehicles.length;
+                const risks = vehicles.map(v => Math.floor(Math.random() * 60) + 20);
+                const avg = risks.reduce((s, r) => s + r, 0) / risks.length;
+                document.getElementById('avgRisk').innerHTML = ${Math.round(avg)}%;
+                document.getElementById('lowRisk').textContent = risks.filter(r => r < 40).length;
+                document.getElementById('highRisk').textContent = risks.filter(r => r > 60).length;
+            }
+        })();
+        
+        window.assessRisk = function() {
+            const reg = document.getElementById('riskSearch').value.trim();
+            if (!reg) { alert('Enter registration number'); return; }
+            
+            const riskScore = Math.floor(Math.random() * 60) + 20;
+            const level = riskScore < 40 ? 'Low' : riskScore < 60 ? 'Medium' : 'High';
+            const colors = { Low: 'risk-low', Medium: 'risk-medium', High: 'risk-high' };
+            
+            document.getElementById('riskResult').innerHTML = 
+                <div style="background:#1e293b; padding:20px; border-radius:12px; text-align:center;">
+                    <h3 style="color:#eab308;"></h3>
+                    <div style="font-size:48px; font-weight:800; color:;">%</div>
+                    <div><span class=""> Risk</span></div>
+                    <div style="margin-top:12px; color:#94a3b8;">
+                        
+                    </div>
+                </div>
+            ;
+        };
+    </script>
+</body>
+</html>
