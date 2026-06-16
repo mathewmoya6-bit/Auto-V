@@ -94,6 +94,7 @@
             padding: 24px;
             border: 1px solid #1e293b;
             text-align: center;
+            transition: all 0.3s;
         }
         .stat-card:hover { border-color: #eab308; transform: translateY(-2px); }
         .stat-card h4 { color: #94a3b8; font-size: 12px; text-transform: uppercase; margin-bottom: 12px; }
@@ -133,6 +134,7 @@
         .btn-warning { background: #f59e0b; color: #000; }
         .btn-warning:hover { background: #d97706; }
         .btn-sm { padding: 4px 10px; font-size: 11px; }
+        .btn-xs { padding: 2px 8px; font-size: 10px; }
         
         .table-wrapper { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
@@ -152,6 +154,8 @@
         .badge-approved { background: #22c55e; color: #000; }
         .badge-rejected { background: #dc2626; color: #fff; }
         .badge-completed { background: #3b82f6; color: #fff; }
+        .badge-active { background: #22c55e; color: #000; }
+        .badge-inactive { background: #64748b; color: #fff; }
         
         .modal {
             display: none;
@@ -232,6 +236,18 @@
         .search-box { margin-bottom: 20px; }
         .search-box input { width: 100%; padding: 10px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 12px; color: #fff; }
         
+        .confirm-dialog {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            border: 1px solid #334155;
+        }
+        .confirm-dialog .icon { font-size: 48px; margin-bottom: 10px; }
+        .confirm-dialog h3 { color: #eab308; margin-bottom: 10px; }
+        .confirm-dialog p { color: #94a3b8; margin-bottom: 20px; }
+        .confirm-dialog .actions { display: flex; justify-content: center; gap: 12px; }
+        
         @media (max-width: 768px) {
             .container { padding: 16px; }
             .card { padding: 20px; }
@@ -256,6 +272,7 @@
     <div class="container">
         <div class="nav-tabs">
             <button class="tab-btn active" data-tab="overview-tab">📊 Overview</button>
+            <button class="tab-btn" data-tab="activities-tab">📋 Activities</button>
             <button class="tab-btn" data-tab="payments-tab">💳 Pending Payments</button>
             <button class="tab-btn" data-tab="services-tab">🔧 Services</button>
             <button class="tab-btn" data-tab="rates-tab">💰 Price Management</button>
@@ -277,10 +294,45 @@
                 <div class="card-header"><h2>📈 Recent Activity</h2></div>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Details</th><th>Amount</th><th>Status</th></tr></thead>
-                        <tbody id="adminRecentBody"><tr><td colspan="6" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
+                        <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Details</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody id="adminRecentBody"><tr><td colspan="7" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ACTIVITIES (NEW) -->
+        <div id="activities-tab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>📋 All Activities</h2>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn btn-danger btn-sm" id="deleteAllActivitiesBtn">🗑️ Delete All</button>
+                        <button class="btn btn-secondary btn-sm" id="refreshActivitiesBtn">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr>
+                            <th><input type="checkbox" id="selectAllActivities"></th>
+                            <th>Date</th>
+                            <th>User</th>
+                            <th>Service</th>
+                            <th>Details</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr></thead>
+                        <tbody id="activitiesBody"><tr><td colspan="8" style="text-align:center; padding:40px;"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <span id="selectedCount" style="color:#94a3b8; font-size:13px;">0 selected</span>
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn btn-danger btn-sm" id="deleteSelectedBtn" style="display:none;">🗑️ Delete Selected</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -418,13 +470,27 @@
         </div>
     </div>
 
+    <!-- Confirm Delete Modal -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content" style="max-width:450px;">
+            <div class="confirm-dialog">
+                <div class="icon">⚠️</div>
+                <h3 id="confirmTitle">Confirm Delete</h3>
+                <p id="confirmMessage">Are you sure you want to delete this item?</p>
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Cancel</button>
+                    <button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="loadingOverlay" class="loading-overlay"><div class="spinner"></div></div>
 
     <script>
         // ============================================
         // AUTO-V ADMIN DASHBOARD - COMPLETE
-        // Full functionality: Edit/Delete services,
-        // Price management, Approve payments
+        // Full functionality with DELETE ACTIVITIES
         // ============================================
         (function() {
             if (window.autoVAdminInitialized) return;
@@ -436,6 +502,9 @@
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             let currentUser = null;
             let currentPaymentId = null;
+            let currentDeleteAction = null;
+            let selectedActivities = new Set();
+            let allActivitiesData = [];
 
             // ============================================
             // HELPER FUNCTIONS
@@ -458,6 +527,16 @@
             
             function openModal(id) { document.getElementById(id).classList.add('active'); }
             function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+            function showConfirm(title, message, onConfirm) {
+                document.getElementById('confirmTitle').textContent = title;
+                document.getElementById('confirmMessage').textContent = message;
+                document.getElementById('confirmDeleteBtn').onclick = () => {
+                    closeModal('confirmModal');
+                    if (onConfirm) onConfirm();
+                };
+                openModal('confirmModal');
+            }
 
             // ============================================
             // AUTHENTICATION
@@ -492,6 +571,285 @@
             }
 
             // ============================================
+            // ACTIVITIES - LOAD, DELETE, BULK DELETE
+            // ============================================
+            async function loadActivities() {
+                try {
+                    // Load from all tables
+                    const [valuationsRes, inspectionsRes, claimsRes, paymentsRes, usersRes] = await Promise.all([
+                        supabase.from('service_requests').select('*').eq('service_type', 'valuation').order('created_at', { ascending: false }),
+                        supabase.from('service_requests').select('*').eq('service_type', 'inspection').order('created_at', { ascending: false }),
+                        supabase.from('mileage_claims').select('*').order('created_at', { ascending: false }),
+                        supabase.from('payments').select('*').order('created_at', { ascending: false }),
+                        supabase.from('user_profiles').select('id, email, full_name')
+                    ]);
+
+                    const users = usersRes.data || [];
+                    const allActivities = [];
+
+                    // Process valuations
+                    (valuationsRes.data || []).forEach(v => {
+                        const user = users.find(u => u.id === v.user_id);
+                        allActivities.push({
+                            id: v.id,
+                            type: 'valuation',
+                            table: 'service_requests',
+                            date: v.created_at,
+                            user: user?.email || v.user_id || 'Unknown',
+                            user_id: v.user_id,
+                            service: '💰 Valuation',
+                            details: `${v.make || ''} ${v.model || ''}`,
+                            amount: v.amount || 2500,
+                            status: v.status || 'completed',
+                            icon: '💰'
+                        });
+                    });
+
+                    // Process inspections
+                    (inspectionsRes.data || []).forEach(i => {
+                        const user = users.find(u => u.id === i.user_id);
+                        allActivities.push({
+                            id: i.id,
+                            type: 'inspection',
+                            table: 'service_requests',
+                            date: i.created_at,
+                            user: user?.email || i.user_id || 'Unknown',
+                            user_id: i.user_id,
+                            service: '🔍 Inspection',
+                            details: i.vehicle_id || i.registration_number || 'Vehicle',
+                            amount: i.amount || 3500,
+                            status: i.status || 'completed',
+                            icon: '🔍'
+                        });
+                    });
+
+                    // Process claims
+                    (claimsRes.data || []).forEach(c => {
+                        const user = users.find(u => u.id === c.user_id);
+                        allActivities.push({
+                            id: c.id,
+                            type: 'claim',
+                            table: 'mileage_claims',
+                            date: c.created_at,
+                            user: user?.email || c.user_id || 'Unknown',
+                            user_id: c.user_id,
+                            service: '📊 Mileage Claim',
+                            details: `${c.start_location || ''} → ${c.end_location || ''}`,
+                            amount: c.claim_amount || 0,
+                            status: c.status || 'pending',
+                            icon: '📊'
+                        });
+                    });
+
+                    // Process payments
+                    (paymentsRes.data || []).forEach(p => {
+                        const user = users.find(u => u.id === p.user_id);
+                        allActivities.push({
+                            id: p.id,
+                            type: 'payment',
+                            table: 'payments',
+                            date: p.created_at,
+                            user: user?.email || p.user_id || 'Unknown',
+                            user_id: p.user_id,
+                            service: '💳 Payment',
+                            details: p.service_type || 'Payment',
+                            amount: p.amount || 0,
+                            status: p.status || 'pending',
+                            icon: '💳'
+                        });
+                    });
+
+                    // Sort by date
+                    allActivities.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    allActivitiesData = allActivities;
+
+                    const tbody = document.getElementById('activitiesBody');
+                    if (allActivities.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No activities found</td></tr>';
+                        return;
+                    }
+
+                    tbody.innerHTML = allActivities.map(item => `
+                        <tr data-id="${item.id}" data-table="${item.table}">
+                            <td><input type="checkbox" class="activity-checkbox" data-id="${item.id}"></td>
+                            <td>${new Date(item.date).toLocaleDateString()}</td>
+                            <td>${item.user}</td>
+                            <td>${item.service}</td>
+                            <td>${item.details || '-'}</td>
+                            <td>${formatKES(item.amount)}</td>
+                            <td><span class="badge badge-${item.status === 'completed' || item.status === 'approved' ? 'approved' : item.status === 'pending' ? 'pending' : 'rejected'}">${item.status}</span></td>
+                            <td class="actions">
+                                <button class="btn btn-danger btn-xs" onclick="deleteActivity('${item.id}', '${item.table}')">🗑️</button>
+                            </td>
+                        </tr>
+                    `).join('');
+
+                    // Update select all
+                    document.getElementById('selectAllActivities').onchange = function() {
+                        document.querySelectorAll('.activity-checkbox').forEach(cb => {
+                            cb.checked = this.checked;
+                            if (cb.checked) selectedActivities.add(cb.dataset.id);
+                            else selectedActivities.delete(cb.dataset.id);
+                        });
+                        updateSelectedCount();
+                    };
+
+                    // Individual checkbox events
+                    document.querySelectorAll('.activity-checkbox').forEach(cb => {
+                        cb.onchange = function() {
+                            if (this.checked) selectedActivities.add(this.dataset.id);
+                            else selectedActivities.delete(this.dataset.id);
+                            updateSelectedCount();
+                            // Update select all
+                            const all = document.querySelectorAll('.activity-checkbox');
+                            const checked = document.querySelectorAll('.activity-checkbox:checked');
+                            document.getElementById('selectAllActivities').checked = all.length === checked.length;
+                        };
+                    });
+
+                    updateSelectedCount();
+
+                } catch (error) {
+                    console.error('Error loading activities:', error);
+                    showToast('Error loading activities', 'error');
+                }
+            }
+
+            function updateSelectedCount() {
+                const count = selectedActivities.size;
+                document.getElementById('selectedCount').textContent = `${count} selected`;
+                const deleteBtn = document.getElementById('deleteSelectedBtn');
+                if (count > 0) {
+                    deleteBtn.style.display = 'inline-block';
+                    deleteBtn.textContent = `🗑️ Delete ${count} Selected`;
+                } else {
+                    deleteBtn.style.display = 'none';
+                }
+            }
+
+            // ============================================
+            // DELETE ACTIVITY (Single)
+            // ============================================
+            window.deleteActivity = function(id, table) {
+                showConfirm(
+                    'Delete Activity',
+                    'Are you sure you want to delete this activity? This action cannot be undone.',
+                    async () => {
+                        showLoading(true);
+                        try {
+                            const { error } = await supabase
+                                .from(table)
+                                .delete()
+                                .eq('id', id);
+                            
+                            if (error) throw error;
+                            
+                            showToast('Activity deleted successfully');
+                            await loadActivities();
+                            await loadOverview();
+                        } catch (error) {
+                            console.error('Error deleting activity:', error);
+                            showToast('Error deleting activity', 'error');
+                        } finally {
+                            showLoading(false);
+                        }
+                    }
+                );
+            };
+
+            // ============================================
+            // DELETE SELECTED ACTIVITIES
+            // ============================================
+            document.getElementById('deleteSelectedBtn')?.addEventListener('click', () => {
+                const count = selectedActivities.size;
+                showConfirm(
+                    'Delete Selected Activities',
+                    `Are you sure you want to delete ${count} selected activities? This action cannot be undone.`,
+                    async () => {
+                        showLoading(true);
+                        try {
+                            // Group by table
+                            const grouped = {};
+                            document.querySelectorAll('.activity-checkbox:checked').forEach(cb => {
+                                const row = cb.closest('tr');
+                                const table = row.dataset.table;
+                                const id = cb.dataset.id;
+                                if (!grouped[table]) grouped[table] = [];
+                                grouped[table].push(id);
+                            });
+
+                            // Delete from each table
+                            for (const [table, ids] of Object.entries(grouped)) {
+                                const { error } = await supabase
+                                    .from(table)
+                                    .delete()
+                                    .in('id', ids);
+                                
+                                if (error) throw error;
+                            }
+
+                            selectedActivities.clear();
+                            showToast(`Successfully deleted ${count} activities`);
+                            await loadActivities();
+                            await loadOverview();
+                        } catch (error) {
+                            console.error('Error deleting selected activities:', error);
+                            showToast('Error deleting selected activities', 'error');
+                        } finally {
+                            showLoading(false);
+                        }
+                    }
+                );
+            });
+
+            // ============================================
+            // DELETE ALL ACTIVITIES
+            // ============================================
+            document.getElementById('deleteAllActivitiesBtn')?.addEventListener('click', () => {
+                showConfirm(
+                    'Delete All Activities',
+                    'Are you sure you want to delete ALL activities? This action cannot be undone.',
+                    async () => {
+                        showLoading(true);
+                        try {
+                            const tables = ['service_requests', 'mileage_claims', 'payments'];
+                            for (const table of tables) {
+                                const { error } = await supabase
+                                    .from(table)
+                                    .delete()
+                                    .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+                                
+                                if (error) throw error;
+                            }
+
+                            selectedActivities.clear();
+                            showToast('All activities deleted successfully');
+                            await loadActivities();
+                            await loadOverview();
+                        } catch (error) {
+                            console.error('Error deleting all activities:', error);
+                            showToast('Error deleting all activities', 'error');
+                        } finally {
+                            showLoading(false);
+                        }
+                    }
+                );
+            });
+
+            // ============================================
+            // REFRESH ACTIVITIES
+            // ============================================
+            document.getElementById('refreshActivitiesBtn')?.addEventListener('click', async () => {
+                showLoading(true);
+                try {
+                    await loadActivities();
+                    showToast('Activities refreshed');
+                } finally {
+                    showLoading(false);
+                }
+            });
+
+            // ============================================
             // OVERVIEW
             // ============================================
             async function loadOverview() {
@@ -513,18 +871,18 @@
                     document.getElementById('pendingPayments').textContent = pendingPayments.length;
                     document.getElementById('totalRevenue').innerHTML = formatKES(totalRevenue);
                     
-                    // Recent activity
+                    // Recent activity (last 10 for overview)
                     const recent = [];
-                    valuations?.forEach(v => recent.push({ ...v, type: 'valuation', display: '💰 Valuation', date: v.created_at, amount: v.amount || 0, status: v.payment_status || 'completed' }));
-                    inspections?.forEach(i => recent.push({ ...i, type: 'inspection', display: '🔍 Inspection', date: i.created_at, amount: i.amount || 0, status: i.payment_status || 'completed' }));
-                    claims?.forEach(c => recent.push({ ...c, type: 'mileage', display: '📊 Mileage', date: c.created_at, amount: c.claim_amount || 0, status: c.status || 'pending' }));
+                    valuations?.slice(0, 5).forEach(v => recent.push({ ...v, type: 'valuation', display: '💰 Valuation', date: v.created_at, amount: v.amount || 0, status: v.payment_status || 'completed' }));
+                    inspections?.slice(0, 5).forEach(i => recent.push({ ...i, type: 'inspection', display: '🔍 Inspection', date: i.created_at, amount: i.amount || 0, status: i.payment_status || 'completed' }));
+                    claims?.slice(0, 5).forEach(c => recent.push({ ...c, type: 'mileage', display: '📊 Mileage', date: c.created_at, amount: c.claim_amount || 0, status: c.status || 'pending' }));
                     
                     recent.sort((a, b) => new Date(b.date) - new Date(a.date));
                     const tbody = document.getElementById('adminRecentBody');
                     if (recent.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No activity yet</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No activity yet</td></tr>';
                     } else {
-                        tbody.innerHTML = recent.slice(0, 20).map(item => `
+                        tbody.innerHTML = recent.slice(0, 10).map(item => `
                             <tr>
                                 <td>${new Date(item.date).toLocaleDateString()}</td>
                                 <td>${item.user_id?.substring(0, 12) || 'Unknown'}</td>
@@ -532,6 +890,9 @@
                                 <td>${item.details?.substring(0, 40) || '-'}</td>
                                 <td>${formatKES(item.amount || 0)}</td>
                                 <td><span class="badge badge-${item.status === 'completed' || item.status === 'approved' ? 'approved' : 'pending'}">${item.status}</span></td>
+                                <td class="actions">
+                                    <button class="btn btn-danger btn-xs" onclick="deleteRecentActivity('${item.id}', '${item.type}')">🗑️</button>
+                                </td>
                             </tr>
                         `).join('');
                     }
@@ -539,6 +900,27 @@
                     console.error('Error loading overview:', error);
                 }
             }
+
+            // Delete from recent activity
+            window.deleteRecentActivity = function(id, type) {
+                let table = 'service_requests';
+                if (type === 'mileage') table = 'mileage_claims';
+                else if (type === 'payment') table = 'payments';
+                
+                showConfirm('Delete Activity', 'Delete this activity?', async () => {
+                    showLoading(true);
+                    try {
+                        await supabase.from(table).delete().eq('id', id);
+                        showToast('Activity deleted');
+                        await loadOverview();
+                        await loadActivities();
+                    } catch (error) {
+                        showToast('Error deleting', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
+            };
 
             // ============================================
             // PENDING PAYMENTS
@@ -622,49 +1004,53 @@
             // APPROVE/REJECT PAYMENT
             // ============================================
             async function approvePayment(paymentId) {
-                if (!confirm('Approve this payment?')) return;
-                showLoading(true);
-                try {
-                    const { error } = await supabase
-                        .from('payments')
-                        .update({ status: 'approved', approved_by: currentUser.id, approved_at: new Date().toISOString() })
-                        .eq('id', paymentId);
-                    
-                    if (error) throw error;
-                    
-                    showToast('✅ Payment approved successfully!');
-                    closeModal('paymentModal');
-                    await loadPendingPayments();
-                    await loadOverview();
-                } catch (error) {
-                    console.error('Error approving payment:', error);
-                    showToast('Error approving payment', 'error');
-                } finally {
-                    showLoading(false);
-                }
+                showConfirm('Approve Payment', 'Approve this payment?', async () => {
+                    showLoading(true);
+                    try {
+                        const { error } = await supabase
+                            .from('payments')
+                            .update({ status: 'approved', approved_by: currentUser.id, approved_at: new Date().toISOString() })
+                            .eq('id', paymentId);
+                        
+                        if (error) throw error;
+                        
+                        showToast('✅ Payment approved successfully!');
+                        closeModal('paymentModal');
+                        await loadPendingPayments();
+                        await loadOverview();
+                        await loadActivities();
+                    } catch (error) {
+                        console.error('Error approving payment:', error);
+                        showToast('Error approving payment', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
             }
 
             async function rejectPayment(paymentId) {
-                if (!confirm('Reject this payment?')) return;
-                showLoading(true);
-                try {
-                    const { error } = await supabase
-                        .from('payments')
-                        .update({ status: 'rejected', rejected_by: currentUser.id, rejected_at: new Date().toISOString() })
-                        .eq('id', paymentId);
-                    
-                    if (error) throw error;
-                    
-                    showToast('Payment rejected');
-                    closeModal('paymentModal');
-                    await loadPendingPayments();
-                    await loadOverview();
-                } catch (error) {
-                    console.error('Error rejecting payment:', error);
-                    showToast('Error rejecting payment', 'error');
-                } finally {
-                    showLoading(false);
-                }
+                showConfirm('Reject Payment', 'Reject this payment?', async () => {
+                    showLoading(true);
+                    try {
+                        const { error } = await supabase
+                            .from('payments')
+                            .update({ status: 'rejected', rejected_by: currentUser.id, rejected_at: new Date().toISOString() })
+                            .eq('id', paymentId);
+                        
+                        if (error) throw error;
+                        
+                        showToast('Payment rejected');
+                        closeModal('paymentModal');
+                        await loadPendingPayments();
+                        await loadOverview();
+                        await loadActivities();
+                    } catch (error) {
+                        console.error('Error rejecting payment:', error);
+                        showToast('Error rejecting payment', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
             }
 
             // ============================================
@@ -690,10 +1076,10 @@
                             <td><strong>${s.name}</strong></td>
                             <td>${s.description || '-'}</td>
                             <td>${formatKES(s.price)}</td>
-                            <td><span class="badge badge-${s.status === 'active' ? 'approved' : 'rejected'}">${s.status}</span></td>
+                            <td><span class="badge badge-${s.status === 'active' ? 'active' : 'inactive'}">${s.status}</span></td>
                             <td class="actions">
                                 <button class="btn btn-warning btn-sm" onclick="editService('${s.id}')">✏️ Edit</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteService('${s.id}')">🗑️ Delete</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteService('${s.id}')">🗑️</button>
                             </td>
                         </tr>
                     `).join('');
@@ -727,27 +1113,20 @@
             };
 
             window.deleteService = async function(serviceId) {
-                if (!confirm('Delete this service? This action cannot be undone.')) return;
-                showLoading(true);
-                try {
-                    const { error } = await supabase
-                        .from('services')
-                        .delete()
-                        .eq('id', serviceId);
-                    
-                    if (error) throw error;
-                    
-                    showToast('Service deleted successfully');
-                    await loadServices();
-                } catch (error) {
-                    console.error('Error deleting service:', error);
-                    showToast('Error deleting service', 'error');
-                } finally {
-                    showLoading(false);
-                }
+                showConfirm('Delete Service', 'Delete this service?', async () => {
+                    showLoading(true);
+                    try {
+                        await supabase.from('services').delete().eq('id', serviceId);
+                        showToast('Service deleted');
+                        await loadServices();
+                    } catch (error) {
+                        showToast('Error deleting service', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
             };
 
-            // Service Form Submit
             document.getElementById('serviceForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const id = document.getElementById('serviceEditId').value;
@@ -761,32 +1140,23 @@
                 showLoading(true);
                 try {
                     if (id) {
-                        const { error } = await supabase
-                            .from('services')
-                            .update(data)
-                            .eq('id', id);
-                        if (error) throw error;
-                        showToast('Service updated successfully');
+                        await supabase.from('services').update(data).eq('id', id);
+                        showToast('Service updated');
                     } else {
-                        const { error } = await supabase
-                            .from('services')
-                            .insert(data);
-                        if (error) throw error;
-                        showToast('Service added successfully');
+                        await supabase.from('services').insert(data);
+                        showToast('Service added');
                     }
                     closeModal('serviceModal');
                     document.getElementById('serviceForm').reset();
                     document.getElementById('serviceEditId').value = '';
                     await loadServices();
                 } catch (error) {
-                    console.error('Error saving service:', error);
-                    showToast('Error saving service: ' + error.message, 'error');
+                    showToast('Error saving service', 'error');
                 } finally {
                     showLoading(false);
                 }
             });
 
-            // Add Service Button
             document.getElementById('addServiceBtn').addEventListener('click', () => {
                 document.getElementById('serviceModalTitle').textContent = 'Add Service';
                 document.getElementById('serviceForm').reset();
@@ -830,26 +1200,20 @@
             }
 
             window.deleteRate = async function(rateId) {
-                if (!confirm('Delete this rate?')) return;
-                showLoading(true);
-                try {
-                    const { error } = await supabase
-                        .from('mileage_rates')
-                        .delete()
-                        .eq('id', rateId);
-                    
-                    if (error) throw error;
-                    showToast('Rate deleted');
-                    await loadRates();
-                } catch (error) {
-                    console.error('Error deleting rate:', error);
-                    showToast('Error deleting rate', 'error');
-                } finally {
-                    showLoading(false);
-                }
+                showConfirm('Delete Rate', 'Delete this rate?', async () => {
+                    showLoading(true);
+                    try {
+                        await supabase.from('mileage_rates').delete().eq('id', rateId);
+                        showToast('Rate deleted');
+                        await loadRates();
+                    } catch (error) {
+                        showToast('Error deleting rate', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
             };
 
-            // Add Rate
             document.getElementById('addRateBtn')?.addEventListener('click', async () => {
                 const category = document.getElementById('rateCategory').value.trim();
                 const rate = parseFloat(document.getElementById('rateValue').value);
@@ -867,15 +1231,13 @@
                 
                 showLoading(true);
                 try {
-                    const { error } = await supabase.from('mileage_rates').insert({
+                    await supabase.from('mileage_rates').insert({
                         vehicle_category: category,
                         rate_per_km: rate,
                         effective_from: effectiveFrom,
                         effective_to: document.getElementById('rateEffectiveTo').value || null,
                         is_active: true
                     });
-                    
-                    if (error) throw error;
                     
                     showToast('Rate added successfully!');
                     document.getElementById('rateCategory').value = '';
@@ -884,7 +1246,6 @@
                     document.getElementById('rateEffectiveTo').value = '';
                     await loadRates();
                 } catch (error) {
-                    console.error('Error adding rate:', error);
                     showToast('Error adding rate: ' + error.message, 'error');
                 } finally {
                     showLoading(false);
@@ -918,13 +1279,12 @@
                             <td>${p.claim_count || 0}</td>
                             <td>${new Date(p.created_at).toLocaleDateString()}</td>
                             <td class="actions">
-                                <button class="btn btn-warning btn-sm" onclick="editUser('${p.id}')">✏️ Edit</button>
+                                <button class="btn btn-warning btn-sm" onclick="editUser('${p.id}')">✏️</button>
                                 <button class="btn btn-danger btn-sm" onclick="deleteUser('${p.id}')">🗑️</button>
                             </td>
                         </tr>
                     `).join('');
                     
-                    // Search
                     document.getElementById('userSearch')?.addEventListener('input', (e) => {
                         const search = e.target.value.toLowerCase();
                         document.querySelectorAll('#usersBody tr').forEach(row => {
@@ -953,27 +1313,26 @@
                     document.getElementById('userEditId').value = data.id;
                     openModal('userModal');
                 } catch (error) {
-                    console.error('Error loading user:', error);
                     showToast('Error loading user', 'error');
                 }
             };
 
             window.deleteUser = async function(userId) {
-                if (!confirm('Delete this user?')) return;
-                showLoading(true);
-                try {
-                    await supabase.from('user_profiles').delete().eq('id', userId);
-                    showToast('User deleted');
-                    await loadUsers();
-                } catch (error) {
-                    console.error('Error deleting user:', error);
-                    showToast('Error deleting user', 'error');
-                } finally {
-                    showLoading(false);
-                }
+                showConfirm('Delete User', 'Delete this user?', async () => {
+                    showLoading(true);
+                    try {
+                        await supabase.from('user_profiles').delete().eq('id', userId);
+                        showToast('User deleted');
+                        await loadUsers();
+                        await loadOverview();
+                    } catch (error) {
+                        showToast('Error deleting user', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
             };
 
-            // User Form Submit
             document.getElementById('userForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const userId = document.getElementById('userEditId').value;
@@ -985,18 +1344,11 @@
                 
                 showLoading(true);
                 try {
-                    const { error } = await supabase
-                        .from('user_profiles')
-                        .update(data)
-                        .eq('id', userId);
-                    
-                    if (error) throw error;
-                    
-                    showToast('User updated successfully');
+                    await supabase.from('user_profiles').update(data).eq('id', userId);
+                    showToast('User updated');
                     closeModal('userModal');
                     await loadUsers();
                 } catch (error) {
-                    console.error('Error updating user:', error);
                     showToast('Error updating user', 'error');
                 } finally {
                     showLoading(false);
@@ -1041,18 +1393,20 @@
             }
 
             window.deleteRequest = async function(requestId) {
-                if (!confirm('Delete this request?')) return;
-                showLoading(true);
-                try {
-                    await supabase.from('service_requests').delete().eq('id', requestId);
-                    showToast('Request deleted');
-                    await loadAllRequests();
-                } catch (error) {
-                    console.error('Error deleting request:', error);
-                    showToast('Error deleting request', 'error');
-                } finally {
-                    showLoading(false);
-                }
+                showConfirm('Delete Request', 'Delete this request?', async () => {
+                    showLoading(true);
+                    try {
+                        await supabase.from('service_requests').delete().eq('id', requestId);
+                        showToast('Request deleted');
+                        await loadAllRequests();
+                        await loadOverview();
+                        await loadActivities();
+                    } catch (error) {
+                        showToast('Error deleting request', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                });
             };
 
             // ============================================
@@ -1066,11 +1420,12 @@
                     document.getElementById(btn.dataset.tab).classList.add('active');
                     
                     const tabId = btn.dataset.tab;
-                    if (tabId === 'payments-tab') loadPendingPayments();
-                    if (tabId === 'services-tab') loadServices();
-                    if (tabId === 'rates-tab') loadRates();
-                    if (tabId === 'users-tab') loadUsers();
-                    if (tabId === 'requests-tab') loadAllRequests();
+                    if (tabId === 'activities-tab') loadActivities();
+                    else if (tabId === 'payments-tab') loadPendingPayments();
+                    else if (tabId === 'services-tab') loadServices();
+                    else if (tabId === 'rates-tab') loadRates();
+                    else if (tabId === 'users-tab') loadUsers();
+                    else if (tabId === 'requests-tab') loadAllRequests();
                 });
             });
 
@@ -1092,6 +1447,7 @@
                     showLoading(true);
                     try {
                         await loadOverview();
+                        await loadActivities();
                         await loadPendingPayments();
                         await loadServices();
                         await loadRates();
