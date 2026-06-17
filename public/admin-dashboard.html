@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* ── same styles as before ── */
+        /* ── styles (same as before, keep for brevity) ── */
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0a0c15; color: #fff; min-height: 100vh; }
         .header { background: linear-gradient(135deg, #0f172a 0%, #0a0c15 100%); border-bottom: 2px solid #eab308; padding: 16px 24px; position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
@@ -306,17 +306,15 @@
 
     <script>
         // ============================================================
-        // AUTO-V ADMIN DASHBOARD – FULLY WORKING
+        // AUTO-V ADMIN DASHBOARD – WITH TIMEOUTS
         // ============================================================
 
-        // ─── CONFIG ──────────────────────────────────────────────────
         const SUPABASE_URL   = "https://tsvejnzxrxrrecgquxbq.supabase.co";
         const SUPABASE_ANON  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
         let currentUser = null;
         let selectedActivities = new Set();
-        let allActivitiesData = [];
         let refreshTimer = null;
 
         // ─── HELPERS ──────────────────────────────────────────────
@@ -349,33 +347,23 @@
             openModal('confirmModal');
         }
 
-        // ─── AUTH ──────────────────────────────────────────────────
-        async function checkAuth() {
+        // ─── FETCH WITH TIMEOUT ────────────────────────────────
+        async function fetchWithTimeout(promise, timeoutMs = 10000) {
+            let timeoutId;
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+            });
             try {
-                const { data: { user }, error } = await supabase.auth.getUser();
-                if (error || !user) {
-                    showToast('Please login first', 'warning');
-                    window.location.href = 'login.html';
-                    return false;
-                }
-                currentUser = user;
-                document.getElementById('adminEmail').textContent = user.email;
-                // Check if admin
-                const { data: profile } = await supabase
-                    .from('user_profiles')
-                    .select('role')
-                    .eq('id', user.id)
-                    .maybeSingle(); // use maybeSingle to avoid error if not found
-                if (!profile || profile.role !== 'admin') {
-                    showToast('⛔ Admin access required', 'warning');
-                    window.location.href = 'dashboard.html';
-                    return false;
-                }
-                return true;
-            } catch (e) { console.error('Auth error:', e); return false; }
+                const result = await Promise.race([promise, timeoutPromise]);
+                clearTimeout(timeoutId);
+                return result;
+            } catch (e) {
+                clearTimeout(timeoutId);
+                throw e;
+            }
         }
 
-        // ─── SAFE FETCH (handles missing tables gracefully) ────
+        // ─── SAFE FETCH ──────────────────────────────────────────
         async function safeFetch(table, query = {}) {
             try {
                 let q = supabase.from(table).select('*');
@@ -387,9 +375,8 @@
                 if (query.order) {
                     q = q.order(query.order.column, { ascending: query.order.ascending !== false });
                 }
-                const { data, error } = await q;
+                const { data, error } = await fetchWithTimeout(q, 8000);
                 if (error) {
-                    // If table doesn't exist, return empty array
                     if (error.code === '42P01') {
                         console.warn(`Table "${table}" does not exist yet.`);
                         return [];
@@ -403,14 +390,44 @@
             }
         }
 
+        // ─── AUTH ──────────────────────────────────────────────────
+        async function checkAuth() {
+            try {
+                const { data: { user }, error } = await fetchWithTimeout(supabase.auth.getUser(), 5000);
+                if (error || !user) {
+                    showToast('Please login first', 'warning');
+                    window.location.href = 'login.html';
+                    return false;
+                }
+                currentUser = user;
+                document.getElementById('adminEmail').textContent = user.email;
+                const { data: profile } = await fetchWithTimeout(
+                    supabase.from('user_profiles').select('role').eq('id', user.id).maybeSingle(),
+                    5000
+                );
+                if (!profile || profile.role !== 'admin') {
+                    showToast('⛔ Admin access required', 'warning');
+                    window.location.href = 'dashboard.html';
+                    return false;
+                }
+                return true;
+            } catch (e) {
+                console.error('Auth error:', e);
+                showToast('Authentication error. Please refresh.', 'error');
+                return false;
+            }
+        }
+
         // ─── OVERVIEW ─────────────────────────────────────────────
         async function loadOverview() {
             try {
-                const userProfiles = await safeFetch('user_profiles');
-                const valuations = await safeFetch('service_requests', { eq: { service_type: 'valuation' } });
-                const inspections = await safeFetch('service_requests', { eq: { service_type: 'inspection' } });
-                const claims = await safeFetch('mileage_claims');
-                const payments = await safeFetch('payments', { eq: { status: 'pending' } });
+                const [userProfiles, valuations, inspections, claims, payments] = await Promise.all([
+                    safeFetch('user_profiles'),
+                    safeFetch('service_requests', { eq: { service_type: 'valuation' } }),
+                    safeFetch('service_requests', { eq: { service_type: 'inspection' } }),
+                    safeFetch('mileage_claims'),
+                    safeFetch('payments', { eq: { status: 'pending' } })
+                ]);
 
                 const totalUsers = userProfiles.length;
                 const totalVals = valuations.length;
@@ -429,9 +446,9 @@
 
                 // Recent activity
                 const all = [];
-                valuations.slice(0,5).forEach(v => all.push({ ...v, type:'valuation', label:'💰 Valuation', date:v.created_at, amount:v.amount||0, status:v.payment_status||'completed' }));
-                inspections.slice(0,5).forEach(i => all.push({ ...i, type:'inspection', label:'🔍 Inspection', date:i.created_at, amount:i.amount||0, status:i.payment_status||'completed' }));
-                claims.slice(0,5).forEach(c => all.push({ ...c, type:'claim', label:'📊 Mileage', date:c.created_at, amount:c.claim_amount||0, status:c.status||'pending' }));
+                valuations.slice(0,5).forEach(v => all.push({ ...v, label:'💰 Valuation', date:v.created_at, amount:v.amount||0, status:v.payment_status||'completed' }));
+                inspections.slice(0,5).forEach(i => all.push({ ...i, label:'🔍 Inspection', date:i.created_at, amount:i.amount||0, status:i.payment_status||'completed' }));
+                claims.slice(0,5).forEach(c => all.push({ ...c, label:'📊 Mileage', date:c.created_at, amount:c.claim_amount||0, status:c.status||'pending' }));
                 all.sort((a,b) => new Date(b.date) - new Date(a.date));
                 const tbody = document.getElementById('adminRecentBody');
                 if (!all.length) {
@@ -466,22 +483,21 @@
                 const all = [];
                 valuations.forEach(v => {
                     const u = users.find(x => x.id === v.user_id);
-                    all.push({ id:v.id, table:'service_requests', type:'valuation', date:v.created_at, user:u?.email||v.user_id||'Unknown', service:'💰 Valuation', details:`${v.make||''} ${v.model||''}`, amount:v.amount||2500, status:v.payment_status||'completed' });
+                    all.push({ id:v.id, table:'service_requests', date:v.created_at, user:u?.email||v.user_id||'Unknown', service:'💰 Valuation', details:`${v.make||''} ${v.model||''}`, amount:v.amount||2500, status:v.payment_status||'completed' });
                 });
                 inspections.forEach(i => {
                     const u = users.find(x => x.id === i.user_id);
-                    all.push({ id:i.id, table:'service_requests', type:'inspection', date:i.created_at, user:u?.email||i.user_id||'Unknown', service:'🔍 Inspection', details:i.vehicle_id||i.registration_number||'Vehicle', amount:i.amount||3500, status:i.payment_status||'completed' });
+                    all.push({ id:i.id, table:'service_requests', date:i.created_at, user:u?.email||i.user_id||'Unknown', service:'🔍 Inspection', details:i.vehicle_id||i.registration_number||'Vehicle', amount:i.amount||3500, status:i.payment_status||'completed' });
                 });
                 claims.forEach(c => {
                     const u = users.find(x => x.id === c.user_id);
-                    all.push({ id:c.id, table:'mileage_claims', type:'claim', date:c.created_at, user:u?.email||c.user_id||'Unknown', service:'📊 Mileage Claim', details:`${c.start_location||''} → ${c.end_location||''}`, amount:c.claim_amount||0, status:c.status||'pending' });
+                    all.push({ id:c.id, table:'mileage_claims', date:c.created_at, user:u?.email||c.user_id||'Unknown', service:'📊 Mileage Claim', details:`${c.start_location||''} → ${c.end_location||''}`, amount:c.claim_amount||0, status:c.status||'pending' });
                 });
                 payments.forEach(p => {
                     const u = users.find(x => x.id === p.user_id);
-                    all.push({ id:p.id, table:'payments', type:'payment', date:p.created_at, user:u?.email||p.user_id||'Unknown', service:'💳 Payment', details:p.service_type||'Payment', amount:p.amount||0, status:p.status||'pending' });
+                    all.push({ id:p.id, table:'payments', date:p.created_at, user:u?.email||p.user_id||'Unknown', service:'💳 Payment', details:p.service_type||'Payment', amount:p.amount||0, status:p.status||'pending' });
                 });
                 all.sort((a,b) => new Date(b.date) - new Date(a.date));
-                allActivitiesData = all;
 
                 const tbody = document.getElementById('activitiesBody');
                 if (!all.length) {
@@ -501,7 +517,6 @@
                     </tr>
                 `).join('');
 
-                // Attach checkbox handlers
                 const selectAll = document.getElementById('selectAllActivities');
                 selectAll.onchange = function() {
                     document.querySelectorAll('.activity-checkbox').forEach(cb => {
@@ -552,7 +567,6 @@
             });
         };
 
-        // Delete all
         document.getElementById('deleteAllActivitiesBtn')?.addEventListener('click', () => {
             showConfirm('Delete All Activities', 'Delete ALL activities? This cannot be undone.', async () => {
                 showLoading(true);
@@ -570,7 +584,6 @@
             });
         });
 
-        // Delete selected
         document.getElementById('deleteSelectedBtn')?.addEventListener('click', () => {
             const count = selectedActivities.size;
             showConfirm(`Delete ${count} Selected`, `Delete ${count} selected activities?`, async () => {
@@ -654,14 +667,8 @@
                 `Are you sure you want to ${status} this payment?`, async () => {
                     showLoading(true);
                     try {
-                        const updateData = {
-                            status,
-                            approved_by: currentUser.id,
-                            approved_at: new Date().toISOString()
-                        };
-                        await supabase.from('payments')
-                            .update(updateData)
-                            .eq('id', paymentId);
+                        const updateData = { status, approved_by: currentUser.id, approved_at: new Date().toISOString() };
+                        await supabase.from('payments').update(updateData).eq('id', paymentId);
                         showToast(`Payment ${status} successfully`);
                         closeModal('paymentModal');
                         await loadPendingPayments();
@@ -986,23 +993,32 @@
 
         // ─── INIT ──────────────────────────────────────────────
         async function init() {
-            if (await checkAuth()) {
-                showLoading(true);
-                try {
-                    await loadOverview();
-                    await loadActivities();
-                    await loadPendingPayments();
-                    await loadServices();
-                    await loadRates();
-                    await loadUsers();
-                    await loadAllRequests();
-                } catch (e) {
-                    console.error('Init error:', e);
-                    showToast('Error loading data. Please refresh.', 'error');
-                } finally {
-                    showLoading(false);
-                    startAutoRefresh();
+            // Ensure loading overlay is always hidden even if error occurs
+            try {
+                if (await checkAuth()) {
+                    showLoading(true);
+                    try {
+                        await Promise.all([
+                            loadOverview(),
+                            loadActivities(),
+                            loadPendingPayments(),
+                            loadServices(),
+                            loadRates(),
+                            loadUsers(),
+                            loadAllRequests()
+                        ]);
+                    } catch (e) {
+                        console.error('Init error:', e);
+                        showToast('Error loading data. Please refresh.', 'error');
+                    } finally {
+                        showLoading(false);
+                        startAutoRefresh();
+                    }
                 }
+            } catch (e) {
+                console.error('Init error:', e);
+                showLoading(false);
+                showToast('Failed to initialize. Check console.', 'error');
             }
         }
 
