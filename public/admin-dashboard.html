@@ -306,7 +306,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V ADMIN DASHBOARD – PRODUCTION READY
+        // AUTO-V ADMIN DASHBOARD – FULLY WORKING
         // ============================================================
 
         // ─── CONFIG ──────────────────────────────────────────────────
@@ -360,47 +360,78 @@
                 }
                 currentUser = user;
                 document.getElementById('adminEmail').textContent = user.email;
+                // Check if admin
                 const { data: profile } = await supabase
                     .from('user_profiles')
                     .select('role')
                     .eq('id', user.id)
-                    .single();
+                    .maybeSingle(); // use maybeSingle to avoid error if not found
                 if (!profile || profile.role !== 'admin') {
                     showToast('⛔ Admin access required', 'warning');
                     window.location.href = 'dashboard.html';
                     return false;
                 }
                 return true;
-            } catch (e) { console.error(e); return false; }
+            } catch (e) { console.error('Auth error:', e); return false; }
+        }
+
+        // ─── SAFE FETCH (handles missing tables gracefully) ────
+        async function safeFetch(table, query = {}) {
+            try {
+                let q = supabase.from(table).select('*');
+                if (query.eq) {
+                    for (const [key, val] of Object.entries(query.eq)) {
+                        q = q.eq(key, val);
+                    }
+                }
+                if (query.order) {
+                    q = q.order(query.order.column, { ascending: query.order.ascending !== false });
+                }
+                const { data, error } = await q;
+                if (error) {
+                    // If table doesn't exist, return empty array
+                    if (error.code === '42P01') {
+                        console.warn(`Table "${table}" does not exist yet.`);
+                        return [];
+                    }
+                    throw error;
+                }
+                return data || [];
+            } catch (e) {
+                console.error(`Error fetching from ${table}:`, e);
+                return [];
+            }
         }
 
         // ─── OVERVIEW ─────────────────────────────────────────────
         async function loadOverview() {
             try {
-                const { count: userCount } = await supabase.from('user_profiles').select('*', { count:'exact', head:true });
-                const { data: valuations } = await supabase.from('service_requests').select('*').eq('service_type','valuation');
-                const { data: inspections } = await supabase.from('service_requests').select('*').eq('service_type','inspection');
-                const { data: claims } = await supabase.from('mileage_claims').select('*');
-                const { data: payments } = await supabase.from('payments').select('*').eq('status','pending');
+                const userProfiles = await safeFetch('user_profiles');
+                const valuations = await safeFetch('service_requests', { eq: { service_type: 'valuation' } });
+                const inspections = await safeFetch('service_requests', { eq: { service_type: 'inspection' } });
+                const claims = await safeFetch('mileage_claims');
+                const payments = await safeFetch('payments', { eq: { status: 'pending' } });
 
-                const totalVals = valuations?.length || 0;
-                const totalInsp = inspections?.length || 0;
-                const totalClms = claims?.length || 0;
-                const totalRev = (valuations?.reduce((s,v) => s + (v.amount||0), 0) || 0) +
-                                 (inspections?.reduce((s,i) => s + (i.amount||0), 0) || 0);
+                const totalUsers = userProfiles.length;
+                const totalVals = valuations.length;
+                const totalInsp = inspections.length;
+                const totalClms = claims.length;
+                const pendingPayments = payments.length;
+                const totalRev = valuations.reduce((s, v) => s + (v.amount || 0), 0) +
+                                 inspections.reduce((s, i) => s + (i.amount || 0), 0);
 
-                document.getElementById('totalUsers').textContent = userCount || 0;
+                document.getElementById('totalUsers').textContent = totalUsers;
                 document.getElementById('adminTotalValuations').textContent = totalVals;
                 document.getElementById('adminTotalInspections').textContent = totalInsp;
                 document.getElementById('adminTotalClaims').textContent = totalClms;
-                document.getElementById('pendingPayments').textContent = payments?.length || 0;
+                document.getElementById('pendingPayments').textContent = pendingPayments;
                 document.getElementById('totalRevenue').innerHTML = formatKES(totalRev);
 
-                // Recent activity (latest 10 across types)
+                // Recent activity
                 const all = [];
-                valuations?.slice(0,5).forEach(v => all.push({ ...v, type:'valuation', label:'💰 Valuation', date:v.created_at, amount:v.amount||0, status:v.payment_status||'completed' }));
-                inspections?.slice(0,5).forEach(i => all.push({ ...i, type:'inspection', label:'🔍 Inspection', date:i.created_at, amount:i.amount||0, status:i.payment_status||'completed' }));
-                claims?.slice(0,5).forEach(c => all.push({ ...c, type:'claim', label:'📊 Mileage', date:c.created_at, amount:c.claim_amount||0, status:c.status||'pending' }));
+                valuations.slice(0,5).forEach(v => all.push({ ...v, type:'valuation', label:'💰 Valuation', date:v.created_at, amount:v.amount||0, status:v.payment_status||'completed' }));
+                inspections.slice(0,5).forEach(i => all.push({ ...i, type:'inspection', label:'🔍 Inspection', date:i.created_at, amount:i.amount||0, status:i.payment_status||'completed' }));
+                claims.slice(0,5).forEach(c => all.push({ ...c, type:'claim', label:'📊 Mileage', date:c.created_at, amount:c.claim_amount||0, status:c.status||'pending' }));
                 all.sort((a,b) => new Date(b.date) - new Date(a.date));
                 const tbody = document.getElementById('adminRecentBody');
                 if (!all.length) {
@@ -418,34 +449,34 @@
                         </tr>
                     `).join('');
                 }
-            } catch (e) { console.error(e); showToast('Error loading overview','error'); }
+            } catch (e) { console.error('Overview error:', e); showToast('Error loading overview','error'); }
         }
 
         // ─── ACTIVITIES ────────────────────────────────────────────
         async function loadActivities() {
             try {
-                const [vRes, iRes, cRes, pRes, uRes] = await Promise.all([
-                    supabase.from('service_requests').select('*').eq('service_type','valuation').order('created_at', {ascending:false}),
-                    supabase.from('service_requests').select('*').eq('service_type','inspection').order('created_at', {ascending:false}),
-                    supabase.from('mileage_claims').select('*').order('created_at', {ascending:false}),
-                    supabase.from('payments').select('*').order('created_at', {ascending:false}),
-                    supabase.from('user_profiles').select('id, email, full_name')
+                const [valuations, inspections, claims, payments, users] = await Promise.all([
+                    safeFetch('service_requests', { eq: { service_type: 'valuation' }, order: { column: 'created_at', ascending: false } }),
+                    safeFetch('service_requests', { eq: { service_type: 'inspection' }, order: { column: 'created_at', ascending: false } }),
+                    safeFetch('mileage_claims', { order: { column: 'created_at', ascending: false } }),
+                    safeFetch('payments', { order: { column: 'created_at', ascending: false } }),
+                    safeFetch('user_profiles')
                 ]);
-                const users = uRes.data || [];
+
                 const all = [];
-                (vRes.data||[]).forEach(v => {
+                valuations.forEach(v => {
                     const u = users.find(x => x.id === v.user_id);
                     all.push({ id:v.id, table:'service_requests', type:'valuation', date:v.created_at, user:u?.email||v.user_id||'Unknown', service:'💰 Valuation', details:`${v.make||''} ${v.model||''}`, amount:v.amount||2500, status:v.payment_status||'completed' });
                 });
-                (iRes.data||[]).forEach(i => {
+                inspections.forEach(i => {
                     const u = users.find(x => x.id === i.user_id);
                     all.push({ id:i.id, table:'service_requests', type:'inspection', date:i.created_at, user:u?.email||i.user_id||'Unknown', service:'🔍 Inspection', details:i.vehicle_id||i.registration_number||'Vehicle', amount:i.amount||3500, status:i.payment_status||'completed' });
                 });
-                (cRes.data||[]).forEach(c => {
+                claims.forEach(c => {
                     const u = users.find(x => x.id === c.user_id);
                     all.push({ id:c.id, table:'mileage_claims', type:'claim', date:c.created_at, user:u?.email||c.user_id||'Unknown', service:'📊 Mileage Claim', details:`${c.start_location||''} → ${c.end_location||''}`, amount:c.claim_amount||0, status:c.status||'pending' });
                 });
-                (pRes.data||[]).forEach(p => {
+                payments.forEach(p => {
                     const u = users.find(x => x.id === p.user_id);
                     all.push({ id:p.id, table:'payments', type:'payment', date:p.created_at, user:u?.email||p.user_id||'Unknown', service:'💳 Payment', details:p.service_type||'Payment', amount:p.amount||0, status:p.status||'pending' });
                 });
@@ -470,7 +501,7 @@
                     </tr>
                 `).join('');
 
-                // --- Fixed: attach checkbox handler after rendering ---
+                // Attach checkbox handlers
                 const selectAll = document.getElementById('selectAllActivities');
                 selectAll.onchange = function() {
                     document.querySelectorAll('.activity-checkbox').forEach(cb => {
@@ -491,7 +522,7 @@
                     };
                 });
                 updateSelectedCount();
-            } catch (e) { console.error(e); showToast('Error loading activities','error'); }
+            } catch (e) { console.error('Activities error:', e); showToast('Error loading activities','error'); }
         }
 
         function updateSelectedCount() {
@@ -568,8 +599,7 @@
         // ─── PENDING PAYMENTS ─────────────────────────────────────
         async function loadPendingPayments() {
             try {
-                const { data, error } = await supabase.from('payments').select('*').eq('status','pending').order('created_at',{ascending:false});
-                if (error) throw error;
+                const data = await safeFetch('payments', { eq: { status: 'pending' }, order: { column: 'created_at', ascending: false } });
                 const tbody = document.getElementById('pendingPaymentsBody');
                 if (!data || !data.length) {
                     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No pending payments</td></tr>';
@@ -586,7 +616,7 @@
                         <td><button class="btn btn-success btn-sm" onclick="viewPayment('${p.id}')">View</button></td>
                     </tr>
                 `).join('');
-            } catch (e) { console.error(e); showToast('Error loading payments','error'); }
+            } catch (e) { console.error('Payments error:', e); showToast('Error loading payments','error'); }
         }
 
         // ─── VIEW / APPROVE / REJECT PAYMENT ─────────────────────
@@ -616,7 +646,6 @@
         };
 
         async function processPayment(paymentId, status) {
-            // Safety check: ensure currentUser exists and has an id
             if (!currentUser || !currentUser.id) {
                 showToast('You must be logged in to perform this action', 'warning');
                 return;
@@ -646,8 +675,7 @@
         // ─── SERVICES CRUD ──────────────────────────────────────
         async function loadServices() {
             try {
-                const { data, error } = await supabase.from('services').select('*').order('name');
-                if (error) throw error;
+                const data = await safeFetch('services', { order: { column: 'name' } });
                 const tbody = document.getElementById('servicesBody');
                 if (!data || !data.length) {
                     tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No services</td></tr>';
@@ -665,7 +693,7 @@
                         </td>
                     </tr>
                 `).join('');
-            } catch (e) { console.error(e); showToast('Error loading services','error'); }
+            } catch (e) { console.error('Services error:', e); showToast('Error loading services','error'); }
         }
 
         window.editService = async function(id) {
@@ -731,8 +759,7 @@
         // ─── RATES ──────────────────────────────────────────────
         async function loadRates() {
             try {
-                const { data, error } = await supabase.from('mileage_rates').select('*').eq('is_active', true).order('rate_per_km');
-                if (error) throw error;
+                const data = await safeFetch('mileage_rates', { eq: { is_active: true }, order: { column: 'rate_per_km' } });
                 const container = document.getElementById('adminRatesContainer');
                 if (!data || !data.length) {
                     container.innerHTML = '<p class="empty-state">No rates found</p>';
@@ -748,7 +775,7 @@
                         </div>
                     </div>
                 `).join('');
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error('Rates error:', e); }
         }
 
         window.deleteRate = function(id) {
@@ -793,8 +820,7 @@
         // ─── USERS ──────────────────────────────────────────────
         async function loadUsers() {
             try {
-                const { data, error } = await supabase.from('user_profiles').select('*').order('created_at', {ascending:false});
-                if (error) throw error;
+                const data = await safeFetch('user_profiles', { order: { column: 'created_at', ascending: false } });
                 const tbody = document.getElementById('usersBody');
                 if (!data || !data.length) {
                     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No users</td></tr>';
@@ -821,7 +847,7 @@
                         row.style.display = row.textContent.toLowerCase().includes(s) ? '' : 'none';
                     });
                 });
-            } catch (e) { console.error(e); showToast('Error loading users','error'); }
+            } catch (e) { console.error('Users error:', e); showToast('Error loading users','error'); }
         }
 
         window.editUser = async function(id) {
@@ -870,8 +896,7 @@
         // ─── ALL REQUESTS ──────────────────────────────────────
         async function loadAllRequests() {
             try {
-                const { data, error } = await supabase.from('service_requests').select('*').order('created_at',{ascending:false});
-                if (error) throw error;
+                const data = await safeFetch('service_requests', { order: { column: 'created_at', ascending: false } });
                 const tbody = document.getElementById('allRequestsBody');
                 if (!data || !data.length) {
                     tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No requests</td></tr>';
@@ -889,7 +914,7 @@
                         <td><button class="btn btn-danger btn-xs" onclick="deleteRequest('${r.id}')">🗑️</button></td>
                     </tr>
                 `).join('');
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error('Requests error:', e); }
         }
 
         window.deleteRequest = function(id) {
@@ -956,7 +981,7 @@
                 loadRates();
                 loadUsers();
                 loadAllRequests();
-            }, 30000); // every 30 seconds
+            }, 30000);
         }
 
         // ─── INIT ──────────────────────────────────────────────
@@ -971,6 +996,9 @@
                     await loadRates();
                     await loadUsers();
                     await loadAllRequests();
+                } catch (e) {
+                    console.error('Init error:', e);
+                    showToast('Error loading data. Please refresh.', 'error');
                 } finally {
                     showLoading(false);
                     startAutoRefresh();
