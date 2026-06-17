@@ -2,103 +2,953 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Vehicle Inspection</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🔍%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Arial, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background: #0a0c15;
-            color: white;
+            color: #ffffff;
+            min-height: 100vh;
             padding: 20px;
         }
-        .container { max-width: 800px; margin: auto; }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: #111827;
+            border-bottom: 2px solid #eab308;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            max-width: 1200px;
+            margin: -20px auto 20px;
+            border-radius: 0 0 16px 16px;
+        }
+        .logo { font-size: 24px; font-weight: bold; color: #eab308; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 12px; color: #94a3b8; }
+        .container { max-width: 1200px; margin: auto; }
         .card {
             background: #0f172a;
-            border-radius: 24px;
+            border-radius: 20px;
             padding: 30px;
             margin-bottom: 20px;
             border: 1px solid #1e293b;
         }
-        h2 { color: #eab308; margin-bottom: 20px; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; color: #94a3b8; font-weight: 600; }
-        input, select {
+        h2 { color: #eab308; margin-bottom: 20px; font-size: 22px; border-left: 4px solid #eab308; padding-left: 15px; }
+        h3 { color: #eab308; font-size: 16px; margin-bottom: 15px; }
+        h4 { color: #94a3b8; font-size: 13px; margin-bottom: 10px; font-weight: 600; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 8px; color: #94a3b8; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        label.required:after { content: " *"; color: #ef4444; }
+        input, select, textarea {
             width: 100%;
-            padding: 12px;
+            padding: 12px 16px;
             background: #1e293b;
+            color: white;
             border: 1px solid #334155;
             border-radius: 12px;
-            color: white;
             font-size: 14px;
+            transition: all 0.3s;
         }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #eab308;
+            box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.15);
+        }
+        input[type="file"] { padding: 10px; cursor: pointer; background: #1e293b; }
+        input[type="file"]::file-selector-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: #eab308;
+            color: #000;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        input[type="file"]::file-selector-button:hover { background: #facc15; }
+        
         .btn {
-            padding: 12px 24px;
+            padding: 12px 28px;
             border: none;
             border-radius: 40px;
-            font-weight: bold;
+            font-weight: 700;
             cursor: pointer;
+            transition: all 0.3s;
         }
-        .btn-primary { background: #eab308; color: black; width: 100%; }
+        .btn-primary { background: #eab308; color: #0a0c10; }
+        .btn-primary:hover { background: #facc15; transform: translateY(-2px); }
+        .btn-secondary { background: #334155; color: white; }
+        .btn-secondary:hover { background: #475569; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-success:hover { background: #16a34a; transform: translateY(-2px); }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-sm { padding: 6px 14px; font-size: 12px; }
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 30px; gap: 10px; flex-wrap: wrap; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .col-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+        .col-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; }
+        
+        .service-badge {
+            display: inline-block;
+            padding: 4px 16px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #eab308;
+            color: #000;
+            margin-bottom: 15px;
+        }
+        
+        .upload-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .upload-item {
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #1e293b;
+            position: relative;
+            min-height: 160px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .upload-item .preview {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;
+            background: #1e293b;
+        }
+        .upload-item .file-name {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 6px;
+            word-break: break-all;
+        }
+        .upload-item .file-status {
+            font-size: 10px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .upload-item .file-status.uploaded { color: #22c55e; }
+        .upload-item .file-status.pending { color: #f59e0b; }
+        .upload-item .remove-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            cursor: pointer;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .upload-item .remove-btn:hover { background: #b91c1c; }
+        .upload-item .upload-label {
+            font-size: 11px;
+            color: #eab308;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .upload-item input[type="file"] {
+            width: 100%;
+            padding: 6px;
+            font-size: 11px;
+        }
+        
+        .document-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .document-item {
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            text-align: center;
+        }
+        .document-item .doc-icon { font-size: 28px; }
+        .document-item .doc-info .doc-name { font-size: 13px; font-weight: 600; }
+        .document-item .doc-info .doc-status { font-size: 11px; color: #94a3b8; }
+        .document-item .doc-status-badge {
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .doc-status-badge.verified { background: #22c55e; color: #000; }
+        .doc-status-badge.pending { background: #f59e0b; color: #000; }
+        .doc-status-badge.rejected { background: #dc2626; color: #fff; }
+        
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #1e293b;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .progress-bar .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #eab308, #22c55e);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .validation-summary {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-left: 4px solid #eab308;
+        }
+        .validation-summary .item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 13px;
+        }
+        .validation-summary .item .status-icon.done { color: #22c55e; }
+        .validation-summary .item .status-icon.missing { color: #ef4444; }
+        
+        .inspection-tabs {
+            display: flex;
+            gap: 8px;
+            background: #1e293b;
+            padding: 6px;
+            border-radius: 60px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .inspection-tab {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            padding: 8px 20px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .inspection-tab.active { background: #eab308; color: #0a0c15; }
+        .inspection-tab:hover:not(.active) { background: #334155; color: #fff; }
+        
+        .hidden { display: none !important; }
+        .error, .success {
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .error { background: #7f1d1d; color: #fecaca; border-left: 4px solid #ef4444; }
+        .success { background: #14532d; color: #bbf7d0; border-left: 4px solid #22c55e; }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        @media (max-width: 768px) {
+            .row { grid-template-columns: 1fr; }
+            .upload-grid { grid-template-columns: 1fr 1fr; }
+            .document-grid { grid-template-columns: 1fr; }
+            .inspection-tabs { border-radius: 16px; }
+            .inspection-tab { font-size: 11px; padding: 6px 12px; }
+            .nav-buttons { flex-direction: column; }
+            .nav-buttons button { width: 100%; }
+        }
     </style>
 </head>
 <body>
+    <header>
+        <div class="logo">🔍 AUTO-V <span>| Inspection</span></div>
+        <button class="btn btn-secondary" id="logoutBtn" style="padding: 8px 16px; font-size: 12px;">Logout</button>
+    </header>
     <div class="container">
-        <div class="card">
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+
+        <div class="card" id="dataEntryCard">
+            <div style="margin-bottom: 15px;">
+                <span class="service-badge">🔍 Vehicle Inspection</span>
+                <span style="color:#94a3b8; font-size:14px; margin-left:10px;">KES 3,500</span>
+            </div>
             <h2>🔍 Vehicle Inspection</h2>
-            <div class="form-group"><label>Registration Number</label><input type="text" id="reg" placeholder="KCA 123A"></div>
-            <div class="form-group"><label>Make</label><input type="text" id="make" placeholder="Toyota"></div>
-            <div class="form-group"><label>Model</label><input type="text" id="model" placeholder="Axio"></div>
-            <div class="form-group"><label>Year</label><input type="number" id="year" placeholder="2020"></div>
-            <div class="form-group"><label>Mileage (km)</label><input type="number" id="mileage" placeholder="50000"></div>
-            <button class="btn btn-primary" id="submitBtn">Proceed to Payment →</button>
+            <p style="color:#94a3b8; font-size:13px; margin-bottom:20px;">
+                Upload all 12 required vehicle images and 3 ownership documents to proceed with inspection.
+            </p>
+
+            <!-- Validation Summary -->
+            <div class="validation-summary" id="validationSummary">
+                <div style="display:flex; justify-content:space-between; font-weight:600; color:#eab308; margin-bottom:10px;">
+                    <span>📋 Required Items</span>
+                    <span id="validationCount">0/15 completed</span>
+                </div>
+                <div class="item"><span>📸 Images (12)</span><span class="status-icon missing" id="imageStatus">⛔ 0/12</span></div>
+                <div class="item"><span>📄 Documents (3)</span><span class="status-icon missing" id="docStatus">⛔ 0/3</span></div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="inspection-tabs">
+                <button class="inspection-tab active" data-tab="basic">📝 Vehicle Info</button>
+                <button class="inspection-tab" data-tab="images">📸 Images</button>
+                <button class="inspection-tab" data-tab="documents">📄 Documents</button>
+                <button class="inspection-tab" data-tab="details">🔍 Details</button>
+            </div>
+
+            <!-- TAB 1: Vehicle Info -->
+            <div id="tab-basic" class="tab-content">
+                <div class="row">
+                    <div class="form-group"><label class="required">Registration Number</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
+                    <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456"></div>
+                </div>
+                <div class="row">
+                    <div class="form-group"><label class="required">Make</label>
+                        <select id="vehicleMake">
+                            <option value="Toyota" selected>Toyota</option>
+                            <option value="Honda">Honda</option>
+                            <option value="Nissan">Nissan</option>
+                            <option value="Mercedes-Benz">Mercedes-Benz</option>
+                            <option value="BMW">BMW</option>
+                            <option value="Audi">Audi</option>
+                            <option value="Volkswagen">Volkswagen</option>
+                            <option value="Ford">Ford</option>
+                            <option value="Subaru">Subaru</option>
+                            <option value="Mazda">Mazda</option>
+                            <option value="Mitsubishi">Mitsubishi</option>
+                            <option value="Isuzu">Isuzu</option>
+                            <option value="Peugeot">Peugeot</option>
+                            <option value="Land Rover">Land Rover</option>
+                            <option value="Jaguar">Jaguar</option>
+                            <option value="Lexus">Lexus</option>
+                            <option value="Volvo">Volvo</option>
+                            <option value="Hyundai">Hyundai</option>
+                            <option value="Kia">Kia</option>
+                            <option value="Suzuki">Suzuki</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="required">Model</label>
+                        <select id="vehicleModel">
+                            <option value="Axio" selected>Axio</option>
+                            <option value="Corolla">Corolla</option>
+                            <option value="Camry">Camry</option>
+                            <option value="RAV4">RAV4</option>
+                            <option value="Land Cruiser">Land Cruiser</option>
+                            <option value="Prado">Prado</option>
+                            <option value="Hilux">Hilux</option>
+                            <option value="Fortuner">Fortuner</option>
+                            <option value="Premio">Premio</option>
+                            <option value="Allion">Allion</option>
+                            <option value="Vitz">Vitz</option>
+                            <option value="Passo">Passo</option>
+                            <option value="Sienta">Sienta</option>
+                            <option value="Noah">Noah</option>
+                            <option value="Voxy">Voxy</option>
+                            <option value="Hiace">Hiace</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group"><label class="required">Year of Manufacture</label>
+                        <select id="vehicleYear"></select>
+                    </div>
+                    <div class="form-group"><label class="required">Body Type</label>
+                        <select id="vehicleBody">
+                            <option value="Sedan" selected>Sedan</option>
+                            <option value="SUV">SUV</option>
+                            <option value="Pickup">Pickup</option>
+                            <option value="Van">Van</option>
+                            <option value="Hatchback">Hatchback</option>
+                            <option value="Coupe">Coupe</option>
+                            <option value="Convertible">Convertible</option>
+                            <option value="Wagon">Wagon</option>
+                            <option value="Minivan">Minivan</option>
+                            <option value="Bus">Bus</option>
+                            <option value="Truck">Truck</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group"><label class="required">Engine Capacity (cc)</label>
+                        <select id="vehicleEngine">
+                            <option value="1000">1000</option>
+                            <option value="1300">1300</option>
+                            <option value="1500" selected>1500</option>
+                            <option value="1800">1800</option>
+                            <option value="2000">2000</option>
+                            <option value="2400">2400</option>
+                            <option value="2500">2500</option>
+                            <option value="2800">2800</option>
+                            <option value="3000">3000</option>
+                            <option value="3200">3200</option>
+                            <option value="3500">3500</option>
+                            <option value="4000">4000</option>
+                            <option value="4500">4500</option>
+                            <option value="5000">5000</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="required">Transmission</label>
+                        <select id="vehicleTransmission">
+                            <option value="Manual">Manual</option>
+                            <option value="Automatic" selected>Automatic</option>
+                            <option value="CVT">CVT</option>
+                            <option value="DCT">DCT</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group"><label class="required">Fuel Type</label>
+                        <select id="vehicleFuel">
+                            <option value="Petrol" selected>Petrol</option>
+                            <option value="Diesel">Diesel</option>
+                            <option value="Hybrid">Hybrid</option>
+                            <option value="Electric">Electric</option>
+                            <option value="LPG">LPG</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="required">Odometer Reading (km)</label>
+                        <input type="number" id="vehicleOdometer" placeholder="50000" value="50000">
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: IMAGES (12 required angles) -->
+            <div id="tab-images" class="tab-content hidden">
+                <h3>📸 Required Vehicle Images (12)</h3>
+                <p style="color:#94a3b8; font-size:13px; margin-bottom:15px;">
+                    Upload a clear photo for each of the 12 required angles. All images are mandatory.
+                </p>
+
+                <div class="upload-grid" id="imageGrid">
+                    <div class="upload-item" data-slot="front">
+                        <span class="upload-label">Front View</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'front')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="rear">
+                        <span class="upload-label">Rear View</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'rear')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="left">
+                        <span class="upload-label">Left Side View</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'left')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="right">
+                        <span class="upload-label">Right Side View</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'right')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="front-left">
+                        <span class="upload-label">Front Left Corner</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'front-left')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="front-right">
+                        <span class="upload-label">Front Right Corner</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'front-right')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="rear-left">
+                        <span class="upload-label">Rear Left Corner</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'rear-left')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="rear-right">
+                        <span class="upload-label">Rear Right Corner</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'rear-right')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="dashboard">
+                        <span class="upload-label">Dashboard (Mileage visible)</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'dashboard')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="engine">
+                        <span class="upload-label">Engine Bay</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'engine')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="interior">
+                        <span class="upload-label">Interior (Front Seats)</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'interior')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                    <div class="upload-item" data-slot="tyres">
+                        <span class="upload-label">Tyres (Tread visible)</span>
+                        <input type="file" accept="image/*" onchange="handleImageUpload(this, 'tyres')">
+                        <div class="file-status pending">⏳ Pending</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: DOCUMENTS (3 required) -->
+            <div id="tab-documents" class="tab-content hidden">
+                <h3>📄 Required Ownership Documents (3)</h3>
+                <p style="color:#94a3b8; font-size:13px; margin-bottom:15px;">
+                    Upload the following documents to verify ownership. All are mandatory.
+                </p>
+
+                <div class="document-grid" id="documentList">
+                    <div class="document-item">
+                        <div class="doc-icon">🪪</div>
+                        <div class="doc-info">
+                            <div class="doc-name">Logbook / Registration Certificate</div>
+                            <div class="doc-status" id="doc-logbook-status">Not uploaded</div>
+                        </div>
+                        <input type="file" id="docLogbook" accept=".pdf,.jpg,.png" style="display:none;">
+                        <button class="btn btn-primary btn-sm" onclick="document.getElementById('docLogbook').click()">Upload</button>
+                        <span class="doc-status-badge pending" id="doc-logbook-badge">Pending</span>
+                    </div>
+
+                    <div class="document-item">
+                        <div class="doc-icon">🪪</div>
+                        <div class="doc-info">
+                            <div class="doc-name">National ID / Passport</div>
+                            <div class="doc-status" id="doc-id-status">Not uploaded</div>
+                        </div>
+                        <input type="file" id="docId" accept=".pdf,.jpg,.png" style="display:none;">
+                        <button class="btn btn-primary btn-sm" onclick="document.getElementById('docId').click()">Upload</button>
+                        <span class="doc-status-badge pending" id="doc-id-badge">Pending</span>
+                    </div>
+
+                    <div class="document-item">
+                        <div class="doc-icon">📋</div>
+                        <div class="doc-info">
+                            <div class="doc-name">KRA PIN Certificate</div>
+                            <div class="doc-status" id="doc-kra-status">Not uploaded</div>
+                        </div>
+                        <input type="file" id="docKra" accept=".pdf,.jpg,.png" style="display:none;">
+                        <button class="btn btn-primary btn-sm" onclick="document.getElementById('docKra').click()">Upload</button>
+                        <span class="doc-status-badge pending" id="doc-kra-badge">Pending</span>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px; padding:15px; background:#1e293b; border-radius:12px;">
+                    <h4>Document Verification Status</h4>
+                    <div id="documentVerificationStatus">
+                        <div class="progress-bar"><div class="progress-fill" id="docProgress" style="width:0%;"></div></div>
+                        <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:#94a3b8;">
+                            <span id="docCount">0/3 documents uploaded</span>
+                            <span id="docStatusText">Pending verification</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Details (additional inspection info) -->
+            <div id="tab-details" class="tab-content hidden">
+                <div class="row">
+                    <div class="form-group"><label>Inspection Type</label>
+                        <select id="inspectionType">
+                            <option value="Standard" selected>Standard (150+ points)</option>
+                            <option value="Premium">Premium (200+ points)</option>
+                            <option value="Express">Express (50 points)</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Preferred Date</label>
+                        <input type="date" id="inspectionDate">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group"><label>Location</label>
+                        <input type="text" id="inspectionLocation" placeholder="Nairobi">
+                    </div>
+                    <div class="form-group"><label>Contact Phone</label>
+                        <input type="tel" id="inspectionPhone" placeholder="0712345678">
+                    </div>
+                </div>
+                <div class="form-group"><label>Special Instructions</label>
+                    <textarea id="inspectionNotes" rows="3" placeholder="Any special requirements..."></textarea>
+                </div>
+            </div>
+
+            <div class="nav-buttons">
+                <button type="button" class="btn btn-secondary" id="backBtn">← Back</button>
+                <button type="button" class="btn btn-primary" id="submitBtn">🚀 Proceed to Payment</button>
+            </div>
         </div>
     </div>
+
     <script>
-        const supabase = window.AUTO_V_CONFIG?.supabase || window.supabase.createClient(
-            "https://tsvejnzxrxrrecgquxbq.supabase.co",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ"
-        );
-        let currentUser = null;
-        
-        async function init() {
-            const { data: { user }, error } = await supabase.auth.getUser();
-            if (error || !user) { window.location.href = "login.html"; return; }
-            currentUser = user;
-        }
-        
-        async function proceed() {
-            const reg = document.getElementById('reg').value;
-            const make = document.getElementById('make').value;
-            const model = document.getElementById('model').value;
-            const year = parseInt(document.getElementById('year').value);
-            const mileage = parseInt(document.getElementById('mileage').value) || 0;
+        // ============================================
+        // AUTO-V VEHICLE INSPECTION ENGINE
+        // WITH 12 IMAGES & 3 DOCUMENTS
+        // ============================================
+        (function() {
+            if (window.autoVInspectionInitialized) return;
+            window.autoVInspectionInitialized = true;
             
-            if (!reg || !make || !model || !year) { alert('Please fill all fields'); return; }
+            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
             
-            const { data: request, error } = await supabase.from('service_requests').insert({
-                user_id: currentUser.id,
-                service_type: 'inspection',
-                registration_number: reg,
-                make: make,
-                model: model,
-                year: year,
-                mileage: mileage,
-                amount: 3500,
-                payment_status: 'pending',
-                status: 'awaiting_payment'
-            }).select().single();
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // ============================================
+            // STATE
+            // ============================================
+            const REQUIRED_IMAGES = [
+                'front', 'rear', 'left', 'right', 
+                'front-left', 'front-right', 'rear-left', 'rear-right',
+                'dashboard', 'engine', 'interior', 'tyres'
+            ];
             
-            if (error) { alert('Error: ' + error.message); return; }
+            const REQUIRED_DOCS = ['logbook', 'id', 'kra'];
+            const imageStatus = {};
+            const docStatus = {};
+
+            REQUIRED_IMAGES.forEach(slot => {
+                imageStatus[slot] = { uploaded: false, file: null, dataUrl: null };
+            });
+            REQUIRED_DOCS.forEach(doc => {
+                docStatus[doc] = { uploaded: false, file: null };
+            });
+
+            // ============================================
+            // HELPERS
+            // ============================================
+            function showMessage(msg, type = 'success') {
+                const errorDiv = document.getElementById('errorMsg');
+                const successDiv = document.getElementById('successMsg');
+                errorDiv.style.display = 'none';
+                successDiv.style.display = 'none';
+                if (type === 'error') {
+                    errorDiv.textContent = msg;
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => errorDiv.style.display = 'none', 5000);
+                } else {
+                    successDiv.textContent = msg;
+                    successDiv.style.display = 'block';
+                    setTimeout(() => successDiv.style.display = 'none', 3000);
+                }
+            }
+
+            function showLoading(show) {
+                const btn = document.getElementById('submitBtn');
+                if (show) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner"></span> Processing...';
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = '🚀 Proceed to Payment';
+                }
+            }
+
+            function populateYears() {
+                const yearSelect = document.getElementById('vehicleYear');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= 1950; y--) {
+                    const selected = y === 2022 ? 'selected' : '';
+                    yearSelect.innerHTML += `<option value="${y}" ${selected}>${y}</option>`;
+                }
+            }
+
+            // ============================================
+            // VALIDATION SUMMARY
+            // ============================================
+            function updateValidationSummary() {
+                const uploadedImages = REQUIRED_IMAGES.filter(slot => imageStatus[slot].uploaded).length;
+                const uploadedDocs = REQUIRED_DOCS.filter(doc => docStatus[doc].uploaded).length;
+                const total = uploadedImages + uploadedDocs;
+                const required = REQUIRED_IMAGES.length + REQUIRED_DOCS.length;
+                
+                document.getElementById('validationCount').textContent = `${total}/${required} completed`;
+                
+                const imageStatusEl = document.getElementById('imageStatus');
+                if (uploadedImages === REQUIRED_IMAGES.length) {
+                    imageStatusEl.textContent = `✅ ${uploadedImages}/${REQUIRED_IMAGES.length}`;
+                    imageStatusEl.className = 'status-icon done';
+                } else {
+                    imageStatusEl.textContent = `⛔ ${uploadedImages}/${REQUIRED_IMAGES.length}`;
+                    imageStatusEl.className = 'status-icon missing';
+                }
+                
+                const docStatusEl = document.getElementById('docStatus');
+                if (uploadedDocs === REQUIRED_DOCS.length) {
+                    docStatusEl.textContent = `✅ ${uploadedDocs}/${REQUIRED_DOCS.length}`;
+                    docStatusEl.className = 'status-icon done';
+                } else {
+                    docStatusEl.textContent = `⛔ ${uploadedDocs}/${REQUIRED_DOCS.length}`;
+                    docStatusEl.className = 'status-icon missing';
+                }
+            }
+
+            // ============================================
+            // IMAGE UPLOAD
+            // ============================================
+            window.handleImageUpload = function(input, slot) {
+                if (!input.files || !input.files[0]) return;
+                const file = input.files[0];
+                if (!file.type.startsWith('image/')) {
+                    showMessage('Please upload an image file.', 'error');
+                    input.value = '';
+                    return;
+                }
+                if (file.size > 10 * 1024 * 1024) {
+                    showMessage('Image must be less than 10MB.', 'error');
+                    input.value = '';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imageStatus[slot].uploaded = true;
+                    imageStatus[slot].file = file;
+                    imageStatus[slot].dataUrl = e.target.result;
+                    
+                    const parent = input.closest('.upload-item');
+                    const statusEl = parent.querySelector('.file-status');
+                    statusEl.textContent = '✅ Uploaded';
+                    statusEl.className = 'file-status uploaded';
+                    
+                    let preview = parent.querySelector('.preview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.className = 'preview';
+                        parent.prepend(preview);
+                    }
+                    preview.src = e.target.result;
+                    input.style.display = 'none';
+                    
+                    updateValidationSummary();
+                    showMessage(`✅ ${slot} image uploaded`, 'success');
+                };
+                reader.readAsDataURL(file);
+            };
+
+            // ============================================
+            // DOCUMENT UPLOAD
+            // ============================================
+            const documentConfigs = {
+                'docLogbook': { key: 'logbook', badgeId: 'doc-logbook-badge', statusId: 'doc-logbook-status' },
+                'docId': { key: 'id', badgeId: 'doc-id-badge', statusId: 'doc-id-status' },
+                'docKra': { key: 'kra', badgeId: 'doc-kra-badge', statusId: 'doc-kra-status' }
+            };
+
+            function setupDocumentUpload(inputId, docKey) {
+                const input = document.getElementById(inputId);
+                input.addEventListener('change', function() {
+                    if (this.files && this.files[0]) {
+                        const file = this.files[0];
+                        docStatus[docKey].uploaded = true;
+                        docStatus[docKey].file = file;
+                        
+                        const config = documentConfigs[inputId];
+                        const badge = document.getElementById(config.badgeId);
+                        const status = document.getElementById(config.statusId);
+                        
+                        badge.className = 'doc-status-badge verified';
+                        badge.textContent = '✅ Verified';
+                        status.textContent = `Uploaded: ${file.name}`;
+                        status.style.color = '#22c55e';
+                        
+                        updateDocumentProgress();
+                        updateValidationSummary();
+                        showMessage(`✅ ${docKey} document uploaded`, 'success');
+                    }
+                });
+            }
+
+            function updateDocumentProgress() {
+                const total = REQUIRED_DOCS.length;
+                const uploaded = REQUIRED_DOCS.filter(d => docStatus[d].uploaded).length;
+                const percentage = (uploaded / total) * 100;
+                
+                document.getElementById('docProgress').style.width = percentage + '%';
+                document.getElementById('docCount').textContent = `${uploaded}/${total} documents uploaded`;
+                
+                if (uploaded === total) {
+                    document.getElementById('docStatusText').textContent = '✅ All documents verified!';
+                    document.getElementById('docStatusText').style.color = '#22c55e';
+                } else {
+                    document.getElementById('docStatusText').textContent = '📄 Upload required documents';
+                    document.getElementById('docStatusText').style.color = '#94a3b8';
+                }
+            }
+
+            setupDocumentUpload('docLogbook', 'logbook');
+            setupDocumentUpload('docId', 'id');
+            setupDocumentUpload('docKra', 'kra');
+
+            // ============================================
+            // TAB SWITCHING
+            // ============================================
+            document.querySelectorAll('.inspection-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    document.querySelectorAll('.inspection-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    const tabId = this.dataset.tab;
+                    document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+                    document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+                });
+            });
+
+            // ============================================
+            // MAIN SUBMIT
+            // ============================================
+            async function handleSubmit() {
+                const reg = document.getElementById('vehicleReg').value.toUpperCase();
+                const make = document.getElementById('vehicleMake').value;
+                const model = document.getElementById('vehicleModel').value;
+                const year = parseInt(document.getElementById('vehicleYear').value);
+                
+                if (!reg || !make || !model || !year) {
+                    showMessage('Please fill in registration, make, model, and year', 'error');
+                    return;
+                }
+
+                // Validate images
+                const missingImages = REQUIRED_IMAGES.filter(slot => !imageStatus[slot].uploaded);
+                if (missingImages.length > 0) {
+                    showMessage(`Please upload all 12 required images. Missing: ${missingImages.join(', ')}`, 'error');
+                    document.querySelectorAll('.inspection-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelector('[data-tab="images"]').classList.add('active');
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                    document.getElementById('tab-images').classList.remove('hidden');
+                    return;
+                }
+
+                // Validate documents
+                const missingDocs = REQUIRED_DOCS.filter(doc => !docStatus[doc].uploaded);
+                if (missingDocs.length > 0) {
+                    showMessage(`Please upload all 3 required documents. Missing: ${missingDocs.join(', ')}`, 'error');
+                    document.querySelectorAll('.inspection-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelector('[data-tab="documents"]').classList.add('active');
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                    document.getElementById('tab-documents').classList.remove('hidden');
+                    return;
+                }
+
+                showLoading(true);
+                
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        showMessage('Please login again', 'error');
+                        window.location.href = "login.html";
+                        return;
+                    }
+
+                    const inspectionData = {
+                        user_id: user.id,
+                        service_type: 'inspection',
+                        registration_number: reg,
+                        make: make,
+                        model: model,
+                        year: year,
+                        engine_cc: parseInt(document.getElementById('vehicleEngine').value),
+                        transmission: document.getElementById('vehicleTransmission').value,
+                        fuel_type: document.getElementById('vehicleFuel').value,
+                        odometer: parseInt(document.getElementById('vehicleOdometer').value) || 0,
+                        body_type: document.getElementById('vehicleBody').value,
+                        inspection_type: document.getElementById('inspectionType').value,
+                        inspection_date: document.getElementById('inspectionDate').value || new Date().toISOString().split('T')[0],
+                        inspection_location: document.getElementById('inspectionLocation').value || 'Nairobi',
+                        phone: document.getElementById('inspectionPhone').value || '',
+                        notes: document.getElementById('inspectionNotes').value || '',
+                        amount: 3500,
+                        payment_status: 'pending',
+                        status: 'pending',
+                        image_count: REQUIRED_IMAGES.filter(slot => imageStatus[slot].uploaded).length,
+                        document_count: REQUIRED_DOCS.filter(doc => docStatus[doc].uploaded).length,
+                        document_verification: 'Verified',
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    const { data: request, error } = await supabase
+                        .from('service_requests')
+                        .insert(inspectionData)
+                        .select()
+                        .single();
+                    
+                    if (error) {
+                        console.error('Insert error:', error);
+                        throw error;
+                    }
+                    
+                    showMessage('✅ Inspection request created! Redirecting to payment...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = `payment.html?id=${request.id}&type=inspection&amount=3500&ref=INS${request.id.slice(0,8).toUpperCase()}`;
+                    }, 1000);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    showMessage('Error: ' + error.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
+            }
+
+            // ============================================
+            // EVENT LISTENERS
+            // ============================================
+            document.getElementById('submitBtn').addEventListener('click', handleSubmit);
             
-            window.location.href = `payment.html?id=${request.id}&type=inspection&amount=3500&ref=INS${request.id.slice(0,8)}`;
-        }
-        
-        document.getElementById('submitBtn').onclick = proceed;
-        init();
+            document.getElementById('backBtn').addEventListener('click', () => {
+                window.location.href = 'dashboard.html';
+            });
+            
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                window.location.href = 'login.html';
+            });
+
+            // ============================================
+            // INIT
+            // ============================================
+            async function init() {
+                populateYears();
+                document.getElementById('inspectionDate').valueAsDate = new Date();
+                
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    window.location.href = 'login.html';
+                }
+                
+                updateValidationSummary();
+                updateDocumentProgress();
+            }
+            
+            init();
+        })();
     </script>
 </body>
 </html>
