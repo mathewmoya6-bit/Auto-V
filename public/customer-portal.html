@@ -324,7 +324,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL – WITH PURPOSE-SPECIFIC DYNAMIC FIELDS
+        // AUTO-V CUSTOMER PORTAL – WITH REAL-TIME FEE UPDATES
         // ============================================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
@@ -733,15 +733,24 @@
                 if (selectedService) updateSummary();
             }
 
+            // ─── REAL-TIME FEE UPDATES ──────────────────────────────
             function subscribeToFeeChanges() {
                 const channel = supabase
                     .channel('system_settings_changes')
-                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'system_settings' }, (payload) => {
+                    .on('postgres_changes', { 
+                        event: 'UPDATE', 
+                        schema: 'public', 
+                        table: 'system_settings' 
+                    }, (payload) => {
                         const keys = ['instant_fee', 'mileage_fee', 'fleet_fee', 'verification_fee'];
                         if (keys.includes(payload.new.setting_key)) {
-                            loadFees();
-                            document.getElementById('feeUpdateBadge').classList.add('show');
-                            setTimeout(() => document.getElementById('feeUpdateBadge').classList.remove('show'), 3000);
+                            console.log('Fee updated:', payload);
+                            loadFees(); // Reload fees when they change
+                            const badge = document.getElementById('feeUpdateBadge');
+                            if (badge) {
+                                badge.classList.add('show');
+                                setTimeout(() => badge.classList.remove('show'), 3000);
+                            }
                         }
                     })
                     .subscribe();
@@ -1404,6 +1413,7 @@
                 populateYears();
                 await loadFees();
 
+                // Subscribe to real-time fee changes
                 realtimeChannel = subscribeToFeeChanges();
                 feeInterval = setInterval(loadFees, 30000);
 
@@ -1414,6 +1424,7 @@
                 }
                 document.getElementById('downloadReportBtn').style.display = 'none';
 
+                // Clean up on page unload
                 window.addEventListener('beforeunload', () => {
                     if (pollInterval) clearInterval(pollInterval);
                     if (feeInterval) clearInterval(feeInterval);
