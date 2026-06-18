@@ -1,26 +1,32 @@
+import uuid
+import logging
 from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
 from services.valuation_engine import calculate_valuation
-import uuid
+from api.auth_middleware import require_auth
 
+logger = logging.getLogger(__name__)
 valuations_bp = Blueprint('valuations', __name__)
 
 @valuations_bp.route('/', methods=['POST'])
-def create_valuation():
+@require_auth
+def create_valuation(user):
     data = request.get_json()
-    user_id = data.get('user_id')
     vehicle_data = data.get('vehicle_data', {})
     purpose = data.get('purpose', 'Market Value')
 
-    if not user_id or not vehicle_data:
-        return jsonify({'error': 'user_id and vehicle_data required'}), 400
+    # Validate required fields
+    required = ['make', 'model', 'year']
+    for field in required:
+        if not vehicle_data.get(field):
+            return jsonify({'error': f'Missing field: {field}'}), 400
 
     result = calculate_valuation(vehicle_data)
     result['certificate_number'] = f"VAL-{uuid.uuid4().hex[:8].upper()}"
 
     supabase = get_supabase()
     request_data = {
-        'user_id': user_id,
+        'user_id': user.id,
         'service_type': 'valuation',
         'registration_number': vehicle_data.get('registration_number'),
         'make': vehicle_data.get('make'),
@@ -38,11 +44,17 @@ def create_valuation():
     }
     resp = supabase.table('service_requests').insert(request_data).execute()
     if not resp.data:
-        return jsonify({'error': 'Failed to save'}), 500
+        logger.error("Failed to save valuation for user %s", user.id)
+        return jsonify({'error': 'Failed to save valuation'}), 500
     return jsonify(resp.data[0]), 201
 
 @valuations_bp.route('/user/<user_id>', methods=['GET'])
-def get_user_valuations(user_id):
+@require_auth
+def get_user_valuations(user, user_id):
+    # Ensure user can only access their own data
+    if user.id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
     supabase = get_supabase()
     resp = supabase.table('service_requests')\
         .select('*')\
@@ -53,9 +65,13 @@ def get_user_valuations(user_id):
     return jsonify(resp.data), 200
 
 @valuations_bp.route('/<valuation_id>', methods=['GET'])
-def get_valuation(valuation_id):
+@require_auth
+def get_valuation(user, valuation_id):
     supabase = get_supabase()
     resp = supabase.table('service_requests').select('*').eq('id', valuation_id).execute()
     if not resp.data:
         return jsonify({'error': 'Not found'}), 404
+    # Check ownership
+    if resp.data[0]['user_id'] != user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
     return jsonify(resp.data[0]), 200
