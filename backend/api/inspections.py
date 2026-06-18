@@ -1,20 +1,25 @@
+import uuid
+import logging
 from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
-import uuid
+from api.auth_middleware import require_auth
 
+logger = logging.getLogger(__name__)
 inspections_bp = Blueprint('inspections', __name__)
 
 @inspections_bp.route('/', methods=['POST'])
-def create_inspection():
+@require_auth
+def create_inspection(user):
     data = request.get_json()
-    user_id = data.get('user_id')
     vehicle_data = data.get('vehicle_data', {})
     inspection_type = data.get('inspection_type', 'Standard')
 
-    if not user_id or not vehicle_data:
-        return jsonify({'error': 'user_id and vehicle_data required'}), 400
+    required = ['make', 'model', 'year']
+    for field in required:
+        if not vehicle_data.get(field):
+            return jsonify({'error': f'Missing field: {field}'}), 400
 
-    # Mock scoring
+    # Mock scoring – can be replaced with real logic
     inspection_result = {
         'overall_score': 8.5,
         'exterior': 8.0,
@@ -28,7 +33,7 @@ def create_inspection():
 
     supabase = get_supabase()
     request_data = {
-        'user_id': user_id,
+        'user_id': user.id,
         'service_type': 'inspection',
         'registration_number': vehicle_data.get('registration_number'),
         'make': vehicle_data.get('make'),
@@ -44,11 +49,16 @@ def create_inspection():
     }
     resp = supabase.table('service_requests').insert(request_data).execute()
     if not resp.data:
-        return jsonify({'error': 'Failed to save'}), 500
+        logger.error("Failed to save inspection for user %s", user.id)
+        return jsonify({'error': 'Failed to save inspection'}), 500
     return jsonify(resp.data[0]), 201
 
 @inspections_bp.route('/user/<user_id>', methods=['GET'])
-def get_user_inspections(user_id):
+@require_auth
+def get_user_inspections(user, user_id):
+    if user.id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
     supabase = get_supabase()
     resp = supabase.table('service_requests')\
         .select('*')\
