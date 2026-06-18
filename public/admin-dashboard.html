@@ -182,8 +182,11 @@
                 </div>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr><th><input type="checkbox" id="selectAllActivities"></th><th>Date</th><th>User</th><th>Service</th><th>Details</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
-                        <tbody id="activitiesBody"><tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div></td></tr></tbody>
+                        <thead><tr>
+                            <th><input type="checkbox" id="selectAllActivities"></th>
+                            <th>Date</th><th>User</th><th>Service</th><th>Details</th><th>Amount</th><th>Status</th><th>Actions</th>
+                        </tr></thead>
+                        <tbody id="activitiesBody"><tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading activities...</td></tr></tbody>
                     </table>
                 </div>
                 <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -200,7 +203,7 @@
                 <div class="table-wrapper">
                     <table>
                         <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Amount</th><th>M-Pesa</th><th>Status</th><th>Actions</th></tr></thead>
-                        <tbody id="pendingPaymentsBody"><tr><td colspan="7" style="text-align:center;padding:40px;"><div class="spinner"></div></td></tr></tbody>
+                        <tbody id="pendingPaymentsBody"><tr><td colspan="7" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading payments...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -306,7 +309,7 @@
                 <div class="table-wrapper">
                     <table>
                         <thead><tr><th>Email</th><th>Name</th><th>Phone</th><th>Valuations</th><th>Claims</th><th>Joined</th><th>Actions</th></tr></thead>
-                        <tbody id="usersBody"><tr><td colspan="7" style="text-align:center;padding:40px;"><div class="spinner"></div></td></tr></tbody>
+                        <tbody id="usersBody"><tr><td colspan="7" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading users...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -319,7 +322,7 @@
                 <div class="table-wrapper">
                     <table>
                         <thead><tr><th>Date</th><th>User</th><th>Service</th><th>Vehicle</th><th>Amount</th><th>Payment Status</th><th>Status</th><th>Actions</th></tr></thead>
-                        <tbody id="allRequestsBody"><tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div></td></tr></tbody>
+                        <tbody id="allRequestsBody"><tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading requests...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -373,7 +376,7 @@
 
     <script>
     // ============================================================
-    // AUTO-V ADMIN DASHBOARD – FULLY FIXED & COMPLETE
+    // AUTO-V ADMIN DASHBOARD – FULLY WORKING
     // ============================================================
 
     const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
@@ -459,12 +462,13 @@
     // ============================================
     // TOAST & MESSAGING
     // ============================================
-    function showToast(msg, type='success') {
-        const t = document.createElement('div');
-        t.className = `toast toast-${type}`;
+    function showToast(msg, type) {
+        type = type || 'success';
+        var t = document.createElement('div');
+        t.className = 'toast toast-' + type;
         t.textContent = msg;
         document.body.appendChild(t);
-        setTimeout(() => t.remove(), 3000);
+        setTimeout(function() { t.remove(); }, 3000);
     }
 
     function formatKES(amount) {
@@ -481,7 +485,7 @@
     function showConfirm(title, message, onConfirm) {
         document.getElementById('confirmTitle').textContent = title;
         document.getElementById('confirmMessage').textContent = message;
-        document.getElementById('confirmDeleteBtn').onclick = () => {
+        document.getElementById('confirmDeleteBtn').onclick = function() {
             closeModal('confirmModal');
             if (onConfirm) onConfirm();
         };
@@ -491,13 +495,14 @@
     // ============================================
     // FETCH HELPERS
     // ============================================
-    async function fetchWithTimeout(promise, timeoutMs = 10000) {
-        let timeoutId;
-        const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+    async function fetchWithTimeout(promise, timeoutMs) {
+        timeoutMs = timeoutMs || 10000;
+        var timeoutId;
+        var timeoutPromise = new Promise(function(_, reject) {
+            timeoutId = setTimeout(function() { reject(new Error('Request timed out after ' + timeoutMs + 'ms')); }, timeoutMs);
         });
         try {
-            const result = await Promise.race([promise, timeoutPromise]);
+            var result = await Promise.race([promise, timeoutPromise]);
             clearTimeout(timeoutId);
             return result;
         } catch (e) {
@@ -506,29 +511,32 @@
         }
     }
 
-    async function safeFetch(table, query = {}) {
+    async function safeFetch(table, query) {
+        query = query || {};
         try {
-            let q = supabase.from(table).select('*');
+            var q = supabase.from(table).select('*');
             if (query.eq) {
-                for (const [key, val] of Object.entries(query.eq)) {
-                    q = q.eq(key, val);
+                for (var key in query.eq) {
+                    if (query.eq.hasOwnProperty(key)) {
+                        q = q.eq(key, query.eq[key]);
+                    }
                 }
             }
             if (query.order) {
                 q = q.order(query.order.column, { ascending: query.order.ascending !== false });
             }
-            const { data, error } = await fetchWithTimeout(q, 8000);
-            if (error) {
-                if (error.code === '42P01') {
-                    console.warn(`Table "${table}" does not exist yet.`);
-                    return { error: `Table "${table}" not found` };
+            var result = await fetchWithTimeout(q, 8000);
+            if (result.error) {
+                if (result.error.code === '42P01') {
+                    console.warn('Table "' + table + '" does not exist yet.');
+                    return { error: 'Table "' + table + '" not found' };
                 }
-                console.error(`Supabase error on ${table}:`, error);
-                return { error: error.message };
+                console.error('Supabase error on ' + table + ':', result.error);
+                return { error: result.error.message };
             }
-            return { data: data || [] };
+            return { data: result.data || [] };
         } catch (e) {
-            console.error(`Error fetching from ${table}:`, e);
+            console.error('Error fetching from ' + table + ':', e);
             return { error: e.message };
         }
     }
@@ -538,20 +546,20 @@
     // ============================================
     async function checkAuth() {
         try {
-            const { data: { user }, error } = await fetchWithTimeout(supabase.auth.getUser(), 5000);
-            if (error || !user) {
+            var result = await fetchWithTimeout(supabase.auth.getUser(), 5000);
+            if (result.error || !result.data.user) {
                 showToast('Please login first', 'warning');
                 window.location.href = 'login.html';
                 return false;
             }
-            currentUser = user;
-            document.getElementById('adminEmail').textContent = user.email;
-            const { data: profile } = await fetchWithTimeout(
-                supabase.from('user_profiles').select('role').eq('id', user.id).maybeSingle(),
+            currentUser = result.data.user;
+            document.getElementById('adminEmail').textContent = currentUser.email;
+            var profileResult = await fetchWithTimeout(
+                supabase.from('user_profiles').select('role').eq('id', currentUser.id).maybeSingle(),
                 5000
             );
-            if (!profile || profile.role !== 'admin') {
-                showToast('⛔ Admin access required', 'warning');
+            if (profileResult.error || !profileResult.data || profileResult.data.role !== 'admin') {
+                showToast('Admin access required', 'warning');
                 window.location.href = 'dashboard.html';
                 return false;
             }
@@ -568,25 +576,25 @@
     // ============================================
     async function loadOverview() {
         try {
-            const userProfiles = await safeFetch('user_profiles');
-            const requests = await safeFetch('service_requests');
-            const claims = await safeFetch('mileage_claims');
-            const payments = await safeFetch('payments', { eq: { status: 'pending' } });
+            var userProfiles = await safeFetch('user_profiles');
+            var requests = await safeFetch('service_requests');
+            var claims = await safeFetch('mileage_claims');
+            var payments = await safeFetch('payments', { eq: { status: 'pending' } });
 
-            const totalUsers = userProfiles.error ? 0 : userProfiles.data.length;
-            const totalRequests = (requests.error ? 0 : requests.data.length) + (claims.error ? 0 : claims.data.length);
-            const totalRevenue = (requests.error ? 0 : requests.data.reduce((s, r) => s + (r.amount || 0), 0)) +
-                                 (claims.error ? 0 : claims.data.reduce((s, c) => s + (c.claim_amount || 0), 0));
-            const pendingPayments = payments.error ? 0 : payments.data.length;
+            var totalUsers = userProfiles.error ? 0 : userProfiles.data.length;
+            var totalRequests = (requests.error ? 0 : requests.data.length) + (claims.error ? 0 : claims.data.length);
+            var totalRevenue = (requests.error ? 0 : requests.data.reduce(function(s, r) { return s + (r.amount || 0); }, 0)) +
+                                 (claims.error ? 0 : claims.data.reduce(function(s, c) { return s + (c.claim_amount || 0); }, 0));
+            var pendingPayments = payments.error ? 0 : payments.data.length;
 
             document.getElementById('totalUsers').textContent = totalUsers;
             document.getElementById('totalRequests').textContent = totalRequests;
             document.getElementById('totalRevenue').innerHTML = formatKES(totalRevenue);
             document.getElementById('pendingPayments').textContent = pendingPayments;
 
-            const counts = { instant:0, valuation:0, inspection:0, assessment:0, mileage:0, fleet:0, verification:0 };
+            var counts = { instant:0, valuation:0, inspection:0, assessment:0, mileage:0, fleet:0, verification:0 };
             if (!requests.error) {
-                requests.data.forEach(r => {
+                requests.data.forEach(function(r) {
                     if (counts.hasOwnProperty(r.service_type)) counts[r.service_type]++;
                 });
             }
@@ -598,47 +606,55 @@
             document.getElementById('countFleet').textContent = counts.fleet;
             document.getElementById('countVerification').textContent = counts.verification;
 
-            const all = [];
-            if (!requests.error) requests.data.slice(0,10).forEach(r => all.push({
-                id: r.id,
-                type: 'service',
-                table: 'service_requests',
-                date: r.created_at,
-                user_id: r.user_id,
-                service_type: r.service_type,
-                details: `${r.make || ''} ${r.model || ''}`.trim() || 'Vehicle',
-                amount: r.amount || 0,
-                status: r.payment_status || r.status || 'pending'
-            }));
-            if (!claims.error) claims.data.slice(0,5).forEach(c => all.push({
-                id: c.id,
-                type: 'mileage',
-                table: 'mileage_claims',
-                date: c.created_at,
-                user_id: c.user_id,
-                service_type: 'mileage',
-                details: `${c.start_location || ''} → ${c.end_location || ''}`,
-                amount: c.claim_amount || 0,
-                status: c.status || 'pending'
-            }));
-            all.sort((a,b) => new Date(b.date) - new Date(a.date));
+            var all = [];
+            if (!requests.error) {
+                requests.data.slice(0,10).forEach(function(r) {
+                    all.push({
+                        id: r.id,
+                        type: 'service',
+                        table: 'service_requests',
+                        date: r.created_at,
+                        user_id: r.user_id,
+                        service_type: r.service_type,
+                        details: (r.make || '') + ' ' + (r.model || ''),
+                        amount: r.amount || 0,
+                        status: r.payment_status || r.status || 'pending'
+                    });
+                });
+            }
+            if (!claims.error) {
+                claims.data.slice(0,5).forEach(function(c) {
+                    all.push({
+                        id: c.id,
+                        type: 'mileage',
+                        table: 'mileage_claims',
+                        date: c.created_at,
+                        user_id: c.user_id,
+                        service_type: 'mileage',
+                        details: (c.start_location || '') + ' → ' + (c.end_location || ''),
+                        amount: c.claim_amount || 0,
+                        status: c.status || 'pending'
+                    });
+                });
+            }
+            all.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
 
-            const tbody = document.getElementById('adminRecentBody');
+            var tbody = document.getElementById('adminRecentBody');
             if (!all.length) {
                 tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No activity yet</td></tr>';
             } else {
-                tbody.innerHTML = all.slice(0,10).map(item => {
-                    const display = getServiceDisplay(item.service_type);
-                    const badge = item.status === 'pending' ? 'pending' : item.status === 'paid' || item.status === 'approved' ? 'approved' : 'completed';
-                    return `<tr>
-                        <td>${new Date(item.date).toLocaleDateString()}</td>
-                        <td>${item.user_id?.substring(0,12) || 'Unknown'}</td>
-                        <td>${display.icon} ${display.label}</td>
-                        <td>${item.details || '-'}</td>
-                        <td>${formatKES(item.amount)}</td>
-                        <td><span class="badge badge-${badge}">${item.status}</span></td>
-                        <td><button class="btn btn-danger btn-xs" onclick="deleteActivity('${item.id}','${item.table}')">🗑️</button></td>
-                    </tr>`;
+                tbody.innerHTML = all.slice(0,10).map(function(item) {
+                    var display = getServiceDisplay(item.service_type);
+                    var badge = item.status === 'pending' ? 'pending' : (item.status === 'paid' || item.status === 'approved' ? 'approved' : 'completed');
+                    return '<tr>' +
+                        '<td>' + new Date(item.date).toLocaleDateString() + '</td>' +
+                        '<td>' + (item.user_id ? item.user_id.substring(0,12) : 'Unknown') + '</td>' +
+                        '<td>' + display.icon + ' ' + display.label + '</td>' +
+                        '<td>' + (item.details || '-') + '</td>' +
+                        '<td>' + formatKES(item.amount) + '</td>' +
+                        '<td><span class="badge badge-' + badge + '">' + item.status + '</span></td>' +
+                        '<td><button class="btn btn-danger btn-xs" onclick="deleteActivity(\'' + item.id + '\',\'' + item.table + '\')">🗑️</button></td>' +
+                    '</tr>';
                 }).join('');
             }
         } catch (e) { console.error('Overview error:', e); showToast('Error loading overview','error'); }
@@ -648,142 +664,146 @@
     // ACTIVITIES
     // ============================================
     async function loadActivities() {
-        const tbody = document.getElementById('activitiesBody');
+        var tbody = document.getElementById('activitiesBody');
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</td></tr>';
 
         try {
-            const [requests, claims, payments, users] = await Promise.all([
+            var results = await Promise.all([
                 safeFetch('service_requests', { order: { column: 'created_at', ascending: false } }),
                 safeFetch('mileage_claims', { order: { column: 'created_at', ascending: false } }),
                 safeFetch('payments', { order: { column: 'created_at', ascending: false } }),
                 safeFetch('user_profiles')
             ]);
+            var requests = results[0];
+            var claims = results[1];
+            var payments = results[2];
+            var users = results[3];
 
-            const errors = [];
+            var errors = [];
             if (requests.error) errors.push('Requests: ' + requests.error);
             if (claims.error) errors.push('Claims: ' + claims.error);
             if (payments.error) errors.push('Payments: ' + payments.error);
             if (users.error) errors.push('Users: ' + users.error);
             if (errors.length > 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">
-                    ❌ Error loading data:<br>${errors.join('<br>')}
-                </td></tr>`;
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">' +
+                    '❌ Error loading data:<br>' + errors.join('<br>') +
+                '</td></tr>';
                 showToast('Error loading activities. Check console.', 'error');
                 return;
             }
 
-            const usersData = users.data || [];
-            const all = [];
+            var usersData = users.data || [];
+            var all = [];
 
-            (requests.data || []).forEach(r => {
-                const u = usersData.find(x => x.id === r.user_id);
-                const display = getServiceDisplay(r.service_type);
+            (requests.data || []).forEach(function(r) {
+                var u = usersData.find(function(x) { return x.id === r.user_id; });
+                var display = getServiceDisplay(r.service_type);
                 all.push({
                     id: r.id,
                     table: 'service_requests',
                     date: r.created_at,
-                    user: u?.email || r.user_id || 'Unknown',
-                    service: `${display.icon} ${display.label}`,
-                    details: `${r.make || ''} ${r.model || ''}`.trim() || 'Vehicle',
+                    user: (u ? u.email : r.user_id) || 'Unknown',
+                    service: display.icon + ' ' + display.label,
+                    details: ((r.make || '') + ' ' + (r.model || '')).trim() || 'Vehicle',
                     amount: r.amount || 0,
                     status: r.payment_status || r.status || 'pending'
                 });
             });
-            (claims.data || []).forEach(c => {
-                const u = usersData.find(x => x.id === c.user_id);
+            (claims.data || []).forEach(function(c) {
+                var u = usersData.find(function(x) { return x.id === c.user_id; });
                 all.push({
                     id: c.id,
                     table: 'mileage_claims',
                     date: c.created_at,
-                    user: u?.email || c.user_id || 'Unknown',
+                    user: (u ? u.email : c.user_id) || 'Unknown',
                     service: '📏 Mileage Claim',
-                    details: `${c.start_location || ''} → ${c.end_location || ''}`,
+                    details: (c.start_location || '') + ' → ' + (c.end_location || ''),
                     amount: c.claim_amount || 0,
                     status: c.status || 'pending'
                 });
             });
-            (payments.data || []).forEach(p => {
-                const u = usersData.find(x => x.id === p.user_id);
-                const display = getServiceDisplay(p.service_type);
+            (payments.data || []).forEach(function(p) {
+                var u = usersData.find(function(x) { return x.id === p.user_id; });
+                var display = getServiceDisplay(p.service_type);
                 all.push({
                     id: p.id,
                     table: 'payments',
                     date: p.created_at,
-                    user: u?.email || p.user_id || 'Unknown',
-                    service: `💳 ${display.label} Payment`,
+                    user: (u ? u.email : p.user_id) || 'Unknown',
+                    service: '💳 ' + display.label + ' Payment',
                     details: p.reference || p.service_type || 'Payment',
                     amount: p.amount || 0,
                     status: p.status || 'pending'
                 });
             });
 
-            all.sort((a,b) => new Date(b.date) - new Date(a.date));
+            all.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
 
             if (!all.length) {
                 tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No activities found</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = all.map(item => {
-                const badge = item.status === 'pending' ? 'pending' : item.status === 'paid' || item.status === 'approved' ? 'approved' : 'completed';
-                return `<tr data-id="${item.id}" data-table="${item.table}">
-                    <td><input type="checkbox" class="activity-checkbox" data-id="${item.id}"></td>
-                    <td>${new Date(item.date).toLocaleDateString()}</td>
-                    <td>${item.user}</td>
-                    <td>${item.service}</td>
-                    <td>${item.details || '-'}</td>
-                    <td>${formatKES(item.amount)}</td>
-                    <td><span class="badge badge-${badge}">${item.status}</span></td>
-                    <td><button class="btn btn-danger btn-xs" onclick="deleteActivity('${item.id}','${item.table}')">🗑️</button></td>
-                </tr>`;
+            tbody.innerHTML = all.map(function(item) {
+                var badge = item.status === 'pending' ? 'pending' : (item.status === 'paid' || item.status === 'approved' ? 'approved' : 'completed');
+                return '<tr data-id="' + item.id + '" data-table="' + item.table + '">' +
+                    '<td><input type="checkbox" class="activity-checkbox" data-id="' + item.id + '"></td>' +
+                    '<td>' + new Date(item.date).toLocaleDateString() + '</td>' +
+                    '<td>' + item.user + '</td>' +
+                    '<td>' + item.service + '</td>' +
+                    '<td>' + (item.details || '-') + '</td>' +
+                    '<td>' + formatKES(item.amount) + '</td>' +
+                    '<td><span class="badge badge-' + badge + '">' + item.status + '</span></td>' +
+                    '<td><button class="btn btn-danger btn-xs" onclick="deleteActivity(\'' + item.id + '\',\'' + item.table + '\')">🗑️</button></td>' +
+                '</tr>';
             }).join('');
 
-            const selectAll = document.getElementById('selectAllActivities');
+            var selectAll = document.getElementById('selectAllActivities');
             selectAll.onchange = function() {
-                document.querySelectorAll('.activity-checkbox').forEach(cb => {
-                    cb.checked = this.checked;
+                document.querySelectorAll('.activity-checkbox').forEach(function(cb) {
+                    cb.checked = selectAll.checked;
                     if (cb.checked) selectedActivities.add(cb.dataset.id);
                     else selectedActivities.delete(cb.dataset.id);
                 });
                 updateSelectedCount();
             };
-            document.querySelectorAll('.activity-checkbox').forEach(cb => {
+            document.querySelectorAll('.activity-checkbox').forEach(function(cb) {
                 cb.onchange = function() {
-                    if (this.checked) selectedActivities.add(this.dataset.id);
-                    else selectedActivities.delete(this.dataset.id);
+                    if (cb.checked) selectedActivities.add(cb.dataset.id);
+                    else selectedActivities.delete(cb.dataset.id);
                     updateSelectedCount();
-                    const all = document.querySelectorAll('.activity-checkbox');
-                    const checked = document.querySelectorAll('.activity-checkbox:checked');
-                    selectAll.checked = all.length === checked.length;
+                    var allCheckboxes = document.querySelectorAll('.activity-checkbox');
+                    var checked = document.querySelectorAll('.activity-checkbox:checked');
+                    selectAll.checked = allCheckboxes.length === checked.length;
                 };
             });
             updateSelectedCount();
 
         } catch (e) {
             console.error('Activities error:', e);
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${e.message}</td></tr>`;
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ' + e.message + '</td></tr>';
             showToast('Error loading activities', 'error');
         }
     }
 
     function updateSelectedCount() {
-        const count = selectedActivities.size;
-        document.getElementById('selectedCount').textContent = `${count} selected`;
-        const delBtn = document.getElementById('deleteSelectedBtn');
+        var count = selectedActivities.size;
+        document.getElementById('selectedCount').textContent = count + ' selected';
+        var delBtn = document.getElementById('deleteSelectedBtn');
         if (count > 0) {
             delBtn.style.display = 'inline-block';
-            delBtn.textContent = `🗑️ Delete ${count} Selected`;
+            delBtn.textContent = '🗑️ Delete ' + count + ' Selected';
         } else {
             delBtn.style.display = 'none';
         }
     }
 
     window.deleteActivity = function(id, table) {
-        showConfirm('Delete Activity', 'Delete this activity permanently?', async () => {
+        showConfirm('Delete Activity', 'Delete this activity permanently?', async function() {
             showLoading(true);
             try {
-                const { error } = await supabase.from(table).delete().eq('id', id);
-                if (error) throw error;
+                var result = await supabase.from(table).delete().eq('id', id);
+                if (result.error) throw result.error;
                 showToast('Activity deleted');
                 await loadActivities();
                 await loadOverview();
@@ -792,13 +812,13 @@
         });
     };
 
-    document.getElementById('deleteAllActivitiesBtn')?.addEventListener('click', () => {
-        showConfirm('Delete All Activities', 'Delete ALL activities? This cannot be undone.', async () => {
+    document.getElementById('deleteAllActivitiesBtn')?.addEventListener('click', function() {
+        showConfirm('Delete All Activities', 'Delete ALL activities? This cannot be undone.', async function() {
             showLoading(true);
             try {
-                const tables = ['service_requests','mileage_claims','payments'];
-                for (const t of tables) {
-                    await supabase.from(t).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                var tables = ['service_requests','mileage_claims','payments'];
+                for (var i = 0; i < tables.length; i++) {
+                    await supabase.from(tables[i]).delete().neq('id', '00000000-0000-0000-0000-000000000000');
                 }
                 showToast('All activities deleted');
                 selectedActivities.clear();
@@ -809,24 +829,26 @@
         });
     });
 
-    document.getElementById('deleteSelectedBtn')?.addEventListener('click', () => {
-        const count = selectedActivities.size;
-        showConfirm(`Delete ${count} Selected`, `Delete ${count} selected activities?`, async () => {
+    document.getElementById('deleteSelectedBtn')?.addEventListener('click', function() {
+        var count = selectedActivities.size;
+        showConfirm('Delete ' + count + ' Selected', 'Delete ' + count + ' selected activities?', async function() {
             showLoading(true);
             try {
-                const grouped = {};
-                document.querySelectorAll('.activity-checkbox:checked').forEach(cb => {
-                    const row = cb.closest('tr');
-                    const table = row.dataset.table;
-                    const id = cb.dataset.id;
+                var grouped = {};
+                document.querySelectorAll('.activity-checkbox:checked').forEach(function(cb) {
+                    var row = cb.closest('tr');
+                    var table = row.dataset.table;
+                    var id = cb.dataset.id;
                     if (!grouped[table]) grouped[table] = [];
                     grouped[table].push(id);
                 });
-                for (const [table, ids] of Object.entries(grouped)) {
-                    await supabase.from(table).delete().in('id', ids);
+                for (var table in grouped) {
+                    if (grouped.hasOwnProperty(table)) {
+                        await supabase.from(table).delete().in('id', grouped[table]);
+                    }
                 }
                 selectedActivities.clear();
-                showToast(`${count} activities deleted`);
+                showToast(count + ' activities deleted');
                 await loadActivities();
                 await loadOverview();
             } catch (e) { showToast('Error deleting selected','error'); }
@@ -838,58 +860,58 @@
     // PENDING PAYMENTS
     // ============================================
     async function loadPendingPayments() {
-        const tbody = document.getElementById('pendingPaymentsBody');
+        var tbody = document.getElementById('pendingPaymentsBody');
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</td></tr>';
         try {
-            const result = await safeFetch('payments', { eq: { status: 'pending' }, order: { column: 'created_at', ascending: false } });
+            var result = await safeFetch('payments', { eq: { status: 'pending' }, order: { column: 'created_at', ascending: false } });
             if (result.error) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${result.error}</td></tr>`;
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ' + result.error + '</td></tr>';
                 return;
             }
-            const data = result.data;
+            var data = result.data;
             if (!data || data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No pending payments</td></tr>';
                 return;
             }
-            tbody.innerHTML = data.map(p => {
-                const display = getServiceDisplay(p.service_type);
-                return `<tr>
-                    <td>${new Date(p.created_at).toLocaleDateString()}</td>
-                    <td>${p.user_id?.substring(0,12) || 'Unknown'}</td>
-                    <td>${display.icon} ${display.label}</td>
-                    <td><strong>${formatKES(p.amount)}</strong></td>
-                    <td>${p.mpesa_phone || 'N/A'}</td>
-                    <td><span class="badge badge-pending">Pending</span></td>
-                    <td><button class="btn btn-success btn-sm" onclick="viewPayment('${p.id}')">View</button></td>
-                </tr>`;
+            tbody.innerHTML = data.map(function(p) {
+                var display = getServiceDisplay(p.service_type);
+                return '<tr>' +
+                    '<td>' + new Date(p.created_at).toLocaleDateString() + '</td>' +
+                    '<td>' + (p.user_id ? p.user_id.substring(0,12) : 'Unknown') + '</td>' +
+                    '<td>' + display.icon + ' ' + display.label + '</td>' +
+                    '<td><strong>' + formatKES(p.amount) + '</strong></td>' +
+                    '<td>' + (p.mpesa_phone || 'N/A') + '</td>' +
+                    '<td><span class="badge badge-pending">Pending</span></td>' +
+                    '<td><button class="btn btn-success btn-sm" onclick="viewPayment(\'' + p.id + '\')">View</button></td>' +
+                '</tr>';
             }).join('');
         } catch (e) {
             console.error('Payments error:', e);
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${e.message}</td></tr>`;
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ' + e.message + '</td></tr>';
         }
     }
 
-    let currentPaymentId = null;
+    var currentPaymentId = null;
     window.viewPayment = async function(paymentId) {
         currentPaymentId = paymentId;
         document.getElementById('paymentDetails').innerHTML = '<div class="spinner"></div>';
         openModal('paymentModal');
         try {
-            const { data, error } = await supabase.from('payments').select('*').eq('id', paymentId).single();
-            if (error) throw error;
-            const display = getServiceDisplay(data.service_type);
-            document.getElementById('paymentDetails').innerHTML = `
-                <div style="background:#1e293b;padding:20px;border-radius:12px;">
-                    <p><strong>Service:</strong> ${display.icon} ${display.label}</p>
-                    <p><strong>Amount:</strong> ${formatKES(data.amount)}</p>
-                    <p><strong>M-Pesa Phone:</strong> ${data.mpesa_phone || 'N/A'}</p>
-                    <p><strong>Transaction ID:</strong> ${data.transaction_id || 'N/A'}</p>
-                    <p><strong>Date:</strong> ${new Date(data.created_at).toLocaleString()}</p>
-                    <p><strong>Status:</strong> <span class="badge badge-pending">${data.status}</span></p>
-                </div>
-            `;
-            document.getElementById('approvePaymentBtn').onclick = () => processPayment(paymentId, 'approved');
-            document.getElementById('rejectPaymentBtn').onclick = () => processPayment(paymentId, 'rejected');
+            var result = await supabase.from('payments').select('*').eq('id', paymentId).single();
+            if (result.error) throw result.error;
+            var data = result.data;
+            var display = getServiceDisplay(data.service_type);
+            document.getElementById('paymentDetails').innerHTML = 
+                '<div style="background:#1e293b;padding:20px;border-radius:12px;">' +
+                    '<p><strong>Service:</strong> ' + display.icon + ' ' + display.label + '</p>' +
+                    '<p><strong>Amount:</strong> ' + formatKES(data.amount) + '</p>' +
+                    '<p><strong>M-Pesa Phone:</strong> ' + (data.mpesa_phone || 'N/A') + '</p>' +
+                    '<p><strong>Transaction ID:</strong> ' + (data.transaction_id || 'N/A') + '</p>' +
+                    '<p><strong>Date:</strong> ' + new Date(data.created_at).toLocaleString() + '</p>' +
+                    '<p><strong>Status:</strong> <span class="badge badge-pending">' + data.status + '</span></p>' +
+                '</div>';
+            document.getElementById('approvePaymentBtn').onclick = function() { processPayment(paymentId, 'approved'); };
+            document.getElementById('rejectPaymentBtn').onclick = function() { processPayment(paymentId, 'rejected'); };
         } catch (e) {
             document.getElementById('paymentDetails').innerHTML = '<p class="empty-state">Error loading details</p>';
         }
@@ -900,13 +922,13 @@
             showToast('You must be logged in to perform this action', 'warning');
             return;
         }
-        showConfirm(status === 'approved' ? 'Approve Payment' : 'Reject Payment',
-            `Are you sure you want to ${status} this payment?`, async () => {
+        showConfirm((status === 'approved' ? 'Approve Payment' : 'Reject Payment'),
+            'Are you sure you want to ' + status + ' this payment?', async function() {
                 showLoading(true);
                 try {
-                    const updateData = { status, approved_by: currentUser.id, approved_at: new Date().toISOString() };
+                    var updateData = { status: status, approved_by: currentUser.id, approved_at: new Date().toISOString() };
                     await supabase.from('payments').update(updateData).eq('id', paymentId);
-                    showToast(`Payment ${status} successfully`);
+                    showToast('Payment ' + status + ' successfully');
                     closeModal('paymentModal');
                     await loadPendingPayments();
                     await loadOverview();
@@ -920,24 +942,27 @@
     // SERVICE FEES
     // ============================================
     async function loadServiceFees() {
-        const allKeys = [];
-        for (const service of ['valuation', 'inspection', 'assessment']) {
-            for (const purpose of purposeOptions[service]) {
-                const key = `${service}_${purpose.toLowerCase().replace(/[^a-z0-9]/g, '_')}_fee`;
+        var allKeys = [];
+        var services = ['valuation', 'inspection', 'assessment'];
+        for (var s = 0; s < services.length; s++) {
+            var service = services[s];
+            var purposes = purposeOptions[service] || [];
+            for (var p = 0; p < purposes.length; p++) {
+                var key = service + '_' + purposes[p].toLowerCase().replace(/[^a-z0-9]/g, '_') + '_fee';
                 allKeys.push(key);
             }
         }
-        const flatKeys = ['instant_fee', 'mileage_fee', 'fleet_fee', 'verification_fee'];
-        const keys = [...allKeys, ...flatKeys];
+        var flatKeys = ['instant_fee', 'mileage_fee', 'fleet_fee', 'verification_fee'];
+        var keys = allKeys.concat(flatKeys);
 
         try {
-            const { data, error } = await supabase
+            var result = await supabase
                 .from('system_settings')
                 .select('setting_key, setting_value')
                 .in('setting_key', keys);
-            if (error) throw error;
-            const map = {};
-            data.forEach(row => map[row.setting_key] = row.setting_value);
+            if (result.error) throw result.error;
+            var map = {};
+            (result.data || []).forEach(function(row) { map[row.setting_key] = row.setting_value; });
 
             renderPurposeFees('valuation', map);
             renderPurposeFees('inspection', map);
@@ -955,39 +980,38 @@
     }
 
     function renderPurposeFees(service, map) {
-        const container = document.getElementById(`${service}FeesContainer`);
+        var container = document.getElementById(service + 'FeesContainer');
         if (!container) return;
-        const purposes = purposeOptions[service] || [];
-        const defaultPrices = purposePrices[service] || {};
+        var purposes = purposeOptions[service] || [];
+        var defaultPrices = purposePrices[service] || {};
         container.innerHTML = '';
-        purposes.forEach(purpose => {
-            const key = `${service}_${purpose.toLowerCase().replace(/[^a-z0-9]/g, '_')}_fee`;
-            const value = map[key] || defaultPrices[purpose] || 0;
-            const div = document.createElement('div');
+        purposes.forEach(function(purpose) {
+            var key = service + '_' + purpose.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_fee';
+            var value = map[key] || defaultPrices[purpose] || 0;
+            var div = document.createElement('div');
             div.className = 'fee-item';
-            div.innerHTML = `
-                <div class="fee-label">${purpose}</div>
-                <div class="fee-input"><input type="number" id="fee_${key}" step="100" value="${value}"></div>
-                <div class="fee-save"><button class="btn btn-success btn-sm" onclick="saveFee('${key}','fee_${key}')">💾 Save</button></div>
-            `;
+            div.innerHTML = 
+                '<div class="fee-label">' + purpose + '</div>' +
+                '<div class="fee-input"><input type="number" id="fee_' + key + '" step="100" value="' + value + '"></div>' +
+                '<div class="fee-save"><button class="btn btn-success btn-sm" onclick="saveFee(\'' + key + '\',\'fee_' + key + '\')">💾 Save</button></div>';
             container.appendChild(div);
         });
     }
 
     window.saveFee = async function(key, inputId) {
-        const value = parseFloat(document.getElementById(inputId).value);
+        var value = parseFloat(document.getElementById(inputId).value);
         if (isNaN(value) || value < 0) {
             showToast('Please enter a valid amount', 'warning');
             return;
         }
         showLoading(true);
         try {
-            const { error } = await supabase
+            var result = await supabase
                 .from('system_settings')
                 .upsert({ setting_key: key, setting_value: value }, { onConflict: 'setting_key' });
-            if (error) throw error;
-            let label = key.replace(/_fee$/, '').replace(/_/g, ' ').toUpperCase();
-            showToast(`✅ ${label} updated to ${formatKES(value)}`);
+            if (result.error) throw result.error;
+            var label = key.replace(/_fee$/, '').replace(/_/g, ' ').toUpperCase();
+            showToast('✅ ' + label + ' updated to ' + formatKES(value));
         } catch (e) {
             showToast('Error saving fee: ' + e.message, 'error');
         } finally {
@@ -999,37 +1023,37 @@
     // RATES
     // ============================================
     async function loadRates() {
-        const container = document.getElementById('adminRatesContainer');
+        var container = document.getElementById('adminRatesContainer');
         container.innerHTML = '<div class="spinner"></div>Loading rates...';
         try {
-            const result = await safeFetch('mileage_rates', { eq: { is_active: true }, order: { column: 'rate_per_km' } });
+            var result = await safeFetch('mileage_rates', { eq: { is_active: true }, order: { column: 'rate_per_km' } });
             if (result.error) {
-                container.innerHTML = `<p class="empty-state" style="color:#e74c3c;">❌ Error: ${result.error}</p>`;
+                container.innerHTML = '<p class="empty-state" style="color:#e74c3c;">❌ Error: ' + result.error + '</p>';
                 return;
             }
-            const data = result.data;
+            var data = result.data;
             if (!data || data.length === 0) {
                 container.innerHTML = '<p class="empty-state">No rates found</p>';
                 return;
             }
-            container.innerHTML = data.map(r => `
-                <div class="rate-card">
-                    <div class="category">${r.vehicle_category}</div>
-                    <div class="rate">${formatKES(r.rate_per_km)}/km</div>
-                    <div class="effective">Eff: ${new Date(r.effective_from).toLocaleDateString()}</div>
-                    <div style="margin-top:10px;">
-                        <button class="btn btn-danger btn-sm" onclick="deleteRate('${r.id}')">Delete</button>
-                    </div>
-                </div>
-            `).join('');
+            container.innerHTML = data.map(function(r) {
+                return '<div class="rate-card">' +
+                    '<div class="category">' + r.vehicle_category + '</div>' +
+                    '<div class="rate">' + formatKES(r.rate_per_km) + '/km</div>' +
+                    '<div class="effective">Eff: ' + new Date(r.effective_from).toLocaleDateString() + '</div>' +
+                    '<div style="margin-top:10px;">' +
+                        '<button class="btn btn-danger btn-sm" onclick="deleteRate(\'' + r.id + '\')">Delete</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
         } catch (e) {
             console.error('Rates error:', e);
-            container.innerHTML = `<p class="empty-state" style="color:#e74c3c;">❌ Error: ${e.message}</p>`;
+            container.innerHTML = '<p class="empty-state" style="color:#e74c3c;">❌ Error: ' + e.message + '</p>';
         }
     }
 
     window.deleteRate = function(id) {
-        showConfirm('Delete Rate', 'Delete this rate?', async () => {
+        showConfirm('Delete Rate', 'Delete this rate?', async function() {
             showLoading(true);
             try {
                 await supabase.from('mileage_rates').delete().eq('id', id);
@@ -1040,10 +1064,10 @@
         });
     };
 
-    document.getElementById('addRateBtn')?.addEventListener('click', async () => {
-        const category = document.getElementById('rateCategory').value.trim();
-        const rate = parseFloat(document.getElementById('rateValue').value);
-        const from = document.getElementById('rateEffectiveFrom').value;
+    document.getElementById('addRateBtn')?.addEventListener('click', async function() {
+        var category = document.getElementById('rateCategory').value.trim();
+        var rate = parseFloat(document.getElementById('rateValue').value);
+        var from = document.getElementById('rateEffectiveFrom').value;
         if (!category || !rate || !from) {
             showToast('Please fill required fields', 'warning');
             return;
@@ -1071,50 +1095,51 @@
     // USERS
     // ============================================
     async function loadUsers() {
-        const tbody = document.getElementById('usersBody');
+        var tbody = document.getElementById('usersBody');
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</td></tr>';
         try {
-            const result = await safeFetch('user_profiles', { order: { column: 'created_at', ascending: false } });
+            var result = await safeFetch('user_profiles', { order: { column: 'created_at', ascending: false } });
             if (result.error) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${result.error}</td></tr>`;
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ' + result.error + '</td></tr>';
                 return;
             }
-            const data = result.data;
+            var data = result.data;
             if (!data || data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No users</td></tr>';
                 return;
             }
-            tbody.innerHTML = data.map(u => `
-                <tr>
-                    <td>${u.email || '-'}</td>
-                    <td>${u.full_name || '-'}</td>
-                    <td>${u.phone || '-'}</td>
-                    <td>${u.valuation_count || 0}</td>
-                    <td>${u.claim_count || 0}</td>
-                    <td>${new Date(u.created_at).toLocaleDateString()}</td>
-                    <td>
-                        <button class="btn btn-warning btn-sm" onclick="editUser('${u.id}')">✏️</button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">🗑️</button>
-                    </td>
-                </tr>
-            `).join('');
+            tbody.innerHTML = data.map(function(u) {
+                return '<tr>' +
+                    '<td>' + (u.email || '-') + '</td>' +
+                    '<td>' + (u.full_name || '-') + '</td>' +
+                    '<td>' + (u.phone || '-') + '</td>' +
+                    '<td>' + (u.valuation_count || 0) + '</td>' +
+                    '<td>' + (u.claim_count || 0) + '</td>' +
+                    '<td>' + new Date(u.created_at).toLocaleDateString() + '</td>' +
+                    '<td>' +
+                        '<button class="btn btn-warning btn-sm" onclick="editUser(\'' + u.id + '\')">✏️</button>' +
+                        '<button class="btn btn-danger btn-sm" onclick="deleteUser(\'' + u.id + '\')">🗑️</button>' +
+                    '</td>' +
+                '</tr>';
+            }).join('');
 
-            document.getElementById('userSearch')?.addEventListener('input', e => {
-                const s = e.target.value.toLowerCase();
-                document.querySelectorAll('#usersBody tr').forEach(row => {
+            document.getElementById('userSearch')?.addEventListener('input', function(e) {
+                var s = e.target.value.toLowerCase();
+                document.querySelectorAll('#usersBody tr').forEach(function(row) {
                     row.style.display = row.textContent.toLowerCase().includes(s) ? '' : 'none';
                 });
             });
         } catch (e) {
             console.error('Users error:', e);
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${e.message}</td></tr>`;
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ' + e.message + '</td></tr>';
         }
     }
 
     window.editUser = async function(id) {
         try {
-            const { data, error } = await supabase.from('user_profiles').select('*').eq('id', id).single();
-            if (error) throw error;
+            var result = await supabase.from('user_profiles').select('*').eq('id', id).single();
+            if (result.error) throw result.error;
+            var data = result.data;
             document.getElementById('userFullName').value = data.full_name || '';
             document.getElementById('userPhone').value = data.phone || '';
             document.getElementById('userRole').value = data.role || 'user';
@@ -1124,7 +1149,7 @@
     };
 
     window.deleteUser = function(id) {
-        showConfirm('Delete User', 'Delete this user?', async () => {
+        showConfirm('Delete User', 'Delete this user?', async function() {
             showLoading(true);
             try {
                 await supabase.from('user_profiles').delete().eq('id', id);
@@ -1136,10 +1161,10 @@
         });
     };
 
-    document.getElementById('userForm').addEventListener('submit', async (e) => {
+    document.getElementById('userForm').addEventListener('submit', async function(e) {
         e.preventDefault();
-        const id = document.getElementById('userEditId').value;
-        const data = {
+        var id = document.getElementById('userEditId').value;
+        var data = {
             full_name: document.getElementById('userFullName').value.trim(),
             phone: document.getElementById('userPhone').value.trim(),
             role: document.getElementById('userRole').value
@@ -1158,42 +1183,42 @@
     // ALL REQUESTS
     // ============================================
     async function loadAllRequests() {
-        const tbody = document.getElementById('allRequestsBody');
+        var tbody = document.getElementById('allRequestsBody');
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</td></tr>';
         try {
-            const result = await safeFetch('service_requests', { order: { column: 'created_at', ascending: false } });
+            var result = await safeFetch('service_requests', { order: { column: 'created_at', ascending: false } });
             if (result.error) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${result.error}</td></tr>`;
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ' + result.error + '</td></tr>';
                 return;
             }
-            const data = result.data;
+            var data = result.data;
             if (!data || data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No requests</td></tr>';
                 return;
             }
-            tbody.innerHTML = data.map(r => {
-                const display = getServiceDisplay(r.service_type);
-                const payBadge = r.payment_status === 'paid' ? 'approved' : 'pending';
-                const statusBadge = r.status === 'completed' ? 'approved' : 'pending';
-                return `<tr>
-                    <td>${new Date(r.created_at).toLocaleDateString()}</td>
-                    <td>${r.user_id?.substring(0,12) || 'Unknown'}</td>
-                    <td>${display.icon} ${display.label}</td>
-                    <td>${r.make || ''} ${r.model || ''}</td>
-                    <td>${formatKES(r.amount || 0)}</td>
-                    <td><span class="badge badge-${payBadge}">${r.payment_status || 'pending'}</span></td>
-                    <td><span class="badge badge-${statusBadge}">${r.status || 'pending'}</span></td>
-                    <td><button class="btn btn-danger btn-xs" onclick="deleteRequest('${r.id}')">🗑️</button></td>
-                </tr>`;
+            tbody.innerHTML = data.map(function(r) {
+                var display = getServiceDisplay(r.service_type);
+                var payBadge = r.payment_status === 'paid' ? 'approved' : 'pending';
+                var statusBadge = r.status === 'completed' ? 'approved' : 'pending';
+                return '<tr>' +
+                    '<td>' + new Date(r.created_at).toLocaleDateString() + '</td>' +
+                    '<td>' + (r.user_id ? r.user_id.substring(0,12) : 'Unknown') + '</td>' +
+                    '<td>' + display.icon + ' ' + display.label + '</td>' +
+                    '<td>' + (r.make || '') + ' ' + (r.model || '') + '</td>' +
+                    '<td>' + formatKES(r.amount || 0) + '</td>' +
+                    '<td><span class="badge badge-' + payBadge + '">' + (r.payment_status || 'pending') + '</span></td>' +
+                    '<td><span class="badge badge-' + statusBadge + '">' + (r.status || 'pending') + '</span></td>' +
+                    '<td><button class="btn btn-danger btn-xs" onclick="deleteRequest(\'' + r.id + '\')">🗑️</button></td>' +
+                '</tr>';
             }).join('');
         } catch (e) {
             console.error('Requests error:', e);
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${e.message}</td></tr>`;
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ' + e.message + '</td></tr>';
         }
     }
 
     window.deleteRequest = function(id) {
-        showConfirm('Delete Request', 'Delete this request?', async () => {
+        showConfirm('Delete Request', 'Delete this request?', async function() {
             showLoading(true);
             try {
                 await supabase.from('service_requests').delete().eq('id', id);
@@ -1209,14 +1234,14 @@
     // ============================================
     // TABS
     // ============================================
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
             btn.classList.add('active');
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            const target = document.getElementById(btn.dataset.tab);
+            document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+            var target = document.getElementById(btn.dataset.tab);
             if (target) target.classList.add('active');
-            const id = btn.dataset.tab;
+            var id = btn.dataset.tab;
             if (id === 'activities-tab') loadActivities();
             else if (id === 'payments-tab') loadPendingPayments();
             else if (id === 'services-tab') loadServiceFees();
@@ -1226,20 +1251,20 @@
         });
     });
 
-    document.getElementById('refreshOverviewBtn')?.addEventListener('click', async () => {
+    document.getElementById('refreshOverviewBtn')?.addEventListener('click', async function() {
         showLoading(true);
         await loadOverview();
         showLoading(false);
         showToast('Overview refreshed');
     });
-    document.getElementById('refreshActivitiesBtn')?.addEventListener('click', async () => {
+    document.getElementById('refreshActivitiesBtn')?.addEventListener('click', async function() {
         showLoading(true);
         await loadActivities();
         showLoading(false);
         showToast('Activities refreshed');
     });
 
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
+    document.getElementById('logoutBtn').addEventListener('click', async function() {
         await supabase.auth.signOut();
         showToast('Logged out');
         window.location.href = 'login.html';
@@ -1247,7 +1272,7 @@
 
     function startAutoRefresh() {
         if (refreshTimer) clearInterval(refreshTimer);
-        refreshTimer = setInterval(() => {
+        refreshTimer = setInterval(function() {
             loadOverview();
             loadActivities();
             loadPendingPayments();
