@@ -1,4 +1,4 @@
-# api/routes/assessments.py - Assessment Routes
+# api/routes/assessments.py - Assessment Flask Routes
 
 import logging
 from datetime import datetime
@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
 from api.auth_middleware import require_auth
 
-# Import the assessment engine
+# Import the assessment engine from root directory
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -14,7 +14,7 @@ from assessment import assess, ASSESSMENT_TYPES
 
 logger = logging.getLogger(__name__)
 
-# ⚠️ CRITICAL: Define the blueprint
+# ⚠️ CRITICAL: Define the blueprint with the correct name
 assessments_bp = Blueprint('assessments', __name__)
 
 
