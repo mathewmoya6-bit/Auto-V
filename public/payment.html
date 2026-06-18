@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* ── same styles as before ── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -188,6 +189,19 @@
         .payment-summary .label { color: #94a3b8; }
         .payment-summary .value { font-weight: 700; color: #eab308; }
         .payment-summary .amount { font-size: 24px; color: #22c55e; }
+        .payment-status {
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            font-weight: 600;
+            display: none;
+            margin-bottom: 15px;
+            background: #1e293b;
+        }
+        .payment-status.pending { display: block; background: #f59e0b; color: #000; }
+        .payment-status.processing { display: block; background: #3b82f6; color: #fff; }
+        .payment-status.completed { display: block; background: #22c55e; color: #000; }
+        .payment-status.failed { display: block; background: #ef4444; color: #fff; }
         @media (max-width: 768px) {
             .service-cards { grid-template-columns: 1fr; }
             .purpose-list { grid-template-columns: 1fr; }
@@ -288,9 +302,10 @@
             <div class="dashboard-link"><a href="dashboard.html">← Back to Dashboard</a></div>
         </div>
 
-        <!-- STEP 5: PAYMENT -->
+        <!-- STEP 5: PAYMENT (REAL M-PESA) -->
         <div id="step5" class="card step">
             <h2>💳 Payment</h2>
+            <div id="paymentStatus" class="payment-status"></div>
             <form id="paymentForm">
                 <div class="form-group"><label class="required">M-Pesa Phone Number</label><input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel"></div>
                 
@@ -312,7 +327,7 @@
         <!-- STEP 6: VEHICLE DATA ENTRY -->
         <div id="step6" class="card step">
             <h2>🚗 Vehicle Data Entry</h2>
-            <p style="color:#94a3b8; margin-bottom:15px; font-size:14px;">Enter vehicle details for <?php echo $selectedService === 'valuation' ? 'valuation' : 'inspection'; ?></p>
+            <p style="color:#94a3b8; margin-bottom:15px; font-size:14px;">Enter vehicle details for your selected service.</p>
             <form id="vehicleForm">
                 <div class="form-group"><label class="required">Registration Number</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
                 <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456"></div>
@@ -354,12 +369,17 @@
             
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
+            // ─── BACKEND URL (Update to your actual backend) ───
+            const API_BASE = 'https://auto-v.onrender.com/api';
+            
             let currentUser = null;
             let selectedService = null;
             let selectedPurpose = null;
             let valuationFee = 2500;
             let inspectionFee = 3500;
             let isFirstTimeUser = false;
+            let pollInterval = null;
+            let paymentId = null;
 
             const purposes = [
                 "Market Value", "Insurance Valuation", "Loan / Security", 
@@ -453,6 +473,13 @@
                     successDiv.style.display = 'block';
                     setTimeout(() => successDiv.style.display = 'none', 3000);
                 }
+            }
+
+            function setPaymentStatus(status, message = '') {
+                const el = document.getElementById('paymentStatus');
+                el.className = 'payment-status ' + status;
+                el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
+                el.style.display = 'block';
             }
 
             // ============================================
@@ -656,46 +683,140 @@
             }
 
             // ============================================
-            // PAYMENT HANDLER - Redirects to Vehicle Data
+            // PAYMENT HANDLER - REAL M-PESA INTEGRATION
             // ============================================
             async function processPayment(e) {
                 e.preventDefault();
-                const mpesaPhone = document.getElementById('mpesaPhone').value;
                 
-                if (!mpesaPhone) { 
-                    showMessage('Enter M-Pesa number', 'error'); 
-                    return; 
+                const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
+                if (!mpesaPhone || mpesaPhone.length < 10) {
+                    showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678)', 'error');
+                    return;
                 }
-                if (!selectedService) { 
-                    showMessage('Select service first', 'error'); 
-                    return; 
+                if (!selectedService) {
+                    showMessage('Select a service first', 'error');
+                    return;
                 }
-                if (!selectedPurpose) { 
-                    showMessage('Select purpose first', 'error'); 
-                    return; 
+                if (!selectedPurpose) {
+                    showMessage('Select a purpose first', 'error');
+                    return;
                 }
                 
                 const payBtn = document.getElementById('payBtn');
                 const originalText = payBtn.innerHTML;
                 payBtn.disabled = true;
-                payBtn.innerHTML = '<span class="spinner"></span> Processing Payment...';
+                payBtn.innerHTML = '<span class="spinner"></span> Initiating Payment...';
+                setPaymentStatus('pending', '⏳ Initiating payment...');
                 
                 try {
-                    // Simulate payment processing
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    // 1. Get current user
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        showMessage('Please login again', 'error');
+                        window.location.href = "login.html";
+                        return;
+                    }
                     
-                    showMessage('✅ Payment successful! Proceed to vehicle data entry.', 'success');
+                    // 2. Create payment record in Supabase (pending)
+                    const price = selectedService === 'valuation' ? valuationFee : inspectionFee;
+                    const { data: payment, error: insertError } = await supabase.from('payments').insert({
+                        user_id: user.id,
+                        service_type: selectedService,
+                        amount: price,
+                        payment_method: 'mpesa',
+                        status: 'pending',
+                        reference: `AUTO-${Date.now()}`,
+                        mpesa_phone: mpesaPhone,
+                        created_at: new Date().toISOString()
+                    }).select().single();
                     
-                    // Update summary for vehicle data step
-                    const serviceType = selectedService === 'valuation' ? 'Valuation' : 'Inspection';
-                    document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                    if (insertError) throw insertError;
+                    paymentId = payment.id;
                     
-                    // Go to Vehicle Data Entry (Step 6)
-                    showStep(6);
+                    // 3. Call backend to initiate STK Push
+                    setPaymentStatus('processing', '📲 Sending STK Push to your phone...');
+                    payBtn.innerHTML = '<span class="spinner"></span> Sending STK Push...';
+                    
+                    const response = await fetch(`${API_BASE}/payments/initiate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: user.id,
+                            phone: mpesaPhone,
+                            amount: price,
+                            service_type: selectedService,
+                            reference: payment.reference,
+                            payment_id: payment.id
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'STK Push initiation failed');
+                    }
+                    
+                    const result = await response.json();
+                    console.log('STK Push response:', result);
+                    
+                    // 4. Poll for payment status
+                    setPaymentStatus('processing', '⏳ Waiting for payment confirmation...');
+                    payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
+                    
+                    // Clear any existing interval
+                    if (pollInterval) clearInterval(pollInterval);
+                    
+                    let attempts = 0;
+                    const maxAttempts = 30; // 30 * 2s = 60 seconds
+                    pollInterval = setInterval(async () => {
+                        attempts++;
+                        try {
+                            // Poll backend for status
+                            const statusResp = await fetch(`${API_BASE}/payments/status/${payment.id}`);
+                            if (!statusResp.ok) {
+                                // If backend returns 404, it may not have the status yet; ignore
+                                if (statusResp.status === 404) return;
+                                throw new Error('Status check failed');
+                            }
+                            const statusData = await statusResp.json();
+                            const status = statusData.status;
+                            
+                            if (status === 'completed') {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('completed', '✅ Payment confirmed!');
+                                payBtn.innerHTML = '✅ Payment Complete';
+                                showMessage('Payment successful! Proceed to vehicle data entry.', 'success');
+                                
+                                // Proceed to step 6
+                                const serviceType = selectedService === 'valuation' ? 'Valuation' : 'Inspection';
+                                document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                                showStep(6);
+                                payBtn.disabled = false;
+                                return;
+                            } else if (status === 'failed') {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('failed', '❌ Payment failed. Please try again.');
+                                showMessage('Payment failed. Please try again.', 'error');
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                return;
+                            }
+                            
+                            if (attempts >= maxAttempts) {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('failed', '⏰ Payment timed out.');
+                                showMessage('Payment timed out. Check your M-Pesa messages.', 'error');
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                            }
+                        } catch (err) {
+                            console.error('Polling error:', err);
+                        }
+                    }, 2000);
                     
                 } catch (err) {
-                    showMessage('Payment failed. Please try again.', 'error');
-                } finally {
+                    console.error('Payment error:', err);
+                    setPaymentStatus('failed', '❌ ' + err.message);
+                    showMessage('Payment failed: ' + err.message, 'error');
                     payBtn.disabled = false;
                     payBtn.innerHTML = originalText;
                 }
