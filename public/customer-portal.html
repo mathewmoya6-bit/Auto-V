@@ -8,7 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* ── same styles as before ── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -73,6 +72,13 @@
             border-radius: 12px;
             font-size: 14px;
         }
+        input[type="file"] {
+            padding: 8px;
+            background: #1e293b;
+            border: 1px dashed #eab308;
+            border-radius: 12px;
+            color: white;
+        }
         .btn {
             padding: 12px 28px;
             border: none;
@@ -89,6 +95,8 @@
         .btn-success:hover { background: #16a34a; transform: translateY(-2px); }
         .btn-danger { background: #dc2626; color: white; }
         .btn-danger:hover { background: #b91c1c; }
+        .btn-outline { background: transparent; border: 2px solid #eab308; color: #eab308; }
+        .btn-outline:hover { background: #eab308; color: #000; }
         .nav-buttons { display: flex; justify-content: space-between; margin-top: 30px; gap: 10px; }
         .service-cards {
             display: grid;
@@ -202,13 +210,24 @@
         .payment-status.processing { display: block; background: #3b82f6; color: #fff; }
         .payment-status.completed { display: block; background: #22c55e; color: #000; }
         .payment-status.failed { display: block; background: #ef4444; color: #fff; }
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .photo-grid .form-group { margin-bottom: 0; }
         @media (max-width: 768px) {
             .service-cards { grid-template-columns: 1fr; }
             .purpose-list { grid-template-columns: 1fr; }
             .nav-buttons { flex-direction: column; gap: 10px; }
             .nav-buttons button { width: 100%; }
             .progress-step { font-size: 10px; padding: 8px; }
+            .photo-grid { grid-template-columns: 1fr; }
         }
+        .lookup-btn { margin-left: 10px; padding: 8px 16px; background: #2563eb; border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; }
+        .lookup-btn:hover { background: #1d4ed8; }
+        .flex-row { display: flex; align-items: center; gap: 10px; }
     </style>
 </head>
 <body>
@@ -327,8 +346,14 @@
         <div id="step6" class="card step">
             <h2>🚗 Vehicle Data Entry</h2>
             <p style="color:#94a3b8; margin-bottom:15px; font-size:14px;">Enter vehicle details for your selected service.</p>
-            <form id="vehicleForm">
-                <div class="form-group"><label class="required">Registration Number</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
+            <form id="vehicleForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label class="required">Registration Number</label>
+                    <div class="flex-row">
+                        <input type="text" id="vehicleReg" placeholder="KCA 123A" style="flex:1;">
+                        <button type="button" class="lookup-btn" id="lookupVehicleBtn">🔍 Lookup</button>
+                    </div>
+                </div>
                 <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456"></div>
                 <div class="form-group"><label class="required">Make</label><input type="text" id="vehicleMake" placeholder="Toyota"></div>
                 <div class="form-group"><label class="required">Model</label><input type="text" id="vehicleModel" placeholder="Axio"></div>
@@ -336,7 +361,23 @@
                 <div class="form-group"><label class="required">Odometer (km)</label><input type="number" id="vehicleOdometer" placeholder="50000"></div>
                 <div class="form-group"><label>Condition</label><select id="vehicleCondition"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
                 <div class="form-group"><label>Accident History</label><select id="vehicleAccident"><option>None</option><option>Minor</option><option>Moderate</option><option>Major</option></select></div>
-                <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPay">← Back</button><button type="submit" class="btn btn-primary">🚀 Calculate & Complete</button></div>
+                
+                <!-- Photo Uploads -->
+                <div style="margin: 20px 0;">
+                    <label style="font-weight:700; color:#eab308;">📸 Upload Evidence (Required for banks/insurance)</label>
+                    <div class="photo-grid">
+                        <div class="form-group"><label>Front Photo</label><input type="file" id="frontPhoto" accept="image/*"></div>
+                        <div class="form-group"><label>Rear Photo</label><input type="file" id="rearPhoto" accept="image/*"></div>
+                        <div class="form-group"><label>Interior Photo</label><input type="file" id="interiorPhoto" accept="image/*"></div>
+                        <div class="form-group"><label>Odometer Photo</label><input type="file" id="odometerPhoto" accept="image/*"></div>
+                        <div class="form-group"><label>Logbook Photo</label><input type="file" id="logbookPhoto" accept="image/*"></div>
+                    </div>
+                </div>
+
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" id="backToPay">← Back</button>
+                    <button type="submit" class="btn btn-primary" id="submitVehicleBtn">🚀 Submit Request</button>
+                </div>
             </form>
             <div class="dashboard-link"><a href="dashboard.html">← Back to Dashboard</a></div>
         </div>
@@ -351,13 +392,14 @@
             <div class="nav-buttons">
                 <button class="btn btn-secondary" id="newRequestBtn">+ New Request</button>
                 <button class="btn btn-primary" id="goToDashboardBtn">📊 Dashboard</button>
+                <button class="btn btn-outline" id="downloadReportBtn">⬇ Download PDF</button>
             </div>
         </div>
     </div>
 
     <script>
         // ============================================
-        // SUPABASE CONFIGURATION
+        // SUPABASE & BACKEND CONFIG
         // ============================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
@@ -370,7 +412,7 @@
             
             // ─── BACKEND API URL ──────────────────────────────────
             // ⚠️ CHANGE THIS TO YOUR ACTUAL BACKEND URL
-            const API_BASE = 'https://auto-v.onrender.com/api'; // e.g., 'https://your-backend.onrender.com/api'
+            const API_BASE = 'https://auto-v.onrender.com/api';
             
             // ─── TOKEN HELPER ──────────────────────────────────────
             function getAuthToken() {
@@ -385,20 +427,38 @@
                 }
             }
             
-            // ─── AUTH HEADER HELPER ──────────────────────────────
             function getAuthHeaders() {
                 const token = getAuthToken();
                 return token ? { 'Authorization': `Bearer ${token}` } : {};
             }
-            
+
+            // ─── FETCH WITH 401 HANDLING ──────────────────────────
+            async function fetchWithAuth(url, options = {}) {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders(),
+                    ...options.headers
+                };
+                const response = await fetch(url, { ...options, headers });
+                if (response.status === 401) {
+                    // Token expired – redirect to login
+                    await supabase.auth.signOut();
+                    setAuthToken(null);
+                    localStorage.removeItem('autoV_user');
+                    window.location.href = "login.html";
+                    throw new Error('Session expired. Please login again.');
+                }
+                return response;
+            }
+
             let currentUser = null;
             let selectedService = null;
             let selectedPurpose = null;
             let valuationFee = 2500;
             let inspectionFee = 3500;
             let isFirstTimeUser = false;
-            let paymentPollInterval = null;
             let currentPaymentId = null;
+            let currentRequestId = null; // for report download
 
             const purposes = [
                 "Market Value", "Insurance Valuation", "Loan / Security", 
@@ -452,15 +512,15 @@
                     console.log('Using default fees');
                 }
                 
-                document.getElementById('valuationPriceDisplay').innerHTML = `KES ${valuationFee.toLocaleString()}`;
-                document.getElementById('inspectionPriceDisplay').innerHTML = `KES ${inspectionFee.toLocaleString()}`;
+                document.getElementById('valuationPriceDisplay').textContent = `KES ${Number(valuationFee || 0).toLocaleString()}`;
+                document.getElementById('inspectionPriceDisplay').textContent = `KES ${Number(inspectionFee || 0).toLocaleString()}`;
             }
 
             function updateSummary() {
                 const price = selectedService === 'valuation' ? valuationFee : inspectionFee;
                 document.getElementById('summaryService').textContent = selectedService === 'valuation' ? 'Valuation' : 'Inspection';
                 document.getElementById('summaryPurpose').textContent = selectedPurpose || 'Not selected';
-                document.getElementById('summaryAmount').textContent = `KES ${price.toLocaleString()}`;
+                document.getElementById('summaryAmount').textContent = `KES ${Number(price || 0).toLocaleString()}`;
             }
 
             function showStep(step) {
@@ -561,7 +621,7 @@
             }
 
             // ============================================
-            // LOGIN HANDLER (stores token)
+            // LOGIN HANDLER
             // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
@@ -590,14 +650,8 @@
                     currentUser = data.user;
                     const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
                     
-                    // ─── STORE JWT TOKEN ──────────────────────────
                     const token = data.session?.access_token;
-                    if (token) {
-                        setAuthToken(token);
-                        console.log('✅ JWT token stored');
-                    } else {
-                        console.warn('⚠️ No access token in session');
-                    }
+                    if (token) setAuthToken(token);
                     
                     localStorage.setItem('autoV_user', JSON.stringify({ 
                         id: currentUser.id, 
@@ -645,7 +699,6 @@
                     showMessage('Please enter email and password', 'error');
                     return;
                 }
-                
                 if (password.length < 6) {
                     showMessage('Password must be at least 6 characters', 'error');
                     return;
@@ -694,7 +747,6 @@
                                 email: currentUser.email,
                                 name: name || email.split('@')[0]
                             }));
-                            // Store token after signup as well
                             const token = loginData.session?.access_token;
                             if (token) setAuthToken(token);
                             document.getElementById('custEmail').value = email;
@@ -710,6 +762,39 @@
                 } finally {
                     signupBtn.disabled = false;
                     signupBtn.innerHTML = originalText;
+                }
+            }
+
+            // ============================================
+            // VEHICLE LOOKUP
+            // ============================================
+            async function lookupVehicle() {
+                const reg = document.getElementById('vehicleReg').value.trim().toUpperCase();
+                if (!reg) {
+                    showMessage('Enter a registration number first', 'error');
+                    return;
+                }
+                const btn = document.getElementById('lookupVehicleBtn');
+                const originalText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = '⏳ ...';
+                try {
+                    const response = await fetchWithAuth(`${API_BASE}/vehicle/lookup/${encodeURIComponent(reg)}`);
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.message || 'Lookup failed');
+                    }
+                    const data = await response.json();
+                    if (data.make) document.getElementById('vehicleMake').value = data.make;
+                    if (data.model) document.getElementById('vehicleModel').value = data.model;
+                    if (data.year) document.getElementById('vehicleYear').value = data.year;
+                    if (data.vin) document.getElementById('vehicleVin').value = data.vin;
+                    showMessage('Vehicle details auto-filled!', 'success');
+                } catch (err) {
+                    showMessage('Lookup error: ' + err.message, 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 }
             }
 
@@ -740,7 +825,6 @@
                 setPaymentStatus('pending', '⏳ Initiating payment...');
                 
                 try {
-                    // 1. Get current user
                     const { data: { user } } = await supabase.auth.getUser();
                     if (!user) {
                         showMessage('Please login again', 'error');
@@ -748,99 +832,74 @@
                         return;
                     }
                     
-                    // 2. Get stored token
                     const token = getAuthToken();
                     if (!token) {
                         throw new Error('Authentication token missing. Please login again.');
                     }
                     
-                    // 3. Create payment record (pending)
+                    // 1. Initiate payment via backend
                     const price = selectedService === 'valuation' ? valuationFee : inspectionFee;
-                    const { data: payment, error } = await supabase.from('payments').insert({
-                        user_id: user.id,
-                        service_type: selectedService,
-                        amount: price,
-                        payment_method: 'mpesa',
-                        status: 'pending',
-                        reference: `AUTO-${Date.now()}`,
-                        mpesa_phone: mpesaPhone,
-                        created_at: new Date().toISOString()
-                    }).select().single();
-                    
-                    if (error) throw error;
-                    currentPaymentId = payment.id;
-                    
-                    // 4. Call backend to initiate STK Push (with token)
-                    setPaymentStatus('processing', '📲 Sending STK Push to your phone...');
-                    payBtn.innerHTML = '<span class="spinner"></span> Sending STK Push...';
-                    
-                    const response = await fetch(`${API_BASE}/payments/initiate`, {
+                    const initResponse = await fetchWithAuth(`${API_BASE}/payments/initiate`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`   // ✅ JWT included
-                        },
                         body: JSON.stringify({
-                            payment_id: payment.id,
                             phone: mpesaPhone,
                             amount: price,
-                            reference: payment.reference,
-                            service: selectedService
+                            service: selectedService,
+                            purpose: selectedPurpose
                         })
                     });
                     
-                    if (!response.ok) {
-                        const err = await response.json();
+                    if (!initResponse.ok) {
+                        const err = await initResponse.json();
                         throw new Error(err.message || 'STK Push initiation failed');
                     }
                     
-                    const stkResult = await response.json();
-                    console.log('STK Push response:', stkResult);
+                    const initData = await initResponse.json();
+                    currentPaymentId = initData.payment_id;
+                    setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
                     
-                    // 5. Poll for payment status
-                    setPaymentStatus('processing', '⏳ Waiting for payment confirmation...');
+                    // 2. Poll payment status via backend
                     payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
-                    
-                    // Clear any existing interval
-                    if (paymentPollInterval) clearInterval(paymentPollInterval);
-                    
                     let attempts = 0;
-                    const maxAttempts = 30; // 30 * 2s = 60 seconds
-                    paymentPollInterval = setInterval(async () => {
+                    const maxAttempts = 30;
+                    const pollInterval = setInterval(async () => {
                         attempts++;
                         try {
-                            // Poll via Supabase or backend – here we poll Supabase
-                            const { data: updatedPayment, error: pollError } = await supabase
-                                .from('payments')
-                                .select('status')
-                                .eq('id', payment.id)
-                                .single();
-                                
-                            if (pollError) throw pollError;
-                            
-                            if (updatedPayment.status === 'completed') {
-                                clearInterval(paymentPollInterval);
+                            const statusResponse = await fetchWithAuth(`${API_BASE}/payments/status/${currentPaymentId}`);
+                            if (!statusResponse.ok) {
+                                if (statusResponse.status === 404) {
+                                    // Still processing
+                                    if (attempts >= maxAttempts) {
+                                        clearInterval(pollInterval);
+                                        setPaymentStatus('failed', '⏰ Payment timed out.');
+                                        showMessage('Payment timed out. Check your M-Pesa messages.', 'error');
+                                        payBtn.disabled = false;
+                                        payBtn.innerHTML = originalText;
+                                    }
+                                    return;
+                                }
+                                throw new Error('Status check failed');
+                            }
+                            const statusData = await statusResponse.json();
+                            if (statusData.status === 'completed') {
+                                clearInterval(pollInterval);
                                 setPaymentStatus('completed', '✅ Payment confirmed!');
                                 payBtn.innerHTML = '✅ Payment Complete';
                                 showMessage('Payment successful! Proceed to vehicle data entry.', 'success');
-                                
-                                // Proceed to step 6
+                                // Move to step 6
                                 const serviceType = selectedService === 'valuation' ? 'Valuation' : 'Inspection';
                                 document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
                                 showStep(6);
                                 payBtn.disabled = false;
-                                return;
-                            } else if (updatedPayment.status === 'failed') {
-                                clearInterval(paymentPollInterval);
+                            } else if (statusData.status === 'failed') {
+                                clearInterval(pollInterval);
                                 setPaymentStatus('failed', '❌ Payment failed. Please try again.');
                                 showMessage('Payment failed. Please try again.', 'error');
                                 payBtn.disabled = false;
                                 payBtn.innerHTML = originalText;
-                                return;
                             }
-                            
                             if (attempts >= maxAttempts) {
-                                clearInterval(paymentPollInterval);
+                                clearInterval(pollInterval);
                                 setPaymentStatus('failed', '⏰ Payment timed out.');
                                 showMessage('Payment timed out. Check your M-Pesa messages.', 'error');
                                 payBtn.disabled = false;
@@ -861,26 +920,29 @@
             }
 
             // ============================================
-            // VALUATION CALCULATION - Final Step
+            // SUBMIT VEHICLE DATA & REQUEST (Backend)
             // ============================================
-            async function calculateValuation(e) {
+            async function submitVehicleRequest(e) {
                 e.preventDefault();
-                const reg = document.getElementById('vehicleReg').value.toUpperCase();
-                const make = document.getElementById('vehicleMake').value;
-                const model = document.getElementById('vehicleModel').value;
+                
+                const reg = document.getElementById('vehicleReg').value.trim().toUpperCase();
+                const make = document.getElementById('vehicleMake').value.trim();
+                const model = document.getElementById('vehicleModel').value.trim();
                 const year = parseInt(document.getElementById('vehicleYear').value);
                 const odometer = parseInt(document.getElementById('vehicleOdometer').value);
                 const condition = document.getElementById('vehicleCondition').value;
                 const accident = document.getElementById('vehicleAccident').value;
+                const vin = document.getElementById('vehicleVin').value.trim();
                 
                 if (!reg || !make || !model || !year) { 
                     showMessage('Fill all required vehicle details', 'error'); 
                     return; 
                 }
                 
-                const submitBtn = document.querySelector('#vehicleForm button[type="submit"]');
+                const submitBtn = document.getElementById('submitVehicleBtn');
+                const originalText = submitBtn.innerHTML;
                 submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
                 
                 try {
                     const { data: { user } } = await supabase.auth.getUser();
@@ -890,64 +952,47 @@
                         return;
                     }
                     
-                    // Calculate valuation
-                    const age = new Date().getFullYear() - year;
-                    let baseValue = 2000000;
-                    const makeLower = make.toLowerCase();
-                    if (makeLower === 'toyota') baseValue = 2800000;
-                    else if (makeLower === 'mercedes') baseValue = 5000000;
-                    else if (makeLower === 'bmw') baseValue = 4500000;
-                    else if (makeLower === 'nissan') baseValue = 2200000;
-                    else if (makeLower === 'honda') baseValue = 2400000;
-                    else if (makeLower === 'volkswagen') baseValue = 2600000;
-                    
-                    const conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Good' ? 1.0 : condition === 'Fair' ? 0.85 : 0.7;
-                    const accidentFactor = accident === 'None' ? 1.0 : accident === 'Minor' ? 0.85 : accident === 'Moderate' ? 0.65 : 0.4;
-                    const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
-                    const ageFactor = Math.max(0.35, 1 - (age * 0.08));
-                    
-                    let marketValue = Math.round(baseValue * ageFactor * mileageFactor * conditionFactor * accidentFactor);
-                    marketValue = Math.max(150000, marketValue);
-                    
-                    const result = {
-                        market_value: marketValue,
-                        insurance_value: Math.round(marketValue * 1.1),
-                        trade_in_value: Math.round(marketValue * 0.8),
-                        forced_sale_value: Math.round(marketValue * 0.7),
-                        certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-                    };
-                    
-                    // Save to Supabase
-                    await supabase.from('service_requests').insert({
-                        user_id: user.id,
-                        service_type: selectedService,
-                        customer_name: document.getElementById('custName').value,
-                        customer_phone: document.getElementById('custPhone').value,
-                        customer_email: document.getElementById('custEmail').value,
-                        registration_number: reg,
-                        make: make,
-                        model: model,
-                        year: year,
-                        odometer: odometer,
-                        condition: condition,
-                        accident_history: accident,
-                        valuation_purpose: selectedPurpose,
-                        amount: selectedService === 'valuation' ? valuationFee : inspectionFee,
-                        payment_status: 'paid',
-                        status: 'completed',
-                        result: result,
-                        created_at: new Date().toISOString()
+                    // Gather file inputs
+                    const fileInputs = ['frontPhoto', 'rearPhoto', 'interiorPhoto', 'odometerPhoto', 'logbookPhoto'];
+                    const formData = new FormData();
+                    fileInputs.forEach(id => {
+                        const file = document.getElementById(id).files[0];
+                        if (file) formData.append(id, file);
                     });
                     
-                    // Update user profile
-                    await supabase
-                        .from('user_profiles')
-                        .update({ 
-                            has_vehicle: true, 
-                            first_login: false,
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', user.id);
+                    // Add text fields
+                    formData.append('registration', reg);
+                    formData.append('make', make);
+                    formData.append('model', model);
+                    formData.append('year', year);
+                    formData.append('odometer', odometer);
+                    formData.append('condition', condition);
+                    formData.append('accident', accident);
+                    formData.append('vin', vin);
+                    formData.append('service', selectedService);
+                    formData.append('purpose', selectedPurpose);
+                    formData.append('customer_name', document.getElementById('custName').value);
+                    formData.append('customer_phone', document.getElementById('custPhone').value);
+                    formData.append('customer_email', document.getElementById('custEmail').value);
+                    formData.append('payment_id', currentPaymentId);
+                    
+                    // Send to backend
+                    const response = await fetch(`${API_BASE}/service-requests`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${getAuthToken()}`
+                            // Do NOT set Content-Type; FormData sets it automatically
+                        },
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.message || 'Submission failed');
+                    }
+                    
+                    const result = await response.json();
+                    currentRequestId = result.request_id;
                     
                     // Show results
                     const serviceName = selectedService === 'valuation' ? 'Valuation' : 'Inspection';
@@ -955,51 +1000,82 @@
                         <div style="margin-bottom:20px;">
                             <span class="badge" style="background:#22c55e; color:#000; padding:4px 16px; border-radius:30px; font-weight:600;">✅ ${serviceName} Complete</span>
                         </div>
-                        <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
+                        <div class="result-value">KES ${Number(result.market_value || 0).toLocaleString()}</div>
                         <p style="color:#eab308; font-weight:600;">Estimated ${serviceName} Value</p>
                         <div class="result-detail">
                             <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
                                 <span style="color:#94a3b8;">Insurance Value</span>
-                                <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
+                                <strong style="color:#22c55e;">KES ${Number(result.insurance_value || 0).toLocaleString()}</strong>
                             </div>
                             <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
                                 <span style="color:#94a3b8;">Trade-In Value</span>
-                                <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
+                                <strong style="color:#f59e0b;">KES ${Number(result.trade_in_value || 0).toLocaleString()}</strong>
                             </div>
                             <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
                                 <span style="color:#94a3b8;">Forced Sale Value</span>
-                                <strong style="color:#ef4444;">KES ${result.forced_sale_value.toLocaleString()}</strong>
+                                <strong style="color:#ef4444;">KES ${Number(result.forced_sale_value || 0).toLocaleString()}</strong>
                             </div>
                             <div style="display:flex; justify-content:space-between; padding:10px 0;">
                                 <span style="color:#94a3b8;">Certificate Number</span>
-                                <strong style="color:#eab308; font-size:12px;">${result.certificate_number}</strong>
+                                <strong style="color:#eab308; font-size:12px;">${result.certificate || 'N/A'}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Verification</span>
+                                <a href="${result.verify_url || '#'}" target="_blank" style="color:#3b82f6;">Verify Online</a>
                             </div>
                         </div>
                         <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
-                            <p style="color:#22c55e; font-weight:600;">✅ ${serviceName} Complete!</p>
+                            <p style="color:#22c55e; font-weight:600;">✅ Request Submitted!</p>
                             <p style="color:#bbf7d0; font-size:13px; margin-top:5px;">
-                                Vehicle ${reg} has been successfully ${selectedService === 'valuation' ? 'valued' : 'inspected'}.
+                                Vehicle ${reg} has been submitted for ${selectedService}. 
                                 ${isFirstTimeUser ? 'Your account is now fully set up!' : ''}
+                                <br><small>Status: ${result.status || 'Pending Assessor Review'}</small>
                             </p>
                         </div>
                     `;
                     showStep(7);
+                    document.getElementById('downloadReportBtn').style.display = 'inline-block';
                     
                 } catch (err) {
-                    console.error('Error:', err);
-                    showMessage('Error processing request. Please try again.', 'error');
+                    console.error('Submission error:', err);
+                    showMessage('Error submitting request: ' + err.message, 'error');
                 } finally {
                     submitBtn.disabled = false;
-                    submitBtn.innerHTML = '🚀 Calculate & Complete';
+                    submitBtn.innerHTML = originalText;
                 }
             }
 
             // ============================================
-            // LOGOUT - clear token
+            // DOWNLOAD REPORT
+            // ============================================
+            async function downloadReport() {
+                if (!currentRequestId) {
+                    showMessage('No request to download', 'error');
+                    return;
+                }
+                try {
+                    const response = await fetchWithAuth(`${API_BASE}/reports/${currentRequestId}`);
+                    if (!response.ok) throw new Error('Report generation failed');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `AUTO-V_Report_${currentRequestId}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (err) {
+                    showMessage('Download error: ' + err.message, 'error');
+                }
+            }
+
+            // ============================================
+            // LOGOUT
             // ============================================
             document.getElementById('logoutBtn')?.addEventListener('click', async () => {
                 await supabase.auth.signOut();
-                setAuthToken(null); // clear stored token
+                setAuthToken(null);
                 localStorage.removeItem('autoV_user');
                 window.location.href = "login.html";
             });
@@ -1011,7 +1087,9 @@
             document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
             document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
             document.getElementById('paymentForm')?.addEventListener('submit', processPayment);
-            document.getElementById('vehicleForm')?.addEventListener('submit', calculateValuation);
+            document.getElementById('vehicleForm')?.addEventListener('submit', submitVehicleRequest);
+            document.getElementById('lookupVehicleBtn')?.addEventListener('click', lookupVehicle);
+            document.getElementById('downloadReportBtn')?.addEventListener('click', downloadReport);
             
             document.getElementById('backToLogin')?.addEventListener('click', () => showStep(1));
             document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
@@ -1048,7 +1126,7 @@
                     selectedService = card.dataset.service;
                     updateSummary();
                     document.getElementById('selectedServiceMsg').innerHTML = 
-                        `✅ Selected: ${selectedService === 'valuation' ? 'Valuation' : 'Inspection'} - KES ${selectedService === 'valuation' ? valuationFee : inspectionFee}`;
+                        `✅ Selected: ${selectedService === 'valuation' ? 'Valuation' : 'Inspection'} - KES ${Number(selectedService === 'valuation' ? valuationFee : inspectionFee || 0).toLocaleString()}`;
                 };
             });
 
@@ -1065,10 +1143,10 @@
                         if (user.user_metadata?.full_name) {
                             document.getElementById('custName').value = user.user_metadata.full_name;
                         }
-                        // Also try to restore token (if still valid)
                         if (!getAuthToken()) {
-                            // Could attempt to refresh token, but Supabase manages this automatically
-                            console.log('No token in localStorage; session will be refreshed on next API call.');
+                            // Token missing – try to refresh session
+                            const { data: { session } } = await supabase.auth.getSession();
+                            if (session?.access_token) setAuthToken(session.access_token);
                         }
                         showStep(2);
                     } else {
@@ -1088,6 +1166,8 @@
                 if (!document.querySelector('.step.active')) {
                     showStep(1);
                 }
+                // Hide download report initially
+                document.getElementById('downloadReportBtn').style.display = 'none';
             }
             init();
         })();
