@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Vehicle Assessment</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E⚠️%3C/text%3E%3C/svg%3E">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0a0c15; color: #fff; padding: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #111827; border-bottom: 2px solid #eab308; max-width: 1200px; margin: -20px auto 20px; border-radius: 0 0 16px 16px; }
+        .logo { font-size: 24px; font-weight: bold; color: #eab308; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 12px; color: #94a3b8; }
+        .container { max-width: 1200px; margin: auto; }
+        .card { background: #0f172a; border-radius: 20px; padding: 30px; margin-bottom: 20px; border: 1px solid #1e293b; }
+        h2 { color: #eab308; margin-bottom: 20px; font-size: 22px; border-left: 4px solid #eab308; padding-left: 15px; }
+        h3 { color: #eab308; font-size: 16px; margin-bottom: 15px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 6px; color: #94a3b8; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        label.required:after { content:" *"; color:#ef4444; }
+        input, select, textarea { width: 100%; padding: 10px 14px; background: #1e293b; color: #fff; border: 1px solid #334155; border-radius: 10px; font-size: 14px; transition: all .3s; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #eab308; box-shadow: 0 0 0 4px rgba(234,179,8,0.15); }
+        input[type="file"] { padding: 10px; cursor: pointer; background: #1e293b; }
+        .btn { padding: 12px 28px; border: none; border-radius: 40px; font-weight: 700; cursor: pointer; transition: all .3s; }
+        .btn-primary { background: #eab308; color: #0a0c10; }
+        .btn-primary:hover { background: #facc15; transform: translateY(-2px); }
+        .btn-secondary { background: #334155; color: #fff; }
+        .btn-secondary:hover { background: #475569; }
+        .btn-success { background: #22c55e; color: #fff; }
+        .btn-success:hover { background: #16a34a; transform: translateY(-2px); }
+        .btn-danger { background: #dc2626; color: #fff; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-sm { padding: 6px 14px; font-size: 12px; }
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 30px; gap: 10px; flex-wrap: wrap; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+        .service-badge { display: inline-block; padding: 4px 16px; border-radius: 30px; font-size: 12px; font-weight: 600; background: #eab308; color: #000; margin-bottom: 15px; }
+        .hidden { display: none !important; }
+        .error, .success { padding: 12px 16px; border-radius: 12px; margin-bottom: 15px; display: none; }
+        .error { background: #7f1d1d; color: #fecaca; border-left: 4px solid #ef4444; }
+        .success { background: #14532d; color: #bbf7d0; border-left: 4px solid #22c55e; }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; border-top-color: #eab308; animation: spin .6s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .result-box { background: linear-gradient(135deg, #1e293b, #0f172a); border: 2px solid #eab308; border-radius: 20px; padding: 30px; text-align: center; position: relative; }
+        .result-value { font-size: 48px; font-weight: 800; color: #22c55e; margin: 20px 0; }
+        .result-detail { margin: 15px 0; padding: 15px; background: #1e293b; border-radius: 12px; text-align: left; }
+        .result-detail .item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #2d3a4e; }
+        .result-detail .item:last-child { border-bottom: none; }
+        .result-detail .label { color: #94a3b8; }
+        .result-detail .value { font-weight: 700; }
+        .result-detail .value.green { color: #22c55e; }
+        .result-detail .value.gold { color: #eab308; }
+        .result-detail .value.red { color: #ef4444; }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; z-index: 9999; font-weight: 500; animation: slideIn .3s ease; max-width: 400px; }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-warning { background: #eab308; color: #000; }
+        @keyframes slideIn { from { opacity:0; transform:translateX(100px); } to { opacity:1; transform:translateX(0); } }
+        .assessment-tabs { display: flex; gap: 8px; background: #1e293b; padding: 6px; border-radius: 60px; margin-bottom: 20px; flex-wrap: wrap; }
+        .assessment-tab { background: transparent; border: none; color: #94a3b8; padding: 8px 20px; border-radius: 40px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all .2s; }
+        .assessment-tab.active { background: #eab308; color: #0a0c15; }
+        .assessment-tab:hover:not(.active) { background: #334155; color: #fff; }
+        .qr-container { background: #fff; padding: 15px; border-radius: 12px; display: inline-block; margin: 15px 0; }
+        .badge-methodology { background: #1e293b; padding: 8px 12px; border-radius: 8px; font-size: 12px; color: #94a3b8; display: inline-block; margin: 5px; }
+        @media (max-width: 768px) { .row, .row-3 { grid-template-columns: 1fr; } .assessment-tabs { border-radius: 16px; } .assessment-tab { font-size: 11px; padding: 6px 12px; } .nav-buttons { flex-direction: column; } .nav-buttons button { width: 100%; } }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">⚠️ AUTO-V <span>| Vehicle Assessment</span></div>
+        <button class="btn btn-secondary" id="logoutBtn" style="padding:8px 16px; font-size:12px;">Logout</button>
+    </header>
+    <div class="container">
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+
+        <div class="card" id="dataEntryCard">
+            <div style="margin-bottom:15px;">
+                <span class="service-badge">⚠️ Professional Assessment</span>
+                <span style="color:#94a3b8; font-size:14px; margin-left:10px;" id="purposeDisplay">Assessment Type: Accident</span>
+                <span style="color:#22c55e; font-size:14px; margin-left:10px;" id="priceDisplay">KES 0</span>
+            </div>
+            <h2>⚠️ Professional Vehicle Assessment</h2>
+            <p style="color:#94a3b8; font-size:13px; margin-bottom:20px;">
+                Accident, insurance claim, repair cost, total loss, salvage, and theft recovery assessments with full audit trail.
+            </p>
+
+            <!-- Tabs -->
+            <div class="assessment-tabs">
+                <button class="assessment-tab active" data-tab="basic">📝 Vehicle Info</button>
+                <button class="assessment-tab" data-tab="assessment-type">📊 Assessment Type</button>
+                <button class="assessment-tab" data-tab="details">🔍 Details</button>
+                <button class="assessment-tab" data-tab="inspector">👤 Inspector</button>
+            </div>
+
+            <form id="assessmentForm">
+                <!-- TAB 1: Vehicle Info -->
+                <div id="tab-basic" class="tab-content">
+                    <div class="row">
+                        <div class="form-group"><label class="required">Registration</label><input type="text" id="vehicleReg" placeholder="KCA 123A" value="KDA 123A"></div>
+                        <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456" value="JTEGD34V000123456"></div>
+                    </div>
+                    <div class="row">
+                        <div class="form-group"><label class="required">Make</label>
+                            <select id="vehicleMake">
+                                <option value="Toyota" selected>Toyota</option>
+                                <option value="Honda">Honda</option>
+                                <option value="Nissan">Nissan</option>
+                                <option value="Mercedes-Benz">Mercedes-Benz</option>
+                                <option value="BMW">BMW</option>
+                                <option value="Audi">Audi</option>
+                                <option value="Volkswagen">Volkswagen</option>
+                                <option value="Ford">Ford</option>
+                                <option value="Subaru">Subaru</option>
+                                <option value="Mazda">Mazda</option>
+                                <option value="Mitsubishi">Mitsubishi</option>
+                                <option value="Isuzu">Isuzu</option>
+                                <option value="Peugeot">Peugeot</option>
+                                <option value="Land Rover">Land Rover</option>
+                                <option value="Jaguar">Jaguar</option>
+                                <option value="Lexus">Lexus</option>
+                                <option value="Volvo">Volvo</option>
+                                <option value="Hyundai">Hyundai</option>
+                                <option value="Kia">Kia</option>
+                                <option value="Suzuki">Suzuki</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="required">Model</label>
+                            <select id="vehicleModel"></select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="form-group"><label class="required">Year</label>
+                            <select id="vehicleYear"></select>
+                        </div>
+                        <div class="form-group"><label class="required">Body Type</label>
+                            <select id="vehicleBody">
+                                <option value="Sedan" selected>Sedan</option>
+                                <option value="SUV">SUV</option>
+                                <option value="Pickup">Pickup</option>
+                                <option value="Van">Van</option>
+                                <option value="Hatchback">Hatchback</option>
+                                <option value="Coupe">Coupe</option>
+                                <option value="Convertible">Convertible</option>
+                                <option value="Wagon">Wagon</option>
+                                <option value="Minivan">Minivan</option>
+                                <option value="Bus">Bus</option>
+                                <option value="Truck">Truck</option>
+                                <option value="Motorcycle">Motorcycle</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="form-group"><label class="required">Odometer (km)</label>
+                            <input type="number" id="vehicleOdometer" placeholder="50000" value="50000">
+                        </div>
+                        <div class="form-group"><label class="required">Market Value (KES)</label>
+                            <input type="number" id="marketValue" placeholder="2000000" value="2000000">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: Assessment Type -->
+                <div id="tab-assessment-type" class="tab-content hidden">
+                    <h3>Select Assessment Type</h3>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:15px; margin-top:15px;">
+                        <div class="assessment-type-card" data-type="accident" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                            <div style="font-size:40px;">💥</div>
+                            <h4 style="color:#eab308;">Accident</h4>
+                            <p style="font-size:11px; color:#94a3b8;">Accident damage assessment</p>
+                        </div>
+                        <div class="assessment-type-card" data-type="insurance_claim" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                            <div style="font-size:40px;">📋</div>
+                            <h4 style="color:#eab308;">Insurance Claim</h4>
+                            <p style="font-size:11px; color:#94a3b8;">Insurance claim processing</p>
+                        </div>
+                        <div class="assessment-type-card" data-type="repair_cost" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                            <div style="font-size:40px;">🔧</div>
+                            <h4 style="color:#eab308;">Repair Cost</h4>
+                            <p style="font-size:11px; color:#94a3b8;">Standalone repair estimate</p>
+                        </div>
+                        <div class="assessment-type-card" data-type="total_loss" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                            <div style="font-size:40px;">📊</div>
+                            <h4 style="color:#eab308;">Total Loss</h4>
+                            <p style="font-size:11px; color:#94a3b8;">Total loss determination</p>
+                        </div>
+                        <div class="assessment-type-card" data-type="salvage" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                            <div style="font-size:40px;">♻️</div>
+                            <h4 style="color:#eab308;">Salvage</h4>
+                            <p style="font-size:11px; color:#94a3b8;">Salvage value estimation</p>
+                        </div>
+                        <div class="assessment-type-card" data-type="theft_recovery" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                            <div style="font-size:40px;">🔍</div>
+                            <h4 style="color:#eab308;">Theft Recovery</h4>
+                            <p style="font-size:11px; color:#94a3b8;">Recovered stolen vehicle</p>
+                        </div>
+                    </div>
+                    <div id="assessmentTypeFields" style="margin-top:20px;"></div>
+                </div>
+
+                <!-- TAB 3: Details -->
+                <div id="tab-details" class="tab-content hidden">
+                    <div id="assessmentDetailsFields">
+                        <!-- Dynamic fields will be rendered here based on assessment type -->
+                    </div>
+                </div>
+
+                <!-- TAB 4: Inspector -->
+                <div id="tab-inspector" class="tab-content hidden">
+                    <div class="row">
+                        <div class="form-group"><label class="required">Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name" value="John M. Valuer"></div>
+                        <div class="form-group"><label class="required">Inspector License/Credentials</label><input type="text" id="inspectorCredentials" placeholder="e.g. AVM-12345" value="AVM-45678"></div>
+                    </div>
+                    <div class="form-group"><label class="required">Digital Signature</label><input type="text" id="inspectorSignature" placeholder="Type full name as signature" value="John M. Valuer"></div>
+                    <div style="background:#1e293b; border-radius:12px; padding:16px; margin-top:10px;">
+                        <h4 style="color:#eab308;">📌 Inspector Declaration</h4>
+                        <p style="color:#94a3b8; font-size:13px;">I confirm that the assessment was conducted personally and the findings reported are accurate and complete to the best of my knowledge.</p>
+                    </div>
+                </div>
+
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" id="backBtn">← Back</button>
+                    <button type="button" class="btn btn-primary" id="submitBtn">🚀 Generate Professional Assessment</button>
+                </div>
+            </form>
+        </div>
+
+        <div id="resultsCard" class="card hidden">
+            <h2>✅ Assessment Results</h2>
+            <div id="resultsContainer" class="result-box"></div>
+            <div class="nav-buttons">
+                <button class="btn btn-secondary" id="newRequestBtn">+ New Assessment</button>
+                <button class="btn btn-primary" id="dashboardBtn">📊 Dashboard</button>
+                <button class="btn btn-success" id="downloadReportBtn">📄 Download PDF Report</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // AUTO-V PROFESSIONAL ASSESSMENT ENGINE
+        // ============================================================
+        (function() {
+            if (window.autoVProfAssessmentInitialized) return;
+            window.autoVProfAssessmentInitialized = true;
+
+            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            const API_BASE = 'https://auto-v.onrender.com/api';
+
+            // ─── VEHICLE MODELS ──────────────────────────────────────
+            const vehicleModels = {
+                'Toyota': ['Axio','Corolla','Camry','RAV4','Land Cruiser','Prado','Hilux','Fortuner','Premio','Allion','Vitz','Passo','Sienta','Noah','Voxy','Hiace'],
+                'Honda': ['Fit','Civic','Accord','CR-V','HR-V','Odyssey','Pilot'],
+                'Nissan': ['Note','Sunny','X-Trail','Patrol','Qashqai','Juke','Leaf'],
+                'Mercedes-Benz': ['C-Class','E-Class','S-Class','GLE','GLC','GLA','A-Class','B-Class'],
+                'BMW': ['3 Series','5 Series','X3','X5','1 Series','7 Series','X1','X7'],
+                'Audi': ['A3','A4','A6','Q3','Q5','Q7','TT','e-tron'],
+                'Volkswagen': ['Golf','Polo','Passat','Tiguan','Touareg','Jetta','Beetle'],
+                'Ford': ['Focus','Fiesta','Mustang','Ranger','Explorer','Escape','Transit'],
+                'Subaru': ['Impreza','Forester','Outback','Legacy','XV','WRX'],
+                'Mazda': ['3','6','CX-3','CX-5','MX-5','Demio'],
+                'Mitsubishi': ['Outlander','Pajero','Lancer','ASX','Delica','Minica'],
+                'Isuzu': ['D-Max','MU-X','N-Series','F-Series'],
+                'Peugeot': ['208','308','508','2008','3008','5008'],
+                'Land Rover': ['Defender','Discovery','Range Rover','Evoque','Velar','Sport'],
+                'Jaguar': ['XE','XF','XJ','F-Pace','E-Pace','I-Pace'],
+                'Lexus': ['IS','ES','LS','RX','NX','UX','LX','GX'],
+                'Volvo': ['S60','S90','V60','XC40','XC60','XC90'],
+                'Hyundai': ['i10','i20','i30','Tucson','Santa Fe','Palisade','Kona'],
+                'Kia': ['Picanto','Rio','Cerato','Sportage','Sorento','Stinger','Telluride'],
+                'Suzuki': ['Swift','Jimny','Vitara','Baleno','S-Cross','Ignis'],
+                'Other': ['Other']
+            };
+
+            // ─── STATE ──────────────────────────────────────────────
+            let selectedAssessmentType = null;
+            let currentUser = null;
+            let currentRequestId = null;
+
+            // ─── ASSESSMENT TYPE DETAILS ────────────────────────────
+            function getAssessmentFields(type) {
+                const fields = {
+                    accident: [
+                        { key: "incident_date", label: "Incident Date", type: "date", required: true },
+                        { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe", "catastrophic"], required: true },
+                        { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres", "airbags", "cooling", "exhaust", "fuel_system", "steering"], required: true, multiple: true },
+                        { key: "police_report", label: "Police Report Number", type: "text", required: false },
+                        { key: "location", label: "Location", type: "text", required: false },
+                        { key: "description", label: "Description of Incident", type: "textarea", required: true }
+                    ],
+                    insurance_claim: [
+                        { key: "claim_number", label: "Claim Number", type: "text", required: true },
+                        { key: "insurance_company", label: "Insurance Company", type: "text", required: true },
+                        { key: "adjuster_name", label: "Adjuster Name", type: "text", required: false },
+                        { key: "policy_excess", label: "Policy Excess (KES)", type: "number", required: false },
+                        { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe"], required: true },
+                        { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres"], required: true, multiple: true }
+                    ],
+                    repair_cost: [
+                        { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe"], required: true },
+                        { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres"], required: true, multiple: true },
+                        { key: "labour_hours", label: "Labour Hours", type: "number", required: false }
+                    ],
+                    total_loss: [
+                        { key: "repair_estimate", label: "Repair Estimate (KES)", type: "number", required: true },
+                        { key: "policy_details", label: "Insurance Policy Details", type: "text", required: false },
+                        { key: "salvage_value", label: "Estimated Salvage Value (KES)", type: "number", required: false }
+                    ],
+                    salvage: [
+                        { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe", "catastrophic"], required: true },
+                        { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres"], required: true, multiple: true }
+                    ],
+                    theft_recovery: [
+                        { key: "theft_date", label: "Theft Date", type: "date", required: true },
+                        { key: "recovery_date", label: "Recovery Date", type: "date", required: true },
+                        { key: "police_station", label: "Police Station", type: "text", required: true },
+                        { key: "condition", label: "Condition on Recovery", type: "select", options: ["excellent", "good", "fair", "poor", "damaged"], required: true },
+                        { key: "modifications", label: "Modifications", type: "text", required: false }
+                    ]
+                };
+                return fields[type] || [];
+            }
+
+            // ─── PRICES ──────────────────────────────────────────────
+            const assessmentPrices = {
+                accident: 3500,
+                insurance_claim: 4000,
+                repair_cost: 3000,
+                total_loss: 4000,
+                salvage: 3500,
+                theft_recovery: 4000
+            };
+
+            // ─── HELPERS ─────────────────────────────────────────────
+            function showToast(msg, type='success') { /* toast */ }
+            function showLoading(show) { /* loading */ }
+            function populateYears() { /* populate year dropdown */ }
+            function showMessage(msg, type='error') { /* message */ }
+
+            // ─── MAKE-MODEL SYNC ────────────────────────────────────
+            document.getElementById('vehicleMake').addEventListener('change', function() {
+                const models = vehicleModels[this.value] || ['Other'];
+                const modelSelect = document.getElementById('vehicleModel');
+                modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+            });
+
+            // ─── TABS ──────────────────────────────────────────────
+            document.querySelectorAll('.assessment-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    document.querySelectorAll('.assessment-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    const tabId = this.dataset.tab;
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                    document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+                });
+            });
+
+            // ─── ASSESSMENT TYPE SELECTION ──────────────────────────
+            document.querySelectorAll('.assessment-type-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    document.querySelectorAll('.assessment-type-card').forEach(c => {
+                        c.style.borderColor = 'transparent';
+                        c.style.background = '#1e293b';
+                    });
+                    this.style.borderColor = '#eab308';
+                    this.style.background = '#2d3a4e';
+                    selectedAssessmentType = this.dataset.type;
+                    
+                    // Update price display
+                    const price = assessmentPrices[selectedAssessmentType] || 0;
+                    document.getElementById('priceDisplay').textContent = `KES ${price.toLocaleString()}`;
+                    document.getElementById('purposeDisplay').textContent = `Assessment Type: ${selectedAssessmentType.replace('_', ' ').toUpperCase()}`;
+                    
+                    // Render details fields
+                    renderAssessmentFields(selectedAssessmentType);
+                    
+                    // Switch to details tab
+                    document.querySelectorAll('.assessment-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelector('[data-tab="details"]').classList.add('active');
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                    document.getElementById('tab-details').classList.remove('hidden');
+                });
+            });
+
+            // ─── RENDER ASSESSMENT FIELDS ──────────────────────────
+            function renderAssessmentFields(type) {
+                const container = document.getElementById('assessmentDetailsFields');
+                const fields = getAssessmentFields(type);
+                
+                container.innerHTML = '';
+                if (fields.length === 0) {
+                    container.innerHTML = '<p style="color:#94a3b8;">No additional details required.</p>';
+                    return;
+                }
+                
+                fields.forEach(field => {
+                    const div = document.createElement('div');
+                    div.className = 'form-group';
+                    
+                    const label = document.createElement('label');
+                    label.textContent = field.label;
+                    if (field.required) label.classList.add('required');
+                    div.appendChild(label);
+                    
+                    let input;
+                    if (field.type === 'select') {
+                        input = document.createElement('select');
+                        input.id = `field_${field.key}`;
+                        if (field.multiple) {
+                            input.multiple = true;
+                            input.size = 3;
+                        }
+                        field.options.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt;
+                            option.textContent = opt.replace('_', ' ').toUpperCase();
+                            input.appendChild(option);
+                        });
+                    } else if (field.type === 'textarea') {
+                        input = document.createElement('textarea');
+                        input.id = `field_${field.key}`;
+                        input.rows = 3;
+                    } else {
+                        input = document.createElement('input');
+                        input.id = `field_${field.key}`;
+                        input.type = field.type || 'text';
+                        if (field.type === 'number') input.step = 'any';
+                    }
+                    if (field.required) input.required = true;
+                    div.appendChild(input);
+                    container.appendChild(div);
+                });
+            }
+
+            // ─── SUBMIT ASSESSMENT ─────────────────────────────────
+            async function handleSubmit() {
+                // Validate basic vehicle info
+                const make = document.getElementById('vehicleMake').value;
+                const model = document.getElementById('vehicleModel').value;
+                const year = parseInt(document.getElementById('vehicleYear').value);
+                const odometer = parseInt(document.getElementById('vehicleOdometer').value);
+                const marketValue = parseInt(document.getElementById('marketValue').value);
+                
+                if (!make || !model || !year || !marketValue) {
+                    showMessage('Please fill all required vehicle details', 'error');
+                    return;
+                }
+                
+                if (!selectedAssessmentType) {
+                    showMessage('Please select an assessment type', 'error');
+                    return;
+                }
+                
+                // Validate inspector fields
+                const inspectorName = document.getElementById('inspectorName').value.trim();
+                const inspectorCreds = document.getElementById('inspectorCredentials').value.trim();
+                const inspectorSig = document.getElementById('inspectorSignature').value.trim();
+                if (!inspectorName || !inspectorCreds || !inspectorSig) {
+                    showMessage('Please fill in all inspector details', 'error');
+                    return;
+                }
+                
+                showLoading(true);
+                
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        showMessage('Please login again', 'error');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    currentUser = user;
+                    
+                    // Collect assessment-specific fields
+                    const fields = getAssessmentFields(selectedAssessmentType);
+                    const assessmentData = {};
+                    fields.forEach(f => {
+                        const el = document.getElementById(`field_${f.key}`);
+                        if (el) {
+                            if (f.multiple) {
+                                assessmentData[f.key] = Array.from(el.selectedOptions).map(o => o.value);
+                            } else {
+                                assessmentData[f.key] = el.value;
+                            }
+                        }
+                    });
+                    
+                    // Build request payload
+                    const payload = {
+                        make: make,
+                        model: model,
+                        year: year,
+                        odometer: odometer,
+                        market_value: marketValue,
+                        assessment_type: selectedAssessmentType,
+                        inspector: {
+                            name: inspectorName,
+                            credentials: inspectorCreds,
+                            signature: inspectorSig
+                        },
+                        ...assessmentData
+                    };
+                    
+                    // Call backend API
+                    const token = await getValidToken();
+                    const response = await fetch(`${API_BASE}/assessment`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.message || 'Assessment failed');
+                    }
+                    
+                    const result = await response.json();
+                    
+                    // Save to Supabase
+                    const requestData = {
+                        user_id: user.id,
+                        service_type: 'assessment',
+                        registration_number: document.getElementById('vehicleReg').value.toUpperCase(),
+                        make: make,
+                        model: model,
+                        year: year,
+                        odometer: odometer,
+                        amount: assessmentPrices[selectedAssessmentType] || 0,
+                        payment_status: 'paid',
+                        status: 'completed',
+                        purpose: selectedAssessmentType,
+                        result: result,
+                        inspector: { name: inspectorName, credentials: inspectorCreds, signature: inspectorSig },
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    await supabase.from('service_requests').insert(requestData);
+                    
+                    // Display results
+                    displayResults(result);
+                    
+                } catch (error) {
+                    console.error('Assessment error:', error);
+                    showMessage('Error: ' + error.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
+            }
+
+            // ─── DISPLAY RESULTS ────────────────────────────────────
+            function displayResults(result) {
+                document.getElementById('dataEntryCard').classList.add('hidden');
+                document.getElementById('resultsCard').classList.remove('hidden');
+                
+                const container = document.getElementById('resultsContainer');
+                const assessmentType = selectedAssessmentType.replace('_', ' ').toUpperCase();
+                
+                let html = `
+                    <div style="margin-bottom:20px; display:flex; justify-content:center; gap:15px; flex-wrap:wrap;">
+                        <span class="badge-methodology">📋 ${assessmentType}</span>
+                        <span class="badge-methodology" style="background:#22c55e; color:#000;">Confidence ${result.confidence_score || 85}%</span>
+                    </div>
+                    <div class="result-value">${result.repair_estimate ? 'KES ' + result.repair_estimate.total_cost.toLocaleString() : 'Assessment Complete'}</div>
+                    <p style="color:#eab308; font-weight:600;">${result.recommendation || 'Assessment Result'}</p>
+                    <div class="result-detail">
+                        ${result.repair_estimate ? `
+                            <div class="item"><span class="label">Parts Cost</span><span class="value">KES ${result.repair_estimate.parts_cost.toLocaleString()}</span></div>
+                            <div class="item"><span class="label">Labour Cost</span><span class="value">KES ${result.repair_estimate.labour_cost.toLocaleString()}</span></div>
+                            <div class="item"><span class="label">Total Cost</span><span class="value green">KES ${result.repair_estimate.total_cost.toLocaleString()}</span></div>
+                        ` : ''}
+                        ${result.total_loss !== undefined ? `
+                            <div class="item"><span class="label">Total Loss</span><span class="value ${result.total_loss ? 'red' : 'green'}">${result.total_loss ? '✅ Yes' : '❌ No'}</span></div>
+                            <div class="item"><span class="label">Loss Ratio</span><span class="value">${(result.loss_ratio * 100).toFixed(1)}%</span></div>
+                        ` : ''}
+                        ${result.salvage_value ? `
+                            <div class="item"><span class="label">Salvage Value</span><span class="value gold">KES ${result.salvage_value.toLocaleString()}</span></div>
+                        ` : ''}
+                        ${result.estimated_payout ? `
+                            <div class="item"><span class="label">Estimated Payout</span><span class="value green">KES ${result.estimated_payout.toLocaleString()}</span></div>
+                        ` : ''}
+                        ${result.claim_valid !== undefined ? `
+                            <div class="item"><span class="label">Claim Valid</span><span class="value ${result.claim_valid ? 'green' : 'red'}">${result.claim_valid ? '✅ Valid' : '❌ Invalid'}</span></div>
+                        ` : ''}
+                        ${result.valuation_recommendation ? `
+                            <div class="item"><span class="label">Recommendation</span><span class="value gold">${result.valuation_recommendation}</span></div>
+                        ` : ''}
+                        <div class="item"><span class="label">Assessment ID</span><span class="value" style="font-family:monospace;font-size:12px;color:#eab308;">${result.assessment_id}</span></div>
+                        <div class="item"><span class="label">Inspector</span><span class="value">${result.inspector?.name || 'N/A'}</span></div>
+                        <div class="item"><span class="label">Generated</span><span class="value">${new Date(result.generated_at).toLocaleString()}</span></div>
+                    </div>
+                `;
+                
+                container.innerHTML = html;
+            }
+
+            // ─── TOKEN HELPERS ──────────────────────────────────────
+            async function getValidToken() {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error || !session) return null;
+                return session.access_token;
+            }
+
+            // ─── EVENT LISTENERS ──────────────────────────────────
+            document.getElementById('submitBtn').addEventListener('click', handleSubmit);
+            document.getElementById('backBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
+            document.getElementById('newRequestBtn').addEventListener('click', () => location.reload());
+            document.getElementById('dashboardBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
+            
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                window.location.href = 'login.html';
+            });
+
+            // ─── POPULATE YEARS ──────────────────────────────────────
+            function populateYears() {
+                const yearSelect = document.getElementById('vehicleYear');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= 1950; y--) {
+                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+                }
+            }
+
+            // ─── INIT ──────────────────────────────────────────────
+            async function init() {
+                populateYears();
+                const make = document.getElementById('vehicleMake').value;
+                const models = vehicleModels[make] || ['Other'];
+                document.getElementById('vehicleModel').innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+                
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) window.location.href = 'login.html';
+                
+                document.getElementById('inspectorName').value = user?.user_metadata?.full_name || user?.email || 'Inspector';
+                
+                // Set default market value from session if available
+                // Otherwise keep default
+            }
+            init();
+        })();
+    </script>
+</body>
+</html>
