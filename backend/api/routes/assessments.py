@@ -8,17 +8,34 @@ from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
 from api.auth_middleware import require_auth
 
-# Fix import path - add the backend directory to Python path
+# ─── Fix Import Path ──────────────────────────────────────────
+# Get the absolute path to the backend directory
 backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add it to Python path if not already there
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-# Now import from assessment engine
-from assessment import assess, ASSESSMENT_TYPES
+# Now try to import from assessment engine
+try:
+    from assessment import assess, ASSESSMENT_TYPES
+    logger = logging.getLogger(__name__)
+    logger.info("✅ Successfully imported assessment engine")
+except ImportError as e:
+    # If import fails, use fallback
+    logger = logging.getLogger(__name__)
+    logger.error(f"Failed to import assessment: {e}")
+    # Create fallback functions if assessment.py is missing
+    ASSESSMENT_TYPES = ["accident", "insurance_claim", "repair_cost", "total_loss", "salvage", "theft_recovery"]
+    def assess(assessment_type, **kwargs):
+        return {
+            "error": "Assessment engine not available",
+            "assessment_type": assessment_type,
+            "message": "Please ensure assessment.py is in the backend directory"
+        }
 
 logger = logging.getLogger(__name__)
 
-# ⚠️ CRITICAL: Define the blueprint
+# ─── Blueprint ────────────────────────────────────────────────
 assessments_bp = Blueprint('assessments', __name__)
 
 
