@@ -1,16 +1,18 @@
-# api/routes/intelligence.py – AUTO-V Intelligence Layer (Production-Ready)
-
+# api/intelligence.py – AUTO-V Intelligence Layer (FIXED)
 import logging
 import traceback
+import math
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
 from api.auth_middleware import require_auth
 
-# ============================================================
-# SAFE IMPORTS (Prevent startup crashes)
-# ============================================================
+# ─── LOGGER MUST BE DEFINED FIRST ──────────────────────────
+logger = logging.getLogger(__name__)
+
+# ─── SAFE IMPORTS ────────────────────────────────────────────
 try:
-    from services.valuation import calculate_value
+    from services.valuation_engine import calculate_value
 except ImportError as e:
     logger.error(f"Valuation module failed to load: {e}")
     calculate_value = None
@@ -21,38 +23,29 @@ except ImportError as e:
     logger.error(f"Mileage rate module failed to load: {e}")
     calculate_mileage_rate = None
 
-logger = logging.getLogger(__name__)
-
+# ─── BLUEPRINT ──────────────────────────────────────────────
 intelligence_bp = Blueprint('intelligence', __name__)
 
-# ============================================================
-# CONSTANTS / CONFIG
-# ============================================================
-MAX_RECENT_REQUESTS = 500  # For performance
+# ─── CONSTANTS ──────────────────────────────────────────────
+MAX_RECENT_REQUESTS = 500
 DEFAULT_MONTHLY_KM = 2000
 DEFAULT_YEARLY_KM = 24000
-RISK_BASELINE = 5000000  # Will be normalized by category later
+CURRENT_YEAR = datetime.now().year
 
-# ============================================================
-# HELPER: Normalize risk score
-# ============================================================
-def normalize_risk_score(raw_score, min_val=0, max_val=100):
+
+# ─── HELPER ──────────────────────────────────────────────────
+def normalize_score(raw_score, min_val=0, max_val=100):
     """Clamp score between min and max."""
     return max(min_val, min(max_val, raw_score))
 
-# ============================================================
-# ENDPOINT 1: MARKET TRENDS (REAL, with Supabase)
-# ============================================================
+
+# ─── ENDPOINT 1: MARKET TRENDS ──────────────────────────────
 @intelligence_bp.route('/market-trends', methods=['GET'])
 @require_auth
 def market_trends(user):
-    """
-    Real market trends based on historical service_requests data.
-    Returns aggregated trends by make.
-    """
+    """Real market trends based on historical service_requests data."""
     supabase = get_supabase()
     try:
-        # Fetch recent valuations (with limit for performance)
         resp = supabase.table('service_requests')\
             .select('make, year, amount, result')\
             .eq('service_type', 'valuation')\
@@ -79,7 +72,6 @@ def market_trends(user):
                     'values': []
                 }
             make_data[make]['count'] += 1
-            # Use market value from result if available, otherwise amount
             result = item.get('result', {})
             value = result.get('market_value', item.get('amount', 0))
             if value:
@@ -89,14 +81,13 @@ def market_trends(user):
             if year:
                 make_data[make]['years'].append(year)
 
-        # Compute trends (simple direction)
+        # Compute trends
         trends = {}
         avg_values = {}
         for make, data in make_data.items():
             if data['values']:
                 avg = data['total_value'] / data['count']
                 avg_values[make] = round(avg, 2)
-                # Simple trend: compare last 3 to average
                 if len(data['values']) >= 3:
                     recent = data['values'][-3:]
                     recent_avg = sum(recent) / len(recent)
@@ -119,15 +110,12 @@ def market_trends(user):
         logger.error(f"Market trends error: {e}\n{traceback.format_exc()}")
         return jsonify({'error': 'Unable to compute market trends'}), 500
 
-# ============================================================
-# ENDPOINT 2: VIN DECODE (PLACEHOLDER – REPLACE WITH REAL API)
-# ============================================================
+
+# ─── ENDPOINT 2: VIN DECODE ─────────────────────────────────
 @intelligence_bp.route('/vin-decode', methods=['POST'])
 @require_auth
 def vin_decode(user):
-    """
-    VIN Decoder. Currently a placeholder; replace with NHTSA, CarVertical, or custom model.
-    """
+    """VIN Decoder (placeholder)."""
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Missing JSON body'}), 400
@@ -136,10 +124,7 @@ def vin_decode(user):
     if not vin or len(vin) < 11:
         return jsonify({'error': 'Invalid VIN (minimum 11 characters)'}), 400
 
-    # TODO: Replace with real VIN decoding service (e.g., NHTSA API, CarVertical)
-    # For now, we return a mock response with realistic structure.
-    # In production, you would call an external API or a trained model.
-
+    # Mock response
     mock_response = {
         'vin': vin,
         'make': 'Toyota' if vin.startswith('J') else 'Unknown',
@@ -151,6 +136,7 @@ def vin_decode(user):
         'transmission': 'Automatic',
         'fuel_type': 'Petrol'
     }
+
     # Store VIN lookup for analytics (optional)
     try:
         supabase = get_supabase()
@@ -165,24 +151,17 @@ def vin_decode(user):
 
     return jsonify(mock_response), 200
 
-# ============================================================
-# ENDPOINT 3: VEHICLE INTELLIGENCE SCORE (AI-POWERED)
-# ============================================================
+
+# ─── ENDPOINT 3: VEHICLE INTELLIGENCE ───────────────────────
 @intelligence_bp.route('/vehicle-intelligence', methods=['POST'])
 @require_auth
 def vehicle_intelligence(user):
-    """
-    Compute a comprehensive intelligence score for a vehicle:
-    - Market heat score
-    - Risk of depreciation
-    - Buy/Sell recommendation
-    - Confidence level
-    """
+    """Compute comprehensive vehicle intelligence score."""
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Missing JSON body'}), 400
 
-    # Input validation (critical)
+    # Input validation
     try:
         make = data.get('make', '').strip()
         model = data.get('model', '').strip()
@@ -190,13 +169,23 @@ def vehicle_intelligence(user):
         mileage = int(data.get('mileage', 0))
         condition = data.get('condition', 'good').lower()
         purpose = data.get('purpose', 'general')
-    except (ValueError, TypeError):
-        return jsonify({'error': 'Invalid numeric input for year or mileage'}), 400
+        vehicle_type = data.get('vehicle_type', 'sedan')
+        usage = data.get('usage', 'personal')
+        region = data.get('region', 'nairobi')
+        road_condition = data.get('road_condition', 'good')
+        monthly_km = int(data.get('monthly_km', DEFAULT_MONTHLY_KM))
+        yearly_km = int(data.get('yearly_km', DEFAULT_YEARLY_KM))
+    except (ValueError, TypeError) as e:
+        return jsonify({'error': f'Invalid numeric input: {str(e)}'}), 400
 
     if not make or not model or year < 1950 or mileage < 0:
         return jsonify({'error': 'Missing or invalid vehicle parameters'}), 400
 
-    # 1. Get valuation (if module available)
+    # ─── Get valuation ──────────────────────────────────────────
+    valuation_result = None
+    market_value = 0
+    confidence_score = 70
+
     if calculate_value:
         try:
             valuation_result = calculate_value(
@@ -208,88 +197,89 @@ def vehicle_intelligence(user):
                 purpose=purpose
             )
             market_value = valuation_result.get('market_value', 0)
+            confidence_score = valuation_result.get('confidence_score', 70)
         except Exception as e:
             logger.error(f"Valuation engine failed: {e}")
             market_value = 0
-    else:
-        market_value = 0
 
-    # 2. Get mileage running cost (if module available)
+    # ─── Get mileage running cost ──────────────────────────────
+    mileage_result = None
+    cost_per_km = 0
+    monthly_cost = 0
+    yearly_cost = 0
+
     if calculate_mileage_rate:
         try:
             mileage_result = calculate_mileage_rate(
-                vehicle_type=data.get('vehicle_type', 'sedan'),
-                usage=data.get('usage', 'personal'),
-                region=data.get('region', 'nairobi'),
-                road_condition=data.get('road_condition', 'good'),
+                vehicle_type=vehicle_type,
+                usage=usage,
+                region=region,
+                road_condition=road_condition,
                 purpose="vehicle_running_cost_analysis",
-                monthly_km=data.get('monthly_km', DEFAULT_MONTHLY_KM),
-                yearly_km=data.get('yearly_km', DEFAULT_YEARLY_KM)
+                monthly_km=monthly_km,
+                yearly_km=yearly_km
             )
             cost_per_km = mileage_result.get('cost_per_km', 0)
+            monthly_cost = mileage_result.get('cost_per_month', 0)
+            yearly_cost = mileage_result.get('cost_per_year', 0)
         except Exception as e:
             logger.error(f"Mileage rate engine failed: {e}")
             cost_per_km = 0
-    else:
-        cost_per_km = 0
 
-    # 3. Compute intelligence scores
-    # Heat score (0-100): based on market value vs baseline by category
-    # For now, use simple logic; can be enhanced with historical data.
-    heat_score = 50  # default
+    # ─── Compute intelligence scores ──────────────────────────
+    heat_score = 50
     if market_value > 0:
-        # Normalize by baseline (adjust per category later)
-        # For simplicity, use log scale
-        import math
-        heat_score = min(95, 50 + math.log(market_value / 500000, 2) * 2)
-        heat_score = max(5, heat_score)
+        heat_score = 50 + (math.log(max(market_value / 100000, 1)) * 2)
+        heat_score = normalize_score(heat_score, 5, 95)
 
-    # Risk of depreciation: based on age, mileage, condition
-    risk = 50
+    risk_score = 50
     if year > 0:
-        age = 2026 - year
+        age = CURRENT_YEAR - year
         if age > 10:
-            risk += 20
+            risk_score += 20
         elif age > 5:
-            risk += 10
+            risk_score += 10
         else:
-            risk -= 10
-        risk = min(95, risk)
+            risk_score -= 10
 
     if mileage > 150000:
-        risk += 15
+        risk_score += 15
     elif mileage > 80000:
-        risk += 5
+        risk_score += 5
 
     if condition == 'poor':
-        risk += 15
+        risk_score += 15
     elif condition == 'fair':
-        risk += 5
+        risk_score += 5
+    elif condition == 'excellent':
+        risk_score -= 10
 
-    risk = max(5, min(95, risk))
+    risk_score = normalize_score(risk_score, 5, 95)
 
-    # Buy recommendation: low risk + high heat = Buy, etc.
-    if heat_score > 70 and risk < 30:
+    if heat_score > 70 and risk_score < 30:
         recommendation = "Strong Buy"
-    elif heat_score > 60 and risk < 40:
+    elif heat_score > 60 and risk_score < 40:
         recommendation = "Buy"
-    elif heat_score > 40 and risk < 60:
+    elif heat_score > 40 and risk_score < 60:
         recommendation = "Hold"
-    elif heat_score < 30 and risk > 70:
+    elif heat_score < 30 and risk_score > 70:
         recommendation = "Sell"
     else:
         recommendation = "Evaluate"
 
-    # Confidence score from valuation engine if available
-    confidence = valuation_result.get('confidence_score', 70) if valuation_result else 70
-
     result = {
         'market_value': market_value,
-        'cost_per_km': cost_per_km,
+        'running_costs': {
+            'cost_per_km': round(cost_per_km, 2),
+            'monthly_cost': monthly_cost,
+            'yearly_cost': yearly_cost,
+            'monthly_km': monthly_km,
+            'yearly_km': yearly_km
+        },
         'intelligence': {
             'heat_score': round(heat_score, 1),
-            'risk_score': round(risk, 1),
-            'confidence_score': round(confidence, 1),
+            'risk_score': round(risk_score, 1),
+            'confidence_score': round(confidence_score, 1),
             'recommendation': recommendation
         },
         'inputs': {
@@ -297,62 +287,83 @@ def vehicle_intelligence(user):
             'model': model,
             'year': year,
             'mileage': mileage,
-            'condition': condition
+            'condition': condition,
+            'vehicle_type': vehicle_type,
+            'usage': usage,
+            'region': region
         }
     }
 
     return jsonify(result), 200
 
-# ============================================================
-# ENDPOINT 4: INTELLIGENCE DASHBOARD (ADMIN)
-# ============================================================
+
+# ─── ENDPOINT 4: QUICK MARKET CHECK ──────────────────────────
+@intelligence_bp.route('/quick-check', methods=['POST'])
+@require_auth
+def quick_market_check(user):
+    """Quick market check for a vehicle."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Missing JSON body'}), 400
+
+    try:
+        make = data.get('make', '').strip()
+        model = data.get('model', '').strip()
+        year = int(data.get('year', 0))
+        mileage = int(data.get('mileage', 0))
+        condition = data.get('condition', 'good').lower()
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid numeric input for year or mileage'}), 400
+
+    if not make or not model or year < 1950:
+        return jsonify({'error': 'Missing or invalid vehicle parameters'}), 400
+
+    market_value = 0
+    if calculate_value:
+        try:
+            valuation_result = calculate_value(
+                make=make,
+                model=model,
+                year=year,
+                odometer=mileage,
+                condition=condition
+            )
+            market_value = valuation_result.get('market_value', 0)
+        except Exception as e:
+            logger.error(f"Quick check valuation failed: {e}")
+
+    return jsonify({
+        'market_value': market_value,
+        'make': make,
+        'model': model,
+        'year': year
+    }), 200
+
+
+# ─── ENDPOINT 5: INTELLIGENCE DASHBOARD ──────────────────────
 @intelligence_bp.route('/dashboard', methods=['GET'])
 @require_auth
 def intelligence_dashboard(user):
-    """
-    Admin dashboard: market summaries, top trends, etc.
-    """
+    """Admin dashboard: market summaries, top trends."""
     supabase = get_supabase()
     try:
         # Top 5 makes by valuation count
         resp = supabase.table('service_requests')\
-            .select('make, count')\
+            .select('make')\
             .eq('service_type', 'valuation')\
-            .group_by('make')\
-            .order('count', desc=True)\
-            .limit(5)\
-            .execute()
-        top_makes = resp.data if resp.data else []
-
-        # Average valuations per year (trend)
-        # For simplicity, we'll compute from recent data
-        years_resp = supabase.table('service_requests')\
-            .select('year, result')\
-            .eq('service_type', 'valuation')\
-            .order('year')\
             .execute()
 
-        avg_by_year = {}
-        if years_resp.data:
-            for item in years_resp.data:
-                year = item.get('year')
-                if not year:
-                    continue
-                result = item.get('result', {})
-                value = result.get('market_value', 0)
-                if value:
-                    if year not in avg_by_year:
-                        avg_by_year[year] = {'total': 0, 'count': 0}
-                    avg_by_year[year]['total'] += value
-                    avg_by_year[year]['count'] += 1
-            # Compute averages
-            for year, data in avg_by_year.items():
-                avg_by_year[year] = round(data['total'] / data['count'])
+        top_makes = []
+        make_counts = {}
+        if resp.data:
+            for item in resp.data:
+                make = item.get('make', 'Unknown')
+                make_counts[make] = make_counts.get(make, 0) + 1
+            top_makes = sorted(make_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
         return jsonify({
-            'top_makes': top_makes,
-            'average_values_by_year': avg_by_year,
-            'total_valuations': len(years_resp.data) if years_resp.data else 0,
+            'top_makes': [{'make': m, 'count': c} for m, c in top_makes],
+            'total_valuations': len(resp.data) if resp.data else 0,
             'message': 'Intelligence dashboard'
         }), 200
 
