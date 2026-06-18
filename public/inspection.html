@@ -8,7 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* ── same as valuation styles ── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: #0a0c15; color: #fff; padding: 20px; }
         header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #111827; border-bottom: 2px solid #eab308; max-width: 1200px; margin: -20px auto 20px; border-radius: 0 0 16px 16px; }
@@ -110,7 +109,10 @@
         <div id="successMsg" class="success"></div>
 
         <div class="card" id="dataEntryCard">
-            <div style="margin-bottom:15px;"><span class="service-badge">🔍 Professional Inspection</span><span style="color:#94a3b8; font-size:14px; margin-left:10px;">KES 3,500</span></div>
+            <div style="margin-bottom:15px;">
+                <span class="service-badge">🔍 Professional Inspection</span>
+                <span style="color:#94a3b8; font-size:14px; margin-left:10px;" id="priceDisplay">KES 3,500</span>
+            </div>
             <h2>🔍 Professional Vehicle Inspection</h2>
             <p style="color:#94a3b8; font-size:13px; margin-bottom:20px;">Complete the inspection checklist and upload required images &amp; documents. All fields marked with <span style="color:#ef4444;">*</span> are mandatory.</p>
 
@@ -323,8 +325,8 @@
                     <div class="row">
                         <div class="form-group"><label class="required">Inspection Type</label>
                             <select id="inspectionType">
-                                <option value="Standard" selected>Standard (150+ points)</option>
-                                <option value="Premium">Premium (200+ points)</option>
+                                <option value="Standard">Standard (150+ points)</option>
+                                <option value="Premium" selected>Premium (200+ points)</option>
                                 <option value="Express">Express (50 points)</option>
                             </select>
                         </div>
@@ -352,7 +354,7 @@
                     <div class="row">
                         <div class="form-group"><label>Inspection Purpose</label>
                             <select id="inspectionPurpose">
-                                <option value="Pre-Purchase">Pre-Purchase</option>
+                                <option value="Pre-Purchase" selected>Pre-Purchase</option>
                                 <option value="Insurance">Insurance</option>
                                 <option value="Loan/Finance">Loan/Finance</option>
                                 <option value="Fleet">Fleet</option>
@@ -400,7 +402,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V PROFESSIONAL INSPECTION ENGINE
+        // AUTO-V PROFESSIONAL INSPECTION ENGINE – FULL IMPLEMENTATION
         // ============================================================
         (function() {
             if (window.autoVProfInspectionInitialized) return;
@@ -435,6 +437,16 @@
                 'Other': ['Other']
             };
 
+            // ─── PRICING PER PURPOSE ────────────────────────────────
+            const pricingMap = {
+                'Pre-Purchase': 3500,
+                'Insurance': 4000,
+                'Loan/Finance': 4500,
+                'Fleet': 5000,
+                'Export': 6000,
+                'Other': 3500
+            };
+
             // ─── STATE ──────────────────────────────────────────────
             const requiredImages = [
                 'front','rear','left','right','front-left','front-right','rear-left','rear-right',
@@ -445,22 +457,156 @@
             const docStatus = {};
             let imageUrls = {};
             let docUrls = {};
+            let isUploading = false;
 
-            requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, dataUrl: null, publicUrl: null });
+            requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
             requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
 
             // ─── HELPERS ─────────────────────────────────────────────
-            function showMessage(msg, type) { /* ... */ }
-            function showToast(msg, type='success') { /* ... */ }
-            function showLoading(show) { /* ... */ }
-            function populateYears() { /* ... */ }
-            function updateValidationSummary() { /* ... */ }
-            function updateDocumentProgress() { /* ... */ }
+            function showMessage(msg, type = 'error') {
+                const el = document.getElementById(type === 'error' ? 'errorMsg' : 'successMsg');
+                el.textContent = msg;
+                el.style.display = 'block';
+                setTimeout(() => el.style.display = 'none', 6000);
+            }
 
-            // ─── UPLOAD FUNCTIONS (same as before) ──────────────────
-            async function uploadFile(file, bucket, path) { /* ... */ }
-            window.handleImageUpload = async function(input, slot) { /* ... */ }
-            // ... (keep existing upload logic)
+            function showToast(msg, type = 'success') {
+                const t = document.createElement('div');
+                t.className = `toast toast-${type}`;
+                t.textContent = msg;
+                document.body.appendChild(t);
+                setTimeout(() => t.remove(), 3000);
+            }
+
+            function showLoading(show) {
+                let overlay = document.getElementById('loadingOverlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'loadingOverlay';
+                    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;display:none;justify-content:center;align-items:center;';
+                    overlay.innerHTML = '<div class="spinner" style="width:60px;height:60px;"></div>';
+                    document.body.appendChild(overlay);
+                }
+                overlay.style.display = show ? 'flex' : 'none';
+            }
+
+            function populateYears() {
+                const yearSelect = document.getElementById('vehicleYear');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= 1950; y--) {
+                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+                }
+            }
+
+            function updateValidationSummary() {
+                let imageCount = requiredImages.filter(slot => imageStatus[slot].uploaded).length;
+                let docCount = requiredDocs.filter(doc => docStatus[doc].uploaded).length;
+                document.getElementById('imageStatus').textContent = `📸 ${imageCount}/${requiredImages.length}`;
+                document.getElementById('imageStatus').className = imageCount === requiredImages.length ? 'status-icon done' : 'status-icon missing';
+                document.getElementById('docStatus').textContent = `📄 ${docCount}/${requiredDocs.length}`;
+                document.getElementById('docStatus').className = docCount === requiredDocs.length ? 'status-icon done' : 'status-icon missing';
+                const total = imageCount + docCount;
+                const required = requiredImages.length + requiredDocs.length;
+                document.getElementById('validationCount').textContent = `${total}/${required} completed`;
+            }
+
+            function updateDocumentProgress() {
+                let uploaded = requiredDocs.filter(doc => docStatus[doc].uploaded).length;
+                const total = requiredDocs.length;
+                document.getElementById('docProgress').style.width = `${(uploaded/total)*100}%`;
+                document.getElementById('docCount').textContent = `${uploaded}/${total} documents uploaded`;
+                document.getElementById('docStatusText').textContent = uploaded === total ? '✅ All documents verified' : '⏳ Pending verification';
+            }
+
+            // ─── UPLOAD FUNCTIONS ────────────────────────────────────
+            async function uploadFile(file, bucket, path) {
+                const { data, error } = await supabase.storage.from(bucket).upload(path, file);
+                if (error) throw error;
+                const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
+                return publicUrl;
+            }
+
+            window.handleImageUpload = async function(input, slot) {
+                const file = input.files[0];
+                if (!file) return;
+                const item = input.closest('.upload-item');
+                const statusEl = item.querySelector('.file-status');
+                statusEl.className = 'file-status uploading';
+                statusEl.textContent = '⏳ Uploading...';
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) throw new Error('Please login again');
+                    const path = `inspections/${user.id}/${slot}_${Date.now()}_${file.name}`;
+                    const publicUrl = await uploadFile(file, 'inspection-images', path);
+                    imageStatus[slot].uploaded = true;
+                    imageStatus[slot].publicUrl = publicUrl;
+                    imageUrls[slot] = publicUrl;
+                    statusEl.className = 'file-status uploaded';
+                    statusEl.textContent = '✅ Uploaded';
+                    // Show preview
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        let preview = item.querySelector('.preview');
+                        if (!preview) {
+                            preview = document.createElement('img');
+                            preview.className = 'preview';
+                            item.prepend(preview);
+                        }
+                        preview.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                    updateValidationSummary();
+                    showToast(`✅ ${slot} uploaded successfully`);
+                } catch (e) {
+                    console.error(e);
+                    statusEl.className = 'file-status error';
+                    statusEl.textContent = '❌ Error';
+                    showToast('Upload failed: ' + e.message, 'error');
+                }
+            };
+
+            // Document upload handler
+            function handleDocumentUpload(input, docKey) {
+                const file = input.files[0];
+                if (!file) return;
+                const statusEl = document.getElementById(`doc-${docKey}-status`);
+                const badgeEl = document.getElementById(`doc-${docKey}-badge`);
+                statusEl.textContent = 'Uploading...';
+                badgeEl.className = 'doc-status-badge pending';
+                badgeEl.textContent = '⏳ Uploading';
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    try {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (!user) throw new Error('Please login again');
+                        const path = `inspections/${user.id}/${docKey}_${Date.now()}_${file.name}`;
+                        const publicUrl = await uploadFile(file, 'inspection-documents', path);
+                        docStatus[docKey].uploaded = true;
+                        docStatus[docKey].publicUrl = publicUrl;
+                        docUrls[docKey] = publicUrl;
+                        statusEl.textContent = '✅ Verified';
+                        badgeEl.className = 'doc-status-badge verified';
+                        badgeEl.textContent = '✅ Verified';
+                        updateValidationSummary();
+                        updateDocumentProgress();
+                        showToast(`✅ ${docKey} document uploaded`);
+                    } catch (e) {
+                        statusEl.textContent = '❌ Error';
+                        badgeEl.className = 'doc-status-badge error';
+                        badgeEl.textContent = '❌ Error';
+                        showToast('Upload failed: ' + e.message, 'error');
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+
+            // ─── BIND DOCUMENT UPLOADS ──────────────────────────────
+            document.getElementById('docLogbook').addEventListener('change', function() { handleDocumentUpload(this, 'logbook'); });
+            document.getElementById('docId').addEventListener('change', function() { handleDocumentUpload(this, 'id'); });
+            document.getElementById('docKra').addEventListener('change', function() { handleDocumentUpload(this, 'kra'); });
+            document.getElementById('docInsurance').addEventListener('change', function() { handleDocumentUpload(this, 'insurance'); });
+            document.getElementById('docService').addEventListener('change', function() { handleDocumentUpload(this, 'service'); });
 
             // ─── MAKE-MODEL SYNC ────────────────────────────────────
             document.getElementById('vehicleMake').addEventListener('change', function() {
@@ -478,6 +624,12 @@
                     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
                     document.getElementById(`tab-${tabId}`).classList.remove('hidden');
                 });
+            });
+
+            // ─── PRICE UPDATE ON PURPOSE CHANGE ────────────────────
+            document.getElementById('inspectionPurpose').addEventListener('change', function() {
+                const price = pricingMap[this.value] || 3500;
+                document.getElementById('priceDisplay').textContent = `KES ${price.toLocaleString()}`;
             });
 
             // ─── GENERATE INSPECTION SCORES ──────────────────────
@@ -499,16 +651,14 @@
 
             // ─── GENERATE INSPECTION REPORT ──────────────────────
             function generateInspectionReport(data) {
-                // This can be expanded with real logic; for now we use a simulation based on condition scores
                 const scores = {
-                    exterior: Math.round((data.paint + data.chassis + data.accidentScore) / 3 * 10) / 10,
+                    exterior: Math.round((data.paint + data.chassis + (data.accident === 'None' ? 10 : data.accident === 'Minor' ? 7 : data.accident === 'Moderate' ? 4 : 2)) / 3 * 10) / 10,
                     interior: data.interior,
                     mechanical: Math.round((data.engine + data.trans + data.susp + data.brake) / 4 * 10) / 10,
                     electrical: data.electronics,
-                    safety: Math.round((data.brake + data.tyreScore + data.accidentScore) / 3 * 10) / 10,
+                    safety: Math.round((data.brake + Math.min(data.tyreDepth/10*10, 10) + (data.accident === 'None' ? 10 : data.accident === 'Minor' ? 7 : data.accident === 'Moderate' ? 4 : 2)) / 3 * 10) / 10,
                     overall: data.overall
                 };
-                // Adjust for accident
                 const accidentFactor = { 'None': 1.0, 'Minor': 0.9, 'Moderate': 0.7, 'Major': 0.5 };
                 scores.overall = Math.round(scores.overall * (0.8 + 0.2 * accidentFactor[data.accident]));
 
@@ -536,7 +686,7 @@
 
                 const missingImages = requiredImages.filter(slot => !imageStatus[slot].uploaded);
                 if (missingImages.length > 0) {
-                    showMessage(`Please upload all 18 images. Missing: ${missingImages.join(', ')}`, 'error');
+                    showMessage(`Please upload all ${requiredImages.length} images. Missing: ${missingImages.join(', ')}`, 'error');
                     document.querySelectorAll('.inspection-tab').forEach(t => t.classList.remove('active'));
                     document.querySelector('[data-tab="images"]').classList.add('active');
                     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -546,7 +696,7 @@
 
                 const missingDocs = requiredDocs.filter(doc => !docStatus[doc].uploaded);
                 if (missingDocs.length > 0) {
-                    showMessage(`Please upload all 5 documents. Missing: ${missingDocs.join(', ')}`, 'error');
+                    showMessage(`Please upload all ${requiredDocs.length} documents. Missing: ${missingDocs.join(', ')}`, 'error');
                     document.querySelectorAll('.inspection-tab').forEach(t => t.classList.remove('active'));
                     document.querySelector('[data-tab="documents"]').classList.add('active');
                     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -554,7 +704,6 @@
                     return;
                 }
 
-                // Validate inspector fields
                 const inspectorName = document.getElementById('inspectorName').value.trim();
                 const inspectorCreds = document.getElementById('inspectorCredentials').value.trim();
                 const inspectorSig = document.getElementById('inspectorSignature').value.trim();
@@ -571,11 +720,10 @@
 
                 try {
                     const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) {
-                        showMessage('Please login again', 'error');
-                        window.location.href = "login.html";
-                        return;
-                    }
+                    if (!user) throw new Error('Please login again');
+
+                    const purpose = document.getElementById('inspectionPurpose').value;
+                    const price = pricingMap[purpose] || 3500;
 
                     const conditionData = calculateConditionScores();
                     const report = generateInspectionReport(conditionData);
@@ -597,7 +745,8 @@
                         inspection_location: document.getElementById('inspectionLocation').value,
                         phone: document.getElementById('inspectionPhone').value || '',
                         notes: document.getElementById('inspectionNotes').value || '',
-                        amount: 3500,
+                        purpose: purpose,
+                        amount: price,
                         payment_status: 'paid',
                         status: 'completed',
                         image_count: requiredImages.filter(slot => imageStatus[slot].uploaded).length,
@@ -643,6 +792,7 @@
                             <span class="badge-methodology">🔍 ${inspectionData.inspection_type}</span>
                             <span class="badge-methodology">📅 ${new Date(inspectionData.inspection_date).toLocaleDateString()}</span>
                             <span class="badge-methodology" style="background:${confidenceColor}; color:#000;">Confidence ${confidence}%</span>
+                            <span class="badge-methodology" style="background:#eab308; color:#000;">${purpose}</span>
                         </div>
                         <div class="result-value">${report.scores.overall.toFixed(1)} / 10</div>
                         <p style="color:#eab308; font-weight:600;">Overall Vehicle Health Score</p>
@@ -674,6 +824,8 @@
                             <div class="item"><span class="label">Location</span><span class="value">${inspectionData.inspection_location}</span></div>
                             <div class="item"><span class="label">Vehicle</span><span class="value">${make} ${model} (${year})</span></div>
                             <div class="item"><span class="label">Odometer</span><span class="value">${inspectionData.odometer.toLocaleString()} km</span></div>
+                            <div class="item"><span class="label">Purpose</span><span class="value">${purpose}</span></div>
+                            <div class="item"><span class="label">Amount</span><span class="value green">${formatKES(price)}</span></div>
                         </div>
                         <div class="qr-container">
                             <span style="color:#000; font-weight:600;">🔍 Verify with QR</span>
@@ -703,6 +855,11 @@
                 } finally {
                     showLoading(false);
                 }
+            }
+
+            // ─── FORMAT KES ─────────────────────────────────────────
+            function formatKES(amount) {
+                return new Intl.NumberFormat('en-KE', { style:'currency', currency:'KES', minimumFractionDigits:0 }).format(amount || 0);
             }
 
             // ─── DOWNLOAD PDF REPORT ──────────────────────────────
@@ -773,14 +930,16 @@
                 document.getElementById('vehicleModel').innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
 
                 document.getElementById('inspectionDate').valueAsDate = new Date();
+                // Set initial price
+                const purpose = document.getElementById('inspectionPurpose').value;
+                document.getElementById('priceDisplay').textContent = `KES ${(pricingMap[purpose] || 3500).toLocaleString()}`;
 
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) window.location.href = 'login.html';
+                document.getElementById('inspectorName').value = user?.user_metadata?.full_name || user?.email || 'Inspector';
+
                 updateValidationSummary();
                 updateDocumentProgress();
-
-                // Prefill inspector with user info
-                document.getElementById('inspectorName').value = user?.user_metadata?.full_name || user?.email || 'Inspector';
             }
             init();
         })();
