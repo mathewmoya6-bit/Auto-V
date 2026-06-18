@@ -154,3 +154,82 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
         return response.json()
     except Exception as e:
         raise Exception(f"Failed to query payment status: {str(e)}")
+
+# ─── ADD THIS FUNCTION ──────────────────────────────────────
+def handle_mpesa_callback(callback_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle M-Pesa callback from Safaricom.
+    
+    Args:
+        callback_data: The full callback payload from M-Pesa
+    
+    Returns:
+        Dict with ResultCode and ResultDesc
+    """
+    try:
+        # Extract the stkCallback from the callback data
+        stk_callback = callback_data.get('Body', {}).get('stkCallback', {})
+        
+        if not stk_callback:
+            logger.error("Invalid callback structure: missing stkCallback")
+            return {'ResultCode': 1, 'ResultDesc': 'Invalid callback structure'}
+        
+        checkout_id = stk_callback.get('CheckoutRequestID')
+        result_code = stk_callback.get('ResultCode')
+        result_desc = stk_callback.get('ResultDesc')
+        transaction_id = stk_callback.get('TransactionID')
+        
+        logger.info(f"📥 Processing callback - CheckoutID: {checkout_id}, ResultCode: {result_code}")
+        
+        if not checkout_id:
+            logger.error("Callback missing CheckoutRequestID")
+            return {'ResultCode': 1, 'ResultDesc': 'Missing CheckoutRequestID'}
+        
+        # Get the payment record from Supabase
+        supabase = get_supabase()
+        
+        response = supabase.table('payments')\
+            .select('*')\
+            .eq('mpesa_checkout_id', checkout_id)\
+            .execute()
+        
+        if not response.data:
+            logger.error(f"Payment not found for CheckoutRequestID: {checkout_id}")
+            return {'ResultCode': 1, 'ResultDesc': 'Payment not found'}
+        
+        payment = response.data[0]
+        payment_id = payment['id']
+        
+        # Idempotency check - skip if already completed
+        if payment.get('status') == 'completed':
+            logger.info(f"Payment {payment_id} already completed. Skipping duplicate callback.")
+            return {'ResultCode': 0, 'ResultDesc': 'Success'}
+        
+        # Update payment status based on result code
+        if str(result_code) == '0':
+            # Success
+            update_data = {
+                'status': 'completed',
+                'mpesa_result_code': result_code,
+                'mpesa_result_desc': result_desc,
+                'transaction_id': transaction_id,
+                'completed_at': datetime.now().isoformat()
+            }
+            logger.info(f"✅ Payment {payment_id} completed successfully. Transaction ID: {transaction_id}")
+        else:
+            # Failed (including user cancelled - result_code 1037)
+            update_data = {
+                'status': 'failed',
+                'mpesa_result_code': result_code,
+                'mpesa_result_desc': result_desc
+            }
+            logger.warning(f"❌ Payment {payment_id} failed: {result_desc} (Code: {result_code})")
+        
+        # Update the payment record
+        supabase.table('payments').update(update_data).eq('id', payment_id).execute()
+        
+        return {'ResultCode': 0, 'ResultDesc': 'Success'}
+        
+    except Exception as e:
+        logger.error(f"Error processing callback: {e}", exc_info=True)
+        return {'ResultCode': 1, 'ResultDesc': f'Error: {str(e)}'}
