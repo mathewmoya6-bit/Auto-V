@@ -369,7 +369,27 @@
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
             // ─── BACKEND API URL ──────────────────────────────────
-            const API_BASE = 'https://your-backend.com/api'; // <-- CHANGE to your actual backend URL
+            // ⚠️ CHANGE THIS TO YOUR ACTUAL BACKEND URL
+            const API_BASE = 'https://auto-v.onrender.com/api'; // e.g., 'https://your-backend.onrender.com/api'
+            
+            // ─── TOKEN HELPER ──────────────────────────────────────
+            function getAuthToken() {
+                return localStorage.getItem('autoV_token');
+            }
+            
+            function setAuthToken(token) {
+                if (token) {
+                    localStorage.setItem('autoV_token', token);
+                } else {
+                    localStorage.removeItem('autoV_token');
+                }
+            }
+            
+            // ─── AUTH HEADER HELPER ──────────────────────────────
+            function getAuthHeaders() {
+                const token = getAuthToken();
+                return token ? { 'Authorization': `Bearer ${token}` } : {};
+            }
             
             let currentUser = null;
             let selectedService = null;
@@ -541,7 +561,7 @@
             }
 
             // ============================================
-            // LOGIN HANDLER
+            // LOGIN HANDLER (stores token)
             // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
@@ -569,6 +589,15 @@
                     
                     currentUser = data.user;
                     const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+                    
+                    // ─── STORE JWT TOKEN ──────────────────────────
+                    const token = data.session?.access_token;
+                    if (token) {
+                        setAuthToken(token);
+                        console.log('✅ JWT token stored');
+                    } else {
+                        console.warn('⚠️ No access token in session');
+                    }
                     
                     localStorage.setItem('autoV_user', JSON.stringify({ 
                         id: currentUser.id, 
@@ -665,6 +694,9 @@
                                 email: currentUser.email,
                                 name: name || email.split('@')[0]
                             }));
+                            // Store token after signup as well
+                            const token = loginData.session?.access_token;
+                            if (token) setAuthToken(token);
                             document.getElementById('custEmail').value = email;
                             if (name) document.getElementById('custName').value = name;
                             document.getElementById('welcomeBanner').style.display = 'block';
@@ -682,7 +714,7 @@
             }
 
             // ============================================
-            // PAYMENT HANDLER - REAL M-PESA INTEGRATION
+            // PAYMENT HANDLER - REAL M-PESA WITH JWT
             // ============================================
             async function processPayment(e) {
                 e.preventDefault();
@@ -716,7 +748,13 @@
                         return;
                     }
                     
-                    // 2. Create payment record (pending)
+                    // 2. Get stored token
+                    const token = getAuthToken();
+                    if (!token) {
+                        throw new Error('Authentication token missing. Please login again.');
+                    }
+                    
+                    // 3. Create payment record (pending)
                     const price = selectedService === 'valuation' ? valuationFee : inspectionFee;
                     const { data: payment, error } = await supabase.from('payments').insert({
                         user_id: user.id,
@@ -732,13 +770,16 @@
                     if (error) throw error;
                     currentPaymentId = payment.id;
                     
-                    // 3. Call backend to initiate STK Push
+                    // 4. Call backend to initiate STK Push (with token)
                     setPaymentStatus('processing', '📲 Sending STK Push to your phone...');
                     payBtn.innerHTML = '<span class="spinner"></span> Sending STK Push...';
                     
-                    const response = await fetch(`${API_BASE}/mpesa/stkpush`, {
+                    const response = await fetch(`${API_BASE}/payments/initiate`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`   // ✅ JWT included
+                        },
                         body: JSON.stringify({
                             payment_id: payment.id,
                             phone: mpesaPhone,
@@ -756,7 +797,7 @@
                     const stkResult = await response.json();
                     console.log('STK Push response:', stkResult);
                     
-                    // 4. Poll for payment status
+                    // 5. Poll for payment status
                     setPaymentStatus('processing', '⏳ Waiting for payment confirmation...');
                     payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
                     
@@ -768,6 +809,7 @@
                     paymentPollInterval = setInterval(async () => {
                         attempts++;
                         try {
+                            // Poll via Supabase or backend – here we poll Supabase
                             const { data: updatedPayment, error: pollError } = await supabase
                                 .from('payments')
                                 .select('status')
@@ -953,6 +995,16 @@
             }
 
             // ============================================
+            // LOGOUT - clear token
+            // ============================================
+            document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                setAuthToken(null); // clear stored token
+                localStorage.removeItem('autoV_user');
+                window.location.href = "login.html";
+            });
+
+            // ============================================
             // EVENT LISTENERS
             // ============================================
             document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
@@ -980,11 +1032,6 @@
             
             document.getElementById('newRequestBtn')?.addEventListener('click', () => window.location.reload());
             document.getElementById('goToDashboardBtn')?.addEventListener('click', () => window.location.href = 'dashboard.html');
-            document.getElementById('logoutBtn')?.addEventListener('click', async () => { 
-                await supabase.auth.signOut(); 
-                localStorage.removeItem('autoV_user');
-                window.location.href = "login.html"; 
-            });
             
             document.getElementById('showSignup')?.addEventListener('click', () => {
                 document.getElementById('signupSection').style.display = 'block';
@@ -1017,6 +1064,11 @@
                         document.getElementById('custEmail').value = user.email;
                         if (user.user_metadata?.full_name) {
                             document.getElementById('custName').value = user.user_metadata.full_name;
+                        }
+                        // Also try to restore token (if still valid)
+                        if (!getAuthToken()) {
+                            // Could attempt to refresh token, but Supabase manages this automatically
+                            console.log('No token in localStorage; session will be refreshed on next API call.');
                         }
                         showStep(2);
                     } else {
