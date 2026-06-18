@@ -1,5 +1,10 @@
-# api/intelligence.py – AUTO-V Intelligence Layer (FIXED)
+# api/intelligence.py – AUTO-V Intelligence Layer (FULLY FIXED)
+
+# ─── LOGGER MUST BE DEFINED FIRST ──────────────────────────
 import logging
+logger = logging.getLogger(__name__)
+
+# ─── NOW SAFE TO IMPORT OTHER MODULES ──────────────────────
 import traceback
 import math
 from datetime import datetime
@@ -7,10 +12,7 @@ from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
 from api.auth_middleware import require_auth
 
-# ─── LOGGER MUST BE DEFINED FIRST ──────────────────────────
-logger = logging.getLogger(__name__)
-
-# ─── SAFE IMPORTS ────────────────────────────────────────────
+# ─── SAFE IMPORTS (logger is now defined) ──────────────────
 try:
     from services.valuation_engine import calculate_value
 except ImportError as e:
