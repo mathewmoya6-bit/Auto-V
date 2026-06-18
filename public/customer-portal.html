@@ -109,7 +109,7 @@
 
         <div class="progress-bar">
             <div class="progress-step" id="step1Prog" data-step="1">1. Login</div>
-            <div class="progress-step" id="step2Prog" data-step="2">2. Client Detail</div>
+            <div class="progress-step" id="step2Prog" data-step="2">2. Client Details</div>
             <div class="progress-step" id="step3Prog" data-step="3">3. Service</div>
             <div class="progress-step" id="step4Prog" data-step="4">4. Purpose</div>
             <div class="progress-step" id="step5Prog" data-step="5">5. Payment</div>
@@ -139,14 +139,30 @@
             <div class="dashboard-link"><a href="dashboard.html">← Back to Dashboard</a></div>
         </div>
 
-        <!-- STEP 2: CLIENT DETAIL -->
+        <!-- STEP 2: CLIENT DETAIL with Individual/Corporate -->
         <div id="step2" class="card step">
             <h2>👤 Client Details</h2>
             <form id="clientForm">
-                <div class="form-group"><label class="required">Full Name</label><input type="text" id="custName" placeholder="John Doe" autocomplete="name"></div>
-                <div class="form-group"><label class="required">ID / Passport</label><input type="text" id="custId" placeholder="ID number"></div>
-                <div class="form-group"><label class="required">Phone Number</label><input type="tel" id="custPhone" placeholder="0712345678" autocomplete="tel"></div>
-                <div class="form-group"><label class="required">Email Address</label><input type="email" id="custEmail" placeholder="john@example.com" autocomplete="email"></div>
+                <div class="form-group">
+                    <label class="required">Customer Type</label>
+                    <select id="customerType" required>
+                        <option value="individual">Individual</option>
+                        <option value="corporate">Corporate</option>
+                    </select>
+                </div>
+                <div class="form-group"><label class="required">Full Name</label><input type="text" id="custName" placeholder="John Doe" autocomplete="name" required></div>
+                <div class="form-group"><label class="required">ID / Passport</label><input type="text" id="custId" placeholder="ID number" required></div>
+                <div class="form-group"><label class="required">Phone Number</label><input type="tel" id="custPhone" placeholder="0712345678" autocomplete="tel" required></div>
+                <div class="form-group"><label class="required">Email Address</label><input type="email" id="custEmail" placeholder="john@example.com" autocomplete="email" required></div>
+
+                <!-- Corporate Fields (hidden by default) -->
+                <div id="corporateFields" style="display:none; border-top:1px solid #334155; padding-top:15px; margin-top:15px;">
+                    <h3 style="color:#eab308; font-size:16px; margin-bottom:15px;">🏢 Corporate Information</h3>
+                    <div class="form-group"><label class="required">Company Name</label><input type="text" id="companyName" placeholder="ABC Limited"></div>
+                    <div class="form-group"><label>Business Registration Number</label><input type="text" id="businessReg" placeholder="PVT-2024-12345"></div>
+                    <div class="form-group"><label>Contact Person</label><input type="text" id="contactPerson" placeholder="Contact person name"></div>
+                </div>
+
                 <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToLogin">← Back</button><button type="submit" class="btn btn-primary">Next →</button></div>
             </form>
             <div class="dashboard-link"><a href="dashboard.html">← Back to Dashboard</a></div>
@@ -156,7 +172,6 @@
         <div id="step3" class="card step">
             <h2>🔧 Choose Service <span id="feeUpdateBadge" class="fee-updated-badge">🔄 Updated</span></h2>
             <div class="service-cards">
-                <!-- NEW: Instant Value Check -->
                 <div class="service-card" data-service="instant">
                     <div class="service-icon">💡</div>
                     <h3>AutoV Instant Value Check</h3>
@@ -259,7 +274,6 @@
                 <div class="form-group"><label>Fuel Type</label><select id="vehicleFuel"><option>Petrol</option><option>Diesel</option><option>Electric</option><option>Hybrid</option></select></div>
                 <div class="form-group"><label>Location (County)</label><select id="vehicleLocation"><option>Nairobi</option><option>Mombasa</option><option>Kisumu</option><option>Nakuru</option><option>Eldoret</option><option>Thika</option><option>Other</option></select></div>
                 
-                <!-- Photo Uploads (only for instant check, these are optional) -->
                 <div style="margin:20px 0;">
                     <label style="font-weight:700;color:#eab308;">📸 Upload Evidence (Optional for Instant Check, Required for formal services)</label>
                     <div class="photo-grid">
@@ -296,7 +310,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL – WITH INSTANT VALUE CHECK
+        // AUTO-V CUSTOMER PORTAL – WITH INDIVIDUAL/CORPORATE CLIENT DETAILS
         // ============================================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
@@ -310,9 +324,7 @@
 
             // ─── PURPOSE OPTIONS PER SERVICE ──────────────────────────
             const purposeOptions = {
-                instant: [
-                    "Instant Market Estimate"
-                ],
+                instant: ["Instant Market Estimate"],
                 valuation: [
                     "Insurance Valuation",
                     "Bank / Logbook Loan Valuation",
@@ -855,16 +867,32 @@
                 const fuel = document.getElementById('vehicleFuel').value;
                 const location = document.getElementById('vehicleLocation').value;
 
+                // Client details (including corporate fields)
+                const customerType = document.getElementById('customerType').value;
+                const fullName = document.getElementById('custName').value.trim();
+                const idNumber = document.getElementById('custId').value.trim();
+                const phone = document.getElementById('custPhone').value.trim();
+                const email = document.getElementById('custEmail').value.trim();
+                const companyName = document.getElementById('companyName').value.trim();
+                const businessReg = document.getElementById('businessReg').value.trim();
+                const contactPerson = document.getElementById('contactPerson').value.trim();
+
+                if (!fullName || !idNumber || !phone || !email) {
+                    showMessage('Please fill all required client details', 'error');
+                    return;
+                }
+                if (customerType === 'corporate' && !companyName) {
+                    showMessage('Please enter the company name', 'error');
+                    return;
+                }
+
                 if (!make || !model || !year) { showMessage('Fill all required vehicle details', 'error'); return; }
                 if (isNaN(odometer) || odometer < 0 || odometer > 2000000) {
                     showMessage('Odometer must be between 0 and 2,000,000 km', 'error');
                     return;
                 }
 
-                // For instant check, files are optional, but for others they may be required by backend
-                // We'll let backend decide; we just pass them if provided.
                 const fileInputs = ['frontPhoto', 'rearPhoto', 'interiorPhoto', 'odometerPhoto', 'logbookPhoto'];
-                // Validate size only if files are provided
                 for (const id of fileInputs) {
                     const file = document.getElementById(id).files[0];
                     if (file) { try { validateFileSize(file, 5); } catch (e) { showMessage(e.message, 'error'); return; } }
@@ -893,9 +921,15 @@
                     formData.append('location', location);
                     formData.append('service', selectedService);
                     formData.append('purpose', selectedPurpose);
-                    formData.append('customer_name', document.getElementById('custName').value);
-                    formData.append('customer_phone', document.getElementById('custPhone').value);
-                    formData.append('customer_email', document.getElementById('custEmail').value);
+                    // Client details
+                    formData.append('customer_type', customerType);
+                    formData.append('customer_name', fullName);
+                    formData.append('customer_id', idNumber);
+                    formData.append('customer_phone', phone);
+                    formData.append('customer_email', email);
+                    formData.append('company_name', companyName);
+                    formData.append('business_reg', businessReg);
+                    formData.append('contact_person', contactPerson);
                     formData.append('payment_id', currentPaymentId);
 
                     const response = await fetch(`${API_BASE}/service-requests`, {
@@ -910,10 +944,8 @@
 
                     let serviceName = selectedService.charAt(0).toUpperCase() + selectedService.slice(1);
 
-                    // Different display for Instant Value Check
                     let resultsHTML = '';
                     if (selectedService === 'instant') {
-                        // Expecting result fields: low_value, average_value, high_value, confidence, region, disclaimer
                         resultsHTML = `
                             <div style="margin-bottom:20px;">
                                 <span class="badge" style="background:#22c55e;color:#000;padding:4px 16px;border-radius:30px;font-weight:600;">💡 Instant Estimate</span>
@@ -943,7 +975,6 @@
                             </div>
                         `;
                     } else {
-                        // Standard valuation/inspection result
                         resultsHTML = `
                             <div style="margin-bottom:20px;">
                                 <span class="badge" style="background:#22c55e;color:#000;padding:4px 16px;border-radius:30px;font-weight:600;">✅ ${serviceName} Complete</span>
@@ -1021,6 +1052,19 @@
                 } catch (err) { showMessage('Download error: ' + err.message, 'error'); }
             }
 
+            // ─── TOGGLE CORPORATE FIELDS ────────────────────────────
+            function toggleCorporateFields() {
+                const type = document.getElementById('customerType').value;
+                const corporateDiv = document.getElementById('corporateFields');
+                if (type === 'corporate') {
+                    corporateDiv.style.display = 'block';
+                    // Auto-fill contact person with full name
+                    document.getElementById('contactPerson').value = document.getElementById('custName').value;
+                } else {
+                    corporateDiv.style.display = 'none';
+                }
+            }
+
             // ─── EVENT LISTENERS ─────────────────────────────────────
             document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
             document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
@@ -1056,6 +1100,15 @@
             });
             document.getElementById('hideSignup')?.addEventListener('click', () => {
                 document.getElementById('signupSection').style.display = 'none';
+            });
+
+            // Customer type toggle
+            document.getElementById('customerType')?.addEventListener('change', toggleCorporateFields);
+            // Auto-fill contact person when full name changes
+            document.getElementById('custName')?.addEventListener('input', function() {
+                if (document.getElementById('customerType').value === 'corporate') {
+                    document.getElementById('contactPerson').value = this.value;
+                }
             });
 
             // ─── SERVICE SELECTION ──────────────────────────────────
@@ -1115,6 +1168,9 @@
                 // Subscribe to real-time fee changes
                 realtimeChannel = subscribeToFeeChanges();
                 feeInterval = setInterval(loadFees, 30000);
+
+                // Toggle corporate fields on load
+                toggleCorporateFields();
 
                 await checkExistingSession();
                 if (!document.querySelector('.step.active')) {
