@@ -148,7 +148,7 @@
             <div class="dashboard-link"><a href="dashboard.html">← Back to Dashboard</a></div>
         </div>
 
-        <!-- STEP 2: CLIENT DETAIL with Individual/Corporate -->
+        <!-- STEP 2: CLIENT DETAIL -->
         <div id="step2" class="card step">
             <h2>👤 Client Details</h2>
             <form id="clientForm">
@@ -282,7 +282,6 @@
                 <div class="form-group"><label>Fuel Type</label><select id="vehicleFuel"><option>Petrol</option><option>Diesel</option><option>Electric</option><option>Hybrid</option></select></div>
                 <div class="form-group"><label>Location (County)</label><select id="vehicleLocation"><option>Nairobi</option><option>Mombasa</option><option>Kisumu</option><option>Nakuru</option><option>Eldoret</option><option>Thika</option><option>Other</option></select></div>
 
-                <!-- Purpose-specific fields container -->
                 <div id="purposeFieldsContainer" style="margin-top:20px; border-top:1px solid #334155; padding-top:15px; display:none;">
                     <h3 style="color:#eab308; font-size:16px;">📋 Purpose-Specific Information</h3>
                     <div id="purposeFields" class="row"></div>
@@ -324,7 +323,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL – WITH REAL-TIME FEE UPDATES
+        // AUTO-V CUSTOMER PORTAL – FULL REALTIME FEE SYNC (FIXED)
         // ============================================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
@@ -507,7 +506,7 @@
                 }
             };
 
-            // ─── DEFAULT FEES ──────────────────────────────────────────
+            // ─── FEES ──────────────────────────────────────────────────
             let instantFee = 500;
             let mileageFee = 1500;
             let fleetFee = 4000;
@@ -709,20 +708,35 @@
             // ─── FEE LOADING ──────────────────────────────────────────
             async function loadFees() {
                 try {
+                    // Load ALL fee-related settings
                     const { data, error } = await supabase
                         .from('system_settings')
                         .select('setting_key, setting_value')
-                        .in('setting_key', [
-                            'instant_fee', 'mileage_fee', 'fleet_fee', 'verification_fee'
-                        ]);
+                        .ilike('setting_key', '%_fee');  // Get all keys ending with _fee
+
                     if (error) throw error;
                     const map = {};
                     data.forEach(row => map[row.setting_key] = row.setting_value);
+
+                    // Update flat fees
                     instantFee = parseInt(map.instant_fee) || 500;
                     mileageFee = parseInt(map.mileage_fee) || 1500;
                     fleetFee = parseInt(map.fleet_fee) || 4000;
                     verificationFee = parseInt(map.verification_fee) || 1000;
-                } catch (e) { console.warn('Using default fees', e); }
+
+                    // Update purpose-specific fees
+                    for (const service of ['valuation', 'inspection', 'assessment']) {
+                        for (const purpose of Object.keys(purposePrices[service] || {})) {
+                            const key = `${service}_${purpose.toLowerCase().replace(/[^a-z0-9]/g, '_')}_fee`;
+                            if (map[key]) {
+                                purposePrices[service][purpose] = parseInt(map[key]);
+                            }
+                        }
+                    }
+
+                } catch (e) { console.warn('Error loading fees:', e); }
+
+                // Update display
                 document.getElementById('instantPriceDisplay').textContent = `KES ${Number(instantFee || 0).toLocaleString()}`;
                 document.getElementById('valuationPriceDisplay').textContent = 'KES 2,500 – 4,000';
                 document.getElementById('inspectionPriceDisplay').textContent = 'KES 2,000 – 3,500';
@@ -730,31 +744,56 @@
                 document.getElementById('mileagePriceDisplay').textContent = `KES ${Number(mileageFee || 0).toLocaleString()}`;
                 document.getElementById('fleetPriceDisplay').textContent = `KES ${Number(fleetFee || 0).toLocaleString()}`;
                 document.getElementById('verificationPriceDisplay').textContent = `KES ${Number(verificationFee || 0).toLocaleString()}`;
-                if (selectedService) updateSummary();
+
+                // Re-render purpose fees if a service is selected
+                if (selectedService) {
+                    renderPurposeFees(selectedService);
+                }
+                if (selectedService && selectedPurpose) {
+                    updateSummary();
+                }
             }
 
             // ─── REAL-TIME FEE UPDATES ──────────────────────────────
             function subscribeToFeeChanges() {
+                console.log('🔄 Subscribing to fee changes...');
+                
                 const channel = supabase
                     .channel('system_settings_changes')
-                    .on('postgres_changes', { 
-                        event: 'UPDATE', 
-                        schema: 'public', 
-                        table: 'system_settings' 
-                    }, (payload) => {
-                        const keys = ['instant_fee', 'mileage_fee', 'fleet_fee', 'verification_fee'];
-                        if (keys.includes(payload.new.setting_key)) {
-                            console.log('Fee updated:', payload);
-                            loadFees(); // Reload fees when they change
-                            const badge = document.getElementById('feeUpdateBadge');
-                            if (badge) {
-                                badge.classList.add('show');
-                                setTimeout(() => badge.classList.remove('show'), 3000);
+                    .on(
+                        'postgres_changes',
+                        {
+                            event: 'UPDATE',
+                            schema: 'public',
+                            table: 'system_settings'
+                        },
+                        (payload) => {
+                            console.log('📢 Received change:', payload);
+                            // Check if it's a fee-related key
+                            if (payload.new.setting_key && payload.new.setting_key.includes('_fee')) {
+                                console.log('🔄 Fee updated, reloading all fees...');
+                                loadFees(); // Reload ALL fees
+                                const badge = document.getElementById('feeUpdateBadge');
+                                if (badge) {
+                                    badge.classList.add('show');
+                                    setTimeout(() => badge.classList.remove('show'), 3000);
+                                }
                             }
                         }
-                    })
-                    .subscribe();
+                    )
+                    .subscribe((status) => {
+                        console.log('📡 Realtime status:', status);
+                    });
+                
                 return channel;
+            }
+
+            // ─── RENDER PURPOSE FEES ─────────────────────────────────
+            function renderPurposeFees(service) {
+                const container = document.getElementById('purposeFields');
+                if (!container) return;
+                // This is just for display in the purpose section
+                // The actual prices are in purposePrices[service]
             }
 
             // ─── UPDATE PURPOSE LIST ────────────────────────────────
@@ -769,9 +808,7 @@
                         document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
                         item.classList.add('selected');
                         selectedPurpose = item.dataset.purpose;
-                        // Render purpose-specific fields
                         renderPurposeFields(selectedService, selectedPurpose);
-                        // Update price summary
                         updateSummary();
                     };
                 });
@@ -781,7 +818,6 @@
                     renderPurposeFields(service, selectedPurpose);
                 } else {
                     selectedPurpose = null;
-                    // Hide purpose fields if no purpose selected
                     document.getElementById('purposeFieldsContainer').style.display = 'none';
                 }
                 updateSummary();
@@ -1069,7 +1105,6 @@
                 const fuel = document.getElementById('vehicleFuel').value;
                 const location = document.getElementById('vehicleLocation').value;
 
-                // Client details
                 const customerType = document.getElementById('customerType').value;
                 const fullName = document.getElementById('custName').value.trim();
                 const idNumber = document.getElementById('custId').value.trim();
@@ -1094,7 +1129,6 @@
                     return;
                 }
 
-                // Collect purpose-specific fields
                 const fields = purposeFields[selectedService]?.[selectedPurpose] || [];
                 const purposeData = {};
                 let hasMissing = false;
@@ -1105,9 +1139,7 @@
                         purposeData[f.key] = val;
                         if (f.required && !val) {
                             hasMissing = true;
-                            // Highlight the field
                             el.style.borderColor = '#ef4444';
-                            // Add a small error message under it
                             const errMsg = el.parentNode.querySelector('.field-error');
                             if (!errMsg) {
                                 const msg = document.createElement('span');
@@ -1125,10 +1157,6 @@
                 });
                 if (hasMissing) {
                     showMessage('Please fill all required purpose-specific fields.', 'error');
-                    // Show the purpose tab
-                    document.querySelectorAll('.inspection-tab').forEach(t => t.classList.remove('active'));
-                    document.querySelector('[data-tab="purpose"]')?.classList.add('active');
-                    // Scroll to purpose fields
                     document.getElementById('purposeFieldsContainer').scrollIntoView({ behavior: 'smooth', block: 'center' });
                     return;
                 }
@@ -1345,7 +1373,6 @@
                 document.getElementById('signupSection').style.display = 'none';
             });
 
-            // Customer type toggle
             document.getElementById('customerType')?.addEventListener('change', toggleCorporateFields);
             document.getElementById('custName')?.addEventListener('input', function() {
                 if (document.getElementById('customerType').value === 'corporate') {
@@ -1359,11 +1386,9 @@
                     document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
                     card.classList.add('selected');
                     selectedService = card.dataset.service;
-                    // Reset purpose and purpose fields
                     selectedPurpose = null;
                     document.getElementById('purposeFieldsContainer').style.display = 'none';
                     document.getElementById('purposeFields').innerHTML = '';
-                    // Clear any selected purpose in the list
                     document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
                     updateSummary();
                     let name = '';
@@ -1424,7 +1449,6 @@
                 }
                 document.getElementById('downloadReportBtn').style.display = 'none';
 
-                // Clean up on page unload
                 window.addEventListener('beforeunload', () => {
                     if (pollInterval) clearInterval(pollInterval);
                     if (feeInterval) clearInterval(feeInterval);
