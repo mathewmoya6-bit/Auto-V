@@ -8,7 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* ── same styles as before, keep for brevity ── */
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0a0c15; color: #fff; min-height: 100vh; }
         .header { background: linear-gradient(135deg, #0f172a 0%, #0a0c15 100%); border-bottom: 2px solid #eab308; padding: 16px 24px; position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
@@ -92,7 +91,9 @@
         .rate-card .effective { font-size: 10px; color: #64748b; margin-top: 8px; }
         .search-box { margin-bottom: 20px; }
         .search-box input { width: 100%; padding: 10px 16px; background: #1e293b; border: 1px solid #334155; border-radius: 12px; color: #fff; }
-        @media (max-width: 768px) { .container { padding: 16px; } .card { padding: 20px; } .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } .stat-number { font-size: 24px; } .row { grid-template-columns: 1fr; } .tab-btn { padding: 8px 12px; font-size: 11px; } th, td { font-size: 11px; padding: 8px; } }
+        .fee-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: center; background: #1e293b; padding: 16px; border-radius: 12px; margin-bottom: 12px; }
+        .fee-row .fee-label { color: #eab308; font-weight: 600; }
+        @media (max-width: 768px) { .container { padding: 16px; } .card { padding: 20px; } .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } .stat-number { font-size: 24px; } .row { grid-template-columns: 1fr; } .tab-btn { padding: 8px 12px; font-size: 11px; } th, td { font-size: 11px; padding: 8px; } .fee-row { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -128,7 +129,7 @@
             <button class="tab-btn active" data-tab="overview-tab">📊 Overview</button>
             <button class="tab-btn" data-tab="activities-tab">📋 Activities</button>
             <button class="tab-btn" data-tab="payments-tab">💳 Pending Payments</button>
-            <button class="tab-btn" data-tab="services-tab">🔧 Services</button>
+            <button class="tab-btn" data-tab="services-tab">🔧 Service Fees</button>
             <button class="tab-btn" data-tab="rates-tab">💰 Price Management</button>
             <button class="tab-btn" data-tab="users-tab">👥 Users</button>
             <button class="tab-btn" data-tab="requests-tab">📋 All Requests</button>
@@ -198,18 +199,32 @@
             </div>
         </div>
 
-        <!-- ─── SERVICES ─── -->
+        <!-- ─── SERVICE FEES ─── -->
         <div id="services-tab" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <h2>🔧 Manage Services</h2>
-                    <button class="btn btn-primary" id="addServiceBtn">+ Add Service</button>
+                    <h2>🔧 Service Fees</h2>
+                    <span style="color:#94a3b8;font-size:13px;">Updates reflect in customer portal instantly</span>
                 </div>
-                <div class="table-wrapper">
-                    <table>
-                        <thead><tr><th>Name</th><th>Description</th><th>Price (KES)</th><th>Status</th><th>Actions</th></tr></thead>
-                        <tbody id="servicesBody"><tr><td colspan="5" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading services...</td></tr></tbody>
-                    </table>
+                <div id="feeManagement">
+                    <div class="fee-row">
+                        <div class="fee-label">Valuation</div>
+                        <div><input type="number" id="feeValuation" step="100" class="form-control" style="width:100%;"></div>
+                        <div><button class="btn btn-success btn-sm" onclick="saveFee('valuation_fee','feeValuation')">💾 Save</button></div>
+                    </div>
+                    <div class="fee-row">
+                        <div class="fee-label">Inspection</div>
+                        <div><input type="number" id="feeInspection" step="100" class="form-control" style="width:100%;"></div>
+                        <div><button class="btn btn-success btn-sm" onclick="saveFee('inspection_fee','feeInspection')">💾 Save</button></div>
+                    </div>
+                    <div class="fee-row">
+                        <div class="fee-label">Mileage Verification</div>
+                        <div><input type="number" id="feeMileage" step="100" class="form-control" style="width:100%;"></div>
+                        <div><button class="btn btn-success btn-sm" onclick="saveFee('mileage_fee','feeMileage')">💾 Save</button></div>
+                    </div>
+                    <div style="margin-top:12px;color:#64748b;font-size:13px;text-align:center;">
+                        ⚡ Changes are saved to <code>system_settings</code> and pushed to customers in real time.
+                    </div>
                 </div>
             </div>
         </div>
@@ -262,24 +277,8 @@
         </div>
     </div>
 
-    <!-- ─── MODALS (unchanged) ─── -->
-    <div id="serviceModal" class="modal">
-        <div class="modal-content">
-            <h2 id="serviceModalTitle">Add Service</h2>
-            <form id="serviceForm">
-                <div class="form-group"><label>Service Name *</label><input type="text" id="serviceName" required></div>
-                <div class="form-group"><label>Description</label><textarea id="serviceDescription" rows="3"></textarea></div>
-                <div class="form-group"><label>Price (KES) *</label><input type="number" id="servicePrice" required></div>
-                <div class="form-group"><label>Status</label><select id="serviceStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
-                <input type="hidden" id="serviceEditId">
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('serviceModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Service</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
+    <!-- ─── MODALS ─── -->
+    <!-- User Modal -->
     <div id="userModal" class="modal">
         <div class="modal-content">
             <h2>Edit User</h2>
@@ -296,6 +295,7 @@
         </div>
     </div>
 
+    <!-- Payment Modal -->
     <div id="paymentModal" class="modal">
         <div class="modal-content">
             <h2>Payment Details</h2>
@@ -308,6 +308,7 @@
         </div>
     </div>
 
+    <!-- Confirm Modal -->
     <div id="confirmModal" class="modal">
         <div class="modal-content" style="max-width:450px;">
             <div style="text-align:center;padding:10px 0;">
@@ -326,7 +327,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V ADMIN DASHBOARD – FIXED TAB LOADING
+        // AUTO-V ADMIN DASHBOARD – FULL IMPLEMENTATION
         // ============================================================
 
         const SUPABASE_URL   = "https://tsvejnzxrxrrecgquxbq.supabase.co";
@@ -502,7 +503,6 @@
                     safeFetch('user_profiles')
                 ]);
 
-                // Check for errors
                 const errors = [];
                 if (valuations.error) errors.push('Valuations: ' + valuations.error);
                 if (inspections.error) errors.push('Inspections: ' + inspections.error);
@@ -735,98 +735,45 @@
                 });
         }
 
-        // ─── SERVICES CRUD ──────────────────────────────────────
-        async function loadServices() {
-            const tbody = document.getElementById('servicesBody');
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</td></tr>';
+        // ─── SERVICE FEES ──────────────────────────────────────────
+        async function loadServiceFees() {
             try {
-                const result = await safeFetch('services', { order: { column: 'name' } });
-                if (result.error) {
-                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${result.error}</td></tr>`;
-                    return;
-                }
-                const data = result.data;
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No services</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = data.map(s => `
-                    <tr>
-                        <td><strong>${s.name}</strong></td>
-                        <td>${s.description || '-'}</td>
-                        <td>${formatKES(s.price)}</td>
-                        <td><span class="badge badge-${s.status === 'active' ? 'active' : 'inactive'}">${s.status}</span></td>
-                        <td>
-                            <button class="btn btn-warning btn-sm" onclick="editService('${s.id}')">✏️</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteService('${s.id}')">🗑️</button>
-                        </td>
-                    </tr>
-                `).join('');
+                const { data, error } = await supabase
+                    .from('system_settings')
+                    .select('setting_key, setting_value')
+                    .in('setting_key', ['valuation_fee', 'inspection_fee', 'mileage_fee']);
+                if (error) throw error;
+                const map = {};
+                data.forEach(row => map[row.setting_key] = row.setting_value);
+                document.getElementById('feeValuation').value = map.valuation_fee || 2500;
+                document.getElementById('feeInspection').value = map.inspection_fee || 3500;
+                document.getElementById('feeMileage').value = map.mileage_fee || 1500;
             } catch (e) {
-                console.error('Services error:', e);
-                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${e.message}</td></tr>`;
+                console.error('Error loading fees:', e);
+                showToast('Error loading service fees', 'error');
             }
         }
 
-        window.editService = async function(id) {
-            try {
-                const { data, error } = await supabase.from('services').select('*').eq('id', id).single();
-                if (error) throw error;
-                document.getElementById('serviceModalTitle').textContent = 'Edit Service';
-                document.getElementById('serviceName').value = data.name;
-                document.getElementById('serviceDescription').value = data.description || '';
-                document.getElementById('servicePrice').value = data.price;
-                document.getElementById('serviceStatus').value = data.status || 'active';
-                document.getElementById('serviceEditId').value = data.id;
-                openModal('serviceModal');
-            } catch (e) { showToast('Error loading service','error'); }
-        };
-
-        window.deleteService = function(id) {
-            showConfirm('Delete Service', 'Delete this service?', async () => {
-                showLoading(true);
-                try {
-                    await supabase.from('services').delete().eq('id', id);
-                    showToast('Service deleted');
-                    await loadServices();
-                } catch (e) { showToast('Error deleting service','error'); }
-                finally { showLoading(false); }
-            });
-        };
-
-        document.getElementById('serviceForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const id = document.getElementById('serviceEditId').value;
-            const data = {
-                name: document.getElementById('serviceName').value.trim(),
-                description: document.getElementById('serviceDescription').value.trim(),
-                price: parseFloat(document.getElementById('servicePrice').value),
-                status: document.getElementById('serviceStatus').value
-            };
+        window.saveFee = async function(key, inputId) {
+            const value = parseFloat(document.getElementById(inputId).value);
+            if (isNaN(value) || value < 0) {
+                showToast('Please enter a valid amount', 'warning');
+                return;
+            }
             showLoading(true);
             try {
-                if (id) {
-                    await supabase.from('services').update(data).eq('id', id);
-                    showToast('Service updated');
-                } else {
-                    await supabase.from('services').insert(data);
-                    showToast('Service added');
-                }
-                closeModal('serviceModal');
-                document.getElementById('serviceForm').reset();
-                document.getElementById('serviceEditId').value = '';
-                await loadServices();
-            } catch (e) { showToast('Error saving service','error'); }
-            finally { showLoading(false); }
-        });
-
-        document.getElementById('addServiceBtn').addEventListener('click', () => {
-            document.getElementById('serviceModalTitle').textContent = 'Add Service';
-            document.getElementById('serviceForm').reset();
-            document.getElementById('serviceEditId').value = '';
-            document.getElementById('serviceStatus').value = 'active';
-            openModal('serviceModal');
-        });
+                const { error } = await supabase
+                    .from('system_settings')
+                    .upsert({ setting_key: key, setting_value: value }, { onConflict: 'setting_key' });
+                if (error) throw error;
+                showToast(`✅ ${key.replace('_fee','').toUpperCase()} fee updated to ${formatKES(value)}`);
+                // Realtime sync to customer portal is automatic via Supabase Realtime subscription
+            } catch (e) {
+                showToast('Error saving fee: ' + e.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        };
 
         // ─── RATES ──────────────────────────────────────────────
         async function loadRates() {
@@ -1041,7 +988,7 @@
                 const id = btn.dataset.tab;
                 if (id === 'activities-tab') loadActivities();
                 else if (id === 'payments-tab') loadPendingPayments();
-                else if (id === 'services-tab') loadServices();
+                else if (id === 'services-tab') loadServiceFees();
                 else if (id === 'rates-tab') loadRates();
                 else if (id === 'users-tab') loadUsers();
                 else if (id === 'requests-tab') loadAllRequests();
@@ -1076,7 +1023,7 @@
                 loadOverview();
                 loadActivities();
                 loadPendingPayments();
-                loadServices();
+                loadServiceFees();
                 loadRates();
                 loadUsers();
                 loadAllRequests();
@@ -1093,7 +1040,7 @@
                             loadOverview(),
                             loadActivities(),
                             loadPendingPayments(),
-                            loadServices(),
+                            loadServiceFees(),
                             loadRates(),
                             loadUsers(),
                             loadAllRequests()
