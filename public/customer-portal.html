@@ -266,7 +266,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL – FIXED VERSION
+        // AUTO-V CUSTOMER PORTAL – FIXED WITH SERVICE‑SPECIFIC PURPOSES
         // ============================================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
@@ -278,7 +278,26 @@
 
             const API_BASE = 'https://auto-v.onrender.com/api';
 
-            // ─── TOKEN HELPERS (use session) ─────────────────────────
+            // ─── PURPOSE OPTIONS PER SERVICE ──────────────────────────
+            const purposeOptions = {
+                valuation: [
+                    "Market Value", "Insurance Valuation", "Loan / Security",
+                    "Pre-Purchase Inspection", "Fleet Valuation", "Import Duty",
+                    "Tax Assessment", "Court Evidence", "Estate / Probate",
+                    "Divorce Settlement", "Just Want to Know"
+                ],
+                inspection: [
+                    "Pre-Purchase Inspection", "Insurance Inspection", "Fleet Inspection",
+                    "Safety Compliance", "Import Inspection", "Court Evidence",
+                    "Just Want to Know"
+                ],
+                mileage: [
+                    "Mileage Verification", "Insurance Claim", "Fleet Management",
+                    "Lease Agreement", "Just Want to Know"
+                ]
+            };
+
+            // ─── TOKEN HELPERS ─────────────────────────────────────────
             async function getValidToken() {
                 const { data: { session }, error } = await supabase.auth.getSession();
                 if (error || !session) return null;
@@ -288,7 +307,6 @@
             async function fetchWithAuth(url, options = {}) {
                 const token = await getValidToken();
                 if (!token) {
-                    // No session, redirect to login
                     window.location.href = "login.html";
                     throw new Error('No active session');
                 }
@@ -299,13 +317,11 @@
                 };
                 const response = await fetch(url, { ...options, headers });
                 if (response.status === 401) {
-                    // Try to refresh token by calling supabase.auth.refreshSession()
                     const { data: { session }, error } = await supabase.auth.refreshSession();
                     if (error || !session) {
                         window.location.href = "login.html";
                         throw new Error('Session expired');
                     }
-                    // Retry with new token
                     const newToken = session.access_token;
                     headers['Authorization'] = `Bearer ${newToken}`;
                     return fetch(url, { ...options, headers });
@@ -321,46 +337,14 @@
             let mileageFee = 1500;
             let isFirstTimeUser = false;
             let currentPaymentId = null;
-            let currentPaymentStatus = null; // track payment status locally
+            let currentPaymentStatus = null;
             let currentRequestId = null;
             let pollInterval = null;
             let paymentInProgress = false;
             let feeInterval = null;
             let realtimeChannel = null;
 
-            const purposes = [
-                "Market Value", "Insurance Valuation", "Loan / Security",
-                "Pre-Purchase Inspection", "Fleet Valuation", "Import Duty",
-                "Tax Assessment", "Court Evidence", "Estate / Probate",
-                "Divorce Settlement", "Just Want to Know"
-            ];
-
             // ─── HELPERS ──────────────────────────────────────────────
-            function showToast(msg, type = 'success') {
-                const t = document.createElement('div');
-                t.className = `toast toast-${type}`;
-                t.textContent = msg;
-                document.body.appendChild(t);
-                setTimeout(() => t.remove(), 3000);
-            }
-
-            function formatKES(amount) {
-                return new Intl.NumberFormat('en-KE', { style:'currency', currency:'KES', minimumFractionDigits:0 }).format(amount || 0);
-            }
-
-            function showLoading(show) {
-                // Use existing spinner overlay if present; else create one
-                let overlay = document.getElementById('loadingOverlay');
-                if (!overlay) {
-                    overlay = document.createElement('div');
-                    overlay.id = 'loadingOverlay';
-                    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:none;justify-content:center;align-items:center;';
-                    overlay.innerHTML = '<div class="spinner" style="width:60px;height:60px;"></div>';
-                    document.body.appendChild(overlay);
-                }
-                overlay.style.display = show ? 'flex' : 'none';
-            }
-
             function showMessage(msg, type = 'success') {
                 const errorDiv = document.getElementById('errorMsg');
                 const successDiv = document.getElementById('successMsg');
@@ -377,117 +361,17 @@
                 }
             }
 
+            function formatKES(amount) {
+                return new Intl.NumberFormat('en-KE', { style:'currency', currency:'KES', minimumFractionDigits:0 }).format(amount || 0);
+            }
+
             function setPaymentStatus(status, message = '') {
                 const el = document.getElementById('paymentStatus');
                 el.className = 'payment-status ' + status;
                 el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
                 el.style.display = 'block';
-                const retryDiv = document.getElementById('paymentRetry');
-                if (status === 'failed' || status === 'timeout') {
-                    retryDiv.style.display = 'block';
-                } else {
-                    retryDiv.style.display = 'none';
-                }
-                // Store status
+                document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
                 currentPaymentStatus = status;
-            }
-
-            // ─── PHONE FORMATTING ─────────────────────────────────────
-            function formatPhoneForMpesa(phone) {
-                // Remove non-digits
-                let cleaned = phone.replace(/\D/g, '');
-                if (cleaned.startsWith('0')) {
-                    cleaned = '254' + cleaned.substring(1);
-                } else if (cleaned.startsWith('+')) {
-                    cleaned = cleaned.substring(1);
-                }
-                if (!cleaned.startsWith('254')) {
-                    // Assume it's a local number without country code
-                    if (cleaned.length === 9) {
-                        cleaned = '254' + cleaned;
-                    } else if (cleaned.length === 10 && cleaned.startsWith('7')) {
-                        cleaned = '254' + cleaned;
-                    } else {
-                        throw new Error('Invalid phone number format');
-                    }
-                }
-                return cleaned;
-            }
-
-            // ─── REGISTRATION VALIDATION ──────────────────────────────
-            function validateRegistration(reg) {
-                // Kenyan format: KCA 123A or KCA123A
-                const pattern = /^[K][A-Z]{2}\s?\d{3}[A-Z]$/;
-                return pattern.test(reg.toUpperCase().trim());
-            }
-
-            // ─── FILE SIZE VALIDATION ────────────────────────────────
-            function validateFileSize(file, maxMB = 5) {
-                if (file && file.size > maxMB * 1024 * 1024) {
-                    throw new Error(`File ${file.name} exceeds ${maxMB}MB limit`);
-                }
-                return true;
-            }
-
-            // ─── LOAD FEES ────────────────────────────────────────────
-            async function loadFees() {
-                try {
-                    const { data, error } = await supabase
-                        .from('system_settings')
-                        .select('setting_key, setting_value')
-                        .in('setting_key', ['valuation_fee', 'inspection_fee', 'mileage_fee']);
-                    if (error) throw error;
-                    const map = {};
-                    data.forEach(row => map[row.setting_key] = row.setting_value);
-                    valuationFee = parseInt(map.valuation_fee) || 2500;
-                    inspectionFee = parseInt(map.inspection_fee) || 3500;
-                    mileageFee = parseInt(map.mileage_fee) || 1500;
-                } catch (e) {
-                    console.warn('Using default fees', e);
-                }
-                document.getElementById('valuationPriceDisplay').textContent = `KES ${Number(valuationFee || 0).toLocaleString()}`;
-                document.getElementById('inspectionPriceDisplay').textContent = `KES ${Number(inspectionFee || 0).toLocaleString()}`;
-                document.getElementById('mileagePriceDisplay').textContent = `KES ${Number(mileageFee || 0).toLocaleString()}`;
-                if (selectedService) updateSummary();
-            }
-
-            // ─── REAL‑TIME FEE UPDATES (fixed filter) ──────────────
-            function subscribeToFeeChanges() {
-                // Listen to all changes on system_settings and filter in JS
-                const channel = supabase
-                    .channel('system_settings_changes')
-                    .on(
-                        'postgres_changes',
-                        {
-                            event: 'UPDATE',
-                            schema: 'public',
-                            table: 'system_settings'
-                        },
-                        (payload) => {
-                            const keys = ['valuation_fee', 'inspection_fee', 'mileage_fee'];
-                            if (keys.includes(payload.new.setting_key)) {
-                                console.log('Fee updated:', payload);
-                                loadFees();
-                                const badge = document.getElementById('feeUpdateBadge');
-                                badge.classList.add('show');
-                                setTimeout(() => badge.classList.remove('show'), 3000);
-                            }
-                        }
-                    )
-                    .subscribe();
-                return channel;
-            }
-
-            // ─── UPDATE SUMMARY ──────────────────────────────────────
-            function updateSummary() {
-                let price = 0;
-                let serviceName = '';
-                if (selectedService === 'valuation') { price = valuationFee; serviceName = 'Valuation'; }
-                else if (selectedService === 'inspection') { price = inspectionFee; serviceName = 'Inspection'; }
-                else if (selectedService === 'mileage') { price = mileageFee; serviceName = 'Mileage Verification'; }
-                document.getElementById('summaryService').textContent = serviceName || '-';
-                document.getElementById('summaryPurpose').textContent = selectedPurpose || 'Not selected';
-                document.getElementById('summaryAmount').textContent = `KES ${Number(price || 0).toLocaleString()}`;
             }
 
             function showStep(step) {
@@ -505,24 +389,104 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
 
-            // ─── CHECK PROFILE COMPLETENESS ──────────────────────────
-            async function isProfileComplete(userId) {
-                try {
-                    const { data, error } = await supabase
-                        .from('user_profiles')
-                        .select('full_name, phone')
-                        .eq('id', userId)
-                        .single();
-                    if (error) return false;
-                    if (!data) return false;
-                    // If full_name or phone is empty, treat as incomplete
-                    return !!(data.full_name && data.phone);
-                } catch { return false; }
+            function formatPhoneForMpesa(phone) {
+                let cleaned = phone.replace(/\D/g, '');
+                if (cleaned.startsWith('0')) cleaned = '254' + cleaned.substring(1);
+                else if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
+                if (!cleaned.startsWith('254')) {
+                    if (cleaned.length === 9) cleaned = '254' + cleaned;
+                    else if (cleaned.length === 10 && cleaned.startsWith('7')) cleaned = '254' + cleaned;
+                    else throw new Error('Invalid phone number format');
+                }
+                return cleaned;
             }
 
-            // ─── USER PROFILE UPSERT ─────────────────────────────────
+            function validateRegistration(reg) {
+                return /^[K][A-Z]{2}\s?\d{3}[A-Z]$/.test(reg.toUpperCase().trim());
+            }
+
+            function validateFileSize(file, maxMB = 5) {
+                if (file && file.size > maxMB * 1024 * 1024) {
+                    throw new Error(`File ${file.name} exceeds ${maxMB}MB limit`);
+                }
+                return true;
+            }
+
+            // ─── FEE LOADING ──────────────────────────────────────────
+            async function loadFees() {
+                try {
+                    const { data, error } = await supabase
+                        .from('system_settings')
+                        .select('setting_key, setting_value')
+                        .in('setting_key', ['valuation_fee', 'inspection_fee', 'mileage_fee']);
+                    if (error) throw error;
+                    const map = {};
+                    data.forEach(row => map[row.setting_key] = row.setting_value);
+                    valuationFee = parseInt(map.valuation_fee) || 2500;
+                    inspectionFee = parseInt(map.inspection_fee) || 3500;
+                    mileageFee = parseInt(map.mileage_fee) || 1500;
+                } catch (e) { console.warn('Using default fees', e); }
+                document.getElementById('valuationPriceDisplay').textContent = `KES ${Number(valuationFee || 0).toLocaleString()}`;
+                document.getElementById('inspectionPriceDisplay').textContent = `KES ${Number(inspectionFee || 0).toLocaleString()}`;
+                document.getElementById('mileagePriceDisplay').textContent = `KES ${Number(mileageFee || 0).toLocaleString()}`;
+                if (selectedService) updateSummary();
+            }
+
+            function subscribeToFeeChanges() {
+                const channel = supabase
+                    .channel('system_settings_changes')
+                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'system_settings' }, (payload) => {
+                        const keys = ['valuation_fee', 'inspection_fee', 'mileage_fee'];
+                        if (keys.includes(payload.new.setting_key)) {
+                            loadFees();
+                            document.getElementById('feeUpdateBadge').classList.add('show');
+                            setTimeout(() => document.getElementById('feeUpdateBadge').classList.remove('show'), 3000);
+                        }
+                    })
+                    .subscribe();
+                return channel;
+            }
+
+            // ─── UPDATE PURPOSE LIST BASED ON SERVICE ────────────────
+            function updatePurposeList(service) {
+                const container = document.getElementById('purposeList');
+                const purposes = purposeOptions[service] || purposeOptions.valuation;
+                container.innerHTML = purposes.map(p =>
+                    `<div class="purpose-item" data-purpose="${p}">${p}</div>`
+                ).join('');
+                // Attach click events
+                document.querySelectorAll('.purpose-item').forEach(item => {
+                    item.onclick = () => {
+                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        selectedPurpose = item.dataset.purpose;
+                    };
+                });
+                // Clear selection if previously selected purpose not in new list
+                if (selectedPurpose && !purposes.includes(selectedPurpose)) {
+                    selectedPurpose = null;
+                }
+                // If a purpose was previously selected and is still valid, highlight it
+                if (selectedPurpose) {
+                    const selectedEl = container.querySelector(`[data-purpose="${selectedPurpose}"]`);
+                    if (selectedEl) selectedEl.classList.add('selected');
+                }
+            }
+
+            function updateSummary() {
+                let price = 0;
+                let serviceName = '';
+                if (selectedService === 'valuation') { price = valuationFee; serviceName = 'Valuation'; }
+                else if (selectedService === 'inspection') { price = inspectionFee; serviceName = 'Inspection'; }
+                else if (selectedService === 'mileage') { price = mileageFee; serviceName = 'Mileage Verification'; }
+                document.getElementById('summaryService').textContent = serviceName || '-';
+                document.getElementById('summaryPurpose').textContent = selectedPurpose || 'Not selected';
+                document.getElementById('summaryAmount').textContent = `KES ${Number(price || 0).toLocaleString()}`;
+            }
+
+            // ─── USER PROFILE ─────────────────────────────────────────
             async function upsertUserProfile(userId, email, name, phone) {
-                const { error } = await supabase
+                await supabase
                     .from('user_profiles')
                     .upsert({
                         id: userId,
@@ -535,10 +499,8 @@
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     }, { onConflict: 'id' });
-                if (error) throw error;
             }
 
-            // ─── CHECK FIRST TIME ────────────────────────────────────
             async function checkFirstTimeUser(userId) {
                 try {
                     const { data, error } = await supabase
@@ -548,81 +510,65 @@
                         .single();
                     if (error && error.code !== 'PGRST116') return true;
                     if (!data) return true;
-                    // If name or phone missing, treat as first time
                     if (!data.full_name || !data.phone) return true;
                     if (data.first_login === true || data.has_vehicle === false || data.login_count < 2) return true;
                     return false;
                 } catch { return true; }
             }
 
-            // ─── LOGIN ────────────────────────────────────────────────
+            async function isProfileComplete(userId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('full_name, phone')
+                        .eq('id', userId)
+                        .single();
+                    if (error || !data) return false;
+                    return !!(data.full_name && data.phone);
+                } catch { return false; }
+            }
+
+            // ─── LOGIN / SIGNUP ──────────────────────────────────────
             async function handleLogin(e) {
                 e.preventDefault();
                 const email = document.getElementById('loginEmail').value;
                 const password = document.getElementById('loginPassword').value;
-                if (!email || !password) {
-                    showMessage('Please enter email and password', 'error');
-                    return;
-                }
+                if (!email || !password) { showMessage('Please enter email and password', 'error'); return; }
                 const loginBtn = document.querySelector('#loginForm button[type="submit"]');
                 const originalText = loginBtn.innerHTML;
                 loginBtn.disabled = true;
                 loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
                 try {
                     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-                    if (error) {
-                        showMessage(error.message, 'error');
-                        loginBtn.disabled = false;
-                        loginBtn.innerHTML = originalText;
-                        return;
-                    }
+                    if (error) { showMessage(error.message, 'error'); loginBtn.disabled = false; loginBtn.innerHTML = originalText; return; }
                     currentUser = data.user;
                     const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
-                    // Upsert profile
                     await upsertUserProfile(currentUser.id, currentUser.email, userName, currentUser.user_metadata?.phone || '');
                     isFirstTimeUser = await checkFirstTimeUser(currentUser.id);
-                    // Check if profile is complete (name, phone)
                     const complete = await isProfileComplete(currentUser.id);
                     if (isFirstTimeUser || !complete) {
                         document.getElementById('welcomeBanner').style.display = 'block';
                         showMessage('👋 Welcome! Let\'s get you started.', 'success');
                         document.getElementById('custEmail').value = currentUser.email;
-                        if (currentUser.user_metadata?.full_name) {
-                            document.getElementById('custName').value = currentUser.user_metadata.full_name;
-                        }
-                        if (currentUser.user_metadata?.phone) {
-                            document.getElementById('custPhone').value = currentUser.user_metadata.phone;
-                        }
+                        if (currentUser.user_metadata?.full_name) document.getElementById('custName').value = currentUser.user_metadata.full_name;
+                        if (currentUser.user_metadata?.phone) document.getElementById('custPhone').value = currentUser.user_metadata.phone;
                         showStep(2);
                     } else {
                         showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
-                        setTimeout(() => {
-                            window.location.href = "dashboard.html";
-                        }, 1500);
+                        setTimeout(() => window.location.href = "dashboard.html", 1500);
                     }
-                } catch (err) {
-                    showMessage('Network error. Please try again.', 'error');
-                } finally {
-                    loginBtn.disabled = false;
-                    loginBtn.innerHTML = originalText;
-                }
+                } catch (err) { showMessage('Network error. Please try again.', 'error'); }
+                finally { loginBtn.disabled = false; loginBtn.innerHTML = originalText; }
             }
 
-            // ─── SIGNUP ───────────────────────────────────────────────
             async function handleSignup(e) {
                 e.preventDefault();
                 const email = document.getElementById('signupEmail').value;
                 const password = document.getElementById('signupPassword').value;
                 const name = document.getElementById('signupName').value;
                 const phone = document.getElementById('signupPhone').value;
-                if (!email || !password) {
-                    showMessage('Please enter email and password', 'error');
-                    return;
-                }
-                if (password.length < 6) {
-                    showMessage('Password must be at least 6 characters', 'error');
-                    return;
-                }
+                if (!email || !password) { showMessage('Please enter email and password', 'error'); return; }
+                if (password.length < 6) { showMessage('Password must be at least 6 characters', 'error'); return; }
                 const signupBtn = document.querySelector('#signupForm button[type="submit"]');
                 const originalText = signupBtn.innerHTML;
                 signupBtn.disabled = true;
@@ -633,11 +579,8 @@
                         options: { data: { full_name: name, phone: phone } }
                     });
                     if (error) {
-                        if (error.message.includes('User already registered')) {
-                            showMessage('User already exists. Please login.', 'error');
-                        } else {
-                            showMessage(error.message, 'error');
-                        }
+                        if (error.message.includes('User already registered')) showMessage('User already exists. Please login.', 'error');
+                        else showMessage(error.message, 'error');
                         signupBtn.disabled = false;
                         signupBtn.innerHTML = originalText;
                         return;
@@ -660,43 +603,29 @@
                             showStep(2);
                         }
                     }
-                } catch (err) {
-                    showMessage('Network error. Please try again.', 'error');
-                } finally {
-                    signupBtn.disabled = false;
-                    signupBtn.innerHTML = originalText;
-                }
+                } catch (err) { showMessage('Network error. Please try again.', 'error'); }
+                finally { signupBtn.disabled = false; signupBtn.innerHTML = originalText; }
             }
 
             // ─── VEHICLE LOOKUP ──────────────────────────────────────
             async function lookupVehicle() {
                 const reg = document.getElementById('vehicleReg').value.trim().toUpperCase();
-                if (!reg) {
-                    showMessage('Enter a registration number first', 'error');
-                    return;
-                }
+                if (!reg) { showMessage('Enter a registration number first', 'error'); return; }
                 const btn = document.getElementById('lookupVehicleBtn');
                 const originalText = btn.textContent;
                 btn.disabled = true;
                 btn.textContent = '⏳ ...';
                 try {
                     const response = await fetchWithAuth(`${API_BASE}/vehicle/lookup/${encodeURIComponent(reg)}`);
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || 'Lookup failed');
-                    }
+                    if (!response.ok) { const err = await response.json(); throw new Error(err.message || 'Lookup failed'); }
                     const data = await response.json();
                     if (data.make) document.getElementById('vehicleMake').value = data.make;
                     if (data.model) document.getElementById('vehicleModel').value = data.model;
                     if (data.year) document.getElementById('vehicleYear').value = data.year;
                     if (data.vin) document.getElementById('vehicleVin').value = data.vin;
                     showMessage('Vehicle details auto-filled!', 'success');
-                } catch (err) {
-                    showMessage('Lookup error: ' + err.message, 'error');
-                } finally {
-                    btn.disabled = false;
-                    btn.textContent = originalText;
-                }
+                } catch (err) { showMessage('Lookup error: ' + err.message, 'error'); }
+                finally { btn.disabled = false; btn.textContent = originalText; }
             }
 
             // ─── PAYMENT ──────────────────────────────────────────────
@@ -704,25 +633,12 @@
                 if (paymentInProgress) return;
                 paymentInProgress = true;
 
-                const mpesaPhoneRaw = document.getElementById('mpesaPhone').value.trim();
                 let mpesaPhone;
-                try {
-                    mpesaPhone = formatPhoneForMpesa(mpesaPhoneRaw);
-                } catch (e) {
-                    showMessage('Invalid phone number. Enter a valid Kenyan number.', 'error');
-                    paymentInProgress = false;
-                    return;
-                }
-                if (!selectedService) {
-                    showMessage('Select service first', 'error');
-                    paymentInProgress = false;
-                    return;
-                }
-                if (!selectedPurpose) {
-                    showMessage('Select purpose first', 'error');
-                    paymentInProgress = false;
-                    return;
-                }
+                try { mpesaPhone = formatPhoneForMpesa(document.getElementById('mpesaPhone').value.trim()); }
+                catch (e) { showMessage('Invalid phone number. Enter a valid Kenyan number.', 'error'); paymentInProgress = false; return; }
+
+                if (!selectedService) { showMessage('Select service first', 'error'); paymentInProgress = false; return; }
+                if (!selectedPurpose) { showMessage('Select purpose first', 'error'); paymentInProgress = false; return; }
 
                 const payBtn = document.getElementById('payBtn');
                 const originalText = payBtn.innerHTML;
@@ -733,9 +649,7 @@
 
                 try {
                     const token = await getValidToken();
-                    if (!token) {
-                        throw new Error('No active session. Please login again.');
-                    }
+                    if (!token) throw new Error('No active session. Please login again.');
 
                     let price = 0;
                     if (selectedService === 'valuation') price = valuationFee;
@@ -752,21 +666,14 @@
                         })
                     });
 
-                    if (!initResponse.ok) {
-                        const err = await initResponse.json();
-                        throw new Error(err.message || 'STK Push initiation failed');
-                    }
-
+                    if (!initResponse.ok) { const err = await initResponse.json(); throw new Error(err.message || 'STK Push initiation failed'); }
                     const initData = await initResponse.json();
                     currentPaymentId = initData.payment_id;
                     setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
 
-                    // Start polling (2 minutes timeout, with network failure counter)
                     payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
-                    let attempts = 0;
-                    const maxAttempts = 60;
-                    let networkFailures = 0;
-                    const maxNetworkFailures = 10;
+                    let attempts = 0, networkFailures = 0;
+                    const maxAttempts = 60, maxNetworkFailures = 10;
                     if (pollInterval) clearInterval(pollInterval);
                     pollInterval = setInterval(async () => {
                         attempts++;
@@ -774,15 +681,11 @@
                             const statusResponse = await fetchWithAuth(`${API_BASE}/payments/status/${currentPaymentId}`);
                             if (!statusResponse.ok) {
                                 if (statusResponse.status === 404) {
-                                    // Still processing – check timeout
                                     if (attempts >= maxAttempts) {
-                                        clearInterval(pollInterval);
-                                        pollInterval = null;
+                                        clearInterval(pollInterval); pollInterval = null;
                                         setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
                                         showMessage('Payment took too long. Please try again.', 'error');
-                                        payBtn.disabled = false;
-                                        payBtn.innerHTML = originalText;
-                                        paymentInProgress = false;
+                                        payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
                                     }
                                     return;
                                 }
@@ -790,53 +693,38 @@
                             }
                             const statusData = await statusResponse.json();
                             if (statusData.status === 'completed') {
-                                clearInterval(pollInterval);
-                                pollInterval = null;
+                                clearInterval(pollInterval); pollInterval = null;
                                 setPaymentStatus('completed', '✅ Payment confirmed!');
                                 currentPaymentStatus = 'completed';
                                 payBtn.innerHTML = '✅ Payment Complete';
                                 showMessage('Payment successful! Proceed to vehicle data entry.', 'success');
-                                // Move to step 6
-                                let serviceTitle = '';
-                                if (selectedService === 'valuation') serviceTitle = 'Valuation';
-                                else if (selectedService === 'inspection') serviceTitle = 'Inspection';
-                                else if (selectedService === 'mileage') serviceTitle = 'Mileage Verification';
+                                let serviceTitle = selectedService.charAt(0).toUpperCase() + selectedService.slice(1);
                                 document.querySelector('#step6 h2').textContent = `🚗 ${serviceTitle} Data Entry`;
                                 showStep(6);
-                                payBtn.disabled = false;
-                                paymentInProgress = false;
+                                payBtn.disabled = false; paymentInProgress = false;
                             } else if (statusData.status === 'failed') {
-                                clearInterval(pollInterval);
-                                pollInterval = null;
+                                clearInterval(pollInterval); pollInterval = null;
                                 setPaymentStatus('failed', '❌ Payment failed. Please try again.');
                                 currentPaymentStatus = 'failed';
                                 showMessage('Payment failed. Please try again.', 'error');
-                                payBtn.disabled = false;
-                                payBtn.innerHTML = originalText;
-                                paymentInProgress = false;
+                                payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
                             }
                             if (attempts >= maxAttempts) {
-                                clearInterval(pollInterval);
-                                pollInterval = null;
+                                clearInterval(pollInterval); pollInterval = null;
                                 setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
                                 currentPaymentStatus = 'timeout';
                                 showMessage('Payment timed out. Please try again.', 'error');
-                                payBtn.disabled = false;
-                                payBtn.innerHTML = originalText;
-                                paymentInProgress = false;
+                                payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
                             }
                         } catch (err) {
                             networkFailures++;
                             console.warn('Polling error:', err);
                             if (networkFailures >= maxNetworkFailures) {
-                                clearInterval(pollInterval);
-                                pollInterval = null;
+                                clearInterval(pollInterval); pollInterval = null;
                                 setPaymentStatus('failed', 'Network error. Please retry.');
                                 currentPaymentStatus = 'failed';
                                 showMessage('Network error. Please retry.', 'error');
-                                payBtn.disabled = false;
-                                payBtn.innerHTML = originalText;
-                                paymentInProgress = false;
+                                payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
                             }
                         }
                     }, 2000);
@@ -852,36 +740,24 @@
                 }
             }
 
-            // ─── PROCESS PAYMENT ─────────────────────────────────────
-            async function processPayment(e) {
-                e.preventDefault();
-                await initiatePayment();
-            }
+            async function processPayment(e) { e.preventDefault(); await initiatePayment(); }
 
-            // ─── RETRY PAYMENT ───────────────────────────────────────
-            document.getElementById('retryPaymentBtn')?.addEventListener('click', async () => {
-                await initiatePayment();
-            });
+            document.getElementById('retryPaymentBtn')?.addEventListener('click', async () => { await initiatePayment(); });
 
-            // ─── SUBMIT VEHICLE REQUEST ─────────────────────────────
+            // ─── SUBMIT VEHICLE REQUEST ──────────────────────────────
             async function submitVehicleRequest(e) {
                 e.preventDefault();
-
-                // Validate payment status first
                 if (currentPaymentStatus !== 'completed') {
                     showMessage('Please complete payment first.', 'error');
-                    // Redirect to payment step
                     showStep(5);
                     return;
                 }
 
-                // Validate registration
                 const reg = document.getElementById('vehicleReg').value.trim().toUpperCase();
                 if (!validateRegistration(reg)) {
                     showMessage('Registration number must be in Kenyan format (e.g., KCA 123A)', 'error');
                     return;
                 }
-
                 const make = document.getElementById('vehicleMake').value.trim();
                 const model = document.getElementById('vehicleModel').value.trim();
                 const year = parseInt(document.getElementById('vehicleYear').value);
@@ -890,27 +766,16 @@
                 const accident = document.getElementById('vehicleAccident').value;
                 const vin = document.getElementById('vehicleVin').value.trim();
 
-                if (!make || !model || !year) {
-                    showMessage('Fill all required vehicle details', 'error');
-                    return;
-                }
+                if (!make || !model || !year) { showMessage('Fill all required vehicle details', 'error'); return; }
                 if (isNaN(odometer) || odometer < 0 || odometer > 2000000) {
                     showMessage('Odometer must be between 0 and 2,000,000 km', 'error');
                     return;
                 }
 
-                // Validate files
                 const fileInputs = ['frontPhoto', 'rearPhoto', 'interiorPhoto', 'odometerPhoto', 'logbookPhoto'];
                 for (const id of fileInputs) {
                     const file = document.getElementById(id).files[0];
-                    if (file) {
-                        try {
-                            validateFileSize(file, 5);
-                        } catch (e) {
-                            showMessage(e.message, 'error');
-                            return;
-                        }
-                    }
+                    if (file) { try { validateFileSize(file, 5); } catch (e) { showMessage(e.message, 'error'); return; } }
                 }
 
                 const submitBtn = document.getElementById('submitVehicleBtn');
@@ -920,16 +785,9 @@
 
                 try {
                     const token = await getValidToken();
-                    if (!token) {
-                        throw new Error('No active session. Please login again.');
-                    }
-
+                    if (!token) throw new Error('No active session. Please login again.');
                     const formData = new FormData();
-                    fileInputs.forEach(id => {
-                        const file = document.getElementById(id).files[0];
-                        if (file) formData.append(id, file);
-                    });
-
+                    fileInputs.forEach(id => { const file = document.getElementById(id).files[0]; if (file) formData.append(id, file); });
                     formData.append('registration', reg);
                     formData.append('make', make);
                     formData.append('model', model);
@@ -947,25 +805,15 @@
 
                     const response = await fetch(`${API_BASE}/service-requests`, {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        },
+                        headers: { 'Authorization': `Bearer ${token}` },
                         body: formData
                     });
 
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || 'Submission failed');
-                    }
-
+                    if (!response.ok) { const err = await response.json(); throw new Error(err.message || 'Submission failed'); }
                     const result = await response.json();
                     currentRequestId = result.request_id;
 
-                    let serviceName = '';
-                    if (selectedService === 'valuation') serviceName = 'Valuation';
-                    else if (selectedService === 'inspection') serviceName = 'Inspection';
-                    else if (selectedService === 'mileage') serviceName = 'Mileage Verification';
-
+                    let serviceName = selectedService.charAt(0).toUpperCase() + selectedService.slice(1);
                     document.getElementById('resultsContainer').innerHTML = `
                         <div style="margin-bottom:20px;">
                             <span class="badge" style="background:#22c55e;color:#000;padding:4px 16px;border-radius:30px;font-weight:600;">✅ ${serviceName} Complete</span>
@@ -1017,23 +865,15 @@
 
             // ─── DOWNLOAD REPORT ─────────────────────────────────────
             async function downloadReport() {
-                if (!currentRequestId) {
-                    showMessage('No request to download', 'error');
-                    return;
-                }
+                if (!currentRequestId) { showMessage('No request to download', 'error'); return; }
                 try {
                     const response = await fetchWithAuth(`${API_BASE}/reports/${currentRequestId}`);
                     if (!response.ok) throw new Error('Report generation failed');
-                    // Check content-type
                     const contentType = response.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/pdf')) {
-                        // Try to parse as JSON error
                         const text = await response.text();
                         let errorMsg = 'Invalid report response';
-                        try {
-                            const json = JSON.parse(text);
-                            if (json.error) errorMsg = json.error;
-                        } catch {}
+                        try { const json = JSON.parse(text); if (json.error) errorMsg = json.error; } catch {}
                         throw new Error(errorMsg);
                     }
                     const blob = await response.blob();
@@ -1045,16 +885,8 @@
                     a.click();
                     a.remove();
                     window.URL.revokeObjectURL(url);
-                } catch (err) {
-                    showMessage('Download error: ' + err.message, 'error');
-                }
+                } catch (err) { showMessage('Download error: ' + err.message, 'error'); }
             }
-
-            // ─── LOGOUT ──────────────────────────────────────────────
-            document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-                await supabase.auth.signOut();
-                window.location.href = "login.html";
-            });
 
             // ─── EVENT LISTENERS ─────────────────────────────────────
             document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
@@ -1068,18 +900,19 @@
             document.getElementById('backToLogin')?.addEventListener('click', () => showStep(1));
             document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
             document.getElementById('backToService')?.addEventListener('click', () => showStep(3));
-            document.getElementById('backToPurpose')?.addEventListener('click', () => showStep(4));
+            document.getElementById('backToPurpose')?.addEventListener('click', () => { if (selectedService) updatePurposeList(selectedService); showStep(4); });
             document.getElementById('backToPay')?.addEventListener('click', () => showStep(5));
 
             document.getElementById('nextStep3Btn')?.addEventListener('click', () => {
-                if (selectedService) showStep(4);
-                else showMessage('Select a service', 'error');
+                if (selectedService) {
+                    updatePurposeList(selectedService);
+                    showStep(4);
+                } else showMessage('Select a service', 'error');
             });
+
             document.getElementById('nextStep4Btn')?.addEventListener('click', () => {
-                if (selectedPurpose) {
-                    updateSummary();
-                    showStep(5);
-                } else showMessage('Select a purpose', 'error');
+                if (selectedPurpose) { updateSummary(); showStep(5); }
+                else showMessage('Select a purpose', 'error');
             });
 
             document.getElementById('newRequestBtn')?.addEventListener('click', () => window.location.reload());
@@ -1092,12 +925,15 @@
                 document.getElementById('signupSection').style.display = 'none';
             });
 
-            // Service selection
+            // ─── SERVICE SELECTION ──────────────────────────────────
             document.querySelectorAll('.service-card').forEach(card => {
                 card.onclick = () => {
                     document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
                     card.classList.add('selected');
                     selectedService = card.dataset.service;
+                    // Update purpose list if we later go to step 4
+                    // but only when we enter step 4, we'll call updatePurposeList
+                    // Also update summary
                     updateSummary();
                     let price = 0;
                     let name = '';
@@ -1109,7 +945,7 @@
                 };
             });
 
-            // ─── POPULATE YEARS & PURPOSES ──────────────────────────
+            // ─── POPULATE YEARS ──────────────────────────────────────
             function populateYears() {
                 const yearSelect = document.getElementById('vehicleYear');
                 const currentYear = new Date().getFullYear();
@@ -1117,20 +953,6 @@
                 for (let y = currentYear; y >= 1950; y--) {
                     yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
                 }
-            }
-
-            function populatePurposes() {
-                const container = document.getElementById('purposeList');
-                container.innerHTML = purposes.map(p =>
-                    `<div class="purpose-item" data-purpose="${p}">${p}</div>`
-                ).join('');
-                document.querySelectorAll('.purpose-item').forEach(item => {
-                    item.onclick = () => {
-                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-                        item.classList.add('selected');
-                        selectedPurpose = item.dataset.purpose;
-                    };
-                });
             }
 
             // ─── CHECK SESSION ──────────────────────────────────────
@@ -1142,15 +964,10 @@
                     if (isFirst || !complete) {
                         document.getElementById('welcomeBanner').style.display = 'block';
                         document.getElementById('custEmail').value = user.email;
-                        if (user.user_metadata?.full_name) {
-                            document.getElementById('custName').value = user.user_metadata.full_name;
-                        }
-                        if (user.user_metadata?.phone) {
-                            document.getElementById('custPhone').value = user.user_metadata.phone;
-                        }
+                        if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
+                        if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
                         showStep(2);
                     } else {
-                        // User is known and complete – redirect to dashboard
                         window.location.href = "dashboard.html";
                     }
                 }
@@ -1159,13 +976,10 @@
             // ─── INIT ────────────────────────────────────────────────
             async function init() {
                 populateYears();
-                populatePurposes();
                 await loadFees();
 
-                // Subscribe to real-time fee changes (fixed filter)
+                // Subscribe to real-time fee changes
                 realtimeChannel = subscribeToFeeChanges();
-
-                // Also refresh fees every 30 seconds as fallback
                 feeInterval = setInterval(loadFees, 30000);
 
                 await checkExistingSession();
@@ -1174,7 +988,7 @@
                 }
                 document.getElementById('downloadReportBtn').style.display = 'none';
 
-                // Clean up intervals on page unload
+                // Cleanup
                 window.addEventListener('beforeunload', () => {
                     if (pollInterval) clearInterval(pollInterval);
                     if (feeInterval) clearInterval(feeInterval);
