@@ -139,11 +139,18 @@
         <div id="overview-tab" class="tab-content active">
             <div class="stats-grid">
                 <div class="stat-card"><h4>Total Users</h4><div class="stat-number" id="totalUsers">0</div></div>
-                <div class="stat-card"><h4>Valuations</h4><div class="stat-number" id="adminTotalValuations">0</div></div>
-                <div class="stat-card"><h4>Inspections</h4><div class="stat-number" id="adminTotalInspections">0</div></div>
-                <div class="stat-card"><h4>Mileage Claims</h4><div class="stat-number" id="adminTotalClaims">0</div></div>
+                <div class="stat-card"><h4>Total Requests</h4><div class="stat-number" id="totalRequests">0</div></div>
+                <div class="stat-card"><h4>Revenue</h4><div class="stat-number" id="totalRevenue">KES 0</div></div>
                 <div class="stat-card"><h4>Pending Payments</h4><div class="stat-number" id="pendingPayments">0</div></div>
-                <div class="stat-card"><h4>Total Revenue</h4><div class="stat-number" id="totalRevenue">KES 0</div></div>
+            </div>
+            <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+                <div class="stat-card"><h4>💡 Instant</h4><div class="stat-number" id="countInstant">0</div></div>
+                <div class="stat-card"><h4>💰 Valuation</h4><div class="stat-number" id="countValuation">0</div></div>
+                <div class="stat-card"><h4>🔍 Inspection</h4><div class="stat-number" id="countInspection">0</div></div>
+                <div class="stat-card"><h4>⚠️ Assessment</h4><div class="stat-number" id="countAssessment">0</div></div>
+                <div class="stat-card"><h4>📏 Mileage Rate</h4><div class="stat-number" id="countMileageRate">0</div></div>
+                <div class="stat-card"><h4>🚛 Fleet</h4><div class="stat-number" id="countFleet">0</div></div>
+                <div class="stat-card"><h4>✅ Verification</h4><div class="stat-number" id="countVerification">0</div></div>
             </div>
 
             <div class="card">
@@ -207,20 +214,41 @@
                     <span style="color:#94a3b8;font-size:13px;">Updates reflect in customer portal instantly</span>
                 </div>
                 <div id="feeManagement">
+                    <!-- Each service with its own row -->
                     <div class="fee-row">
-                        <div class="fee-label">Valuation</div>
+                        <div class="fee-label">💡 Instant Value Check</div>
+                        <div><input type="number" id="feeInstant" step="100" class="form-control" style="width:100%;"></div>
+                        <div><button class="btn btn-success btn-sm" onclick="saveFee('instant_fee','feeInstant')">💾 Save</button></div>
+                    </div>
+                    <div class="fee-row">
+                        <div class="fee-label">💰 Vehicle Valuation</div>
                         <div><input type="number" id="feeValuation" step="100" class="form-control" style="width:100%;"></div>
                         <div><button class="btn btn-success btn-sm" onclick="saveFee('valuation_fee','feeValuation')">💾 Save</button></div>
                     </div>
                     <div class="fee-row">
-                        <div class="fee-label">Inspection</div>
+                        <div class="fee-label">🔍 Vehicle Inspection</div>
                         <div><input type="number" id="feeInspection" step="100" class="form-control" style="width:100%;"></div>
                         <div><button class="btn btn-success btn-sm" onclick="saveFee('inspection_fee','feeInspection')">💾 Save</button></div>
                     </div>
                     <div class="fee-row">
-                        <div class="fee-label">Mileage Verification</div>
+                        <div class="fee-label">⚠️ Vehicle Assessment</div>
+                        <div><input type="number" id="feeAssessment" step="100" class="form-control" style="width:100%;"></div>
+                        <div><button class="btn btn-success btn-sm" onclick="saveFee('assessment_fee','feeAssessment')">💾 Save</button></div>
+                    </div>
+                    <div class="fee-row">
+                        <div class="fee-label">📏 Mileage Rate Report</div>
                         <div><input type="number" id="feeMileage" step="100" class="form-control" style="width:100%;"></div>
                         <div><button class="btn btn-success btn-sm" onclick="saveFee('mileage_fee','feeMileage')">💾 Save</button></div>
+                    </div>
+                    <div class="fee-row">
+                        <div class="fee-label">🚛 Fleet Services</div>
+                        <div><input type="number" id="feeFleet" step="100" class="form-control" style="width:100%;"></div>
+                        <div><button class="btn btn-success btn-sm" onclick="saveFee('fleet_fee','feeFleet')">💾 Save</button></div>
+                    </div>
+                    <div class="fee-row">
+                        <div class="fee-label">✅ Report Verification</div>
+                        <div><input type="number" id="feeVerification" step="100" class="form-control" style="width:100%;"></div>
+                        <div><button class="btn btn-success btn-sm" onclick="saveFee('verification_fee','feeVerification')">💾 Save</button></div>
                     </div>
                     <div style="margin-top:12px;color:#64748b;font-size:13px;text-align:center;">
                         ⚡ Changes are saved to <code>system_settings</code> and pushed to customers in real time.
@@ -327,7 +355,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V ADMIN DASHBOARD – FULL IMPLEMENTATION
+        // AUTO-V ADMIN DASHBOARD – FULL SERVICE CATALOG
         // ============================================================
 
         const SUPABASE_URL   = "https://tsvejnzxrxrrecgquxbq.supabase.co";
@@ -337,6 +365,21 @@
         let currentUser = null;
         let selectedActivities = new Set();
         let refreshTimer = null;
+
+        // ─── SERVICE NAMES & ICONS ────────────────────────────
+        const serviceMap = {
+            instant: { icon: '💡', label: 'Instant Value Check' },
+            valuation: { icon: '💰', label: 'Valuation' },
+            inspection: { icon: '🔍', label: 'Inspection' },
+            assessment: { icon: '⚠️', label: 'Assessment' },
+            mileage: { icon: '📏', label: 'Mileage Rate' },
+            fleet: { icon: '🚛', label: 'Fleet Services' },
+            verification: { icon: '✅', label: 'Report Verification' }
+        };
+
+        function getServiceDisplay(type) {
+            return serviceMap[type] || { icon: '📋', label: type };
+        }
 
         // ─── HELPERS ──────────────────────────────────────────────
         function showToast(msg, type='success') {
@@ -444,47 +487,79 @@
         async function loadOverview() {
             try {
                 const userProfiles = await safeFetch('user_profiles');
-                const valuations = await safeFetch('service_requests', { eq: { service_type: 'valuation' } });
-                const inspections = await safeFetch('service_requests', { eq: { service_type: 'inspection' } });
+                const requests = await safeFetch('service_requests');
                 const claims = await safeFetch('mileage_claims');
                 const payments = await safeFetch('payments', { eq: { status: 'pending' } });
 
                 const totalUsers = userProfiles.error ? 0 : userProfiles.data.length;
-                const totalVals = valuations.error ? 0 : valuations.data.length;
-                const totalInsp = inspections.error ? 0 : inspections.data.length;
-                const totalClms = claims.error ? 0 : claims.data.length;
+                const totalRequests = (requests.error ? 0 : requests.data.length) + (claims.error ? 0 : claims.data.length);
+                const totalRevenue = (requests.error ? 0 : requests.data.reduce((s, r) => s + (r.amount || 0), 0)) +
+                                     (claims.error ? 0 : claims.data.reduce((s, c) => s + (c.claim_amount || 0), 0));
                 const pendingPayments = payments.error ? 0 : payments.data.length;
-                const totalRev = (valuations.error ? 0 : valuations.data.reduce((s, v) => s + (v.amount || 0), 0)) +
-                                 (inspections.error ? 0 : inspections.data.reduce((s, i) => s + (i.amount || 0), 0));
 
                 document.getElementById('totalUsers').textContent = totalUsers;
-                document.getElementById('adminTotalValuations').textContent = totalVals;
-                document.getElementById('adminTotalInspections').textContent = totalInsp;
-                document.getElementById('adminTotalClaims').textContent = totalClms;
+                document.getElementById('totalRequests').textContent = totalRequests;
+                document.getElementById('totalRevenue').innerHTML = formatKES(totalRevenue);
                 document.getElementById('pendingPayments').textContent = pendingPayments;
-                document.getElementById('totalRevenue').innerHTML = formatKES(totalRev);
 
-                // Recent activity
+                // Count per service type
+                const counts = { instant:0, valuation:0, inspection:0, assessment:0, mileage:0, fleet:0, verification:0 };
+                if (!requests.error) {
+                    requests.data.forEach(r => {
+                        if (counts.hasOwnProperty(r.service_type)) counts[r.service_type]++;
+                    });
+                }
+                document.getElementById('countInstant').textContent = counts.instant;
+                document.getElementById('countValuation').textContent = counts.valuation;
+                document.getElementById('countInspection').textContent = counts.inspection;
+                document.getElementById('countAssessment').textContent = counts.assessment;
+                document.getElementById('countMileageRate').textContent = counts.mileage;
+                document.getElementById('countFleet').textContent = counts.fleet;
+                document.getElementById('countVerification').textContent = counts.verification;
+
+                // Recent activity (combine requests and claims)
                 const all = [];
-                if (!valuations.error) valuations.data.slice(0,5).forEach(v => all.push({ ...v, label:'💰 Valuation', date:v.created_at, amount:v.amount||0, status:v.payment_status||'completed' }));
-                if (!inspections.error) inspections.data.slice(0,5).forEach(i => all.push({ ...i, label:'🔍 Inspection', date:i.created_at, amount:i.amount||0, status:i.payment_status||'completed' }));
-                if (!claims.error) claims.data.slice(0,5).forEach(c => all.push({ ...c, label:'📊 Mileage', date:c.created_at, amount:c.claim_amount||0, status:c.status||'pending' }));
+                if (!requests.error) requests.data.slice(0,10).forEach(r => all.push({
+                    id: r.id,
+                    type: 'service',
+                    table: 'service_requests',
+                    date: r.created_at,
+                    user_id: r.user_id,
+                    service_type: r.service_type,
+                    details: `${r.make || ''} ${r.model || ''}`.trim() || 'Vehicle',
+                    amount: r.amount || 0,
+                    status: r.payment_status || r.status || 'pending'
+                }));
+                if (!claims.error) claims.data.slice(0,5).forEach(c => all.push({
+                    id: c.id,
+                    type: 'mileage',
+                    table: 'mileage_claims',
+                    date: c.created_at,
+                    user_id: c.user_id,
+                    service_type: 'mileage',
+                    details: `${c.start_location || ''} → ${c.end_location || ''}`,
+                    amount: c.claim_amount || 0,
+                    status: c.status || 'pending'
+                }));
                 all.sort((a,b) => new Date(b.date) - new Date(a.date));
+
                 const tbody = document.getElementById('adminRecentBody');
                 if (!all.length) {
                     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No activity yet</td></tr>';
                 } else {
-                    tbody.innerHTML = all.slice(0,10).map(item => `
-                        <tr>
+                    tbody.innerHTML = all.slice(0,10).map(item => {
+                        const display = getServiceDisplay(item.service_type);
+                        const badge = item.status === 'pending' ? 'pending' : item.status === 'paid' || item.status === 'approved' ? 'approved' : 'completed';
+                        return `<tr>
                             <td>${new Date(item.date).toLocaleDateString()}</td>
                             <td>${item.user_id?.substring(0,12) || 'Unknown'}</td>
-                            <td>${item.label}</td>
-                            <td>${item.details?.substring(0,40) || '-'}</td>
+                            <td>${display.icon} ${display.label}</td>
+                            <td>${item.details || '-'}</td>
                             <td>${formatKES(item.amount)}</td>
-                            <td><span class="badge badge-${item.status === 'completed' || item.status === 'approved' ? 'approved' : 'pending'}">${item.status}</span></td>
-                            <td><button class="btn btn-danger btn-xs" onclick="deleteActivity('${item.id}','${item.type}')">🗑️</button></td>
-                        </tr>
-                    `).join('');
+                            <td><span class="badge badge-${badge}">${item.status}</span></td>
+                            <td><button class="btn btn-danger btn-xs" onclick="deleteActivity('${item.id}','${item.table}')">🗑️</button></td>
+                        </tr>`;
+                    }).join('');
                 }
             } catch (e) { console.error('Overview error:', e); showToast('Error loading overview','error'); }
         }
@@ -495,21 +570,18 @@
             tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div>Loading...</td></tr>';
 
             try {
-                const [valuations, inspections, claims, payments, users] = await Promise.all([
-                    safeFetch('service_requests', { eq: { service_type: 'valuation' }, order: { column: 'created_at', ascending: false } }),
-                    safeFetch('service_requests', { eq: { service_type: 'inspection' }, order: { column: 'created_at', ascending: false } }),
+                const [requests, claims, payments, users] = await Promise.all([
+                    safeFetch('service_requests', { order: { column: 'created_at', ascending: false } }),
                     safeFetch('mileage_claims', { order: { column: 'created_at', ascending: false } }),
                     safeFetch('payments', { order: { column: 'created_at', ascending: false } }),
                     safeFetch('user_profiles')
                 ]);
 
                 const errors = [];
-                if (valuations.error) errors.push('Valuations: ' + valuations.error);
-                if (inspections.error) errors.push('Inspections: ' + inspections.error);
-                if (claims.error) errors.push('Mileage claims: ' + claims.error);
+                if (requests.error) errors.push('Requests: ' + requests.error);
+                if (claims.error) errors.push('Claims: ' + claims.error);
                 if (payments.error) errors.push('Payments: ' + payments.error);
                 if (users.error) errors.push('Users: ' + users.error);
-
                 if (errors.length > 0) {
                     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">
                         ❌ Error loading data:<br>${errors.join('<br>')}
@@ -521,21 +593,46 @@
                 const usersData = users.data || [];
                 const all = [];
 
-                (valuations.data || []).forEach(v => {
-                    const u = usersData.find(x => x.id === v.user_id);
-                    all.push({ id:v.id, table:'service_requests', date:v.created_at, user:u?.email||v.user_id||'Unknown', service:'💰 Valuation', details:`${v.make||''} ${v.model||''}`, amount:v.amount||2500, status:v.payment_status||'completed' });
-                });
-                (inspections.data || []).forEach(i => {
-                    const u = usersData.find(x => x.id === i.user_id);
-                    all.push({ id:i.id, table:'service_requests', date:i.created_at, user:u?.email||i.user_id||'Unknown', service:'🔍 Inspection', details:i.vehicle_id||i.registration_number||'Vehicle', amount:i.amount||3500, status:i.payment_status||'completed' });
+                (requests.data || []).forEach(r => {
+                    const u = usersData.find(x => x.id === r.user_id);
+                    const display = getServiceDisplay(r.service_type);
+                    all.push({
+                        id: r.id,
+                        table: 'service_requests',
+                        date: r.created_at,
+                        user: u?.email || r.user_id || 'Unknown',
+                        service: `${display.icon} ${display.label}`,
+                        details: `${r.make || ''} ${r.model || ''}`.trim() || 'Vehicle',
+                        amount: r.amount || 0,
+                        status: r.payment_status || r.status || 'pending'
+                    });
                 });
                 (claims.data || []).forEach(c => {
                     const u = usersData.find(x => x.id === c.user_id);
-                    all.push({ id:c.id, table:'mileage_claims', date:c.created_at, user:u?.email||c.user_id||'Unknown', service:'📊 Mileage Claim', details:`${c.start_location||''} → ${c.end_location||''}`, amount:c.claim_amount||0, status:c.status||'pending' });
+                    all.push({
+                        id: c.id,
+                        table: 'mileage_claims',
+                        date: c.created_at,
+                        user: u?.email || c.user_id || 'Unknown',
+                        service: '📏 Mileage Claim',
+                        details: `${c.start_location || ''} → ${c.end_location || ''}`,
+                        amount: c.claim_amount || 0,
+                        status: c.status || 'pending'
+                    });
                 });
                 (payments.data || []).forEach(p => {
                     const u = usersData.find(x => x.id === p.user_id);
-                    all.push({ id:p.id, table:'payments', date:p.created_at, user:u?.email||p.user_id||'Unknown', service:'💳 Payment', details:p.service_type||'Payment', amount:p.amount||0, status:p.status||'pending' });
+                    const display = getServiceDisplay(p.service_type);
+                    all.push({
+                        id: p.id,
+                        table: 'payments',
+                        date: p.created_at,
+                        user: u?.email || p.user_id || 'Unknown',
+                        service: `💳 ${display.label} Payment`,
+                        details: p.reference || p.service_type || 'Payment',
+                        amount: p.amount || 0,
+                        status: p.status || 'pending'
+                    });
                 });
 
                 all.sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -545,20 +642,21 @@
                     return;
                 }
 
-                tbody.innerHTML = all.map(item => `
-                    <tr data-id="${item.id}" data-table="${item.table}">
+                tbody.innerHTML = all.map(item => {
+                    const badge = item.status === 'pending' ? 'pending' : item.status === 'paid' || item.status === 'approved' ? 'approved' : 'completed';
+                    return `<tr data-id="${item.id}" data-table="${item.table}">
                         <td><input type="checkbox" class="activity-checkbox" data-id="${item.id}"></td>
                         <td>${new Date(item.date).toLocaleDateString()}</td>
                         <td>${item.user}</td>
                         <td>${item.service}</td>
                         <td>${item.details || '-'}</td>
                         <td>${formatKES(item.amount)}</td>
-                        <td><span class="badge badge-${item.status === 'completed' || item.status === 'approved' ? 'approved' : item.status === 'pending' ? 'pending' : 'rejected'}">${item.status}</span></td>
+                        <td><span class="badge badge-${badge}">${item.status}</span></td>
                         <td><button class="btn btn-danger btn-xs" onclick="deleteActivity('${item.id}','${item.table}')">🗑️</button></td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
 
-                // Attach checkbox handlers
+                // Checkbox handlers
                 const selectAll = document.getElementById('selectAllActivities');
                 selectAll.onchange = function() {
                     document.querySelectorAll('.activity-checkbox').forEach(cb => {
@@ -671,17 +769,18 @@
                     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No pending payments</td></tr>';
                     return;
                 }
-                tbody.innerHTML = data.map(p => `
-                    <tr>
+                tbody.innerHTML = data.map(p => {
+                    const display = getServiceDisplay(p.service_type);
+                    return `<tr>
                         <td>${new Date(p.created_at).toLocaleDateString()}</td>
                         <td>${p.user_id?.substring(0,12) || 'Unknown'}</td>
-                        <td>${p.service_type || 'N/A'}</td>
+                        <td>${display.icon} ${display.label}</td>
                         <td><strong>${formatKES(p.amount)}</strong></td>
                         <td>${p.mpesa_phone || 'N/A'}</td>
                         <td><span class="badge badge-pending">Pending</span></td>
                         <td><button class="btn btn-success btn-sm" onclick="viewPayment('${p.id}')">View</button></td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
             } catch (e) {
                 console.error('Payments error:', e);
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${e.message}</td></tr>`;
@@ -697,9 +796,10 @@
             try {
                 const { data, error } = await supabase.from('payments').select('*').eq('id', paymentId).single();
                 if (error) throw error;
+                const display = getServiceDisplay(data.service_type);
                 document.getElementById('paymentDetails').innerHTML = `
                     <div style="background:#1e293b;padding:20px;border-radius:12px;">
-                        <p><strong>Service:</strong> ${data.service_type || 'N/A'}</p>
+                        <p><strong>Service:</strong> ${display.icon} ${display.label}</p>
                         <p><strong>Amount:</strong> ${formatKES(data.amount)}</p>
                         <p><strong>M-Pesa Phone:</strong> ${data.mpesa_phone || 'N/A'}</p>
                         <p><strong>Transaction ID:</strong> ${data.transaction_id || 'N/A'}</p>
@@ -741,13 +841,20 @@
                 const { data, error } = await supabase
                     .from('system_settings')
                     .select('setting_key, setting_value')
-                    .in('setting_key', ['valuation_fee', 'inspection_fee', 'mileage_fee']);
+                    .in('setting_key', [
+                        'instant_fee', 'valuation_fee', 'inspection_fee',
+                        'assessment_fee', 'mileage_fee', 'fleet_fee', 'verification_fee'
+                    ]);
                 if (error) throw error;
                 const map = {};
                 data.forEach(row => map[row.setting_key] = row.setting_value);
+                document.getElementById('feeInstant').value = map.instant_fee || 500;
                 document.getElementById('feeValuation').value = map.valuation_fee || 2500;
                 document.getElementById('feeInspection').value = map.inspection_fee || 3500;
+                document.getElementById('feeAssessment').value = map.assessment_fee || 3000;
                 document.getElementById('feeMileage').value = map.mileage_fee || 1500;
+                document.getElementById('feeFleet').value = map.fleet_fee || 4000;
+                document.getElementById('feeVerification').value = map.verification_fee || 1000;
             } catch (e) {
                 console.error('Error loading fees:', e);
                 showToast('Error loading service fees', 'error');
@@ -766,8 +873,8 @@
                     .from('system_settings')
                     .upsert({ setting_key: key, setting_value: value }, { onConflict: 'setting_key' });
                 if (error) throw error;
-                showToast(`✅ ${key.replace('_fee','').toUpperCase()} fee updated to ${formatKES(value)}`);
-                // Realtime sync to customer portal is automatic via Supabase Realtime subscription
+                const label = key.replace('_fee','').toUpperCase();
+                showToast(`✅ ${label} fee updated to ${formatKES(value)}`);
             } catch (e) {
                 showToast('Error saving fee: ' + e.message, 'error');
             } finally {
@@ -945,18 +1052,21 @@
                     tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No requests</td></tr>';
                     return;
                 }
-                tbody.innerHTML = data.map(r => `
-                    <tr>
+                tbody.innerHTML = data.map(r => {
+                    const display = getServiceDisplay(r.service_type);
+                    const payBadge = r.payment_status === 'paid' ? 'approved' : 'pending';
+                    const statusBadge = r.status === 'completed' ? 'approved' : 'pending';
+                    return `<tr>
                         <td>${new Date(r.created_at).toLocaleDateString()}</td>
                         <td>${r.user_id?.substring(0,12) || 'Unknown'}</td>
-                        <td>${r.service_type || 'N/A'}</td>
+                        <td>${display.icon} ${display.label}</td>
                         <td>${r.make || ''} ${r.model || ''}</td>
                         <td>${formatKES(r.amount || 0)}</td>
-                        <td><span class="badge badge-${r.payment_status === 'paid' ? 'approved' : 'pending'}">${r.payment_status || 'pending'}</span></td>
-                        <td><span class="badge badge-${r.status === 'completed' ? 'approved' : 'pending'}">${r.status || 'pending'}</span></td>
+                        <td><span class="badge badge-${payBadge}">${r.payment_status || 'pending'}</span></td>
+                        <td><span class="badge badge-${statusBadge}">${r.status || 'pending'}</span></td>
                         <td><button class="btn btn-danger btn-xs" onclick="deleteRequest('${r.id}')">🗑️</button></td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
             } catch (e) {
                 console.error('Requests error:', e);
                 tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#e74c3c;">❌ Error: ${e.message}</td></tr>`;
