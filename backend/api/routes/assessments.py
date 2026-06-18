@@ -1,20 +1,24 @@
 # api/routes/assessments.py - Assessment Flask Routes
 
 import logging
+import sys
+import os
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
 from api.auth_middleware import require_auth
 
-# Import the assessment engine from root directory
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+# Fix import path - add the backend directory to Python path
+backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+# Now import from assessment engine
 from assessment import assess, ASSESSMENT_TYPES
 
 logger = logging.getLogger(__name__)
 
-# ⚠️ CRITICAL: Define the blueprint with the correct name
+# ⚠️ CRITICAL: Define the blueprint
 assessments_bp = Blueprint('assessments', __name__)
 
 
@@ -96,9 +100,6 @@ def run_assessment(user):
         
         # Run the assessment
         result = assess(assessment_type, **kwargs)
-        
-        # Add user_id to result for storage
-        result['user_id'] = user.id
         
         # Store assessment in Supabase
         supabase = get_supabase()
