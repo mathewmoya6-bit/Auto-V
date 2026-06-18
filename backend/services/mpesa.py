@@ -155,8 +155,8 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
     except Exception as e:
         raise Exception(f"Failed to query payment status: {str(e)}")
 
-# ─── ADD THIS FUNCTION ──────────────────────────────────────
-def handle_mpesa_callback(callback_data: Dict[str, Any]) -> Dict[str, Any]:
+# ─── Callback Handler ──────────────────────────────────────
+def handle_mpesa_callback(callback_data):
     """
     Handle M-Pesa callback from Safaricom.
     
@@ -164,7 +164,7 @@ def handle_mpesa_callback(callback_data: Dict[str, Any]) -> Dict[str, Any]:
         callback_data: The full callback payload from M-Pesa
     
     Returns:
-        Dict with ResultCode and ResultDesc
+        dict: Response with ResultCode and ResultDesc
     """
     try:
         # Extract the stkCallback from the callback data
@@ -177,7 +177,7 @@ def handle_mpesa_callback(callback_data: Dict[str, Any]) -> Dict[str, Any]:
         checkout_id = stk_callback.get('CheckoutRequestID')
         result_code = stk_callback.get('ResultCode')
         result_desc = stk_callback.get('ResultDesc')
-        transaction_id = stk_callback.get('TransactionID')
+        transaction_id = stk_callback.get('TransactionID', 'N/A')
         
         logger.info(f"📥 Processing callback - CheckoutID: {checkout_id}, ResultCode: {result_code}")
         
