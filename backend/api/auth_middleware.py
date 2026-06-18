@@ -1,110 +1,76 @@
-# auth_decorators.py – AUTO-V Authentication & Authorization Decorators (Flask)
+# api/auth_middleware.py – Flask Auth Middleware (PRODUCTION READY)
 
-import logging
-import time
 import functools
-from threading import Lock
-from flask import request, jsonify
+import logging
+from flask import request, jsonify, g
 from services.supabase_client import get_supabase
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# TOKEN CACHE (Thread-safe, TTL 5 minutes)
-# ============================================================
-
-_cache = {}
-_cache_lock = Lock()
-CACHE_TTL = 300  # 5 minutes
-
-def get_cached_user(token: str):
-    """Return cached user or None if expired."""
-    with _cache_lock:
-        entry = _cache.get(token)
-        if entry and entry['expires_at'] > time.time():
-            return entry['user']
-    return None
-
-def set_cached_user(token: str, user):
-    with _cache_lock:
-        _cache[token] = {
-            'user': user,
-            'expires_at': time.time() + CACHE_TTL
-        }
-
-# ============================================================
-# DECORATOR: REQUIRE AUTH
-# ============================================================
-
 def require_auth(f):
     """
-    Decorator that validates the Bearer token and injects the
-    authenticated user into the route function.
+    Decorator that validates the Bearer token and injects the authenticated user.
+    Also caches user in Flask's `g` context for the request.
     """
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
 
         if not auth_header:
-            logger.warning("Missing Authorization header")
-            return jsonify({'error': 'Missing Authorization header'}), 401
+            logger.warning(f"Missing Authorization header from {request.remote_addr}")
+            return jsonify({
+                'error': 'Missing Authorization header',
+                'code': 'AUTH_HEADER_MISSING'
+            }), 401
 
-        # Validate format
         parts = auth_header.split()
         if len(parts) != 2 or parts[0].lower() != 'bearer':
-            logger.warning(f"Invalid token format: {auth_header}")
-            return jsonify({'error': 'Invalid token format. Use Bearer <token>'}), 401
+            logger.warning(f"Invalid token format from {request.remote_addr}")
+            return jsonify({
+                'error': 'Invalid token format. Use Bearer <token>',
+                'code': 'AUTH_FORMAT_INVALID'
+            }), 401
 
         token = parts[1]
 
-        # Check cache first
-        user = get_cached_user(token)
-        if user:
-            logger.debug(f"User {user.get('email')} authenticated from cache")
-            return f(user, *args, **kwargs)
+        # Check if token is in request cache (g)
+        if hasattr(g, 'user') and g.get('user'):
+            return f(g.user, *args, **kwargs)
 
-        # No cache hit – verify with Supabase
         try:
             supabase = get_supabase()
             user_response = supabase.auth.get_user(token)
 
             if not user_response or not user_response.user:
-                # Could be expired or invalid
-                logger.warning(f"Token validation failed: user not found")
-                return jsonify({'error': 'Invalid or expired token'}), 401
+                logger.warning(f"Invalid or expired token from {request.remote_addr}")
+                return jsonify({
+                    'error': 'Invalid or expired token',
+                    'code': 'AUTH_TOKEN_INVALID'
+                }), 401
 
-            # Cache the user object
-            user_obj = user_response.user
-            set_cached_user(token, user_obj)
+            # Cache user in request context
+            g.user = user_response.user
+            
+            # Log successful auth (but not too noisy)
+            logger.debug(f"Auth success: {user_response.user.email}")
 
-            # Optionally, also fetch profile to enrich user object
-            # (can be added if needed)
-            logger.info(f"User {user_obj.get('email')} authenticated")
-            return f(user_obj, *args, **kwargs)
+            return f(user_response.user, *args, **kwargs)
 
         except Exception as e:
-            error_msg = str(e)
-            if 'expired' in error_msg.lower():
-                logger.warning(f"Token expired for request: {error_msg}")
-                return jsonify({'error': 'Token expired'}), 401
-            elif 'invalid' in error_msg.lower():
-                logger.warning(f"Invalid token: {error_msg}")
-                return jsonify({'error': 'Invalid token'}), 401
-            else:
-                logger.error(f"Authentication error: {error_msg}", exc_info=True)
-                return jsonify({'error': 'Authentication failed'}), 401
+            logger.error(f"Auth error: {str(e)}")
+            return jsonify({
+                'error': 'Authentication failed',
+                'code': 'AUTH_FAILED'
+            }), 401
 
     return decorated
-
-# ============================================================
-# DECORATOR: REQUIRE ROLE (RBAC)
-# ============================================================
 
 def require_role(required_role: str):
     """
     Decorator that checks the user's role after authentication.
     Must be used AFTER @require_auth.
-
+    
     Usage:
         @app.route('/admin')
         @require_auth
@@ -115,39 +81,38 @@ def require_role(required_role: str):
     def decorator(f):
         @functools.wraps(f)
         def decorated(user, *args, **kwargs):
-            # Get the user's role from the Supabase user object's user_metadata
-            # or from the user_profiles table (we might have it in a session)
-            # For simplicity, we assume the role is stored in user.user_metadata or we fetch it.
-            # If not, we can fetch it from the database.
-            role = user.user_metadata.get('role') if user.user_metadata else None
-
-            # If role not in metadata, fetch from user_profiles table
-            if not role:
-                try:
-                    supabase = get_supabase()
-                    profile_resp = supabase.table('user_profiles')\
-                        .select('role')\
-                        .eq('id', user.id)\
-                        .execute()
-                    if profile_resp.data:
-                        role = profile_resp.data[0].get('role', 'user')
-                except Exception as e:
-                    logger.error(f"Failed to fetch user role: {e}")
-                    return jsonify({'error': 'Unable to verify role'}), 500
-
-            if role != required_role:
-                logger.warning(f"User {user.email} attempted access to {required_role} role")
-                return jsonify({'error': 'Insufficient permissions'}), 403
-
-            return f(user, *args, **kwargs)
+            try:
+                supabase = get_supabase()
+                profile_response = supabase.table('user_profiles')\
+                    .select('role')\
+                    .eq('id', user.id)\
+                    .execute()
+                
+                if not profile_response.data:
+                    logger.warning(f"User {user.email} has no profile")
+                    return jsonify({
+                        'error': 'User profile not found',
+                        'code': 'PROFILE_NOT_FOUND'
+                    }), 404
+                
+                role = profile_response.data[0].get('role', 'user')
+                
+                if role != required_role:
+                    logger.warning(f"User {user.email} attempted {required_role} access but has {role} role")
+                    return jsonify({
+                        'error': 'Insufficient permissions',
+                        'code': 'INSUFFICIENT_PERMISSIONS',
+                        'required_role': required_role,
+                        'user_role': role
+                    }), 403
+                
+                return f(user, *args, **kwargs)
+                
+            except Exception as e:
+                logger.error(f"Role check error: {e}")
+                return jsonify({
+                    'error': 'Failed to verify role',
+                    'code': 'ROLE_CHECK_FAILED'
+                }), 500
         return decorated
     return decorator
-
-# ============================================================
-# DECORATOR: OPTIONAL CACHE BUSTING (if needed)
-# ============================================================
-
-def clear_auth_cache():
-    """Clear the token cache (useful for tests or forced logout)."""
-    with _cache_lock:
-        _cache.clear()
