@@ -1,9 +1,11 @@
 from flask import Blueprint, request, jsonify
+from api.auth_middleware import require_auth
 
 intelligence_bp = Blueprint('intelligence', __name__)
 
 @intelligence_bp.route('/market-trends', methods=['GET'])
-def market_trends():
+@require_auth
+def market_trends(user):
     return jsonify({
         'trends': {
             'Toyota': 'Stable',
@@ -14,10 +16,12 @@ def market_trends():
     }), 200
 
 @intelligence_bp.route('/vin-decode', methods=['POST'])
-def vin_decode():
+@require_auth
+def vin_decode(user):
     vin = request.json.get('vin')
     if not vin:
         return jsonify({'error': 'VIN required'}), 400
+    # Mock VIN decode
     return jsonify({
         'vin': vin,
         'make': 'Toyota',
