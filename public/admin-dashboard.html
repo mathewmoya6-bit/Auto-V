@@ -3,317 +3,847 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AUTO-V | Admin Dashboard</title>
-    
-    <!-- ===== LINK YOUR CSS FILE ===== -->
-    <link rel="stylesheet" href="css/admin.css">
-    <!-- If CSS is in same folder as HTML, use: -->
-    <!-- <link rel="stylesheet" href="admin.css"> -->
-    
+    <title>AUTO‑V Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a0a; font-family: 'Inter', sans-serif; color: #eef2ff; }
+        .container { max-width: 1440px; margin: 0 auto; padding: 1.5rem; }
+        
+        /* Glassmorphism */
+        .glass { background: rgba(17, 17, 17, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(234, 179, 8, 0.15); border-radius: 16px; }
+        .glass-light { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(234, 179, 8, 0.08); border-radius: 12px; }
+        
+        /* Colors */
+        .text-gold { color: #eab308; }
+        .bg-gold { background: #eab308; }
+        .border-gold { border-color: #eab308; }
+        
+        /* Stats Cards */
+        .stat-card { padding: 1.25rem; transition: all 0.3s ease; }
+        .stat-card:hover { transform: translateY(-2px); border-color: rgba(234, 179, 8, 0.3); }
+        .stat-value { font-size: 2rem; font-weight: 800; color: #eab308; }
+        .stat-label { font-size: 0.8rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat-icon { font-size: 1.5rem; opacity: 0.3; }
+        
+        /* Sidebar */
+        .sidebar { width: 260px; min-height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; z-index: 100; }
+        .sidebar-link { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-radius: 10px; transition: all 0.2s; color: #9ca3af; text-decoration: none; font-size: 0.9rem; }
+        .sidebar-link:hover { background: rgba(234, 179, 8, 0.1); color: #eab308; }
+        .sidebar-link.active { background: rgba(234, 179, 8, 0.15); color: #eab308; border-left: 3px solid #eab308; }
+        .sidebar-link i { width: 20px; text-align: center; }
+        
+        /* Main Content */
+        .main-content { margin-left: 260px; padding: 1.5rem; }
+        
+        /* Table */
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { text-align: left; padding: 0.75rem 1rem; color: #eab308; font-weight: 600; border-bottom: 1px solid rgba(234, 179, 8, 0.15); }
+        td { padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+        tr:hover { background: rgba(255, 255, 255, 0.03); }
+        
+        /* Badges */
+        .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
+        .badge-active { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .badge-pending { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+        .badge-expired { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .badge-pass { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .badge-fail { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        
+        /* Buttons */
+        .btn { padding: 0.5rem 1.2rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: all 0.3s; font-size: 0.85rem; }
+        .btn-primary { background: linear-gradient(135deg, #eab308, #ca8a04); color: #0a0a0a; }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); }
+        .btn-outline { background: transparent; border: 1px solid rgba(234, 179, 8, 0.4); color: #eab308; }
+        .btn-outline:hover { background: rgba(234, 179, 8, 0.1); }
+        .btn-danger { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
+        .btn-sm { padding: 0.3rem 0.8rem; font-size: 0.75rem; }
+        
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .modal-content { background: #1a1a1a; border: 1px solid rgba(234, 179, 8, 0.2); border-radius: 16px; padding: 2rem; max-width: 500px; width: 90%; position: relative; }
+        .modal-content input, .modal-content select { width: 100%; padding: 0.6rem 0.8rem; margin: 0.4rem 0; background: #0a0a0a; border: 1px solid #333; border-radius: 8px; color: white; }
+        .modal-content input:focus, .modal-content select:focus { border-color: #eab308; outline: none; }
+        .modal-close { position: absolute; top: 1rem; right: 1rem; color: #666; cursor: pointer; font-size: 1.2rem; }
+        .modal-close:hover { color: white; }
+        
+        /* Charts */
+        .chart-container { height: 220px; position: relative; }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { width: 60px; padding: 0.5rem; }
+            .sidebar span { display: none; }
+            .sidebar .logo-text { display: none; }
+            .main-content { margin-left: 60px; }
+            .stat-value { font-size: 1.5rem; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #eab308; border-radius: 3px; }
+        
+        /* Animations */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.4s ease; }
+        
+        /* Toast notifications */
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #1a1a1a; border: 1px solid rgba(234, 179, 8, 0.2); padding: 1rem 1.5rem; border-radius: 12px; z-index: 9999; display: none; max-width: 400px; }
+        .toast.show { display: block; animation: fadeIn 0.3s ease; }
+        .toast.success { border-color: #22c55e; }
+        .toast.error { border-color: #ef4444; }
+        .toast .toast-title { font-weight: 600; font-size: 0.9rem; }
+        .toast .toast-msg { font-size: 0.8rem; color: #9ca3af; margin-top: 4px; }
+    </style>
 </head>
 <body>
-    <div class="dashboard">
-        
-        <!-- ===== SIDEBAR ===== -->
-        <aside class="sidebar">
-            <div class="sidebar-brand">
-                <div class="logo-icon">A</div>
-                <div class="brand-text">
-                    <div class="brand-name">AUTO-<span>V</span></div>
-                    <div class="brand-sub">Admin Panel</div>
-                </div>
-            </div>
-            
-            <nav class="sidebar-nav">
-                <!-- Main Section -->
-                <div class="nav-section">
-                    <div class="nav-section-title">Main</div>
-                    <a href="#" class="nav-item active">
-                        <span class="nav-icon">🏠</span> Home
-                    </a>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">📊</span> Dashboard
-                    </a>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">🔐</span> Login
-                    </a>
-                </div>
-                
-                <!-- Management Section -->
-                <div class="nav-section">
-                    <div class="nav-section-title">Management</div>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">📋</span> Overview
-                        <span class="nav-badge">12</span>
-                    </a>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">📱</span> Activities
-                    </a>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">💳</span> Payments
-                    </a>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">💰</span> Service Fees
-                    </a>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">🏷️</span> Price Management
-                    </a>
-                    <a href="#" class="nav-item">
-                        <span class="nav-icon">👥</span> Users
-                    </a>
-                </div>
-            </nav>
-            
-            <!-- Sidebar Footer -->
-            <div class="sidebar-footer">
-                <div class="user-card">
-                    <div class="user-avatar">AD</div>
-                    <div class="user-info">
-                        <div class="user-name">Admin User</div>
-                        <div class="user-email">admin@auto-v.com</div>
-                    </div>
-                </div>
-                <button class="logout-btn">🚪 Logout</button>
-            </div>
-        </aside>
-        
-        <!-- ===== MAIN CONTENT ===== -->
-        <main class="main-content">
-            
-            <!-- ===== TOP HEADER ===== -->
-            <header class="top-header">
-                <div class="page-title">
-                    <h1>Dashboard</h1>
-                    <span class="page-sub">Overview</span>
-                </div>
-                <div class="header-actions">
-                    <div class="loading-indicator" id="loadingIndicator">
-                        <div class="spinner"></div> Loading...
-                    </div>
-                    <button class="btn btn-primary" onclick="refreshData()">
-                        🔄 Refresh
-                    </button>
-                    <button class="btn btn-outline">⚙️ Settings</button>
-                </div>
-            </header>
-            
-            <!-- ===== STATS GRID ===== -->
-            <div class="stats-grid">
-                <div class="stat-card primary">
-                    <div class="stat-label">👥 Total Users</div>
-                    <div class="stat-value" id="totalUsers">0</div>
-                    <span class="stat-change up">↑ 12% this month</span>
-                </div>
-                
-                <div class="stat-card success">
-                    <div class="stat-label">📋 Total Requests</div>
-                    <div class="stat-value" id="totalRequests">0</div>
-                    <span class="stat-change up">↑ 8% this month</span>
-                </div>
-                
-                <div class="stat-card warning">
-                    <div class="stat-label">💰 Revenue</div>
-                    <div class="stat-value" id="revenue">KES 0</div>
-                    <span class="stat-change up">↑ 23% this month</span>
-                </div>
-                
-                <div class="stat-card danger">
-                    <div class="stat-label">⏳ Pending Payments</div>
-                    <div class="stat-value" id="pendingPayments">0</div>
-                    <span class="stat-change down">↓ 5% this month</span>
-                </div>
-                
-                <div class="stat-card info">
-                    <div class="stat-label">⚡ Instant</div>
-                    <div class="stat-value" id="instantCount">0</div>
-                    <span class="stat-change up">↑ 15% this month</span>
-                </div>
-            </div>
-            
-            <!-- ===== SEARCH BAR ===== -->
-            <div class="search-container">
-                <div class="search-wrapper">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" 
-                           id="searchInput" 
-                           placeholder="Search users, requests, payments..."
-                           onkeyup="handleSearch(event)">
-                    <button class="search-btn" onclick="performSearch()">Search</button>
-                </div>
-            </div>
-            
-            <!-- ===== REQUESTS TABLE ===== -->
-            <div class="section-header">
-                <h3>📋 All Requests</h3>
-                <div class="section-actions">
-                    <button class="btn btn-outline" onclick="exportData()">📤 Export</button>
-                    <button class="btn btn-primary" onclick="addNewRequest()">➕ New Request</button>
-                </div>
-            </div>
-            
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>User</th>
-                            <th>Service</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Date</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="requestsTableBody">
-                        <!-- Sample Row 1 -->
-                        <tr>
-                            <td><strong>#001</strong></td>
-                            <td>John Doe</td>
-                            <td>Car Wash</td>
-                            <td>KES 1,500</td>
-                            <td><span class="status-badge pending"><span class="dot"></span> Pending</span></td>
-                            <td>2024-06-19</td>
-                            <td><button class="btn btn-outline" style="padding:4px 12px;font-size:12px;">View</button></td>
-                        </tr>
-                        <!-- Sample Row 2 -->
-                        <tr>
-                            <td><strong>#002</strong></td>
-                            <td>Jane Smith</td>
-                            <td>Oil Change</td>
-                            <td>KES 3,200</td>
-                            <td><span class="status-badge completed"><span class="dot"></span> Completed</span></td>
-                            <td>2024-06-18</td>
-                            <td><button class="btn btn-outline" style="padding:4px 12px;font-size:12px;">View</button></td>
-                        </tr>
-                        <!-- Sample Row 3 -->
-                        <tr>
-                            <td><strong>#003</strong></td>
-                            <td>Mike Johnson</td>
-                            <td>Tire Rotation</td>
-                            <td>KES 800</td>
-                            <td><span class="status-badge active"><span class="dot"></span> In Progress</span></td>
-                            <td>2024-06-17</td>
-                            <td><button class="btn btn-outline" style="padding:4px 12px;font-size:12px;">View</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <!-- ===== CONSOLE / LOGS ===== -->
-            <div class="console-section">
-                <div class="console-header">
-                    <div class="console-title">🖥️ Console</div>
-                    <div class="console-stats">
-                        <span class="stat error">● <span id="errorCount">14</span> errors</span>
-                        <span class="stat warning">● <span id="issueCount">7</span> issues</span>
-                        <span class="stat success">● <span id="successCount">16</span> messages</span>
-                        <span class="stat info">● <span id="userMsgCount">2</span> user messages</span>
-                    </div>
-                </div>
-                <div class="console-body" id="consoleBody">
-                    <div class="log-line">
-                        <span class="log-time">[10:32:14]</span>
-                        <span class="log-msg highlight">Supabase client created with proper supabase.js:34 headers</span>
-                    </div>
-                    <div class="log-line">
-                        <span class="log-time">[10:32:14]</span>
-                        <span class="log-msg highlight">AUTO-V Supabase client initialized supabase.js:478</span>
-                    </div>
-                    <div class="log-line">
-                        <span class="log-time">[10:32:14]</span>
-                        <span class="log-msg">(Single Source of Truth) ✅</span>
-                    </div>
-                    <div class="log-line">
-                        <span class="log-time">[10:32:15]</span>
-                        <span class="log-msg" style="color:#ef4444;">❌ Failed to fetch users: RLS policy violation</span>
-                    </div>
-                    <div class="log-line">
-                        <span class="log-time">[10:32:16]</span>
-                        <span class="log-msg" style="color:#f59e0b;">⚠️ API rate limit approaching: 85% used</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- ===== WINDOWS ACTIVATION BANNER ===== -->
-            <div class="win-activation-banner">
-                <span>🪟 <strong>Windows</strong> Activate Windows</span>
-                <a href="#" class="win-action">Go to Settings to activate →</a>
-            </div>
-            
-        </main>
+
+<!-- Toast Notification -->
+<div id="toast" class="toast">
+    <div class="toast-title" id="toastTitle">Success</div>
+    <div class="toast-msg" id="toastMsg">Operation completed</div>
+</div>
+
+<!-- Sidebar -->
+<aside class="sidebar glass" style="padding: 1.2rem;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:2rem; padding:0 0.5rem;">
+        <i class="fas fa-car-side text-gold" style="font-size:1.8rem;"></i>
+        <span class="logo-text" style="font-size:1.4rem; font-weight:800; color:white;">AUTO‑V</span>
+        <span style="font-size:0.6rem; color:#eab308; background:rgba(234,179,8,0.2); padding:0.15rem 0.5rem; border-radius:12px; margin-left:auto;">ADMIN</span>
     </div>
     
-    <!-- ===== JAVASCRIPT ===== -->
-    <script>
-        // ===== TOGGLE SIDEBAR ON MOBILE =====
-        // Add hamburger button if needed
-        function toggleSidebar() {
-            document.querySelector('.sidebar').classList.toggle('open');
-        }
-        
-        // ===== SIMULATE LOADING =====
-        // Hide loading indicator after 2 seconds
-        setTimeout(() => {
-            const loading = document.getElementById('loadingIndicator');
-            if (loading) {
-                loading.style.display = 'none';
-            }
-        }, 2000);
-        
-        // ===== REFRESH DATA =====
-        function refreshData() {
-            const loading = document.getElementById('loadingIndicator');
-            loading.style.display = 'flex';
-            
-            setTimeout(() => {
-                // Simulate data update
-                document.getElementById('totalUsers').textContent = Math.floor(Math.random() * 1000);
-                document.getElementById('totalRequests').textContent = Math.floor(Math.random() * 500);
-                document.getElementById('revenue').textContent = 'KES ' + (Math.floor(Math.random() * 50000)).toLocaleString();
-                document.getElementById('pendingPayments').textContent = Math.floor(Math.random() * 50);
-                document.getElementById('instantCount').textContent = Math.floor(Math.random() * 20);
-                
-                loading.style.display = 'none';
-            }, 1500);
-        }
-        
-        // ===== SEARCH FUNCTION =====
-        function handleSearch(event) {
-            if (event.key === 'Enter') {
-                performSearch();
-            }
-        }
-        
-        function performSearch() {
-            const query = document.getElementById('searchInput').value;
-            if (query.trim()) {
-                alert('🔍 Searching for: "' + query + '"');
-                // Here you would filter your table data
-            }
-        }
-        
-        // ===== EXPORT DATA =====
-        function exportData() {
-            alert('📤 Exporting data... (CSV would download here)');
-        }
-        
-        // ===== ADD NEW REQUEST =====
-        function addNewRequest() {
-            alert('➕ Opening new request form...');
-        }
-        
-        // ===== CONSOLE LOG (Match the design) =====
-        console.log('Supabase client created with proper supabase.js:34 headers');
-        console.log('AUTO-V Supabase client initialized supabase.js:478');
-        console.log('(Single Source of Truth)');
-        
-        // ===== SIMULATE CONSOLE ERRORS =====
-        // The design shows 14 errors - we'll log some for demo
-        console.error('Failed to fetch users: RLS policy violation');
-        console.warn('API rate limit approaching: 85% used');
-        
-        console.log('✅ Dashboard initialized successfully');
-    </script>
+    <nav style="display:flex; flex-direction:column; gap:0.25rem;">
+        <a href="#" class="sidebar-link active" data-page="dashboard"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
+        <a href="#" class="sidebar-link" data-page="users"><i class="fas fa-users"></i><span>Users</span></a>
+        <a href="#" class="sidebar-link" data-page="valuations"><i class="fas fa-chart-line"></i><span>Valuations</span></a>
+        <a href="#" class="sidebar-link" data-page="inspections"><i class="fas fa-clipboard-list"></i><span>Inspections</span></a>
+        <a href="#" class="sidebar-link" data-page="payments"><i class="fas fa-credit-card"></i><span>Payments</span></a>
+        <a href="#" class="sidebar-link" data-page="analytics"><i class="fas fa-chart-pie"></i><span>Analytics</span></a>
+    </nav>
     
+    <div style="margin-top: auto; padding-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.06);">
+        <div style="display:flex; align-items:center; gap:10px; padding:0.5rem; border-radius:10px; background:rgba(255,255,255,0.03);">
+            <div id="sidebarAvatar" style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#eab308,#ca8a04); display:flex; align-items:center; justify-content:center; font-weight:800; color:#0a0a0a;">A</div>
+            <div><div id="sidebarName" style="font-size:0.85rem; font-weight:600;">Admin</div><div id="sidebarRole" style="font-size:0.65rem; color:#9ca3af;">Super Admin</div></div>
+        </div>
+        <a href="#" onclick="logout()" style="display:flex; align-items:center; gap:10px; padding:0.6rem 0.5rem; margin-top:0.5rem; border-radius:8px; color:#9ca3af; text-decoration:none; transition:0.2s; font-size:0.85rem;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#9ca3af'">
+            <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
+        </a>
+    </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+    <!-- Top Bar -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <h1 id="pageTitle" style="font-size:1.8rem; font-weight:800;">Dashboard</h1>
+            <p style="color:#9ca3af; font-size:0.9rem;">Welcome back, <span id="adminName">Admin</span> • <span id="liveDate"></span></p>
+        </div>
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Refresh</button>
+            <button class="btn btn-primary btn-sm" onclick="exportReport()"><i class="fas fa-download"></i> Export Report</button>
+        </div>
+    </div>
+    
+    <!-- Stats Grid -->
+    <div id="statsGrid" class="stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:1rem; margin-bottom:1.5rem;">
+        <div class="stat-card glass fade-in">
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div><div class="stat-label">Total Users</div><div class="stat-value" id="totalUsers">0</div></div>
+                <i class="fas fa-users stat-icon text-gold"></i>
+            </div>
+            <div style="font-size:0.75rem; color:#22c55e; margin-top:0.3rem;"><i class="fas fa-arrow-up"></i> <span id="userGrowth">0</span>% this month</div>
+        </div>
+        <div class="stat-card glass fade-in">
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div><div class="stat-label">Valuations</div><div class="stat-value" id="totalVals">0</div></div>
+                <i class="fas fa-chart-line stat-icon text-gold"></i>
+            </div>
+            <div style="font-size:0.75rem; color:#22c55e; margin-top:0.3rem;"><i class="fas fa-arrow-up"></i> <span id="valGrowth">0</span>% this month</div>
+        </div>
+        <div class="stat-card glass fade-in">
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div><div class="stat-label">Revenue (KES)</div><div class="stat-value" id="totalRevenue">0</div></div>
+                <i class="fas fa-coins stat-icon text-gold"></i>
+            </div>
+            <div style="font-size:0.75rem; color:#22c55e; margin-top:0.3rem;"><i class="fas fa-arrow-up"></i> <span id="revenueGrowth">0</span>% this month</div>
+        </div>
+        <div class="stat-card glass fade-in">
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div><div class="stat-label">Active Users (30d)</div><div class="stat-value" id="activeUsers">0</div></div>
+                <i class="fas fa-user-check stat-icon text-gold"></i>
+            </div>
+            <div style="font-size:0.75rem; color:#9ca3af; margin-top:0.3rem;">Last 30 days</div>
+        </div>
+    </div>
+    
+    <!-- Charts Row -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">
+        <div class="glass" style="padding:1.25rem;">
+            <h3 style="font-weight:600; margin-bottom:0.75rem; font-size:0.95rem;"><i class="fas fa-chart-line text-gold"></i> Monthly Revenue</h3>
+            <div class="chart-container"><canvas id="revenueChart"></canvas></div>
+        </div>
+        <div class="glass" style="padding:1.25rem;">
+            <h3 style="font-weight:600; margin-bottom:0.75rem; font-size:0.95rem;"><i class="fas fa-chart-pie text-gold"></i> Valuation Purposes</h3>
+            <div class="chart-container"><canvas id="purposeChart"></canvas></div>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <div class="glass" style="padding:1.25rem;">
+        <div style="display:flex; gap:1rem; border-bottom:1px solid rgba(255,255,255,0.06); margin-bottom:1rem; flex-wrap:wrap;">
+            <button class="tab-btn" data-tab="users" style="background:none; border:none; color:#9ca3af; padding:0.5rem 0; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; transition:0.2s; font-size:0.9rem;" onclick="switchTab('users')">
+                <i class="fas fa-users"></i> Users
+            </button>
+            <button class="tab-btn active" data-tab="valuations" style="background:none; border:none; color:#eab308; padding:0.5rem 0; font-weight:600; cursor:pointer; border-bottom:2px solid #eab308; transition:0.2s; font-size:0.9rem;" onclick="switchTab('valuations')">
+                <i class="fas fa-file-invoice"></i> Recent Valuations
+            </button>
+            <button class="tab-btn" data-tab="inspections" style="background:none; border:none; color:#9ca3af; padding:0.5rem 0; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; transition:0.2s; font-size:0.9rem;" onclick="switchTab('inspections')">
+                <i class="fas fa-clipboard-check"></i> Inspections
+            </button>
+            <button class="tab-btn" data-tab="payments" style="background:none; border:none; color:#9ca3af; padding:0.5rem 0; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; transition:0.2s; font-size:0.9rem;" onclick="switchTab('payments')">
+                <i class="fas fa-credit-card"></i> Payments
+            </button>
+        </div>
+        
+        <!-- Users Table -->
+        <div id="tab-users" class="tab-content" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+                <input type="text" id="userSearch" placeholder="Search users..." style="background:#0a0a0a; border:1px solid #333; border-radius:8px; padding:0.4rem 0.8rem; color:white; flex:1; min-width:150px;" oninput="filterUsers()">
+                <button class="btn btn-primary btn-sm" onclick="openAddUserModal()"><i class="fas fa-plus"></i> Add User</button>
+            </div>
+            <div class="table-wrapper"><table><thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead><tbody id="usersTableBody"></tbody></table></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; font-size:0.8rem; color:#9ca3af;">
+                <span id="usersCount">0 users</span>
+            </div>
+        </div>
+        
+        <!-- Valuations Table -->
+        <div id="tab-valuations" class="tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+                <input type="text" id="valSearch" placeholder="Search by make/model..." style="background:#0a0a0a; border:1px solid #333; border-radius:8px; padding:0.4rem 0.8rem; color:white; flex:1; min-width:150px;" oninput="filterValuations()">
+                <select id="valFilter" style="background:#0a0a0a; border:1px solid #333; border-radius:8px; padding:0.4rem 0.8rem; color:white;" onchange="filterValuations()">
+                    <option value="all">All Purposes</option>
+                    <option value="Market Value">Market Value</option>
+                    <option value="Pre Insurance Value">Pre-Insurance</option>
+                    <option value="Bank Security Value">Bank Security</option>
+                    <option value="Trade-in Value">Trade-In</option>
+                    <option value="Salvage Value">Salvage</option>
+                </select>
+            </div>
+            <div class="table-wrapper"><table><thead><tr><th>Date</th><th>Vehicle</th><th>Owner</th><th>Purpose</th><th>Value (KES)</th><th>Risk Score</th><th>Action</th></tr></thead><tbody id="valuationsTableBody"></tbody></table></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; font-size:0.8rem; color:#9ca3af;">
+                <span id="valsCount">0 valuations</span>
+            </div>
+        </div>
+        
+        <!-- Inspections Table -->
+        <div id="tab-inspections" class="tab-content" style="display:none;">
+            <div class="table-wrapper"><table><thead><tr><th>Date</th><th>Vehicle</th><th>Inspector</th><th>Score</th><th>Result</th><th>Action</th></tr></thead><tbody id="inspectionsTableBody"></tbody></table></div>
+        </div>
+        
+        <!-- Payments Table -->
+        <div id="tab-payments" class="tab-content" style="display:none;">
+            <div class="table-wrapper"><table><thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Method</th><th>Status</th><th>Reference</th></tr></thead><tbody id="paymentsTableBody"></tbody></table></div>
+        </div>
+    </div>
+</main>
+
+<!-- Add/Edit User Modal -->
+<div id="userModal" class="modal-overlay">
+    <div class="modal-content" style="position:relative;">
+        <span class="modal-close" onclick="closeUserModal()"><i class="fas fa-times"></i></span>
+        <h3 id="modalTitle" style="margin-bottom:1rem;">Add User</h3>
+        <input type="text" id="modalFullName" placeholder="Full Name">
+        <input type="email" id="modalEmail" placeholder="Email address" required>
+        <input type="password" id="modalPassword" placeholder="Password (leave blank to keep)">
+        <select id="modalRole">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+            <option value="inspector">Inspector</option>
+        </select>
+        <div style="display:flex; gap:0.75rem; margin-top:1rem;">
+            <button class="btn btn-primary" onclick="saveUser()">Save</button>
+            <button class="btn btn-outline" onclick="closeUserModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ===================== SUPABASE CONFIG =====================
+    const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+    
+    let supabase = null;
+    let currentAdmin = null;
+    let usersData = [];
+    let valuationsData = [];
+    let inspectionsData = [];
+    let paymentsData = [];
+    let editingUserId = null;
+    let revenueChart = null;
+    let purposeChart = null;
+
+    // ===================== TOAST NOTIFICATIONS =====================
+    function showToast(title, msg, type = 'success') {
+        const toast = document.getElementById('toast');
+        const toastTitle = document.getElementById('toastTitle');
+        const toastMsg = document.getElementById('toastMsg');
+        toast.className = 'toast ' + type;
+        toastTitle.textContent = title;
+        toastMsg.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 4000);
+    }
+
+    // ===================== INIT =====================
+    async function init() {
+        try {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            
+            // Check auth
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { 
+                window.location.href = 'login.html'; 
+                return; 
+            }
+            
+            // Get admin profile
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single();
+            
+            if (!profile || profile.role !== 'admin') { 
+                window.location.href = 'index.html'; 
+                return; 
+            }
+            
+            currentAdmin = session.user;
+            document.getElementById('adminName').textContent = profile.full_name || 'Admin';
+            document.getElementById('sidebarName').textContent = profile.full_name || 'Admin';
+            document.getElementById('sidebarAvatar').textContent = (profile.full_name || 'A')[0].toUpperCase();
+            document.getElementById('sidebarRole').textContent = profile.role || 'Super Admin';
+            
+            document.getElementById('liveDate').innerHTML = new Date().toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+            
+            await loadAllData();
+            initCharts();
+            setupSidebar();
+            
+            showToast('Welcome', 'Dashboard loaded successfully', 'success');
+        } catch (error) {
+            console.error('Init error:', error);
+            showToast('Error', 'Failed to initialize dashboard', 'error');
+        }
+    }
+
+    // ===================== LOAD DATA =====================
+    async function loadAllData() {
+        try {
+            await Promise.all([
+                loadUsers(),
+                loadValuations(),
+                loadInspections(),
+                loadPayments(),
+                loadStats()
+            ]);
+        } catch (error) {
+            console.error('Load data error:', error);
+            showToast('Error', 'Failed to load some data', 'error');
+        }
+    }
+
+    async function loadStats() {
+        try {
+            const { count: users } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+            const { count: vals } = await supabase.from('valuations').select('*', { count: 'exact', head: true });
+            const { data: payments } = await supabase.from('payments').select('amount, created_at');
+            const revenue = payments?.reduce((s,p) => s + (p.amount || 0), 0) || 0;
+            
+            const thirtyDaysAgo = new Date(); 
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const { data: recent } = await supabase
+                .from('valuations')
+                .select('user_id')
+                .gte('created_at', thirtyDaysAgo.toISOString());
+            const active = new Set(recent?.map(v => v.user_id)).size;
+            
+            document.getElementById('totalUsers').innerHTML = users || 0;
+            document.getElementById('totalVals').innerHTML = vals || 0;
+            document.getElementById('totalRevenue').innerHTML = revenue.toLocaleString();
+            document.getElementById('activeUsers').innerHTML = active;
+            
+            // Growth calculations
+            const monthAgo = new Date(); 
+            monthAgo.setDate(monthAgo.getDate() - 30);
+            const { data: oldUsers } = await supabase
+                .from('profiles')
+                .select('id')
+                .lt('created_at', monthAgo.toISOString());
+            const oldCount = oldUsers?.length || 0;
+            const userGrowth = oldCount > 0 ? Math.round(((users - oldCount) / oldCount) * 100) : 0;
+            document.getElementById('userGrowth').innerHTML = userGrowth;
+            
+            const { data: oldVals } = await supabase
+                .from('valuations')
+                .select('id')
+                .lt('created_at', monthAgo.toISOString());
+            const oldValsCount = oldVals?.length || 0;
+            const valGrowth = oldValsCount > 0 ? Math.round(((vals - oldValsCount) / oldValsCount) * 100) : 0;
+            document.getElementById('valGrowth').innerHTML = valGrowth;
+            
+            const { data: oldPayments } = await supabase
+                .from('payments')
+                .select('amount')
+                .lt('created_at', monthAgo.toISOString());
+            const oldRev = oldPayments?.reduce((s,p) => s + (p.amount || 0), 0) || 0;
+            const revGrowth = oldRev > 0 ? Math.round(((revenue - oldRev) / oldRev) * 100) : 0;
+            document.getElementById('revenueGrowth').innerHTML = revGrowth;
+        } catch (error) {
+            console.error('Stats error:', error);
+        }
+    }
+
+    async function loadUsers() {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            usersData = data || [];
+            renderUsers(usersData);
+            document.getElementById('usersCount').innerHTML = `${usersData.length} users`;
+        } catch (error) {
+            console.error('Load users error:', error);
+        }
+    }
+
+    function renderUsers(users) {
+        const tbody = document.getElementById('usersTableBody');
+        if (!users || users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;padding:2rem;">No users found</td></tr>';
+            return;
+        }
+        tbody.innerHTML = users.map(u => `
+            <tr>
+                <td>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="width:28px;height:28px;border-radius:50%;background:rgba(234,179,8,0.2);display:flex;align-items:center;justify-content:center;color:#eab308;font-weight:600;font-size:0.7rem;">
+                            ${(u.full_name || u.email || 'U')[0].toUpperCase()}
+                        </div>
+                        <span>${u.full_name || '—'}</span>
+                    </div>
+                </td>
+                <td style="color:#9ca3af;font-size:0.85rem;">${u.email || '—'}</td>
+                <td><span class="badge ${u.role === 'admin' ? 'badge-active' : u.role === 'inspector' ? 'badge-pending' : ''}">${u.role || 'user'}</span></td>
+                <td><span class="badge badge-active"><i class="fas fa-circle" style="font-size:0.4rem;margin-right:4px;"></i>Active</span></td>
+                <td style="font-size:0.8rem;color:#9ca3af;">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                <td>
+                    <button class="btn btn-outline btn-sm" onclick="editUser('${u.id}','${u.email}','${u.role}','${u.full_name || ''}')"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function filterUsers() {
+        const q = document.getElementById('userSearch').value.toLowerCase();
+        const filtered = usersData.filter(u => 
+            (u.email || '').toLowerCase().includes(q) || 
+            (u.full_name || '').toLowerCase().includes(q)
+        );
+        renderUsers(filtered);
+    }
+
+    async function loadValuations() {
+        try {
+            const { data, error } = await supabase
+                .from('valuations')
+                .select('*, profiles(email, full_name)')
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (error) throw error;
+            valuationsData = data || [];
+            renderValuations(valuationsData);
+            document.getElementById('valsCount').innerHTML = `${valuationsData.length} valuations`;
+        } catch (error) {
+            console.error('Load valuations error:', error);
+        }
+    }
+
+    function renderValuations(vals) {
+        const tbody = document.getElementById('valuationsTableBody');
+        if (!vals || vals.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#666;padding:2rem;">No valuations found</td></tr>';
+            return;
+        }
+        tbody.innerHTML = vals.map(v => {
+            const purposeColors = {
+                'Market Value': 'badge-active',
+                'Pre Insurance Value': 'badge-pending',
+                'Bank Security Value': 'badge-active',
+                'Trade-in Value': 'badge-pending',
+                'Salvage Value': 'badge-expired'
+            };
+            const avgRisk = v.risk_scores ? Math.round(Object.values(v.risk_scores).reduce((a,b) => a+b, 0) / Object.values(v.risk_scores).length) : 0;
+            return `
+                <tr>
+                    <td style="font-size:0.8rem;color:#9ca3af;">${v.created_at ? new Date(v.created_at).toLocaleDateString() : '—'}</td>
+                    <td><span style="font-weight:600;">${v.make || '—'} ${v.model || ''}</span><br><span style="font-size:0.7rem;color:#666;">${v.reg_no || '—'}</span></td>
+                    <td style="font-size:0.85rem;">${v.profiles?.full_name || v.profiles?.email || '—'}</td>
+                    <td><span class="badge ${purposeColors[v.valuation_purpose] || 'badge-pending'}">${v.valuation_purpose || '—'}</span></td>
+                    <td style="font-weight:600;color:#eab308;">KES ${(v.final_value_kes || 0).toLocaleString()}</td>
+                    <td><span style="color:${avgRisk > 70 ? '#22c55e' : avgRisk > 40 ? '#eab308' : '#ef4444'};">${avgRisk}%</span></td>
+                    <td><button class="btn btn-outline btn-sm" onclick="viewValuation('${v.id}')"><i class="fas fa-eye"></i></button></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function filterValuations() {
+        const q = document.getElementById('valSearch').value.toLowerCase();
+        const purpose = document.getElementById('valFilter').value;
+        let filtered = valuationsData;
+        if (q) filtered = filtered.filter(v => (v.make || '').toLowerCase().includes(q) || (v.model || '').toLowerCase().includes(q));
+        if (purpose !== 'all') filtered = filtered.filter(v => v.valuation_purpose === purpose);
+        renderValuations(filtered);
+    }
+
+    async function loadInspections() {
+        try {
+            const { data, error } = await supabase
+                .from('inspections')
+                .select('*, profiles(email, full_name)')
+                .order('created_at', { ascending: false })
+                .limit(30);
+            if (error) throw error;
+            inspectionsData = data || [];
+            renderInspections(inspectionsData);
+        } catch (error) {
+            console.error('Load inspections error:', error);
+        }
+    }
+
+    function renderInspections(inspections) {
+        const tbody = document.getElementById('inspectionsTableBody');
+        if (!inspections || inspections.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;padding:2rem;">No inspections found</td></tr>';
+            return;
+        }
+        tbody.innerHTML = inspections.map(i => `
+            <tr>
+                <td style="font-size:0.8rem;color:#9ca3af;">${i.created_at ? new Date(i.created_at).toLocaleDateString() : '—'}</td>
+                <td><span style="font-weight:600;">${i.make || '—'} ${i.model || ''}</span></td>
+                <td>${i.profiles?.full_name || i.profiles?.email || '—'}</td>
+                <td>${i.score || '—'}%</td>
+                <td><span class="badge ${i.result === 'Pass' ? 'badge-pass' : 'badge-fail'}">${i.result || '—'}</span></td>
+                <td><button class="btn btn-outline btn-sm" onclick="viewInspection('${i.id}')"><i class="fas fa-eye"></i></button></td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadPayments() {
+        try {
+            const { data, error } = await supabase
+                .from('payments')
+                .select('*, profiles(email, full_name)')
+                .order('created_at', { ascending: false })
+                .limit(30);
+            if (error) throw error;
+            paymentsData = data || [];
+            renderPayments(paymentsData);
+        } catch (error) {
+            console.error('Load payments error:', error);
+        }
+    }
+
+    function renderPayments(payments) {
+        const tbody = document.getElementById('paymentsTableBody');
+        if (!payments || payments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;padding:2rem;">No payments found</td></tr>';
+            return;
+        }
+        tbody.innerHTML = payments.map(p => `
+            <tr>
+                <td style="font-size:0.8rem;color:#9ca3af;">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
+                <td>${p.profiles?.full_name || p.profiles?.email || '—'}</td>
+                <td style="font-weight:600;color:#eab308;">KES ${(p.amount || 0).toLocaleString()}</td>
+                <td>${p.payment_method || '—'}</td>
+                <td><span class="badge ${p.status === 'paid' ? 'badge-pass' : p.status === 'pending' ? 'badge-pending' : 'badge-fail'}">${p.status || '—'}</span></td>
+                <td style="font-size:0.8rem;color:#9ca3af;">${p.transaction_id || p.mpesa_code || '—'}</td>
+            </tr>
+        `).join('');
+    }
+
+    // ===================== TAB SWITCHING =====================
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('active');
+            el.style.color = '#9ca3af';
+            el.style.borderBottom = '2px solid transparent';
+        });
+        document.getElementById(`tab-${tab}`).style.display = 'block';
+        const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+        if (btn) {
+            btn.classList.add('active');
+            btn.style.color = '#eab308';
+            btn.style.borderBottom = '2px solid #eab308';
+        }
+    }
+
+    // ===================== SIDEBAR =====================
+    function setupSidebar() {
+        document.querySelectorAll('.sidebar-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+                const page = this.dataset.page;
+                
+                // Show all tabs for dashboard
+                if (page === 'dashboard') {
+                    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+                    document.querySelectorAll('.tab-btn').forEach(b => b.style.display = 'inline-block');
+                    document.getElementById('tab-valuations').style.display = 'block';
+                    document.querySelector('.tab-btn[data-tab="valuations"]').style.display = 'inline-block';
+                    document.querySelector('.tab-btn[data-tab="valuations"]').click();
+                    document.getElementById('pageTitle').innerHTML = 'Dashboard';
+                } else {
+                    // Hide all tabs, show only relevant
+                    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+                    document.querySelectorAll('.tab-btn').forEach(b => b.style.display = 'none');
+                    
+                    const pageMap = {
+                        'users': 'tab-users',
+                        'valuations': 'tab-valuations',
+                        'inspections': 'tab-inspections',
+                        'payments': 'tab-payments'
+                    };
+                    
+                    if (pageMap[page]) {
+                        document.getElementById(pageMap[page]).style.display = 'block';
+                        document.getElementById('pageTitle').innerHTML = page.charAt(0).toUpperCase() + page.slice(1);
+                    }
+                }
+            });
+        });
+    }
+
+    // ===================== CHARTS =====================
+    function initCharts() {
+        // Revenue Chart
+        const ctx1 = document.getElementById('revenueChart').getContext('2d');
+        revenueChart = new Chart(ctx1, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                datasets: [{
+                    label: 'Revenue (KES)',
+                    data: [1250000, 1420000, 1580000, 1750000, 1920000, 2080000, 2250000, 2400000, 2550000, 2680000, 2820000, 2980000],
+                    borderColor: '#eab308',
+                    backgroundColor: 'rgba(234,179,8,0.08)',
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#eab308'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `KES ${ctx.parsed.y.toLocaleString()}` } }
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#9ca3af' } },
+                    y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#9ca3af', callback: (v) => `KES ${(v/1000).toFixed(0)}k` } }
+                }
+            }
+        });
+        
+        // Purpose Chart
+        const ctx2 = document.getElementById('purposeChart').getContext('2d');
+        purposeChart = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: ['Market Value', 'Pre-Insurance', 'Bank Security', 'Trade-In', 'Salvage', 'Other'],
+                datasets: [{
+                    data: [42, 23, 15, 10, 6, 4],
+                    backgroundColor: ['#eab308', '#ca8a04', '#a16207', '#854d0e', '#f59e0b', '#d97706'],
+                    borderColor: '#0a0a0a',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#9ca3af', padding: 12, usePointStyle: true, pointStyle: 'circle' }
+                    }
+                },
+                cutout: '65%'
+            }
+        });
+    }
+
+    // ===================== USER MANAGEMENT =====================
+    function openAddUserModal() {
+        editingUserId = null;
+        document.getElementById('modalTitle').innerHTML = 'Add User';
+        document.getElementById('modalFullName').value = '';
+        document.getElementById('modalEmail').value = '';
+        document.getElementById('modalPassword').value = '';
+        document.getElementById('modalRole').value = 'user';
+        document.getElementById('userModal').style.display = 'flex';
+    }
+
+    function editUser(id, email, role, fullName) {
+        editingUserId = id;
+        document.getElementById('modalTitle').innerHTML = 'Edit User';
+        document.getElementById('modalFullName').value = fullName || '';
+        document.getElementById('modalEmail').value = email;
+        document.getElementById('modalPassword').value = '';
+        document.getElementById('modalRole').value = role;
+        document.getElementById('userModal').style.display = 'flex';
+    }
+
+    function closeUserModal() {
+        document.getElementById('userModal').style.display = 'none';
+        editingUserId = null;
+    }
+
+    async function saveUser() {
+        const email = document.getElementById('modalEmail').value.trim();
+        const password = document.getElementById('modalPassword').value;
+        const role = document.getElementById('modalRole').value;
+        const fullName = document.getElementById('modalFullName').value.trim();
+        
+        if (!email) { 
+            showToast('Error', 'Email is required', 'error');
+            return; 
+        }
+        
+        try {
+            if (editingUserId) {
+                // Update user
+                const { error } = await supabase
+                    .from('profiles')
+                    .update({ role, full_name: fullName || email.split('@')[0] })
+                    .eq('id', editingUserId);
+                if (error) throw error;
+                showToast('Success', 'User updated successfully', 'success');
+            } else {
+                // Create new user
+                const { data, error } = await supabase.auth.signUp({ 
+                    email, 
+                    password: password || 'AutoV123!' 
+                });
+                if (error) throw error;
+                if (data.user) {
+                    await supabase.from('profiles').insert([{ 
+                        id: data.user.id, 
+                        email, 
+                        role, 
+                        full_name: fullName || email.split('@')[0] 
+                    }]);
+                    showToast('Success', 'User created successfully', 'success');
+                }
+            }
+            closeUserModal();
+            await loadAllData();
+        } catch (error) {
+            console.error('Save user error:', error);
+            showToast('Error', error.message || 'Failed to save user', 'error');
+        }
+    }
+
+    async function deleteUser(userId) {
+        if (!confirm('Delete this user permanently?')) return;
+        try {
+            await supabase.from('profiles').delete().eq('id', userId);
+            showToast('Success', 'User deleted successfully', 'success');
+            await loadAllData();
+        } catch (error) {
+            console.error('Delete user error:', error);
+            showToast('Error', 'Failed to delete user', 'error');
+        }
+    }
+
+    function viewValuation(id) {
+        showToast('Valuation', `Viewing valuation: ${id}`, 'info');
+    }
+
+    function viewInspection(id) {
+        showToast('Inspection', `Viewing inspection: ${id}`, 'info');
+    }
+
+    // ===================== REFRESH & EXPORT =====================
+    async function refreshData() {
+        const icon = document.querySelector('.btn-outline .fa-sync-alt');
+        if (icon) icon.classList.add('fa-spin');
+        showToast('Refreshing', 'Loading latest data...', 'info');
+        await loadAllData();
+        if (icon) icon.classList.remove('fa-spin');
+        showToast('Success', 'Data refreshed successfully', 'success');
+    }
+
+    function exportReport() {
+        try {
+            // Generate CSV from valuations
+            let csv = 'Certificate,Make,Model,Value,Purpose,Date\n';
+            valuationsData.slice(0, 20).forEach(v => {
+                csv += `${v.certificate_id || ''},${v.make || ''},${v.model || ''},${v.final_value_kes || 0},${v.valuation_purpose || ''},${v.created_at ? new Date(v.created_at).toLocaleDateString() : ''}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `auto_v_report_${Date.now()}.csv`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            
+            showToast('Success', 'Report exported successfully', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            showToast('Error', 'Failed to export report', 'error');
+        }
+    }
+
+    async function logout() {
+        try {
+            await supabase.auth.signOut();
+            window.location.href = 'login.html';
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    }
+
+    // ===================== INIT =====================
+    document.addEventListener('DOMContentLoaded', init);
+
+    // Close modal on overlay click
+    document.getElementById('userModal').addEventListener('click', function(e) {
+        if (e.target === this) closeUserModal();
+    });
+</script>
 </body>
 </html>
