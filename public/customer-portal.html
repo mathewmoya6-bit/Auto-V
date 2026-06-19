@@ -708,23 +708,20 @@
             // ─── FEE LOADING ──────────────────────────────────────────
             async function loadFees() {
                 try {
-                    // Load ALL fee-related settings
                     const { data, error } = await supabase
                         .from('system_settings')
                         .select('setting_key, setting_value')
-                        .ilike('setting_key', '%_fee');  // Get all keys ending with _fee
+                        .ilike('setting_key', '%_fee');
 
                     if (error) throw error;
                     const map = {};
                     data.forEach(row => map[row.setting_key] = row.setting_value);
 
-                    // Update flat fees
                     instantFee = parseInt(map.instant_fee) || 500;
                     mileageFee = parseInt(map.mileage_fee) || 1500;
                     fleetFee = parseInt(map.fleet_fee) || 4000;
                     verificationFee = parseInt(map.verification_fee) || 1000;
 
-                    // Update purpose-specific fees
                     for (const service of ['valuation', 'inspection', 'assessment']) {
                         for (const purpose of Object.keys(purposePrices[service] || {})) {
                             const key = `${service}_${purpose.toLowerCase().replace(/[^a-z0-9]/g, '_')}_fee`;
@@ -736,7 +733,6 @@
 
                 } catch (e) { console.warn('Error loading fees:', e); }
 
-                // Update display
                 document.getElementById('instantPriceDisplay').textContent = `KES ${Number(instantFee || 0).toLocaleString()}`;
                 document.getElementById('valuationPriceDisplay').textContent = 'KES 2,500 – 4,000';
                 document.getElementById('inspectionPriceDisplay').textContent = 'KES 2,000 – 3,500';
@@ -745,7 +741,6 @@
                 document.getElementById('fleetPriceDisplay').textContent = `KES ${Number(fleetFee || 0).toLocaleString()}`;
                 document.getElementById('verificationPriceDisplay').textContent = `KES ${Number(verificationFee || 0).toLocaleString()}`;
 
-                // Re-render purpose fees if a service is selected
                 if (selectedService) {
                     renderPurposeFees(selectedService);
                 }
@@ -769,10 +764,9 @@
                         },
                         (payload) => {
                             console.log('📢 Received change:', payload);
-                            // Check if it's a fee-related key
                             if (payload.new.setting_key && payload.new.setting_key.includes('_fee')) {
                                 console.log('🔄 Fee updated, reloading all fees...');
-                                loadFees(); // Reload ALL fees
+                                loadFees();
                                 const badge = document.getElementById('feeUpdateBadge');
                                 if (badge) {
                                     badge.classList.add('show');
@@ -792,8 +786,6 @@
             function renderPurposeFees(service) {
                 const container = document.getElementById('purposeFields');
                 if (!container) return;
-                // This is just for display in the purpose section
-                // The actual prices are in purposePrices[service]
             }
 
             // ─── UPDATE PURPOSE LIST ────────────────────────────────
@@ -992,7 +984,8 @@
 
                     const price = getPrice(selectedService, selectedPurpose);
 
-                    const initResponse = await fetchWithAuth(`${API_BASE}/payments/initiate`, {
+                    // ✅ FIXED: Use /mpesa/initiate instead of /payments/initiate
+                    const initResponse = await fetchWithAuth(`${API_BASE}/mpesa/initiate`, {
                         method: 'POST',
                         body: JSON.stringify({
                             phone: mpesaPhone,
@@ -1002,8 +995,15 @@
                         })
                     });
 
-                    if (!initResponse.ok) { const err = await initResponse.json(); throw new Error(err.message || 'STK Push initiation failed'); }
+                    if (!initResponse.ok) { 
+                        const err = await initResponse.json(); 
+                        console.error('Payment initiation error:', err);
+                        throw new Error(err.error || 'STK Push initiation failed'); 
+                    }
+                    
                     const initData = await initResponse.json();
+                    console.log('Payment initiated:', initData);
+                    
                     currentPaymentId = initData.payment_id;
                     setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
 
@@ -1014,7 +1014,8 @@
                     pollInterval = setInterval(async () => {
                         attempts++;
                         try {
-                            const statusResponse = await fetchWithAuth(`${API_BASE}/payments/status/${currentPaymentId}`);
+                            // ✅ FIXED: Use /mpesa/status instead of /payments/status
+                            const statusResponse = await fetchWithAuth(`${API_BASE}/mpesa/status/${currentPaymentId}`);
                             if (!statusResponse.ok) {
                                 if (statusResponse.status === 404) {
                                     if (attempts >= maxAttempts) {
@@ -1076,9 +1077,13 @@
                 }
             }
 
-            async function processPayment(e) { e.preventDefault(); await initiatePayment(); }
-
-            document.getElementById('retryPaymentBtn')?.addEventListener('click', async () => { await initiatePayment(); });
+            // ─── RETRY PAYMENT ────────────────────────────────────────
+            document.getElementById('retryPaymentBtn')?.addEventListener('click', async () => { 
+                currentPaymentStatus = null;
+                document.getElementById('paymentStatus').style.display = 'none';
+                document.getElementById('paymentRetry').style.display = 'none';
+                await initiatePayment(); 
+            });
 
             // ─── SUBMIT VEHICLE REQUEST ──────────────────────────────
             async function submitVehicleRequest(e) {
@@ -1340,7 +1345,7 @@
             document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
             document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
             document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
-            document.getElementById('paymentForm')?.addEventListener('submit', processPayment);
+            document.getElementById('paymentForm')?.addEventListener('submit', initiatePayment);
             document.getElementById('vehicleForm')?.addEventListener('submit', submitVehicleRequest);
             document.getElementById('lookupVehicleBtn')?.addEventListener('click', lookupVehicle);
             document.getElementById('downloadReportBtn')?.addEventListener('click', downloadReport);
@@ -1433,12 +1438,18 @@
                 }
             }
 
+            // ─── LOGOUT ──────────────────────────────────────────────
+            document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                localStorage.removeItem('autoV_user');
+                window.location.href = 'login.html';
+            });
+
             // ─── INIT ────────────────────────────────────────────────
             async function init() {
                 populateYears();
                 await loadFees();
 
-                // Subscribe to real-time fee changes
                 realtimeChannel = subscribeToFeeChanges();
                 feeInterval = setInterval(loadFees, 30000);
 
