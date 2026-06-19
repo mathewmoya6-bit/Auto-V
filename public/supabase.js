@@ -6,7 +6,8 @@
 const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 
-// Initialize Supabase client
+// Use the existing supabase client from window.supabase
+// (created by the CDN script in customer-portal.html)
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================
@@ -352,33 +353,105 @@ window.autoV = {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    },
+    
+    // ========================================
+    // USER PROFILE HELPERS (FIXED)
+    // ========================================
+    async upsertUserProfile(userId, email, name, phone) {
+        try {
+            const { error } = await supabase
+                .from('user_profiles')
+                .upsert({
+                    id: userId,
+                    email: email,
+                    full_name: name || email.split('@')[0],
+                    phone: phone || '',
+                    first_login: true,
+                    has_vehicle: false,
+                    login_count: 1,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            
+            if (error) {
+                console.warn('Error upserting user profile:', error.message);
+            }
+        } catch (err) {
+            console.warn('Error in upsertUserProfile:', err);
+        }
+    },
+    
+    async checkFirstTimeUser(userId) {
+        try {
+            const { data, error } = await supabase
+                .from('user_profiles')
+                .select('first_login, has_vehicle, login_count, full_name, phone')
+                .eq('id', userId)
+                .single();
+            
+            if (error) {
+                console.warn('User profile query failed, treating as first-time user:', error.message);
+                return true;
+            }
+            
+            if (!data) return true;
+            if (!data.full_name || !data.phone) return true;
+            return !(data.first_login === false && data.has_vehicle === true && data.login_count >= 2);
+        } catch (err) {
+            console.warn('Error checking user profile, treating as first-time user:', err);
+            return true;
+        }
+    },
+    
+    async isProfileComplete(userId) {
+        try {
+            const { data, error } = await supabase
+                .from('user_profiles')
+                .select('full_name, phone')
+                .eq('id', userId)
+                .single();
+            
+            if (error) {
+                console.warn('Profile completeness query failed, assuming incomplete:', error.message);
+                return false;
+            }
+            
+            return !!(data && data.full_name && data.phone);
+        } catch (err) {
+            console.warn('Error checking profile completeness:', err);
+            return false;
+        }
     }
 };
 
-// Add animation styles
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from { opacity: 0; transform: translateX(100px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
-    @keyframes slideOut {
-        from { opacity: 1; transform: translateX(0); }
-        to { opacity: 0; transform: translateX(100px); }
-    }
-    .spinner {
-        width: 40px;
-        height: 40px;
-        border: 3px solid #1e293b;
-        border-top-color: #eab308;
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-        margin: 20px auto;
-    }
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
-`;
-document.head.appendChild(style);
+// Add animation styles (only once)
+if (!document.getElementById('autoVStyles')) {
+    const style = document.createElement('style');
+    style.id = 'autoVStyles';
+    style.textContent = `
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(100px); }
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #1e293b;
+            border-top-color: #eab308;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    `;
+    document.head.appendChild(style);
+}
 
 console.log('✅ AUTO-V Supabase client initialized');
+console.log('📦 Using window.supabase client');
