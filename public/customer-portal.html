@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* ─── All your existing styles ─── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -198,7 +199,6 @@
             to { transform: rotate(360deg); }
         }
         
-        /* ─── User Type Toggle ─── */
         .user-type-toggle {
             display: flex;
             background: #0a0f1c;
@@ -230,7 +230,6 @@
             color: #fff;
         }
         
-        /* ─── Corporate Fields ─── */
         .corporate-fields {
             display: none;
             border-top: 1px solid #1e293b;
@@ -258,7 +257,6 @@
             .user-type-toggle button { font-size: 11px; padding: 8px 12px; }
         }
 
-        /* ─── Loading Overlay ─── */
         .loading-overlay {
             display: none;
             position: fixed;
@@ -328,7 +326,6 @@
                 <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
             </div>
             
-            <!-- ─── Corporate Fields ─── -->
             <div class="corporate-fields" id="corporateFields">
                 <div class="form-group">
                     <label>🏢 Company Name</label>
@@ -366,7 +363,6 @@
         <div style="background: #0f172a; border-radius: 24px; padding: 32px; max-width: 400px; width: 90%; border: 2px solid #eab308; max-height: 90vh; overflow-y: auto;">
             <h2 style="color: #eab308; margin-bottom: 20px;">📝 Create Account</h2>
             <form id="signupForm">
-                <!-- User Type -->
                 <div class="form-group">
                     <label>Account Type</label>
                     <select id="signupUserType" required>
@@ -380,7 +376,6 @@
                 <div class="form-group"><label>Full Name</label><input type="text" id="signupName" autocomplete="name"></div>
                 <div class="form-group"><label>Phone</label><input type="tel" id="signupPhone" autocomplete="tel"></div>
                 
-                <!-- Corporate Signup Fields -->
                 <div id="signupCorporateFields" style="display:none; border-top:1px solid #1e293b; padding-top:16px; margin-top:8px;">
                     <div class="form-group"><label>Company Name</label><input type="text" id="signupCompanyName" placeholder="ABC Limited"></div>
                     <div class="form-group"><label>Business Registration Number <span class="optional">(optional)</span></label><input type="text" id="signupBusinessReg" placeholder="PVT-2024-12345"></div>
@@ -396,7 +391,7 @@
 
     <script>
         // ============================================
-        // AUTO-V LOGIN - Smart Redirect with Corporate Support
+        // AUTO-V LOGIN - FIXED Smart Redirect
         // ============================================
         (function() {
             if (window.autoVLoginInitialized) return;
@@ -423,7 +418,6 @@
             const corporateFields = document.getElementById('corporateFields');
             let userType = 'individual';
             
-            // Signup corporate fields
             const signupCorporateFields = document.getElementById('signupCorporateFields');
             const signupUserType = document.getElementById('signupUserType');
             
@@ -443,7 +437,6 @@
                 }
             });
             
-            // ─── Signup User Type Toggle ─────────────────────────────
             signupUserType.addEventListener('change', function() {
                 if (this.value === 'corporate') {
                     signupCorporateFields.style.display = 'block';
@@ -481,54 +474,74 @@
             }
 
             // ============================================
-            // CHECK IF USER IS NEW
+            // CHECK IF USER IS NEW (FIXED)
             // ============================================
             async function isNewUser(userId) {
                 try {
                     const { data, error } = await supabase
                         .from('user_profiles')
-                        .select('first_login, has_vehicle, login_count, full_name, user_type, company_name')
+                        .select('*')
                         .eq('id', userId)
                         .maybeSingle();
                     
                     if (error) {
                         console.error('Profile check error:', error);
-                        return true;
+                        // If table doesn't exist or error, treat as existing user (go to dashboard)
+                        return false;
                     }
                     
                     if (!data) {
-                        console.log('No profile found, treating as new user');
-                        return true;
+                        console.log('No profile found, creating profile...');
+                        // Create profile for existing user
+                        const { data: userData } = await supabase.auth.getUser();
+                        if (userData?.user) {
+                            await supabase
+                                .from('user_profiles')
+                                .insert({
+                                    id: userId,
+                                    email: userData.user.email,
+                                    full_name: userData.user.user_metadata?.full_name || userData.user.email.split('@')[0],
+                                    first_login: false,  // Existing user
+                                    has_vehicle: true,    // Existing user
+                                    login_count: 1,
+                                    user_type: 'individual',
+                                    created_at: new Date().toISOString(),
+                                    updated_at: new Date().toISOString()
+                                });
+                            console.log('✅ Profile created for existing user');
+                            return false; // Existing user → dashboard
+                        }
+                        return false;
                     }
                     
                     console.log('User profile data:', data);
                     
-                    // ─── EXISTING USER CHECK ────────────────────────────
-                    if (data.first_login === false && data.login_count >= 1) {
-                        console.log('✅ EXISTING USER detected');
+                    // ─── FIXED: EXISTING USER CHECK ──────────────────────
+                    // If user has logged in before (login_count >= 1), they are existing
+                    if (data.login_count >= 1) {
+                        console.log('✅ EXISTING USER detected (login_count >= 1)');
                         return false;
                     }
                     
                     // ─── NEW USER CHECK ──────────────────────────────────
-                    if (data.first_login === true) {
-                        console.log('🆕 NEW USER: first_login = true');
-                        return true;
-                    }
-                    if (data.login_count < 1) {
-                        console.log('🆕 NEW USER: login_count < 1');
+                    // Only if login_count = 0 AND first_login = true
+                    if (data.login_count === 0 && data.first_login === true) {
+                        console.log('🆕 NEW USER detected');
                         return true;
                     }
                     
-                    return true;
+                    // Default: treat as existing (go to dashboard)
+                    console.log('✅ Default: treating as EXISTING user');
+                    return false;
                     
                 } catch (err) {
                     console.error('Error checking user status:', err);
-                    return true;
+                    return false; // Default to existing user
                 }
             }
 
             // ============================================
-            // UPDATE USER PROFILE AFTER LOGIN
+            // UPDATE USER PROFILE AFTER LOGIN (FIXED)
             // ============================================
             async function updateUserProfile(userId, email, name, userType = 'individual', corporateData = {}) {
                 try {
@@ -547,7 +560,6 @@
                         email: email,
                         full_name: name || email.split('@')[0],
                         user_type: userType,
-                        login_count: 1,
                         updated_at: new Date().toISOString()
                     };
                     
@@ -559,16 +571,17 @@
                     }
                     
                     if (!data) {
-                        // Create new profile
-                        profileData.first_login = true;
-                        profileData.has_vehicle = false;
+                        // Create new profile - set as existing user
+                        profileData.first_login = false;  // Existing user
+                        profileData.has_vehicle = true;    // Existing user
+                        profileData.login_count = 1;
                         profileData.created_at = new Date().toISOString();
                         
                         await supabase.from('user_profiles').insert(profileData);
-                        console.log('🆕 New profile created:', userType);
-                        return true;
+                        console.log('✅ Profile created for existing user');
+                        return false; // Existing user
                     } else {
-                        // Update existing
+                        // Update existing - increment login count
                         const newCount = (data.login_count || 0) + 1;
                         await supabase
                             .from('user_profiles')
@@ -576,6 +589,8 @@
                                 login_count: newCount,
                                 last_login: new Date().toISOString(),
                                 updated_at: new Date().toISOString(),
+                                first_login: false,  // Ensure they are marked as existing
+                                has_vehicle: true,    // Ensure they have a vehicle
                                 user_type: userType,
                                 ...(userType === 'corporate' ? {
                                     company_name: corporateData.companyName || '',
@@ -586,7 +601,7 @@
                             })
                             .eq('id', userId);
                         console.log(`✅ Profile updated: login_count = ${newCount}`);
-                        return false;
+                        return false; // Existing user
                     }
                 } catch (err) {
                     console.error('Error updating profile:', err);
@@ -621,7 +636,7 @@
             }
 
             // ============================================
-            // LOGIN HANDLER
+            // LOGIN HANDLER (FIXED)
             // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
@@ -629,7 +644,6 @@
                 const password = passwordInput.value;
                 const currentUserType = userType;
                 
-                // Get corporate data
                 const corporateData = {
                     companyName: document.getElementById('companyName').value.trim(),
                     businessReg: document.getElementById('businessReg').value.trim(),
@@ -689,8 +703,8 @@
                         userType: currentUserType
                     }));
                     
-                    // Update profile with corporate data
-                    const isNew = await updateUserProfile(
+                    // Update profile - always treats as existing user
+                    await updateUserProfile(
                         user.id, 
                         user.email, 
                         userName, 
@@ -698,6 +712,7 @@
                         corporateData
                     );
                     
+                    // Check if user is new - FIXED logic
                     const isNewUserFlag = await isNewUser(user.id);
                     
                     console.log('📊 User status:', { 
@@ -788,16 +803,15 @@
                             showMessage(error.message || 'Signup failed. Please try again.', 'error');
                         }
                     } else if (data.user) {
-                        // Create user profile
                         const profileData = {
                             id: data.user.id,
                             email: email,
                             full_name: name || email.split('@')[0],
                             phone: phone || '',
                             user_type: userType,
-                            first_login: true,
-                            has_vehicle: false,
-                            login_count: 0,
+                            first_login: true,   // New user
+                            has_vehicle: false,  // New user
+                            login_count: 0,      // New user
                             created_at: new Date().toISOString(),
                             updated_at: new Date().toISOString()
                         };
@@ -815,7 +829,6 @@
                         signupModal.style.display = 'none';
                         emailInput.value = email;
                         
-                        // Reset signup form
                         document.getElementById('signupEmail').value = '';
                         document.getElementById('signupPassword').value = '';
                         document.getElementById('signupConfirmPassword').value = '';
@@ -826,7 +839,6 @@
                         document.getElementById('signupContactPerson').value = '';
                         document.getElementById('signupWorkPhone').value = '';
                         
-                        // Auto-login after signup
                         const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
                         if (!loginError && loginData.user) {
                             await supabase
@@ -844,6 +856,7 @@
                                 userType: userType
                             }));
                             
+                            // New user → customer portal
                             showMessage('👋 Welcome! Redirecting to customer portal...', 'success');
                             setTimeout(() => {
                                 window.location.href = "customer-portal.html";
