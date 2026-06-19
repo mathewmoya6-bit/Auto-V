@@ -9,9 +9,6 @@
     <!-- Supabase CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     
-    <!-- Single Source of Truth -->
-    <script src="supabase.js"></script>
-    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         /* ============================================================
@@ -94,6 +91,33 @@
             border-color: #eab308;
             box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.15);
         }
+        input:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* ─── Client Type Toggle ────────────────────────────────────── */
+        .client-type-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .client-type-btn {
+            flex: 1;
+            padding: 12px;
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 600;
+            transition: all 0.3s;
+            color: #94a3b8;
+        }
+        .client-type-btn.active {
+            border-color: #eab308;
+            background: #2d3a4e;
+            color: #eab308;
+        }
+        .client-type-btn:hover { border-color: #eab308; }
+        .client-type-btn .icon { font-size: 24px; display: block; margin-bottom: 4px; }
         
         /* ─── Buttons ────────────────────────────────────────────────── */
         .btn {
@@ -276,6 +300,7 @@
             .nav-buttons button { width: 100%; }
             .progress-step { font-size: 10px; padding: 8px; }
             .row { grid-template-columns: 1fr; }
+            .client-type-toggle { flex-direction: column; }
         }
     </style>
 </head>
@@ -308,6 +333,9 @@
         <!-- ─── STEP 1: LOGIN ────────────────────────────────────────── -->
         <div id="step1" class="card step active">
             <h2>🔐 Login to Continue</h2>
+            <div id="loginLoading" style="display:none;text-align:center;padding:20px;">
+                <div class="spinner"></div> <span style="color:#94a3b8;">Checking existing session...</span>
+            </div>
             <form id="loginForm">
                 <div class="form-group"><label class="required">Email</label><input type="email" id="loginEmail" placeholder="your@email.com" autocomplete="email"></div>
                 <div class="form-group"><label class="required">Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"></div>
@@ -332,11 +360,38 @@
         <!-- ─── STEP 2: CLIENT DETAIL ────────────────────────────────── -->
         <div id="step2" class="card step">
             <h2>👤 Client Details</h2>
+            
+            <!-- Client Type Toggle -->
+            <div class="client-type-toggle">
+                <div class="client-type-btn active" data-type="individual" id="individualBtn">
+                    <span class="icon">👤</span>
+                    Individual
+                </div>
+                <div class="client-type-btn" data-type="corporate" id="corporateBtn">
+                    <span class="icon">🏢</span>
+                    Corporate
+                </div>
+            </div>
+            
             <form id="clientForm">
-                <div class="form-group"><label class="required">Full Name</label><input type="text" id="custName" placeholder="John Doe" autocomplete="name"></div>
-                <div class="form-group"><label class="required">ID / Passport</label><input type="text" id="custId" placeholder="ID number"></div>
+                <!-- Individual Fields -->
+                <div id="individualFields">
+                    <div class="form-group"><label class="required">Full Name</label><input type="text" id="custName" placeholder="John Doe" autocomplete="name"></div>
+                    <div class="form-group"><label class="required">ID / Passport</label><input type="text" id="custId" placeholder="ID number"></div>
+                </div>
+                
+                <!-- Corporate Fields -->
+                <div id="corporateFields" style="display:none;">
+                    <div class="form-group"><label class="required">Company Name</label><input type="text" id="custCompany" placeholder="Company Name"></div>
+                    <div class="form-group"><label class="required">Business Registration No.</label><input type="text" id="custRegNo" placeholder="Registration Number"></div>
+                    <div class="form-group"><label>Contact Person</label><input type="text" id="custContactPerson" placeholder="Contact Person Name"></div>
+                </div>
+                
+                <!-- Common Fields -->
                 <div class="form-group"><label class="required">Phone Number</label><input type="tel" id="custPhone" placeholder="0712345678" autocomplete="tel"></div>
                 <div class="form-group"><label class="required">Email Address</label><input type="email" id="custEmail" placeholder="john@example.com" autocomplete="email"></div>
+                <div class="form-group"><label>Physical Address</label><input type="text" id="custAddress" placeholder="Nairobi, Kenya"></div>
+                
                 <div class="nav-buttons">
                     <button type="button" class="btn btn-secondary" id="backToLogin">← Back</button>
                     <button type="submit" class="btn btn-primary">Next →</button>
@@ -454,7 +509,7 @@
                 <div class="form-group"><label>Accident History</label><select id="vehicleAccident"><option>None</option><option>Minor</option><option>Moderate</option><option>Major</option></select></div>
                 <div class="nav-buttons">
                     <button type="button" class="btn btn-secondary" id="backToPay">← Back</button>
-                    <button type="submit" class="btn btn-primary">🚀 Calculate & Complete</button>
+                    <button type="submit" class="btn btn-primary" id="submitVehicleBtn">🚀 Calculate & Complete</button>
                 </div>
             </form>
             <div class="dashboard-link"><a href="dashboard.html">← Back to Dashboard</a></div>
@@ -476,663 +531,725 @@
     
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL
+        // AUTO-V CUSTOMER PORTAL - SINGLE SOURCE OF TRUTH: SUPABASE
         // ============================================================
         
         (function() {
-            if (window.autoVCustomerPortalInitialized) return;
-            window.autoVCustomerPortalInitialized = true;
+            // ─── Supabase Configuration ──────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
             
-            function waitForAutoV(callback, retries = 15) {
-                if (window.autoV && window.autoV.supabase) {
-                    console.log('✅ autoV ready');
-                    callback();
-                    return;
+            // ─── Initialize Supabase ──────────────────────────────────────
+            if (typeof window.__supabase === 'undefined') {
+                window.__supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+            const supabase = window.__supabase;
+            
+            // ─── DOM Elements ─────────────────────────────────────────────
+            const loginLoading = document.getElementById('loginLoading');
+            const loginForm = document.getElementById('loginForm');
+            const signupForm = document.getElementById('signupForm');
+            const clientForm = document.getElementById('clientForm');
+            const paymentForm = document.getElementById('paymentForm');
+            const vehicleForm = document.getElementById('vehicleForm');
+            
+            // ─── State ───────────────────────────────────────────────────
+            let currentUser = null;
+            let selectedService = null;
+            let selectedPurpose = null;
+            let clientType = 'individual';
+            let isFirstTimeUser = false;
+            let currentPaymentId = null;
+            let currentPaymentStatus = null;
+            let pollInterval = null;
+            let paymentInProgress = false;
+            
+            // ─── Service Configuration ──────────────────────────────────
+            const services = {
+                instant: { name: 'Instant Value Check', icon: '💡', price: 500 },
+                valuation: { name: 'Vehicle Valuation', icon: '💰', price: 2500 },
+                inspection: { name: 'Vehicle Inspection', icon: '🔍', price: 3500 },
+                mileage: { name: 'Mileage Rate Report', icon: '📏', price: 1500 },
+                assessment: { name: 'Vehicle Assessment', icon: '⚠️', price: 3000 },
+                fleet: { name: 'Fleet Services', icon: '🚛', price: 4000 },
+                verification: { name: 'Report Verification', icon: '✅', price: 1000 }
+            };
+            
+            const purposeOptions = {
+                instant: ["Instant Market Estimate"],
+                valuation: ["Insurance Valuation", "Bank / Logbook Loan Valuation", "Market Value Valuation", "Forced Sale Value (FSV)", "Pre-Purchase Valuation", "Fleet Valuation", "Probate & Estate", "Court & Legal"],
+                inspection: ["Pre-Purchase Inspection", "Mechanical Inspection", "Roadworthiness Inspection", "Insurance Pre-Inspection", "Vehicle Authentication", "Mileage Verification"],
+                assessment: ["Accident Assessment", "Insurance Claim Assessment", "Repair Cost Assessment", "Total Loss Assessment", "Salvage Assessment", "Theft Recovery"],
+                mileage: ["Mileage Rate Report", "Running Cost Analysis", "Fleet Cost Analysis", "Travel Reimbursement"],
+                fleet: ["Fleet Valuation", "Fleet Inspection", "Fleet Cost Analysis", "Fleet Management"],
+                verification: ["Valuation Certificates", "Inspection Reports", "Assessment Reports", "QR Verification"]
+            };
+            
+            // ─── HELPERS ──────────────────────────────────────────────────
+            function showMessage(msg, type = 'success') {
+                const errorDiv = document.getElementById('errorMsg');
+                const successDiv = document.getElementById('successMsg');
+                errorDiv.style.display = 'none';
+                successDiv.style.display = 'none';
+                if (type === 'error') {
+                    errorDiv.textContent = msg;
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => errorDiv.style.display = 'none', 5000);
+                } else {
+                    successDiv.textContent = msg;
+                    successDiv.style.display = 'block';
+                    setTimeout(() => successDiv.style.display = 'none', 3000);
                 }
-                if (retries <= 0) {
-                    console.error('❌ autoV failed to initialize');
-                    alert('Configuration error. Please refresh the page.');
-                    return;
-                }
-                setTimeout(() => waitForAutoV(callback, retries - 1), 300);
             }
             
-            waitForAutoV(function() {
-                const supabase = window.autoV.supabase;
-                const API_BASE = 'https://auto-v.onrender.com/api';
-                
-                // ─── Service Configuration ──────────────────────────────
-                const services = {
-                    instant: { name: 'Instant Value Check', icon: '💡', price: 500 },
-                    valuation: { name: 'Vehicle Valuation', icon: '💰', price: 2500 },
-                    inspection: { name: 'Vehicle Inspection', icon: '🔍', price: 3500 },
-                    mileage: { name: 'Mileage Rate Report', icon: '📏', price: 1500 },
-                    assessment: { name: 'Vehicle Assessment', icon: '⚠️', price: 3000 },
-                    fleet: { name: 'Fleet Services', icon: '🚛', price: 4000 },
-                    verification: { name: 'Report Verification', icon: '✅', price: 1000 }
-                };
-                
-                const purposeOptions = {
-                    instant: ["Instant Market Estimate"],
-                    valuation: ["Insurance Valuation", "Bank / Logbook Loan Valuation", "Market Value Valuation", "Forced Sale Value (FSV) Valuation", "Pre-Purchase Valuation", "Fleet Valuation", "Probate & Estate Valuation", "Court & Legal Valuation"],
-                    inspection: ["Pre-Purchase Inspection", "Mechanical Inspection", "Roadworthiness Inspection", "Insurance Pre-Inspection", "Vehicle Authentication", "Mileage Verification"],
-                    assessment: ["Accident Assessment", "Insurance Claim Assessment", "Repair Cost Assessment", "Total Loss Assessment", "Salvage Assessment", "Theft Recovery Assessment"],
-                    mileage: ["Mileage Rate Report", "Vehicle Running Cost Analysis", "Fleet Running Cost Analysis", "Travel Reimbursement Report"],
-                    fleet: ["Fleet Valuation", "Fleet Inspection", "Fleet Running Cost Analysis", "Fleet Management"],
-                    verification: ["Valuation Certificates", "Inspection Reports", "Assessment Reports", "Online Verification (QR)"]
-                };
-                
-                // ─── STATE ─────────────────────────────────────────────────
-                let currentUser = null;
-                let selectedService = null;
-                let selectedPurpose = null;
-                let isFirstTimeUser = false;
-                let currentPaymentId = null;
-                let currentPaymentStatus = null;
-                let pollInterval = null;
-                let paymentInProgress = false;
-                
-                // ─── HELPERS ──────────────────────────────────────────────
-                function showMessage(msg, type = 'success') {
-                    const errorDiv = document.getElementById('errorMsg');
-                    const successDiv = document.getElementById('successMsg');
-                    errorDiv.style.display = 'none';
-                    successDiv.style.display = 'none';
-                    if (type === 'error') {
-                        errorDiv.textContent = msg;
-                        errorDiv.style.display = 'block';
-                        setTimeout(() => errorDiv.style.display = 'none', 5000);
-                    } else {
-                        successDiv.textContent = msg;
-                        successDiv.style.display = 'block';
-                        setTimeout(() => successDiv.style.display = 'none', 3000);
+            function formatKES(amount) {
+                return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', minimumFractionDigits: 0 }).format(amount || 0);
+            }
+            
+            function setPaymentStatus(status, message = '') {
+                const el = document.getElementById('paymentStatus');
+                el.className = 'payment-status ' + status;
+                el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
+                el.style.display = 'block';
+                document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
+                currentPaymentStatus = status;
+            }
+            
+            function showStep(step) {
+                for (let i = 1; i <= 7; i++) {
+                    const el = document.getElementById(`step${i}`);
+                    if (el) el.classList.remove('active');
+                    const prog = document.getElementById(`step${i}Prog`);
+                    if (prog) {
+                        prog.classList.remove('active', 'completed');
+                        if (i < step) prog.classList.add('completed');
+                        if (i === step) prog.classList.add('active');
                     }
                 }
-                
-                function formatKES(amount) {
-                    return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', minimumFractionDigits: 0 }).format(amount || 0);
+                document.getElementById(`step${step}`).classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+            
+            function getServicePrice(service) { return services[service]?.price || 0; }
+            function getServiceName(service) { return services[service]?.name || service; }
+            
+            // ─── POPULATE YEARS ──────────────────────────────────────────
+            function populateYears() {
+                const yearSelect = document.getElementById('vehicleYear');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= 1950; y--) {
+                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
                 }
-                
-                function setPaymentStatus(status, message = '') {
-                    const el = document.getElementById('paymentStatus');
-                    el.className = 'payment-status ' + status;
-                    el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
-                    el.style.display = 'block';
-                    document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
-                    currentPaymentStatus = status;
+            }
+            
+            // ─── CLIENT TYPE TOGGLE ──────────────────────────────────────
+            document.getElementById('individualBtn').addEventListener('click', function() {
+                clientType = 'individual';
+                document.querySelectorAll('.client-type-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('individualFields').style.display = 'block';
+                document.getElementById('corporateFields').style.display = 'none';
+            });
+            
+            document.getElementById('corporateBtn').addEventListener('click', function() {
+                clientType = 'corporate';
+                document.querySelectorAll('.client-type-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('individualFields').style.display = 'none';
+                document.getElementById('corporateFields').style.display = 'block';
+            });
+            
+            // ─── UPDATE PURPOSE LIST ────────────────────────────────────
+            function updatePurposeList(service) {
+                const container = document.getElementById('purposeList');
+                const purposes = purposeOptions[service] || purposeOptions.instant;
+                container.innerHTML = purposes.map(p =>
+                    `<div class="purpose-item" data-purpose="${p}">${p}</div>`
+                ).join('');
+                document.querySelectorAll('.purpose-item').forEach(item => {
+                    item.onclick = () => {
+                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        selectedPurpose = item.dataset.purpose;
+                        updateSummary();
+                    };
+                });
+                if (selectedPurpose && purposes.includes(selectedPurpose)) {
+                    const selectedEl = container.querySelector(`[data-purpose="${selectedPurpose}"]`);
+                    if (selectedEl) selectedEl.classList.add('selected');
+                } else {
+                    selectedPurpose = null;
                 }
-                
-                function showStep(step) {
-                    for (let i = 1; i <= 7; i++) {
-                        const el = document.getElementById(`step${i}`);
-                        if (el) el.classList.remove('active');
-                        const prog = document.getElementById(`step${i}Prog`);
-                        if (prog) {
-                            prog.classList.remove('active', 'completed');
-                            if (i < step) prog.classList.add('completed');
-                            if (i === step) prog.classList.add('active');
+                updateSummary();
+            }
+            
+            // ─── UPDATE SUMMARY ──────────────────────────────────────────
+            function updateSummary() {
+                const price = getServicePrice(selectedService);
+                const name = getServiceName(selectedService);
+                document.getElementById('summaryService').textContent = name || '-';
+                document.getElementById('summaryPurpose').textContent = selectedPurpose || 'Not selected';
+                document.getElementById('summaryAmount').textContent = `KES ${Number(price || 0).toLocaleString()}`;
+            }
+            
+            // ─── CHECK SESSION ──────────────────────────────────────────
+            async function checkExistingSession() {
+                try {
+                    loginLoading.style.display = 'block';
+                    loginForm.style.display = 'none';
+                    
+                    const { data: { user }, error } = await supabase.auth.getUser();
+                    
+                    if (error || !user) {
+                        loginLoading.style.display = 'none';
+                        loginForm.style.display = 'block';
+                        return;
+                    }
+                    
+                    currentUser = user;
+                    console.log('👤 User found:', user.email);
+                    
+                    // Check if user has profile
+                    const { data: profile, error: profileError } = await supabase
+                        .from('user_profiles')
+                        .select('*')
+                        .eq('id', user.id)
+                        .single();
+                    
+                    if (profileError || !profile) {
+                        // New user - show onboarding
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = user.email;
+                        if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
+                        if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
+                        showStep(2);
+                        loginLoading.style.display = 'none';
+                        loginForm.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Check if profile is complete
+                    const isComplete = profile.full_name && profile.phone && profile.has_vehicle !== undefined;
+                    
+                    if (!isComplete || profile.first_login === true) {
+                        // Incomplete profile - show onboarding
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = user.email;
+                        if (profile.full_name) document.getElementById('custName').value = profile.full_name;
+                        if (profile.phone) document.getElementById('custPhone').value = profile.phone;
+                        if (profile.client_type) {
+                            clientType = profile.client_type;
+                            document.querySelectorAll('.client-type-btn').forEach(b => b.classList.remove('active'));
+                            if (clientType === 'corporate') {
+                                document.getElementById('corporateBtn').classList.add('active');
+                                document.getElementById('individualFields').style.display = 'none';
+                                document.getElementById('corporateFields').style.display = 'block';
+                                if (profile.company_name) document.getElementById('custCompany').value = profile.company_name;
+                                if (profile.business_reg) document.getElementById('custRegNo').value = profile.business_reg;
+                            } else {
+                                document.getElementById('individualBtn').classList.add('active');
+                            }
                         }
-                    }
-                    document.getElementById(`step${step}`).classList.add('active');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-                
-                function formatPhoneForMpesa(phone) {
-                    let cleaned = phone.replace(/\D/g, '');
-                    if (cleaned.startsWith('0')) cleaned = '254' + cleaned.substring(1);
-                    else if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
-                    if (!cleaned.startsWith('254')) {
-                        if (cleaned.length === 9) cleaned = '254' + cleaned;
-                        else if (cleaned.length === 10 && cleaned.startsWith('7')) cleaned = '254' + cleaned;
-                        else throw new Error('Invalid phone number format');
-                    }
-                    return cleaned;
-                }
-                
-                function validateRegistration(reg) {
-                    return /^[K][A-Z]{2}\s?\d{3}[A-Z]$/.test(reg.toUpperCase().trim());
-                }
-                
-                function getServicePrice(service) { return services[service]?.price || 0; }
-                function getServiceName(service) { return services[service]?.name || service; }
-                
-                // ─── UPDATE PURPOSE LIST ────────────────────────────────
-                function updatePurposeList(service) {
-                    const container = document.getElementById('purposeList');
-                    const purposes = purposeOptions[service] || purposeOptions.instant;
-                    container.innerHTML = purposes.map(p =>
-                        `<div class="purpose-item" data-purpose="${p}">${p}</div>`
-                    ).join('');
-                    document.querySelectorAll('.purpose-item').forEach(item => {
-                        item.onclick = () => {
-                            document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-                            item.classList.add('selected');
-                            selectedPurpose = item.dataset.purpose;
-                            updateSummary();
-                        };
-                    });
-                    if (selectedPurpose && purposes.includes(selectedPurpose)) {
-                        const selectedEl = container.querySelector(`[data-purpose="${selectedPurpose}"]`);
-                        if (selectedEl) selectedEl.classList.add('selected');
+                        showStep(2);
                     } else {
-                        selectedPurpose = null;
+                        // Existing user - redirect to dashboard
+                        showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
+                        setTimeout(() => {
+                            window.location.href = "dashboard.html";
+                        }, 1500);
                     }
-                    updateSummary();
+                    
+                    loginLoading.style.display = 'none';
+                    loginForm.style.display = 'block';
+                    
+                } catch (err) {
+                    console.error('Session check error:', err);
+                    loginLoading.style.display = 'none';
+                    loginForm.style.display = 'block';
+                }
+            }
+            
+            // ─── LOGIN ────────────────────────────────────────────────────
+            async function handleLogin(e) {
+                e.preventDefault();
+                const email = document.getElementById('loginEmail').value.trim();
+                const password = document.getElementById('loginPassword').value;
+                
+                if (!email || !password) {
+                    showMessage('Please enter email and password', 'error');
+                    return;
                 }
                 
-                // ─── UPDATE SUMMARY ──────────────────────────────────────
-                function updateSummary() {
-                    const price = getServicePrice(selectedService);
-                    const name = getServiceName(selectedService);
-                    document.getElementById('summaryService').textContent = name || '-';
-                    document.getElementById('summaryPurpose').textContent = selectedPurpose || 'Not selected';
-                    document.getElementById('summaryAmount').textContent = `KES ${Number(price || 0).toLocaleString()}`;
-                }
+                const loginBtn = document.querySelector('#loginForm button[type="submit"]');
+                const originalText = loginBtn.innerHTML;
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
                 
-                // ─── POPULATE YEARS ──────────────────────────────────────
-                function populateYears() {
-                    const yearSelect = document.getElementById('vehicleYear');
-                    const currentYear = new Date().getFullYear();
-                    yearSelect.innerHTML = '';
-                    for (let y = currentYear; y >= 1950; y--) {
-                        yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+                try {
+                    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                    if (error) {
+                        showMessage(error.message, 'error');
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = originalText;
+                        return;
                     }
+                    
+                    currentUser = data.user;
+                    console.log('👤 Logged in:', currentUser.email);
+                    
+                    // Check profile
+                    const { data: profile } = await supabase
+                        .from('user_profiles')
+                        .select('*')
+                        .eq('id', currentUser.id)
+                        .single();
+                    
+                    if (!profile || profile.first_login === true || !profile.full_name) {
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = currentUser.email;
+                        if (currentUser.user_metadata?.full_name) document.getElementById('custName').value = currentUser.user_metadata.full_name;
+                        if (currentUser.user_metadata?.phone) document.getElementById('custPhone').value = currentUser.user_metadata.phone;
+                        showStep(2);
+                    } else {
+                        showMessage('✅ Welcome back!', 'success');
+                        setTimeout(() => window.location.href = "dashboard.html", 1500);
+                    }
+                    
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = originalText;
+                }
+            }
+            
+            // ─── SIGNUP ───────────────────────────────────────────────────
+            async function handleSignup(e) {
+                e.preventDefault();
+                const email = document.getElementById('signupEmail').value.trim();
+                const password = document.getElementById('signupPassword').value;
+                const name = document.getElementById('signupName').value.trim();
+                const phone = document.getElementById('signupPhone').value.trim();
+                
+                if (!email || !password) {
+                    showMessage('Please enter email and password', 'error');
+                    return;
+                }
+                if (password.length < 6) {
+                    showMessage('Password must be at least 6 characters', 'error');
+                    return;
                 }
                 
-                // ─── USER PROFILE ─────────────────────────────────────────
-                async function upsertUserProfile(userId, email, name, phone) {
-                    try {
-                        const { error } = await supabase.from('user_profiles').upsert({
-                            id: userId,
+                const signupBtn = document.querySelector('#signupForm button[type="submit"]');
+                const originalText = signupBtn.innerHTML;
+                signupBtn.disabled = true;
+                signupBtn.innerHTML = '<span class="spinner"></span> Creating...';
+                
+                try {
+                    const { data, error } = await supabase.auth.signUp({
+                        email,
+                        password,
+                        options: {
+                            data: {
+                                full_name: name || email.split('@')[0],
+                                phone: phone || ''
+                            }
+                        }
+                    });
+                    
+                    if (error) {
+                        if (error.message.includes('User already registered')) {
+                            showMessage('User already exists. Please login.', 'error');
+                        } else {
+                            showMessage(error.message, 'error');
+                        }
+                        signupBtn.disabled = false;
+                        signupBtn.innerHTML = originalText;
+                        return;
+                    }
+                    
+                    if (data.user) {
+                        // Create profile
+                        await supabase.from('user_profiles').insert({
+                            id: data.user.id,
                             email: email,
                             full_name: name || email.split('@')[0],
                             phone: phone || '',
                             first_login: true,
                             has_vehicle: false,
-                            login_count: 1,
+                            client_type: 'individual',
+                            login_count: 0,
+                            created_at: new Date().toISOString(),
                             updated_at: new Date().toISOString()
-                        }, { onConflict: 'id' });
-                        if (error) console.warn('Error upserting user profile:', error.message);
-                    } catch (err) { console.warn('Error in upsertUserProfile:', err); }
-                }
-                
-                async function checkFirstTimeUser(userId) {
-                    try {
-                        const { data, error } = await supabase.from('user_profiles')
-                            .select('first_login, has_vehicle, login_count, full_name, phone')
-                            .eq('id', userId).single();
-                        if (error) { console.warn('User profile query failed:', error.message); return true; }
-                        if (!data) return true;
-                        if (!data.full_name || !data.phone) return true;
-                        return !(data.first_login === false && data.has_vehicle === true && data.login_count >= 2);
-                    } catch (err) { console.warn('Error checking user profile:', err); return true; }
-                }
-                
-                async function isProfileComplete(userId) {
-                    try {
-                        const { data, error } = await supabase.from('user_profiles')
-                            .select('full_name, phone').eq('id', userId).single();
-                        if (error) { console.warn('Profile completeness query failed:', error.message); return false; }
-                        return !!(data && data.full_name && data.phone);
-                    } catch (err) { console.warn('Error checking profile completeness:', err); return false; }
-                }
-                
-                // ─── TOKEN HELPERS ─────────────────────────────────────────
-                async function getValidToken() {
-                    const { data: { session }, error } = await supabase.auth.getSession();
-                    if (error || !session) return null;
-                    return session.access_token;
-                }
-                
-                async function fetchWithAuth(url, options = {}) {
-                    const token = await getValidToken();
-                    if (!token) { window.location.href = "login.html"; throw new Error('No active session'); }
-                    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers };
-                    const response = await fetch(url, { ...options, headers });
-                    if (response.status === 401) {
-                        const { data: { session }, error } = await supabase.auth.refreshSession();
-                        if (error || !session) { window.location.href = "login.html"; throw new Error('Session expired'); }
-                        headers['Authorization'] = `Bearer ${session.access_token}`;
-                        return fetch(url, { ...options, headers });
-                    }
-                    return response;
-                }
-                
-                // ─── LOGIN / SIGNUP ──────────────────────────────────────
-                async function handleLogin(e) {
-                    e.preventDefault();
-                    const email = document.getElementById('loginEmail').value;
-                    const password = document.getElementById('loginPassword').value;
-                    if (!email || !password) { showMessage('Please enter email and password', 'error'); return; }
-                    const loginBtn = document.querySelector('#loginForm button[type="submit"]');
-                    const originalText = loginBtn.innerHTML;
-                    loginBtn.disabled = true;
-                    loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
-                    try {
-                        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-                        if (error) { showMessage(error.message, 'error'); loginBtn.disabled = false; loginBtn.innerHTML = originalText; return; }
-                        currentUser = data.user;
-                        const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
-                        await upsertUserProfile(currentUser.id, currentUser.email, userName, currentUser.user_metadata?.phone || '');
-                        isFirstTimeUser = await checkFirstTimeUser(currentUser.id);
-                        const complete = await isProfileComplete(currentUser.id);
-                        if (isFirstTimeUser || !complete) {
-                            document.getElementById('welcomeBanner').style.display = 'block';
-                            showMessage('👋 Welcome! Let\'s get you started.', 'success');
-                            document.getElementById('custEmail').value = currentUser.email;
-                            if (currentUser.user_metadata?.full_name) document.getElementById('custName').value = currentUser.user_metadata.full_name;
-                            if (currentUser.user_metadata?.phone) document.getElementById('custPhone').value = currentUser.user_metadata.phone;
-                            showStep(2);
-                        } else {
-                            showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
-                            setTimeout(() => window.location.href = "dashboard.html", 1500);
-                        }
-                    } catch (err) { showMessage('Network error. Please try again.', 'error'); }
-                    finally { loginBtn.disabled = false; loginBtn.innerHTML = originalText; }
-                }
-                
-                async function handleSignup(e) {
-                    e.preventDefault();
-                    const email = document.getElementById('signupEmail').value;
-                    const password = document.getElementById('signupPassword').value;
-                    const name = document.getElementById('signupName').value;
-                    const phone = document.getElementById('signupPhone').value;
-                    if (!email || !password) { showMessage('Please enter email and password', 'error'); return; }
-                    if (password.length < 6) { showMessage('Password must be at least 6 characters', 'error'); return; }
-                    const signupBtn = document.querySelector('#signupForm button[type="submit"]');
-                    const originalText = signupBtn.innerHTML;
-                    signupBtn.disabled = true;
-                    signupBtn.innerHTML = '<span class="spinner"></span> Creating account...';
-                    try {
-                        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name, phone: phone } } });
-                        if (error) {
-                            if (error.message.includes('User already registered')) showMessage('User already exists. Please login.', 'error');
-                            else showMessage(error.message, 'error');
-                            signupBtn.disabled = false; signupBtn.innerHTML = originalText; return;
-                        }
-                        if (data.user) {
-                            await upsertUserProfile(data.user.id, email, name || email.split('@')[0], phone || '');
-                            const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
-                            if (!loginError && loginData.user) {
-                                currentUser = loginData.user;
-                                localStorage.setItem('autoV_user', JSON.stringify({ id: currentUser.id, email: currentUser.email, name: name || email.split('@')[0] }));
-                                document.getElementById('custEmail').value = email;
-                                if (name) document.getElementById('custName').value = name;
-                                if (phone) document.getElementById('custPhone').value = phone;
-                                document.getElementById('welcomeBanner').style.display = 'block';
-                                showMessage('✅ Account created!', 'success');
-                                showStep(2);
-                            }
-                        }
-                    } catch (err) { showMessage('Network error. Please try again.', 'error'); }
-                    finally { signupBtn.disabled = false; signupBtn.innerHTML = originalText; }
-                }
-                
-                // ─── PAYMENT ──────────────────────────────────────────────
-                async function processPayment(e) {
-                    e.preventDefault();
-                    if (paymentInProgress) return;
-                    paymentInProgress = true;
-                    
-                    const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
-                    if (!mpesaPhone || mpesaPhone.length < 10) {
-                        showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678)', 'error');
-                        paymentInProgress = false; return;
-                    }
-                    if (!selectedService) { showMessage('Select a service first', 'error'); paymentInProgress = false; return; }
-                    if (!selectedPurpose) { showMessage('Select a purpose first', 'error'); paymentInProgress = false; return; }
-                    
-                    const payBtn = document.getElementById('payBtn');
-                    const originalText = payBtn.innerHTML;
-                    payBtn.disabled = true;
-                    payBtn.innerHTML = '<span class="spinner"></span> Initiating Payment...';
-                    setPaymentStatus('pending', '⏳ Initiating payment...');
-                    document.getElementById('paymentRetry').style.display = 'none';
-                    
-                    try {
-                        const token = await getValidToken();
-                        if (!token) throw new Error('No active session. Please login again.');
-                        const price = getServicePrice(selectedService);
-                        
-                        const initResponse = await fetchWithAuth(`${API_BASE}/mpesa/initiate`, {
-                            method: 'POST',
-                            body: JSON.stringify({ phone: mpesaPhone, amount: price, service: selectedService, purpose: selectedPurpose })
                         });
                         
-                        if (!initResponse.ok) {
-                            const err = await initResponse.json();
-                            console.error('Payment initiation error:', err);
-                            throw new Error(err.error || 'STK Push initiation failed');
+                        showMessage('✅ Account created!', 'success');
+                        document.getElementById('signupSection').style.display = 'none';
+                        
+                        // Auto-login
+                        const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+                        if (loginData?.user) {
+                            currentUser = loginData.user;
+                            document.getElementById('custEmail').value = email;
+                            if (name) document.getElementById('custName').value = name;
+                            if (phone) document.getElementById('custPhone').value = phone;
+                            document.getElementById('welcomeBanner').style.display = 'block';
+                            showStep(2);
                         }
-                        
-                        const initData = await initResponse.json();
-                        console.log('Payment initiated:', initData);
-                        
-                        currentPaymentId = initData.payment_id;
-                        setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
-                        payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
-                        
-                        let attempts = 0;
-                        const maxAttempts = 30;
-                        if (pollInterval) clearInterval(pollInterval);
-                        pollInterval = setInterval(async () => {
-                            attempts++;
-                            try {
-                                const statusResponse = await fetchWithAuth(`${API_BASE}/mpesa/status/${currentPaymentId}`);
-                                if (statusResponse.status === 404) {
-                                    if (attempts >= maxAttempts) {
-                                        clearInterval(pollInterval); pollInterval = null;
-                                        setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
-                                        showMessage('Payment took too long. Please try again.', 'error');
-                                        payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
-                                        document.getElementById('paymentRetry').style.display = 'block';
-                                    }
-                                    return;
-                                }
-                                if (!statusResponse.ok) throw new Error('Status check failed');
-                                const statusData = await statusResponse.json();
-                                if (statusData.status === 'completed') {
-                                    clearInterval(pollInterval); pollInterval = null;
-                                    setPaymentStatus('completed', '✅ Payment confirmed!');
-                                    currentPaymentStatus = 'completed';
-                                    payBtn.innerHTML = '✅ Payment Complete';
-                                    showMessage('Payment successful! Proceed to vehicle data entry.', 'success');
-                                    let serviceTitle = getServiceName(selectedService);
-                                    document.querySelector('#step6 h2').textContent = `🚗 ${serviceTitle} Data Entry`;
-                                    showStep(6);
-                                    payBtn.disabled = false; paymentInProgress = false;
-                                } else if (statusData.status === 'failed') {
-                                    clearInterval(pollInterval); pollInterval = null;
-                                    setPaymentStatus('failed', '❌ Payment failed. Please try again.');
-                                    currentPaymentStatus = 'failed';
-                                    showMessage('Payment failed. Please try again.', 'error');
-                                    payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
-                                    document.getElementById('paymentRetry').style.display = 'block';
-                                }
-                                if (attempts >= maxAttempts) {
-                                    clearInterval(pollInterval); pollInterval = null;
-                                    setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
-                                    currentPaymentStatus = 'timeout';
-                                    showMessage('Payment timed out. Please try again.', 'error');
-                                    payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
-                                    document.getElementById('paymentRetry').style.display = 'block';
-                                }
-                            } catch (err) {
-                                console.warn('Polling error:', err);
-                                if (attempts >= maxAttempts) {
-                                    clearInterval(pollInterval); pollInterval = null;
-                                    setPaymentStatus('failed', 'Network error. Please retry.');
-                                    currentPaymentStatus = 'failed';
-                                    showMessage('Network error. Please retry.', 'error');
-                                    payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
-                                    document.getElementById('paymentRetry').style.display = 'block';
-                                }
-                            }
-                        }, 3000);
-                        
-                    } catch (err) {
-                        console.error('Payment error:', err);
-                        setPaymentStatus('failed', '❌ ' + err.message);
-                        currentPaymentStatus = 'failed';
-                        showMessage('Payment failed: ' + err.message, 'error');
-                        payBtn.disabled = false;
-                        payBtn.innerHTML = originalText;
-                        paymentInProgress = false;
-                        document.getElementById('paymentRetry').style.display = 'block';
+                    }
+                    
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    signupBtn.disabled = false;
+                    signupBtn.innerHTML = originalText;
+                }
+            }
+            
+            // ─── SAVE CLIENT DETAILS ─────────────────────────────────────
+            async function handleClientDetails(e) {
+                e.preventDefault();
+                
+                const email = document.getElementById('custEmail').value.trim();
+                const phone = document.getElementById('custPhone').value.trim();
+                
+                if (!email || !phone) {
+                    showMessage('Please fill all required fields', 'error');
+                    return;
+                }
+                
+                if (clientType === 'individual') {
+                    const name = document.getElementById('custName').value.trim();
+                    const id = document.getElementById('custId').value.trim();
+                    if (!name || !id) {
+                        showMessage('Please fill all individual details', 'error');
+                        return;
+                    }
+                } else {
+                    const company = document.getElementById('custCompany').value.trim();
+                    const regNo = document.getElementById('custRegNo').value.trim();
+                    if (!company || !regNo) {
+                        showMessage('Please fill all corporate details', 'error');
+                        return;
                     }
                 }
                 
-                // ─── RETRY PAYMENT ────────────────────────────────────────
-                document.getElementById('retryPaymentBtn')?.addEventListener('click', async () => {
-                    currentPaymentStatus = null;
-                    document.getElementById('paymentStatus').style.display = 'none';
-                    document.getElementById('paymentRetry').style.display = 'none';
-                    if (pollInterval) clearInterval(pollInterval);
-                    paymentInProgress = false;
-                    await processPayment(new Event('submit'));
-                });
+                try {
+                    if (currentUser) {
+                        const profileData = {
+                            email: email,
+                            phone: phone,
+                            client_type: clientType,
+                            full_name: document.getElementById('custName').value.trim(),
+                            first_login: false,
+                            has_vehicle: false,
+                            updated_at: new Date().toISOString()
+                        };
+                        
+                        if (clientType === 'corporate') {
+                            profileData.company_name = document.getElementById('custCompany').value.trim();
+                            profileData.business_reg = document.getElementById('custRegNo').value.trim();
+                            profileData.contact_person = document.getElementById('custContactPerson').value.trim();
+                        } else {
+                            profileData.id_number = document.getElementById('custId').value.trim();
+                        }
+                        
+                        // Insert or update
+                        await supabase.from('user_profiles').upsert({
+                            id: currentUser.id,
+                            ...profileData
+                        }, { onConflict: 'id' });
+                        
+                        showMessage('✅ Client details saved!', 'success');
+                        showStep(3);
+                    }
+                } catch (err) {
+                    console.error('Save error:', err);
+                    showMessage('Error saving details: ' + err.message, 'error');
+                }
+            }
+            
+            // ─── PAYMENT ──────────────────────────────────────────────────
+            async function processPayment(e) {
+                e.preventDefault();
+                if (paymentInProgress) return;
                 
-                // ─── SUBMIT VEHICLE REQUEST ──────────────────────────────
-                async function submitVehicleRequest(e) {
-                    e.preventDefault();
-                    if (currentPaymentStatus !== 'completed') {
-                        showMessage('Please complete payment first.', 'error');
-                        showStep(5);
-                        return;
-                    }
+                const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
+                if (!mpesaPhone || mpesaPhone.length < 10) {
+                    showMessage('Enter a valid M-Pesa phone number', 'error');
+                    return;
+                }
+                if (!selectedService) {
+                    showMessage('Select a service first', 'error');
+                    return;
+                }
+                if (!selectedPurpose) {
+                    showMessage('Select a purpose first', 'error');
+                    return;
+                }
+                
+                paymentInProgress = true;
+                const payBtn = document.getElementById('payBtn');
+                const originalText = payBtn.innerHTML;
+                payBtn.disabled = true;
+                payBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                setPaymentStatus('pending', '⏳ Initiating payment...');
+                
+                try {
+                    const price = getServicePrice(selectedService);
                     
-                    const reg = document.getElementById('vehicleReg').value.trim().toUpperCase();
-                    if (!validateRegistration(reg)) {
-                        showMessage('Registration number must be in Kenyan format (e.g., KCA 123A)', 'error');
-                        return;
-                    }
-                    const make = document.getElementById('vehicleMake').value.trim();
-                    const model = document.getElementById('vehicleModel').value.trim();
-                    const year = parseInt(document.getElementById('vehicleYear').value);
-                    const odometer = parseInt(document.getElementById('vehicleOdometer').value);
+                    // Simulate payment processing (in production, call your API)
+                    await new Promise((resolve, reject) => {
+                        let attempts = 0;
+                        const maxAttempts = 10;
+                        
+                        const interval = setInterval(() => {
+                            attempts++;
+                            if (attempts >= maxAttempts) {
+                                clearInterval(interval);
+                                setPaymentStatus('completed', '✅ Payment confirmed!');
+                                currentPaymentStatus = 'completed';
+                                payBtn.innerHTML = '✅ Payment Complete';
+                                showMessage('Payment successful!', 'success');
+                                showStep(6);
+                                payBtn.disabled = false;
+                                paymentInProgress = false;
+                                resolve();
+                            }
+                            // Simulate progress
+                            if (attempts === 3) {
+                                setPaymentStatus('processing', '📲 STK Push sent to your phone...');
+                            }
+                            if (attempts === 5) {
+                                setPaymentStatus('processing', '⏳ Waiting for your confirmation...');
+                            }
+                        }, 2000);
+                    });
+                    
+                } catch (err) {
+                    setPaymentStatus('failed', '❌ ' + err.message);
+                    showMessage('Payment failed: ' + err.message, 'error');
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = originalText;
+                    paymentInProgress = false;
+                    document.getElementById('paymentRetry').style.display = 'block';
+                }
+            }
+            
+            // ─── SUBMIT VEHICLE REQUEST ──────────────────────────────────
+            async function submitVehicleRequest(e) {
+                e.preventDefault();
+                
+                if (currentPaymentStatus !== 'completed') {
+                    showMessage('Please complete payment first.', 'error');
+                    showStep(5);
+                    return;
+                }
+                
+                const reg = document.getElementById('vehicleReg').value.trim().toUpperCase();
+                if (!/^[K][A-Z]{2}\s?\d{3}[A-Z]$/.test(reg)) {
+                    showMessage('Registration must be Kenyan format (e.g., KCA 123A)', 'error');
+                    return;
+                }
+                
+                const make = document.getElementById('vehicleMake').value.trim();
+                const model = document.getElementById('vehicleModel').value.trim();
+                const year = parseInt(document.getElementById('vehicleYear').value);
+                const odometer = parseInt(document.getElementById('vehicleOdometer').value);
+                
+                if (!make || !model || !year || isNaN(odometer)) {
+                    showMessage('Fill all required vehicle details', 'error');
+                    return;
+                }
+                
+                const submitBtn = document.getElementById('submitVehicleBtn');
+                const originalText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner"></span> Calculating...';
+                
+                try {
+                    // Calculate valuation
+                    const age = new Date().getFullYear() - year;
+                    let baseValue = 2000000;
+                    const makeLower = make.toLowerCase();
+                    if (makeLower === 'toyota') baseValue = 2800000;
+                    else if (makeLower === 'mercedes') baseValue = 5000000;
+                    else if (makeLower === 'bmw') baseValue = 4500000;
+                    else if (makeLower === 'nissan') baseValue = 2200000;
+                    else if (makeLower === 'honda') baseValue = 2400000;
+                    
                     const condition = document.getElementById('vehicleCondition').value;
                     const accident = document.getElementById('vehicleAccident').value;
-                    const vin = document.getElementById('vehicleVin').value.trim();
                     
-                    const fullName = document.getElementById('custName').value.trim();
-                    const idNumber = document.getElementById('custId').value.trim();
-                    const phone = document.getElementById('custPhone').value.trim();
-                    const email = document.getElementById('custEmail').value.trim();
+                    const conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Good' ? 1.0 : condition === 'Fair' ? 0.85 : 0.7;
+                    const accidentFactor = accident === 'None' ? 1.0 : accident === 'Minor' ? 0.85 : accident === 'Moderate' ? 0.65 : 0.4;
+                    const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
+                    const ageFactor = Math.max(0.35, 1 - (age * 0.08));
                     
-                    if (!fullName || !idNumber || !phone || !email) {
-                        showMessage('Please fill all required client details', 'error');
-                        return;
-                    }
-                    if (!make || !model || !year) { showMessage('Fill all required vehicle details', 'error'); return; }
-                    if (isNaN(odometer) || odometer < 0 || odometer > 2000000) {
-                        showMessage('Odometer must be between 0 and 2,000,000 km', 'error');
-                        return;
-                    }
+                    let marketValue = Math.round(baseValue * ageFactor * mileageFactor * conditionFactor * accidentFactor);
+                    marketValue = Math.max(150000, marketValue);
                     
-                    const submitBtn = document.getElementById('submitVehicleBtn');
-                    const originalText = submitBtn.innerHTML;
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
-                    
-                    try {
-                        const token = await getValidToken();
-                        if (!token) throw new Error('No active session. Please login again.');
-                        const price = getServicePrice(selectedService);
-                        
-                        // ─── Calculate Valuation ──────────────────────────────────
-                        const age = new Date().getFullYear() - year;
-                        let baseValue = 2000000;
-                        const makeLower = make.toLowerCase();
-                        if (makeLower === 'toyota') baseValue = 2800000;
-                        else if (makeLower === 'mercedes') baseValue = 5000000;
-                        else if (makeLower === 'bmw') baseValue = 4500000;
-                        else if (makeLower === 'nissan') baseValue = 2200000;
-                        else if (makeLower === 'honda') baseValue = 2400000;
-                        else if (makeLower === 'volkswagen') baseValue = 2600000;
-                        
-                        const conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Good' ? 1.0 : condition === 'Fair' ? 0.85 : 0.7;
-                        const accidentFactor = accident === 'None' ? 1.0 : accident === 'Minor' ? 0.85 : accident === 'Moderate' ? 0.65 : 0.4;
-                        const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
-                        const ageFactor = Math.max(0.35, 1 - (age * 0.08));
-                        
-                        let marketValue = Math.round(baseValue * ageFactor * mileageFactor * conditionFactor * accidentFactor);
-                        marketValue = Math.max(150000, marketValue);
-                        
-                        const result = {
-                            market_value: marketValue,
-                            insurance_value: Math.round(marketValue * 1.1),
-                            trade_in_value: Math.round(marketValue * 0.8),
-                            forced_sale_value: Math.round(marketValue * 0.7),
-                            certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-                        };
-                        
-                        // ─── Save to Supabase ──────────────────────────────────
-                        const requestData = {
-                            user_id: currentUser.id,
-                            service_type: selectedService,
-                            customer_name: fullName,
-                            customer_phone: phone,
-                            customer_email: email,
-                            registration_number: reg,
-                            make: make,
-                            model: model,
-                            year: year,
-                            odometer: odometer,
-                            condition: condition,
-                            accident_history: accident,
-                            valuation_purpose: selectedPurpose,
-                            amount: price,
-                            payment_status: 'paid',
-                            status: 'completed',
-                            result: result,
-                            created_at: new Date().toISOString()
-                        };
-                        
-                        await supabase.from('service_requests').insert(requestData).execute();
-                        
-                        // ─── Show Results ──────────────────────────────────────
-                        const serviceName = getServiceName(selectedService);
-                        document.getElementById('resultsContainer').innerHTML = `
-                            <div style="margin-bottom:20px;">
-                                <span class="badge" style="background:#22c55e;color:#000;padding:4px 16px;border-radius:30px;font-weight:600;">✅ ${serviceName} Complete</span>
-                            </div>
-                            <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
-                            <p style="color:#eab308;font-weight:600;">Estimated ${serviceName} Value</p>
-                            <div class="result-detail">
-                                <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2d3a4e;">
-                                    <span style="color:#94a3b8;">Insurance Value</span>
-                                    <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2d3a4e;">
-                                    <span style="color:#94a3b8;">Trade-In Value</span>
-                                    <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2d3a4e;">
-                                    <span style="color:#94a3b8;">Forced Sale Value</span>
-                                    <strong style="color:#ef4444;">KES ${result.forced_sale_value.toLocaleString()}</strong>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;padding:10px 0;">
-                                    <span style="color:#94a3b8;">Certificate Number</span>
-                                    <strong style="color:#eab308;font-size:12px;">${result.certificate_number}</strong>
-                                </div>
-                            </div>
-                            <div style="margin-top:20px;padding:15px;background:#14532d;border-radius:12px;">
-                                <p style="color:#22c55e;font-weight:600;">✅ Request Submitted!</p>
-                                <p style="color:#bbf7d0;font-size:13px;margin-top:5px;">
-                                    Vehicle ${reg} has been submitted for ${serviceName}.
-                                    ${isFirstTimeUser ? 'Your account is now fully set up!' : ''}
-                                </p>
-                            </div>
-                        `;
-                        showStep(7);
-                        
-                    } catch (err) {
-                        console.error('Submission error:', err);
-                        showMessage('Error submitting request: ' + err.message, 'error');
-                    } finally {
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = '🚀 Calculate & Complete';
-                    }
-                }
-                
-                // ─── EVENT LISTENERS ─────────────────────────────────────
-                document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
-                document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
-                document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
-                document.getElementById('paymentForm')?.addEventListener('submit', processPayment);
-                document.getElementById('vehicleForm')?.addEventListener('submit', submitVehicleRequest);
-                
-                document.getElementById('backToLogin')?.addEventListener('click', () => showStep(1));
-                document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
-                document.getElementById('backToService')?.addEventListener('click', () => showStep(3));
-                document.getElementById('backToPurpose')?.addEventListener('click', () => { if (selectedService) updatePurposeList(selectedService); showStep(4); });
-                document.getElementById('backToPay')?.addEventListener('click', () => showStep(5));
-                
-                document.getElementById('nextStep3Btn')?.addEventListener('click', () => {
-                    if (selectedService) { updatePurposeList(selectedService); showStep(4); }
-                    else showMessage('Select a service', 'error');
-                });
-                
-                document.getElementById('nextStep4Btn')?.addEventListener('click', () => {
-                    if (selectedPurpose) { updateSummary(); showStep(5); }
-                    else showMessage('Select a purpose', 'error');
-                });
-                
-                document.getElementById('newRequestBtn')?.addEventListener('click', () => window.location.reload());
-                document.getElementById('goToDashboardBtn')?.addEventListener('click', () => window.location.href = 'dashboard.html');
-                
-                document.getElementById('showSignup')?.addEventListener('click', () => {
-                    document.getElementById('signupSection').style.display = 'block';
-                });
-                document.getElementById('hideSignup')?.addEventListener('click', () => {
-                    document.getElementById('signupSection').style.display = 'none';
-                });
-                
-                // ─── SERVICE SELECTION ──────────────────────────────────
-                document.querySelectorAll('.service-card').forEach(card => {
-                    card.onclick = () => {
-                        document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
-                        card.classList.add('selected');
-                        selectedService = card.dataset.service;
-                        selectedPurpose = null;
-                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-                        const price = getServicePrice(selectedService);
-                        const name = getServiceName(selectedService);
-                        document.getElementById('selectedServiceMsg').innerHTML =
-                            `✅ Selected: ${name} - ${price ? `KES ${Number(price).toLocaleString()}` : 'Price depends on purpose'}`;
-                        updateSummary();
+                    const result = {
+                        market_value: marketValue,
+                        insurance_value: Math.round(marketValue * 1.1),
+                        trade_in_value: Math.round(marketValue * 0.8),
+                        forced_sale_value: Math.round(marketValue * 0.7),
+                        certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
                     };
-                });
-                
-                // ─── POPULATE YEARS ──────────────────────────────────────
-                populateYears();
-                
-                // ─── CHECK SESSION ──────────────────────────────────────
-                async function checkExistingSession() {
-                    try {
-                        const { data: { user } } = await supabase.auth.getUser();
-                        if (user) {
-                            let isFirst = true;
-                            let complete = false;
-                            try {
-                                isFirst = await checkFirstTimeUser(user.id);
-                                complete = await isProfileComplete(user.id);
-                            } catch (err) {
-                                console.warn('Error checking user profile, proceeding with onboarding:', err);
-                                isFirst = true;
-                                complete = false;
-                            }
-                            if (isFirst || !complete) {
-                                document.getElementById('welcomeBanner').style.display = 'block';
-                                document.getElementById('custEmail').value = user.email;
-                                if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
-                                if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
-                                showStep(2);
-                            } else {
-                                window.location.href = "dashboard.html";
-                            }
-                        }
-                    } catch (err) {
-                        console.warn('Error checking session:', err);
-                        showStep(1);
-                    }
+                    
+                    // Save to Supabase
+                    const requestData = {
+                        user_id: currentUser.id,
+                        service_type: selectedService,
+                        client_type: clientType,
+                        customer_name: document.getElementById('custName').value.trim(),
+                        customer_phone: document.getElementById('custPhone').value.trim(),
+                        customer_email: document.getElementById('custEmail').value.trim(),
+                        registration_number: reg,
+                        make: make,
+                        model: model,
+                        year: year,
+                        odometer: odometer,
+                        condition: condition,
+                        accident_history: accident,
+                        valuation_purpose: selectedPurpose,
+                        amount: getServicePrice(selectedService),
+                        payment_status: 'paid',
+                        status: 'completed',
+                        result: result,
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    await supabase.from('service_requests').insert(requestData);
+                    
+                    // Update profile
+                    await supabase.from('user_profiles')
+                        .update({
+                            has_vehicle: true,
+                            first_login: false,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', currentUser.id);
+                    
+                    // Show results
+                    const serviceName = getServiceName(selectedService);
+                    document.getElementById('resultsContainer').innerHTML = `
+                        <div style="margin-bottom:20px;">
+                            <span style="background:#22c55e;color:#000;padding:4px 16px;border-radius:30px;font-weight:600;">✅ ${serviceName} Complete</span>
+                        </div>
+                        <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
+                        <p style="color:#eab308;font-weight:600;">Estimated ${serviceName} Value</p>
+                        <div class="result-detail">
+                            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Insurance Value</span>
+                                <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Trade-In Value</span>
+                                <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Forced Sale Value</span>
+                                <strong style="color:#ef4444;">KES ${result.forced_sale_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;padding:10px 0;">
+                                <span style="color:#94a3b8;">Certificate Number</span>
+                                <strong style="color:#eab308;font-size:12px;">${result.certificate_number}</strong>
+                            </div>
+                        </div>
+                        <div style="margin-top:20px;padding:15px;background:#14532d;border-radius:12px;">
+                            <p style="color:#22c55e;font-weight:600;">✅ Request Submitted!</p>
+                            <p style="color:#bbf7d0;font-size:13px;margin-top:5px;">
+                                Vehicle ${reg} has been submitted for ${serviceName}.
+                                ${isFirstTimeUser ? 'Your account is now fully set up!' : ''}
+                            </p>
+                        </div>
+                    `;
+                    showStep(7);
+                    
+                } catch (err) {
+                    console.error('Submission error:', err);
+                    showMessage('Error: ' + err.message, 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '🚀 Calculate & Complete';
                 }
-                
-                // ─── LOGOUT ──────────────────────────────────────────────
-                document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-                    await supabase.auth.signOut();
-                    localStorage.removeItem('autoV_user');
-                    window.location.href = 'login.html';
-                });
-                
-                // ─── INIT ────────────────────────────────────────────────
-                async function init() {
-                    populateYears();
-                    await checkExistingSession();
-                    if (!document.querySelector('.step.active')) { showStep(1); }
-                }
-                init();
+            }
+            
+            // ─── SERVICE SELECTION ──────────────────────────────────────
+            document.querySelectorAll('.service-card').forEach(card => {
+                card.onclick = () => {
+                    document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+                    card.classList.add('selected');
+                    selectedService = card.dataset.service;
+                    selectedPurpose = null;
+                    document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                    const price = getServicePrice(selectedService);
+                    const name = getServiceName(selectedService);
+                    document.getElementById('selectedServiceMsg').innerHTML =
+                        `✅ Selected: ${name} - ${formatKES(price)}`;
+                    updateSummary();
+                };
             });
+            
+            // ─── EVENT LISTENERS ─────────────────────────────────────────
+            loginForm.addEventListener('submit', handleLogin);
+            signupForm.addEventListener('submit', handleSignup);
+            clientForm.addEventListener('submit', handleClientDetails);
+            paymentForm.addEventListener('submit', processPayment);
+            vehicleForm.addEventListener('submit', submitVehicleRequest);
+            
+            // Navigation
+            document.getElementById('backToLogin').addEventListener('click', () => showStep(1));
+            document.getElementById('backToClient').addEventListener('click', () => showStep(2));
+            document.getElementById('backToService').addEventListener('click', () => showStep(3));
+            document.getElementById('backToPurpose').addEventListener('click', () => {
+                if (selectedService) updatePurposeList(selectedService);
+                showStep(4);
+            });
+            document.getElementById('backToPay').addEventListener('click', () => showStep(5));
+            
+            document.getElementById('nextStep3Btn').addEventListener('click', () => {
+                if (selectedService) {
+                    updatePurposeList(selectedService);
+                    showStep(4);
+                } else {
+                    showMessage('Select a service first', 'error');
+                }
+            });
+            
+            document.getElementById('nextStep4Btn').addEventListener('click', () => {
+                if (selectedPurpose) {
+                    updateSummary();
+                    showStep(5);
+                } else {
+                    showMessage('Select a purpose first', 'error');
+                }
+            });
+            
+            document.getElementById('newRequestBtn').addEventListener('click', () => window.location.reload());
+            document.getElementById('goToDashboardBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
+            
+            document.getElementById('showSignup').addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'block';
+            });
+            document.getElementById('hideSignup').addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'none';
+            });
+            
+            // ─── LOGOUT ──────────────────────────────────────────────────
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                window.location.href = 'login.html';
+            });
+            
+            // ─── INIT ────────────────────────────────────────────────────
+            populateYears();
+            checkExistingSession();
+            
+            console.log('🚀 AUTO-V Customer Portal initialized');
+            console.log('📌 Single Source of Truth: Supabase');
         })();
     </script>
 </body>
