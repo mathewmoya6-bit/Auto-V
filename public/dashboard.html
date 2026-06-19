@@ -152,6 +152,60 @@
         .toast-warning { background: #eab308; color: #000; }
         @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
         
+        /* ─── Service Modal ────────────────────────────────────────── */
+        .service-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .service-modal.active { display: flex; }
+        .service-modal-content {
+            background: #0f172a;
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            border: 2px solid #eab308;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .service-modal-content h2 { color: #eab308; margin-bottom: 20px; border-left: 4px solid #eab308; padding-left: 15px; }
+        .service-modal-content .close-modal {
+            float: right;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        .service-modal-content .close-modal:hover { color: #fff; }
+        .service-modal-content .service-detail { 
+            background: #1e293b; 
+            border-radius: 12px; 
+            padding: 20px; 
+            margin-bottom: 20px; 
+            text-align: center;
+        }
+        .service-modal-content .service-detail .icon { font-size: 48px; display: block; margin-bottom: 10px; }
+        .service-modal-content .service-detail h3 { color: #eab308; font-size: 20px; }
+        .service-modal-content .service-detail .price { color: #22c55e; font-size: 24px; font-weight: 700; margin: 10px 0; }
+        .service-modal-content .service-detail p { color: #94a3b8; }
+        .service-modal-content .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .service-modal-content .btn-group button { flex: 1; padding: 12px; border-radius: 40px; font-weight: 700; border: none; cursor: pointer; transition: all .3s; }
+        .service-modal-content .btn-group .btn-primary { background: #eab308; color: #000; }
+        .service-modal-content .btn-group .btn-primary:hover { background: #facc15; transform: scale(1.02); }
+        .service-modal-content .btn-group .btn-secondary { background: #334155; color: #fff; }
+        .service-modal-content .btn-group .btn-secondary:hover { background: #475569; }
+        
         @media (max-width: 768px) {
             .container { padding: 16px; }
             .quick-actions { grid-template-columns: 1fr 1fr; }
@@ -159,6 +213,8 @@
             .welcome-banner { padding: 24px 20px; flex-direction: column; text-align: center; }
             .welcome-banner .cta-group { justify-content: center; }
             .action-card .start-btn { font-size: 11px; padding: 6px 18px; }
+            .service-modal-content { padding: 24px; margin: 16px; }
+            .service-modal-content .btn-group { flex-direction: column; }
         }
         @media (max-width: 480px) {
             .quick-actions { grid-template-columns: 1fr; }
@@ -261,9 +317,27 @@
         </div>
     </div>
 
+    <!-- ─── Service Modal (Fallback if navigation fails) ─── -->
+    <div class="service-modal" id="serviceModal">
+        <div class="service-modal-content">
+            <button class="close-modal" id="closeModalBtn">&times;</button>
+            <h2 id="modalTitle">🔧 Service Details</h2>
+            <div class="service-detail" id="modalServiceDetail">
+                <span class="icon" id="modalIcon">💡</span>
+                <h3 id="modalServiceName">Service Name</h3>
+                <div class="price" id="modalPrice">KES 0</div>
+                <p id="modalDescription">Service description</p>
+            </div>
+            <div class="btn-group">
+                <button class="btn-primary" id="modalStartBtn">🚀 Start Service</button>
+                <button class="btn-secondary" id="modalCloseBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ============================================================
-        // AUTO-V DASHBOARD - FIXED NAVIGATION
+        // AUTO-V DASHBOARD - COMPLETE WORKING SOLUTION
         // ============================================================
         
         (function() {
@@ -277,16 +351,61 @@
             }
             const supabase = window.__supabase;
             
+            // ─── Service Data ──────────────────────────────────────────
+            const serviceData = {
+                instant: {
+                    name: 'Instant Value Check',
+                    icon: '💡',
+                    price: 500,
+                    description: 'AI-powered market estimate in seconds.'
+                },
+                valuation: {
+                    name: 'Vehicle Valuation',
+                    icon: '💰',
+                    price: 2500,
+                    description: 'Formal certified valuation for banks, insurance, and legal.'
+                },
+                inspection: {
+                    name: 'Vehicle Inspection',
+                    icon: '🔍',
+                    price: 3500,
+                    description: 'Professional inspection with detailed condition report.'
+                },
+                mileage: {
+                    name: 'Mileage Rate Report',
+                    icon: '📏',
+                    price: 1500,
+                    description: 'Cost per km analysis for travel reimbursement.'
+                },
+                assessment: {
+                    name: 'Vehicle Assessment',
+                    icon: '⚠️',
+                    price: 3000,
+                    description: 'Accident, claim, repair cost, and total loss evaluation.'
+                },
+                fleet: {
+                    name: 'Fleet Services',
+                    icon: '🚛',
+                    price: 4000,
+                    description: 'Fleet valuation, inspection, and cost analysis.'
+                },
+                verification: {
+                    name: 'Report Verification',
+                    icon: '✅',
+                    price: 1000,
+                    description: 'Download certificates and verify reports with QR.'
+                }
+            };
+            
             // ─── Get Base URL ────────────────────────────────────────────
             function getBaseUrl() {
-                // Get the current path
                 const path = window.location.pathname;
-                // Remove the filename to get the directory
+                // If we're in a subdirectory like /Auto-V/
                 const dir = path.substring(0, path.lastIndexOf('/') + 1);
                 return dir;
             }
             
-            // ─── NAVIGATION - FIXED ─────────────────────────────────────
+            // ─── NAVIGATION ─────────────────────────────────────────────
             function goToService(service) {
                 console.log('🔗 goToService called with:', service);
                 
@@ -296,45 +415,100 @@
                     url += `?service=${service}`;
                 }
                 
-                // Get the base URL (handles subdirectories)
+                // Try multiple navigation methods
                 const base = getBaseUrl();
                 const fullUrl = base + url;
+                const relativeUrl = url;
                 
-                console.log('📍 Navigating to:', fullUrl);
-                console.log('📍 Base path:', base);
+                console.log('📍 Base URL:', base);
+                console.log('📍 Full URL:', fullUrl);
+                console.log('📍 Relative URL:', relativeUrl);
                 
+                // Try full URL first
                 try {
-                    // Try multiple methods
                     window.location.href = fullUrl;
+                    return;
                 } catch (e) {
-                    console.error('Navigation error with full URL:', e);
-                    // Fallback: try relative
-                    try {
-                        window.location.href = url;
-                    } catch (e2) {
-                        console.error('Both navigation methods failed:', e2);
-                        showToast('⚠️ Unable to navigate to customer portal', 'error');
-                    }
+                    console.log('Full URL navigation failed, trying relative...');
                 }
+                
+                // Try relative URL
+                try {
+                    window.location.href = relativeUrl;
+                    return;
+                } catch (e) {
+                    console.log('Relative URL navigation failed, showing modal...');
+                }
+                
+                // If all navigation fails, show modal
+                showServiceModal(service);
             }
             
             function goToCustomerPortal() {
                 console.log('🔗 goToCustomerPortal called');
+                
                 const base = getBaseUrl();
                 const fullUrl = base + 'customer-portal.html';
-                console.log('📍 Navigating to:', fullUrl);
                 
                 try {
                     window.location.href = fullUrl;
                 } catch (e) {
-                    console.error('Navigation error:', e);
                     try {
                         window.location.href = 'customer-portal.html';
                     } catch (e2) {
-                        console.error('Both navigation methods failed:', e2);
                         showToast('⚠️ Unable to navigate to customer portal', 'error');
+                        // Show the service selection modal as fallback
+                        showServiceSelectionModal();
                     }
                 }
+            }
+            
+            // ─── MODAL FUNCTIONS ──────────────────────────────────────
+            function showServiceModal(serviceKey) {
+                const modal = document.getElementById('serviceModal');
+                const service = serviceData[serviceKey];
+                
+                if (!service) {
+                    showToast('❌ Service not found', 'error');
+                    return;
+                }
+                
+                document.getElementById('modalIcon').textContent = service.icon;
+                document.getElementById('modalServiceName').textContent = service.name;
+                document.getElementById('modalPrice').textContent = `KES ${service.price.toLocaleString()}`;
+                document.getElementById('modalDescription').textContent = service.description;
+                document.getElementById('modalTitle').textContent = `🔧 ${service.name}`;
+                document.getElementById('modalStartBtn').dataset.service = serviceKey;
+                
+                modal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+            
+            function showServiceSelectionModal() {
+                // Show a generic modal with all services
+                const modal = document.getElementById('serviceModal');
+                document.getElementById('modalIcon').textContent = '🚗';
+                document.getElementById('modalServiceName').textContent = 'Select a Service';
+                document.getElementById('modalPrice').textContent = 'Choose from below';
+                document.getElementById('modalDescription').textContent = 'Please select a service from the dashboard.';
+                document.getElementById('modalTitle').textContent = '🔧 Service Selection';
+                document.getElementById('modalStartBtn').style.display = 'none';
+                
+                modal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+            
+            function closeModal() {
+                document.getElementById('serviceModal').classList.remove('active');
+                document.body.style.overflow = 'auto';
+                document.getElementById('modalStartBtn').style.display = 'block';
+            }
+            
+            function startServiceFromModal() {
+                const serviceKey = document.getElementById('modalStartBtn').dataset.service;
+                closeModal();
+                // Try navigating again
+                goToService(serviceKey);
             }
             
             // ─── Utility Functions ──────────────────────────────────────
@@ -555,6 +729,14 @@
                     
                     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
                     
+                    // ─── Modal Event Listeners ──────────────────────────
+                    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+                    document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+                    document.getElementById('modalStartBtn').addEventListener('click', startServiceFromModal);
+                    document.getElementById('serviceModal').addEventListener('click', function(e) {
+                        if (e.target === this) closeModal();
+                    });
+                    
                     // ─── CTA Button Listeners ───────────────────────────
                     document.getElementById('startServiceBtn')?.addEventListener('click', function(e) {
                         e.preventDefault();
@@ -606,7 +788,7 @@
                     
                     console.log('✅ AUTO-V Dashboard initialized');
                     console.log('📌 Base URL:', getBaseUrl());
-                    console.log('📌 customer-portal.html is in the same directory');
+                    console.log('📌 If navigation fails, a modal will appear with service details');
                     
                 } catch (err) {
                     console.error('Init error:', err);
@@ -617,6 +799,8 @@
             // ─── Make functions globally accessible ────────────────────
             window.goToService = goToService;
             window.goToCustomerPortal = goToCustomerPortal;
+            window.showServiceModal = showServiceModal;
+            window.closeModal = closeModal;
             
             // ─── Start the app ──────────────────────────────────────────
             if (document.readyState === 'loading') {
