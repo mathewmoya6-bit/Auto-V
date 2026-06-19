@@ -267,233 +267,267 @@
 
     <script>
         // ============================================================
-        // AUTO-V DASHBOARD - FIXED AND WORKING
+        // AUTO-V DASHBOARD - SINGLE SOURCE OF TRUTH: SUPABASE
         // ============================================================
         
-        // ─── Supabase Configuration ──────────────────────────────────
-        const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
-        
-        // ─── Initialize Supabase ────────────────────────────────────
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        // ─── Utility Functions ──────────────────────────────────────
-        function formatKES(amount) {
-            return new Intl.NumberFormat('en-KE', { 
-                style: 'currency', 
-                currency: 'KES', 
-                minimumFractionDigits: 0 
-            }).format(amount || 0);
-        }
-        
-        function formatDate(date) {
-            return new Date(date).toLocaleDateString('en-KE', { 
-                year: 'numeric', 
-                month: 'short', 
-                day: 'numeric' 
-            });
-        }
-        
-        function showToast(msg, type = 'success') {
-            const existing = document.querySelector('.toast');
-            if (existing) existing.remove();
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.textContent = msg;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
-        
-        // ─── Service Name Mapper ────────────────────────────────────
-        function getServiceName(type) {
-            const map = {
-                'instant': '💡 Instant Check',
-                'valuation': '💰 Valuation',
-                'inspection': '🔍 Inspection',
-                'mileage': '📏 Mileage Report',
-                'assessment': '⚠️ Assessment',
-                'fleet': '🚛 Fleet Service',
-                'verification': '✅ Verification',
-                'service': '🛠️ Service'
-            };
-            return map[type] || type || 'N/A';
-        }
-        
-        // ─── Status Badge Class ─────────────────────────────────────
-        function getBadgeClass(status) {
-            const map = {
-                'completed': 'completed',
-                'paid': 'completed',
-                'pending': 'pending',
-                'processing': 'processing',
-                'failed': 'failed',
-                'cancelled': 'failed'
-            };
-            return map[status] || 'pending';
-        }
-        
-        // ─── Load Dashboard Data ────────────────────────────────────
-        async function loadDashboard() {
-            try {
-                // ─── Get Current User ──────────────────────────────
-                const { data: { user }, error: authError } = await supabase.auth.getUser();
-                
-                if (authError || !user) {
-                    console.log('No user found, redirecting to login...');
-                    window.location.href = "login.html";
-                    return;
-                }
-                
-                // ─── Display User Info ──────────────────────────────
-                const userEmail = user.email;
-                const userName = user.user_metadata?.full_name || userEmail?.split('@')[0] || 'User';
-                
-                document.getElementById('userAvatar').textContent = userEmail ? userEmail.charAt(0).toUpperCase() : 'U';
-                document.getElementById('userEmail').textContent = userEmail || 'user@email.com';
-                document.getElementById('welcomeMsg').textContent = `🚀 Welcome back, ${userName}!`;
-                
-                // ─── Fetch Service Requests ─────────────────────────
-                const { data: requests, error: reqError } = await supabase
-                    .from('service_requests')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false });
-                
-                if (reqError) {
-                    console.error('Error fetching requests:', reqError);
-                }
-                
-                // ─── Fetch Payments ─────────────────────────────────
-                const { data: payments, error: payError } = await supabase
-                    .from('payments')
-                    .select('*')
-                    .eq('user_id', user.id);
-                
-                if (payError) {
-                    console.error('Error fetching payments:', payError);
-                }
-                
-                const requestList = requests || [];
-                const paymentList = payments || [];
-                
-                // ─── Update Stats ────────────────────────────────────
-                const totalRequests = requestList.length;
-                const completed = requestList.filter(r => 
-                    r.status === 'completed' || r.payment_status === 'paid'
-                ).length;
-                const pending = requestList.filter(r => 
-                    r.status === 'pending' || r.payment_status === 'pending'
-                ).length;
-                const spent = paymentList
-                    .filter(p => p.status === 'completed' || p.status === 'paid')
-                    .reduce((s, p) => s + (p.amount || 0), 0);
-                
-                document.getElementById('totalRequests').textContent = totalRequests;
-                document.getElementById('completedRequests').textContent = completed;
-                document.getElementById('pendingRequests').textContent = pending;
-                document.getElementById('totalSpent').innerHTML = formatKES(spent);
-                
-                // ─── Render Recent Activity ──────────────────────────
-                const container = document.getElementById('recentActivity');
-                
-                if (requestList.length === 0) {
+        (function() {
+            // ─── Supabase Configuration ──────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+            
+            // ─── Initialize Supabase ──────────────────────────────────────
+            if (typeof window.__supabase === 'undefined') {
+                window.__supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+            const supabase = window.__supabase;
+            
+            // ─── Utility Functions ──────────────────────────────────────
+            function formatKES(amount) {
+                return new Intl.NumberFormat('en-KE', { 
+                    style: 'currency', 
+                    currency: 'KES', 
+                    minimumFractionDigits: 0 
+                }).format(amount || 0);
+            }
+            
+            function formatDate(date) {
+                if (!date) return 'N/A';
+                return new Date(date).toLocaleDateString('en-KE', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+            }
+            
+            function showToast(msg, type = 'success') {
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = msg;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+            
+            function getServiceName(type) {
+                const map = {
+                    'instant': '💡 Instant Check',
+                    'valuation': '💰 Valuation',
+                    'inspection': '🔍 Inspection',
+                    'mileage': '📏 Mileage Report',
+                    'assessment': '⚠️ Assessment',
+                    'fleet': '🚛 Fleet Service',
+                    'verification': '✅ Verification'
+                };
+                return map[type] || type || 'N/A';
+            }
+            
+            function getBadgeClass(status) {
+                const map = {
+                    'completed': 'completed',
+                    'paid': 'completed',
+                    'pending': 'pending',
+                    'processing': 'processing',
+                    'failed': 'failed',
+                    'cancelled': 'failed'
+                };
+                return map[status] || 'pending';
+            }
+            
+            // ─── Load Dashboard Data ────────────────────────────────────
+            async function loadDashboard() {
+                try {
+                    // ─── Get Current User ──────────────────────────────
+                    const { data: { user }, error: authError } = await supabase.auth.getUser();
+                    
+                    if (authError || !user) {
+                        console.log('No user found, redirecting to login...');
+                        window.location.href = "login.html";
+                        return;
+                    }
+                    
+                    // ─── Display User Info ──────────────────────────────
+                    const userEmail = user.email;
+                    const userName = user.user_metadata?.full_name || userEmail?.split('@')[0] || 'User';
+                    
+                    document.getElementById('userAvatar').textContent = userEmail ? userEmail.charAt(0).toUpperCase() : 'U';
+                    document.getElementById('userEmail').textContent = userEmail || 'user@email.com';
+                    document.getElementById('welcomeMsg').textContent = `🚀 Welcome back, ${userName}!`;
+                    
+                    // ─── Fetch Service Requests ─────────────────────────
+                    // Using .select('*') with error handling for missing table
+                    let requestList = [];
+                    let paymentList = [];
+                    
+                    try {
+                        const { data: requests, error: reqError } = await supabase
+                            .from('service_requests')
+                            .select('*')
+                            .eq('user_id', user.id)
+                            .order('created_at', { ascending: false });
+                        
+                        if (reqError) {
+                            console.warn('Error fetching requests:', reqError.message);
+                            // Table might not exist yet
+                        } else {
+                            requestList = requests || [];
+                        }
+                    } catch (err) {
+                        console.warn('Service requests table error:', err.message);
+                    }
+                    
+                    // ─── Fetch Payments ─────────────────────────────────
+                    try {
+                        const { data: payments, error: payError } = await supabase
+                            .from('payments')
+                            .select('*')
+                            .eq('user_id', user.id);
+                        
+                        if (payError) {
+                            console.warn('Error fetching payments:', payError.message);
+                        } else {
+                            paymentList = payments || [];
+                        }
+                    } catch (err) {
+                        console.warn('Payments table error:', err.message);
+                    }
+                    
+                    // ─── Update Stats ────────────────────────────────────
+                    const totalRequests = requestList.length;
+                    const completed = requestList.filter(r => 
+                        r.status === 'completed' || r.payment_status === 'paid'
+                    ).length;
+                    const pending = requestList.filter(r => 
+                        r.status === 'pending' || r.payment_status === 'pending'
+                    ).length;
+                    const spent = paymentList
+                        .filter(p => p.status === 'completed' || p.status === 'paid')
+                        .reduce((s, p) => s + (p.amount || 0), 0);
+                    
+                    document.getElementById('totalRequests').textContent = totalRequests;
+                    document.getElementById('completedRequests').textContent = completed;
+                    document.getElementById('pendingRequests').textContent = pending;
+                    document.getElementById('totalSpent').innerHTML = formatKES(spent);
+                    
+                    // ─── Render Recent Activity ──────────────────────────
+                    const container = document.getElementById('recentActivity');
+                    
+                    if (requestList.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-icon">🚀</div>
+                                <h4>No activity yet</h4>
+                                <p>Start your first service and see your activity here.</p>
+                                <a href="customer-portal.html" class="btn-cta-small">Start Now →</a>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    const recent = requestList.slice(0, 5);
                     container.innerHTML = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Service</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${recent.map(r => {
+                                    const status = r.payment_status || r.status || 'pending';
+                                    const badgeClass = getBadgeClass(status);
+                                    const serviceName = getServiceName(r.service_type);
+                                    return `<tr>
+                                        <td>${formatDate(r.created_at)}</td>
+                                        <td>${serviceName}</td>
+                                        <td>${formatKES(r.amount || 0)}</td>
+                                        <td><span class="badge badge-${badgeClass}">${badgeClass.charAt(0).toUpperCase() + badgeClass.slice(1)}</span></td>
+                                    </tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    
+                } catch (err) {
+                    console.error('Error loading dashboard:', err);
+                    document.getElementById('recentActivity').innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-icon">🚀</div>
-                            <h4>No activity yet</h4>
-                            <p>Start your first service and see your activity here.</p>
-                            <a href="customer-portal.html" class="btn-cta-small">Start Now →</a>
+                            <div class="empty-icon">⚠️</div>
+                            <h4>Error loading data</h4>
+                            <p>${err.message || 'Please refresh the page.'}</p>
+                            <button onclick="location.reload()" class="btn-cta-small">🔄 Refresh</button>
                         </div>
                     `;
-                    return;
                 }
-                
-                const recent = requestList.slice(0, 5);
-                container.innerHTML = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Service</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${recent.map(r => {
-                                const status = r.payment_status || r.status || 'pending';
-                                const badgeClass = getBadgeClass(status);
-                                const serviceName = getServiceName(r.service_type);
-                                return `<tr>
-                                    <td>${formatDate(r.created_at)}</td>
-                                    <td>${serviceName}</td>
-                                    <td>${formatKES(r.amount || 0)}</td>
-                                    <td><span class="badge badge-${badgeClass}">${badgeClass.charAt(0).toUpperCase() + badgeClass.slice(1)}</span></td>
-                                </tr>`;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                `;
-                
-            } catch (err) {
-                console.error('Error loading dashboard:', err);
-                document.getElementById('recentActivity').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">⚠️</div>
-                        <h4>Error loading data</h4>
-                        <p>Please refresh the page.</p>
-                        <button onclick="location.reload()" class="btn-cta-small">🔄 Refresh</button>
-                    </div>
-                `;
             }
-        }
-        
-        // ─── Logout ──────────────────────────────────────────────────
-        async function handleLogout() {
-            try {
-                await supabase.auth.signOut();
-                showToast('✅ Logged out successfully', 'success');
-                setTimeout(() => {
-                    window.location.href = "login.html";
-                }, 500);
-            } catch (err) {
-                console.error('Logout error:', err);
-                showToast('❌ Error logging out', 'error');
-            }
-        }
-        
-        // ─── Initialize ─────────────────────────────────────────────
-        async function init() {
-            try {
-                // Check if user is logged in
-                const { data: { user }, error } = await supabase.auth.getUser();
-                
-                if (error || !user) {
-                    console.log('No user found, redirecting to login...');
-                    window.location.href = "login.html";
-                    return;
+            
+            // ─── Logout ──────────────────────────────────────────────────
+            async function handleLogout() {
+                try {
+                    await supabase.auth.signOut();
+                    showToast('✅ Logged out successfully', 'success');
+                    setTimeout(() => {
+                        window.location.href = "login.html";
+                    }, 500);
+                } catch (err) {
+                    console.error('Logout error:', err);
+                    showToast('❌ Error logging out', 'error');
                 }
-                
-                // Load dashboard data
-                await loadDashboard();
-                
-                // ─── Set up event listeners ──────────────────────────
-                document.getElementById('logoutBtn').addEventListener('click', handleLogout);
-                
-                // ─── Auto-refresh every 30 seconds ──────────────────
-                setInterval(loadDashboard, 30000);
-                
-                console.log('✅ AUTO-V Dashboard initialized');
-                console.log('👤 User:', user.email);
-                
-            } catch (err) {
-                console.error('Init error:', err);
-                showToast('❌ Failed to initialize dashboard', 'error');
             }
-        }
-        
-        // ─── Start the app ──────────────────────────────────────────
-        document.addEventListener('DOMContentLoaded', init);
+            
+            // ─── Check Existing Session ──────────────────────────────────
+            async function checkSession() {
+                try {
+                    const { data: { user }, error } = await supabase.auth.getUser();
+                    
+                    if (error || !user) {
+                        console.log('No user found, redirecting to login...');
+                        window.location.href = "login.html";
+                        return false;
+                    }
+                    
+                    return true;
+                } catch (err) {
+                    console.error('Session check error:', err);
+                    window.location.href = "login.html";
+                    return false;
+                }
+            }
+            
+            // ─── Initialize ─────────────────────────────────────────────
+            async function init() {
+                try {
+                    // Check if user is logged in
+                    const isLoggedIn = await checkSession();
+                    if (!isLoggedIn) return;
+                    
+                    // Load dashboard data
+                    await loadDashboard();
+                    
+                    // ─── Set up event listeners ──────────────────────────
+                    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+                    
+                    // ─── Auto-refresh every 30 seconds ──────────────────
+                    setInterval(loadDashboard, 30000);
+                    
+                    console.log('✅ AUTO-V Dashboard initialized');
+                    
+                } catch (err) {
+                    console.error('Init error:', err);
+                    showToast('❌ Failed to initialize dashboard', 'error');
+                }
+            }
+            
+            // ─── Start the app ──────────────────────────────────────────
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
     </script>
 </body>
 </html>
