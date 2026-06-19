@@ -15,14 +15,23 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 
     // ─── Create Supabase client ──────────────────────────────────────
-    // Check if window.supabase exists (from CDN)
     if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
         console.error('❌ Supabase CDN not loaded. Please check the script tag.');
         return;
     }
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log('✅ Supabase client created');
+    const supabase = window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+        {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_ANON_KEY
+            }
+        }
+    );
+    console.log('✅ Supabase client created with proper headers');
 
     // ============================================
     // GLOBAL AUTO-V NAMESPACE
@@ -124,7 +133,7 @@
         // ========================================
         async upsertUserProfile(userId, email, name, phone) {
             try {
-                const { error } = await supabase
+                const { data, error } = await supabase
                     .from('user_profiles')
                     .upsert({
                         id: userId,
@@ -139,9 +148,12 @@
                 
                 if (error) {
                     console.warn('Error upserting user profile:', error.message);
+                    return { data: null, error: error };
                 }
+                return { data, error: null };
             } catch (err) {
                 console.warn('Error in upsertUserProfile:', err);
+                return { data: null, error: err };
             }
         },
         
