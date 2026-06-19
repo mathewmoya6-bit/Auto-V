@@ -9,6 +9,9 @@
     <!-- Load Supabase CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     
+    <!-- Load AUTO-V Supabase Configuration -->
+    <script src="supabase.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -342,16 +345,25 @@
                 return;
             }
             
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            const supabase = window.supabase.createClient(
+                SUPABASE_URL,
+                SUPABASE_ANON_KEY,
+                {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'apikey': SUPABASE_ANON_KEY
+                    }
+                }
+            );
             
             window.autoV = {
                 supabase: supabase,
                 SUPABASE_URL: SUPABASE_URL,
                 SUPABASE_ANON_KEY: SUPABASE_ANON_KEY,
-                // Add helper methods here if needed
             };
             
-            console.log('✅ autoV initialized (inline)');
+            console.log('✅ autoV initialized with proper headers');
         })();
 
         // ============================================================
@@ -370,7 +382,22 @@
                 }
                 if (retries <= 0) {
                     console.error('❌ window.autoV failed to initialize');
-                    alert('Configuration error. Please refresh the page.');
+                    // Try fallback initialization
+                    try {
+                        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+                        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+                        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                        window.autoV = { 
+                            supabase: supabase, 
+                            SUPABASE_URL: SUPABASE_URL, 
+                            SUPABASE_ANON_KEY: SUPABASE_ANON_KEY 
+                        };
+                        console.log('✅ autoV initialized as fallback');
+                        callback();
+                    } catch (fallbackError) {
+                        console.error('❌ Fallback initialization failed:', fallbackError);
+                        alert('Configuration error. Please refresh the page.');
+                    }
                     return;
                 }
                 console.log(`⏳ Waiting for autoV... (${retries} attempts left)`);
@@ -828,7 +855,7 @@
                 // ─── USER PROFILE ─────────────────────────────────────────
                 async function upsertUserProfile(userId, email, name, phone) {
                     try {
-                        const { error } = await supabase
+                        const { data, error } = await supabase
                             .from('user_profiles')
                             .upsert({
                                 id: userId,
@@ -843,9 +870,12 @@
 
                         if (error) {
                             console.warn('Error upserting user profile:', error.message);
+                            return { data: null, error: error };
                         }
+                        return { data, error: null };
                     } catch (err) {
                         console.warn('Error in upsertUserProfile:', err);
+                        return { data: null, error: err };
                     }
                 }
 
