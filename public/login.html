@@ -216,6 +216,8 @@
     <script>
         // ============================================================
         // AUTO-V LOGIN - FIXED REDIRECTS
+        // NEW USER → customer-portal.html
+        // EXISTING USER → dashboard.html
         // ============================================================
 
         (function() {
@@ -303,7 +305,6 @@
             // ─── Update Profile ───────────────────────────────────────────
             async function updateProfile(userId) {
                 try {
-                    // Get current profile
                     const profile = await getProfile(userId);
                     if (!profile) return false;
 
@@ -338,7 +339,8 @@
                         return { isNew: true, needsOnboarding: true };
                     }
 
-                    // Check if user needs onboarding
+                    // NEW USER: first_login = true OR has_vehicle = false
+                    // EXISTING USER: first_login = false AND has_vehicle = true
                     const needsOnboarding = profile.first_login === true || profile.has_vehicle === false;
                     
                     console.log('📊 User status:', {
@@ -406,23 +408,27 @@
                     console.log('👤 Logged in:', user.email);
 
                     // ─── 2. Check/Update Profile ─────────────────────────
-                    const fullName = user.user_metadata?.full_name || email.split('@')[0];
                     let profile = await getProfile(user.id);
 
                     if (!profile) {
                         // New user - create profile
+                        const fullName = user.user_metadata?.full_name || email.split('@')[0];
                         await createProfile(user.id, user.email, fullName);
                         profile = await getProfile(user.id);
                     } else {
                         // Existing user - update login count
                         await updateProfile(user.id);
+                        // Refresh profile
+                        profile = await getProfile(user.id);
                     }
 
                     // ─── 3. Check User Status ─────────────────────────────
                     const status = await checkUserStatus(user.id);
                     console.log('🎯 Status:', status);
 
-                    // ─── 4. Redirect ──────────────────────────────────────
+                    // ─── 4. REDIRECT ──────────────────────────────────────
+                    // NEW USER (first_login = true OR has_vehicle = false) → customer-portal.html
+                    // EXISTING USER (first_login = false AND has_vehicle = true) → dashboard.html
                     if (status.needsOnboarding) {
                         console.log('🆕 NEW USER → customer-portal.html');
                         showMessage('👋 Welcome! Setting up your account...', 'success');
@@ -431,7 +437,8 @@
                         }, 800);
                     } else {
                         console.log('✅ EXISTING USER → dashboard.html');
-                        showMessage('✅ Welcome back, ' + (profile?.full_name || 'User') + '!', 'success');
+                        const name = profile?.full_name || user.user_metadata?.full_name || 'User';
+                        showMessage(`✅ Welcome back, ${name}!`, 'success');
                         setTimeout(() => {
                             window.location.href = "dashboard.html";
                         }, 800);
@@ -518,7 +525,7 @@
                         });
 
                         if (loginData?.user) {
-                            // ─── 4. New User → Onboarding ──────────────
+                            // ─── 4. NEW USER → customer-portal.html ─────
                             setTimeout(() => {
                                 window.location.href = "customer-portal.html";
                             }, 1000);
@@ -543,10 +550,18 @@
                         console.log('🔐 Existing session found for:', session.user.email);
                         const user = session.user;
 
+                        // Make sure profile exists
+                        let profile = await getProfile(user.id);
+                        if (!profile) {
+                            const fullName = user.user_metadata?.full_name || user.email.split('@')[0];
+                            await createProfile(user.id, user.email, fullName);
+                            profile = await getProfile(user.id);
+                        }
+
                         // Check user status
                         const status = await checkUserStatus(user.id);
 
-                        // Redirect based on status
+                        // ─── REDIRECT ──────────────────────────────────────
                         if (status.needsOnboarding) {
                             console.log('🆕 Redirecting to customer-portal.html');
                             window.location.href = "customer-portal.html";
@@ -599,8 +614,8 @@
 
             console.log('🚀 AUTO-V Login ready');
             console.log('📌 Redirect Logic:');
-            console.log('   🆕 New users → customer-portal.html');
-            console.log('   ✅ Existing users → dashboard.html');
+            console.log('   🆕 NEW USER (first_login=true OR has_vehicle=false) → customer-portal.html');
+            console.log('   ✅ EXISTING USER (first_login=false AND has_vehicle=true) → dashboard.html');
 
         })(); // End of IIFE
     </script>
