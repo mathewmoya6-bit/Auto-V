@@ -5,7 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Africa's Vehicle Intelligence Platform</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    
+    <!-- 1. Load Supabase CDN first -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    
+    <!-- 2. Load AUTO-V Supabase Configuration (Single Source of Truth) -->
+    <script src="supabase.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * {
@@ -512,63 +518,85 @@
     </div>
     
     <script>
-        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        async function checkAutoRedirect() {
-            const { data: { user }, error } = await supabase.auth.getUser();
-            if (!error && user) {
-                window.location.href = "dashboard.html";
+        // ─── Use the global autoV client (Single Source of Truth) ───
+        (function() {
+            function waitForAutoV(callback, retries = 10) {
+                if (window.autoV && window.autoV.supabase) {
+                    callback();
+                    return;
+                }
+                if (retries <= 0) {
+                    console.error('❌ window.autoV failed to initialize');
+                    return;
+                }
+                setTimeout(() => waitForAutoV(callback, retries - 1), 300);
             }
-        }
-        
-        function animateStats() {
-            const stats = document.querySelectorAll('.stat-item h2');
-            stats.forEach(stat => {
-                const finalValue = stat.innerText;
-                if (finalValue.includes('+')) {
-                    const number = parseInt(finalValue);
-                    let current = 0;
-                    const increment = number / 50;
-                    const timer = setInterval(() => {
-                        current += increment;
-                        if (current >= number) {
-                            stat.innerText = finalValue;
-                            clearInterval(timer);
-                        } else {
-                            stat.innerText = Math.floor(current).toLocaleString() + '+';
+
+            waitForAutoV(function() {
+                const supabase = window.autoV.supabase;
+                console.log('✅ AUTO-V index using single source of truth');
+
+                // ─── Check if user is already logged in ──────────────
+                async function checkAutoRedirect() {
+                    const { data: { user }, error } = await supabase.auth.getUser();
+                    if (!error && user) {
+                        console.log('👤 User already logged in, redirecting to dashboard...');
+                        window.location.href = "dashboard.html";
+                    }
+                }
+
+                // ─── Animate stats on scroll ──────────────────────────
+                function animateStats() {
+                    const stats = document.querySelectorAll('.stat-item h2');
+                    stats.forEach(stat => {
+                        const finalValue = stat.innerText;
+                        if (finalValue.includes('+')) {
+                            const number = parseInt(finalValue);
+                            let current = 0;
+                            const increment = number / 50;
+                            const timer = setInterval(() => {
+                                current += increment;
+                                if (current >= number) {
+                                    stat.innerText = finalValue;
+                                    clearInterval(timer);
+                                } else {
+                                    stat.innerText = Math.floor(current).toLocaleString() + '+';
+                                }
+                            }, 40);
                         }
-                    }, 40);
+                    });
                 }
-            });
-        }
-        
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    animateStats();
-                    observer.disconnect();
+
+                // ─── Intersection Observer for stats ──────────────────
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            animateStats();
+                            observer.disconnect();
+                        }
+                    });
+                });
+
+                const statsSection = document.querySelector('.stats');
+                if (statsSection) {
+                    observer.observe(statsSection);
                 }
+
+                // ─── Smooth scroll for anchor links ────────────────────
+                document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                    anchor.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        const target = document.querySelector(this.getAttribute('href'));
+                        if (target) {
+                            target.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    });
+                });
+
+                // ─── Check if user is already logged in ──────────────
+                checkAutoRedirect();
             });
-        });
-        
-        const statsSection = document.querySelector('.stats');
-        if (statsSection) {
-            observer.observe(statsSection);
-        }
-        
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth' });
-                }
-            });
-        });
-        
-        checkAutoRedirect();
+        })();
     </script>
 </body>
 </html>
