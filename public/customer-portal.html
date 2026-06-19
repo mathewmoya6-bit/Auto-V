@@ -817,19 +817,27 @@
 
             // ─── USER PROFILE ─────────────────────────────────────────
             async function upsertUserProfile(userId, email, name, phone) {
-                await supabase
-                    .from('user_profiles')
-                    .upsert({
-                        id: userId,
-                        email: email,
-                        full_name: name || email.split('@')[0],
-                        phone: phone || '',
-                        first_login: true,
-                        has_vehicle: false,
-                        login_count: 1,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    }, { onConflict: 'id' });
+                try {
+                    // Try to upsert the profile
+                    const { error } = await supabase
+                        .from('user_profiles')
+                        .upsert({
+                            id: userId,
+                            email: email,
+                            full_name: name || email.split('@')[0],
+                            phone: phone || '',
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 1,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'id' });
+
+                    if (error) {
+                        console.warn('Error upserting user profile:', error.message);
+                    }
+                } catch (err) {
+                    console.warn('Error in upsertUserProfile:', err);
+                }
             }
 
             async function checkFirstTimeUser(userId) {
@@ -839,12 +847,20 @@
                         .select('first_login, has_vehicle, login_count, full_name, phone')
                         .eq('id', userId)
                         .single();
-                    if (error && error.code !== 'PGRST116') return true;
+
+                    // If there's an error (like the table missing), treat as first time
+                    if (error) {
+                        console.warn('User profile query failed, treating as first-time user:', error.message);
+                        return true;
+                    }
+
                     if (!data) return true;
                     if (!data.full_name || !data.phone) return true;
-                    if (data.first_login === true || data.has_vehicle === false || data.login_count < 2) return true;
-                    return false;
-                } catch { return true; }
+                    return !(data.first_login === false && data.has_vehicle === true && data.login_count >= 2);
+                } catch (err) {
+                    console.warn('Error checking user profile, treating as first-time user:', err);
+                    return true;
+                }
             }
 
             async function isProfileComplete(userId) {
@@ -854,9 +870,17 @@
                         .select('full_name, phone')
                         .eq('id', userId)
                         .single();
-                    if (error || !data) return false;
-                    return !!(data.full_name && data.phone);
-                } catch { return false; }
+
+                    if (error) {
+                        console.warn('Profile completeness query failed, assuming incomplete:', error.message);
+                        return false;
+                    }
+
+                    return !!(data && data.full_name && data.phone);
+                } catch (err) {
+                    console.warn('Error checking profile completeness:', err);
+                    return false;
+                }
             }
 
             // ─── LOGIN / SIGNUP ──────────────────────────────────────
@@ -984,7 +1008,6 @@
 
                     const price = getPrice(selectedService, selectedPurpose);
 
-                    // ✅ FIXED: Use /mpesa/initiate instead of /payments/initiate
                     const initResponse = await fetchWithAuth(`${API_BASE}/mpesa/initiate`, {
                         method: 'POST',
                         body: JSON.stringify({
@@ -1014,7 +1037,6 @@
                     pollInterval = setInterval(async () => {
                         attempts++;
                         try {
-                            // ✅ FIXED: Use /mpesa/status instead of /payments/status
                             const statusResponse = await fetchWithAuth(`${API_BASE}/mpesa/status/${currentPaymentId}`);
                             if (!statusResponse.ok) {
                                 if (statusResponse.status === 404) {
@@ -1422,19 +1444,34 @@
 
             // ─── CHECK SESSION ──────────────────────────────────────
             async function checkExistingSession() {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const isFirst = await checkFirstTimeUser(user.id);
-                    const complete = await isProfileComplete(user.id);
-                    if (isFirst || !complete) {
-                        document.getElementById('welcomeBanner').style.display = 'block';
-                        document.getElementById('custEmail').value = user.email;
-                        if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
-                        if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
-                        showStep(2);
-                    } else {
-                        window.location.href = "dashboard.html";
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                        let isFirst = true;
+                        let complete = false;
+                        
+                        try {
+                            isFirst = await checkFirstTimeUser(user.id);
+                            complete = await isProfileComplete(user.id);
+                        } catch (err) {
+                            console.warn('Error checking user profile, proceeding with onboarding:', err);
+                            isFirst = true;
+                            complete = false;
+                        }
+                        
+                        if (isFirst || !complete) {
+                            document.getElementById('welcomeBanner').style.display = 'block';
+                            document.getElementById('custEmail').value = user.email;
+                            if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
+                            if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
+                            showStep(2);
+                        } else {
+                            window.location.href = "dashboard.html";
+                        }
                     }
+                } catch (err) {
+                    console.warn('Error checking session:', err);
+                    showStep(1);
                 }
             }
 
