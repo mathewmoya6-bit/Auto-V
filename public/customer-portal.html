@@ -5,7 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Customer Portal</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    
+    <!-- Load Supabase CDN first -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    
+    <!-- Load AUTO-V Supabase Configuration -->
+    <script src="supabase.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -323,19 +329,26 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL – FULL REALTIME FEE SYNC (FIXED)
+        // AUTO-V CUSTOMER PORTAL – Uses window.autoV
         // ============================================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
             window.autoVCustomerPortalInitialized = true;
 
-            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            // ─── Use the global autoV client ──────────────────────────
+            if (!window.autoV || !window.autoV.supabase) {
+                console.error('❌ window.autoV not initialized. Please load supabase.js first.');
+                alert('Configuration error. Please refresh the page or contact support.');
+                return;
+            }
+
+            const supabase = window.autoV.supabase;
+            const SUPABASE_URL = window.autoV.SUPABASE_URL;
+            const SUPABASE_ANON_KEY = window.autoV.SUPABASE_ANON_KEY;
 
             const API_BASE = 'https://auto-v.onrender.com/api';
 
-            // ─── PURPOSE OPTIONS PER SERVICE ──────────────────────────
+            // ─── Purpose Options ──────────────────────────────────────
             const purposeOptions = {
                 instant: ["Instant Market Estimate"],
                 valuation: [
@@ -384,7 +397,7 @@
                 ]
             };
 
-            // ─── PURPOSE-SPECIFIC PRICING MAPS ──────────────────────
+            // ─── Purpose-Specific Pricing Maps ──────────────────────
             const purposePrices = {
                 valuation: {
                     "Insurance Valuation": 2500,
@@ -414,7 +427,7 @@
                 }
             };
 
-            // ─── PURPOSE-SPECIFIC DATA FIELDS ──────────────────────
+            // ─── Purpose-Specific Data Fields ──────────────────────
             const purposeFields = {
                 valuation: {
                     "Insurance Valuation": [
@@ -512,38 +525,7 @@
             let fleetFee = 4000;
             let verificationFee = 1000;
 
-            // ─── TOKEN HELPERS ─────────────────────────────────────────
-            async function getValidToken() {
-                const { data: { session }, error } = await supabase.auth.getSession();
-                if (error || !session) return null;
-                return session.access_token;
-            }
-
-            async function fetchWithAuth(url, options = {}) {
-                const token = await getValidToken();
-                if (!token) {
-                    window.location.href = "login.html";
-                    throw new Error('No active session');
-                }
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    ...options.headers
-                };
-                const response = await fetch(url, { ...options, headers });
-                if (response.status === 401) {
-                    const { data: { session }, error } = await supabase.auth.refreshSession();
-                    if (error || !session) {
-                        window.location.href = "login.html";
-                        throw new Error('Session expired');
-                    }
-                    const newToken = session.access_token;
-                    headers['Authorization'] = `Bearer ${newToken}`;
-                    return fetch(url, { ...options, headers });
-                }
-                return response;
-            }
-
+            // ─── STATE ─────────────────────────────────────────────────
             let currentUser = null;
             let selectedService = null;
             let selectedPurpose = null;
@@ -574,7 +556,7 @@
             }
 
             function formatKES(amount) {
-                return new Intl.NumberFormat('en-KE', { style:'currency', currency:'KES', minimumFractionDigits:0 }).format(amount || 0);
+                return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', minimumFractionDigits: 0 }).format(amount || 0);
             }
 
             function setPaymentStatus(status, message = '') {
@@ -645,14 +627,14 @@
                 const container = document.getElementById('purposeFields');
                 const containerDiv = document.getElementById('purposeFieldsContainer');
                 const fields = purposeFields[service]?.[purpose] || [];
-                
+
                 container.innerHTML = '';
                 if (fields.length === 0) {
                     containerDiv.style.display = 'none';
                     return;
                 }
                 containerDiv.style.display = 'block';
-                
+
                 fields.forEach((field) => {
                     const div = document.createElement('div');
                     div.className = 'form-group';
@@ -741,9 +723,6 @@
                 document.getElementById('fleetPriceDisplay').textContent = `KES ${Number(fleetFee || 0).toLocaleString()}`;
                 document.getElementById('verificationPriceDisplay').textContent = `KES ${Number(verificationFee || 0).toLocaleString()}`;
 
-                if (selectedService) {
-                    renderPurposeFees(selectedService);
-                }
                 if (selectedService && selectedPurpose) {
                     updateSummary();
                 }
@@ -752,7 +731,7 @@
             // ─── REAL-TIME FEE UPDATES ──────────────────────────────
             function subscribeToFeeChanges() {
                 console.log('🔄 Subscribing to fee changes...');
-                
+
                 const channel = supabase
                     .channel('system_settings_changes')
                     .on(
@@ -778,14 +757,8 @@
                     .subscribe((status) => {
                         console.log('📡 Realtime status:', status);
                     });
-                
-                return channel;
-            }
 
-            // ─── RENDER PURPOSE FEES ─────────────────────────────────
-            function renderPurposeFees(service) {
-                const container = document.getElementById('purposeFields');
-                if (!container) return;
+                return channel;
             }
 
             // ─── UPDATE PURPOSE LIST ────────────────────────────────
@@ -818,7 +791,6 @@
             // ─── USER PROFILE ─────────────────────────────────────────
             async function upsertUserProfile(userId, email, name, phone) {
                 try {
-                    // Try to upsert the profile
                     const { error } = await supabase
                         .from('user_profiles')
                         .upsert({
@@ -848,7 +820,6 @@
                         .eq('id', userId)
                         .single();
 
-                    // If there's an error (like the table missing), treat as first time
                     if (error) {
                         console.warn('User profile query failed, treating as first-time user:', error.message);
                         return true;
@@ -881,6 +852,38 @@
                     console.warn('Error checking profile completeness:', err);
                     return false;
                 }
+            }
+
+            // ─── TOKEN HELPERS ─────────────────────────────────────────
+            async function getValidToken() {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error || !session) return null;
+                return session.access_token;
+            }
+
+            async function fetchWithAuth(url, options = {}) {
+                const token = await getValidToken();
+                if (!token) {
+                    window.location.href = "login.html";
+                    throw new Error('No active session');
+                }
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    ...options.headers
+                };
+                const response = await fetch(url, { ...options, headers });
+                if (response.status === 401) {
+                    const { data: { session }, error } = await supabase.auth.refreshSession();
+                    if (error || !session) {
+                        window.location.href = "login.html";
+                        throw new Error('Session expired');
+                    }
+                    const newToken = session.access_token;
+                    headers['Authorization'] = `Bearer ${newToken}`;
+                    return fetch(url, { ...options, headers });
+                }
+                return response;
             }
 
             // ─── LOGIN / SIGNUP ──────────────────────────────────────
@@ -1018,15 +1021,15 @@
                         })
                     });
 
-                    if (!initResponse.ok) { 
-                        const err = await initResponse.json(); 
+                    if (!initResponse.ok) {
+                        const err = await initResponse.json();
                         console.error('Payment initiation error:', err);
-                        throw new Error(err.error || 'STK Push initiation failed'); 
+                        throw new Error(err.error || 'STK Push initiation failed');
                     }
-                    
+
                     const initData = await initResponse.json();
                     console.log('Payment initiated:', initData);
-                    
+
                     currentPaymentId = initData.payment_id;
                     setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
 
@@ -1041,10 +1044,13 @@
                             if (!statusResponse.ok) {
                                 if (statusResponse.status === 404) {
                                     if (attempts >= maxAttempts) {
-                                        clearInterval(pollInterval); pollInterval = null;
+                                        clearInterval(pollInterval);
+                                        pollInterval = null;
                                         setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
                                         showMessage('Payment took too long. Please try again.', 'error');
-                                        payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
+                                        payBtn.disabled = false;
+                                        payBtn.innerHTML = originalText;
+                                        paymentInProgress = false;
                                     }
                                     return;
                                 }
@@ -1052,7 +1058,8 @@
                             }
                             const statusData = await statusResponse.json();
                             if (statusData.status === 'completed') {
-                                clearInterval(pollInterval); pollInterval = null;
+                                clearInterval(pollInterval);
+                                pollInterval = null;
                                 setPaymentStatus('completed', '✅ Payment confirmed!');
                                 currentPaymentStatus = 'completed';
                                 payBtn.innerHTML = '✅ Payment Complete';
@@ -1060,30 +1067,40 @@
                                 let serviceTitle = selectedService.charAt(0).toUpperCase() + selectedService.slice(1);
                                 document.querySelector('#step6 h2').textContent = `🚗 ${serviceTitle} Data Entry`;
                                 showStep(6);
-                                payBtn.disabled = false; paymentInProgress = false;
+                                payBtn.disabled = false;
+                                paymentInProgress = false;
                             } else if (statusData.status === 'failed') {
-                                clearInterval(pollInterval); pollInterval = null;
+                                clearInterval(pollInterval);
+                                pollInterval = null;
                                 setPaymentStatus('failed', '❌ Payment failed. Please try again.');
                                 currentPaymentStatus = 'failed';
                                 showMessage('Payment failed. Please try again.', 'error');
-                                payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
                             }
                             if (attempts >= maxAttempts) {
-                                clearInterval(pollInterval); pollInterval = null;
+                                clearInterval(pollInterval);
+                                pollInterval = null;
                                 setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
                                 currentPaymentStatus = 'timeout';
                                 showMessage('Payment timed out. Please try again.', 'error');
-                                payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
                             }
                         } catch (err) {
                             networkFailures++;
                             console.warn('Polling error:', err);
                             if (networkFailures >= maxNetworkFailures) {
-                                clearInterval(pollInterval); pollInterval = null;
+                                clearInterval(pollInterval);
+                                pollInterval = null;
                                 setPaymentStatus('failed', 'Network error. Please retry.');
                                 currentPaymentStatus = 'failed';
                                 showMessage('Network error. Please retry.', 'error');
-                                payBtn.disabled = false; payBtn.innerHTML = originalText; paymentInProgress = false;
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
                             }
                         }
                     }, 2000);
@@ -1100,11 +1117,11 @@
             }
 
             // ─── RETRY PAYMENT ────────────────────────────────────────
-            document.getElementById('retryPaymentBtn')?.addEventListener('click', async () => { 
+            document.getElementById('retryPaymentBtn')?.addEventListener('click', async () => {
                 currentPaymentStatus = null;
                 document.getElementById('paymentStatus').style.display = 'none';
                 document.getElementById('paymentRetry').style.display = 'none';
-                await initiatePayment(); 
+                await initiatePayment();
             });
 
             // ─── SUBMIT VEHICLE REQUEST ──────────────────────────────
@@ -1449,7 +1466,7 @@
                     if (user) {
                         let isFirst = true;
                         let complete = false;
-                        
+
                         try {
                             isFirst = await checkFirstTimeUser(user.id);
                             complete = await isProfileComplete(user.id);
@@ -1458,7 +1475,7 @@
                             isFirst = true;
                             complete = false;
                         }
-                        
+
                         if (isFirst || !complete) {
                             document.getElementById('welcomeBanner').style.display = 'block';
                             document.getElementById('custEmail').value = user.email;
