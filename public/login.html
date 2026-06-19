@@ -215,370 +215,378 @@
 
     <script>
         // ============================================================
-        // AUTO-V LOGIN - Single Source of Truth: Supabase
+        // AUTO-V LOGIN - SINGLE SOURCE OF TRUTH: SUPABASE
+        // Fixed: No duplicate declarations
         // ============================================================
 
-        // ─── Supabase Configuration ──────────────────────────────────
-        const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+        (function() {
+            // ─── Supabase Configuration ──────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
-        // ─── SINGLE SOURCE OF TRUTH: Initialize Supabase once ──────
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            // ─── SINGLE SOURCE OF TRUTH: Initialize Supabase ──────────
+            // Check if already initialized to prevent duplicate
+            if (typeof window.__supabase === 'undefined') {
+                window.__supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+            const supabase = window.__supabase;
 
-        // ─── DOM Elements ─────────────────────────────────────────────
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const loginBtn = document.getElementById('loginBtn');
-        const signupBtn = document.getElementById('signupBtn');
-        const messageBox = document.getElementById('messageBox');
-        const loginForm = document.getElementById('loginForm');
-        const signupForm = document.getElementById('signupForm');
+            // ─── DOM Elements ─────────────────────────────────────────────
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const loginBtn = document.getElementById('loginBtn');
+            const signupBtn = document.getElementById('signupBtn');
+            const messageBox = document.getElementById('messageBox');
+            const loginForm = document.getElementById('loginForm');
+            const signupForm = document.getElementById('signupForm');
 
-        // ─── Utility Functions ──────────────────────────────────────
-        function showMessage(text, type = 'error') {
-            messageBox.textContent = text;
-            messageBox.className = `message ${type}-message`;
-            messageBox.style.display = 'block';
-            setTimeout(() => { messageBox.style.display = 'none'; }, 5000);
-        }
+            // ─── Utility Functions ──────────────────────────────────────
+            function showMessage(text, type = 'error') {
+                messageBox.textContent = text;
+                messageBox.className = `message ${type}-message`;
+                messageBox.style.display = 'block';
+                setTimeout(() => { messageBox.style.display = 'none'; }, 5000);
+            }
 
-        function clearMessage() { messageBox.style.display = 'none'; }
+            function clearMessage() { messageBox.style.display = 'none'; }
 
-        function isValidEmail(email) {
-            return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
-        }
+            function isValidEmail(email) {
+                return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
+            }
 
-        // ─── Database: Ensure User Profile Exists ──────────────────
-        async function ensureUserProfile(userId, email, fullName) {
-            try {
-                // Check if profile exists
-                const { data: existing, error } = await supabase
-                    .from('user_profiles')
-                    .select('*')
-                    .eq('id', userId)
-                    .maybeSingle();
-
-                if (error && error.code !== 'PGRST116') {
-                    console.error('Profile check error:', error);
-                }
-
-                if (existing) {
-                    // Update existing profile
-                    const { error: updateError } = await supabase
+            // ─── Database: Ensure User Profile Exists ──────────────────
+            async function ensureUserProfile(userId, email, fullName) {
+                try {
+                    // Check if profile exists
+                    const { data: existing, error } = await supabase
                         .from('user_profiles')
-                        .update({
-                            login_count: (existing.login_count || 0) + 1,
-                            last_login: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', userId);
+                        .select('*')
+                        .eq('id', userId)
+                        .maybeSingle();
 
-                    if (updateError) {
-                        console.error('Update error:', updateError);
-                    } else {
-                        console.log('✅ Profile updated');
+                    if (error && error.code !== 'PGRST116') {
+                        console.error('Profile check error:', error);
                     }
-                    return existing;
-                } else {
-                    // Create new profile
-                    const { error: insertError } = await supabase
-                        .from('user_profiles')
-                        .insert({
-                            id: userId,
-                            email: email,
-                            full_name: fullName || email.split('@')[0],
-                            first_login: true,
-                            has_vehicle: false,
-                            login_count: 1,
-                            last_login: new Date().toISOString(),
-                            created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        });
 
-                    if (insertError) {
-                        console.error('Insert error:', insertError);
-                        return null;
-                    }
-                    console.log('✅ New profile created');
-                    return { first_login: true, has_vehicle: false };
-                }
+                    if (existing) {
+                        // Update existing profile
+                        const { error: updateError } = await supabase
+                            .from('user_profiles')
+                            .update({
+                                login_count: (existing.login_count || 0) + 1,
+                                last_login: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', userId);
 
-            } catch (err) {
-                console.error('Profile error:', err);
-                return null;
-            }
-        }
-
-        // ─── Database: Check User Status ───────────────────────────
-        async function getUserStatus(userId) {
-            try {
-                const { data, error } = await supabase
-                    .from('user_profiles')
-                    .select('first_login, has_vehicle')
-                    .eq('id', userId)
-                    .maybeSingle();
-
-                if (error) {
-                    console.error('Status check error:', error);
-                    return { isNew: true };
-                }
-
-                if (!data) {
-                    return { isNew: true };
-                }
-
-                const isNew = data.first_login === true || data.has_vehicle === false;
-                return { isNew, profile: data };
-
-            } catch (err) {
-                console.error('Status error:', err);
-                return { isNew: true };
-            }
-        }
-
-        // ─── LOGIN HANDLER ────────────────────────────────────────────
-        async function handleLogin(e) {
-            e.preventDefault();
-            const email = emailInput.value.trim();
-            const password = passwordInput.value;
-
-            clearMessage();
-
-            if (!email || !password) {
-                showMessage('Please enter both email and password', 'error');
-                return;
-            }
-
-            if (!isValidEmail(email)) {
-                showMessage('Please enter a valid email address', 'error');
-                return;
-            }
-
-            loginBtn.disabled = true;
-            loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
-
-            try {
-                // ─── STEP 1: Authenticate with Supabase ─────────────
-                const { data, error } = await supabase.auth.signInWithPassword({ 
-                    email, 
-                    password 
-                });
-
-                if (error) {
-                    console.error('Login error:', error);
-                    if (error.message === 'Invalid login credentials') {
-                        showMessage('❌ Invalid email or password', 'error');
-                    } else if (error.message.includes('Email not confirmed')) {
-                        showMessage('📧 Please verify your email address first', 'info');
-                    } else {
-                        showMessage(error.message || 'Login failed', 'error');
-                    }
-                    loginBtn.disabled = false;
-                    loginBtn.innerHTML = 'Login';
-                    return;
-                }
-
-                const user = data.user;
-                console.log('👤 Logged in:', user.email);
-
-                // ─── STEP 2: Ensure Profile in Database ─────────────
-                const fullName = user.user_metadata?.full_name || email.split('@')[0];
-                await ensureUserProfile(user.id, user.email, fullName);
-
-                // ─── STEP 3: Check User Status ──────────────────────
-                const { isNew } = await getUserStatus(user.id);
-
-                // ─── STEP 4: Smart Redirect ─────────────────────────
-                if (isNew) {
-                    console.log('🆕 NEW USER → customer-portal.html');
-                    showMessage('👋 Welcome! Setting up your account...', 'success');
-                    setTimeout(() => {
-                        window.location.href = "customer-portal.html";
-                    }, 800);
-                } else {
-                    console.log('✅ EXISTING USER → dashboard.html');
-                    showMessage('✅ Welcome back!', 'success');
-                    setTimeout(() => {
-                        window.location.href = "dashboard.html";
-                    }, 800);
-                }
-
-            } catch (err) {
-                console.error('Unexpected error:', err);
-                showMessage('Network error. Please try again.', 'error');
-                loginBtn.disabled = false;
-                loginBtn.innerHTML = 'Login';
-            }
-        }
-
-        // ─── SIGNUP HANDLER ──────────────────────────────────────────
-        async function handleSignup(e) {
-            e.preventDefault();
-
-            const email = document.getElementById('signupEmail').value.trim();
-            const password = document.getElementById('signupPassword').value;
-            const confirmPassword = document.getElementById('signupConfirmPassword').value;
-            const fullName = document.getElementById('signupName').value.trim();
-            const phone = document.getElementById('signupPhone').value.trim();
-
-            if (!email || !password) {
-                showMessage('Please enter email and password', 'error');
-                return;
-            }
-
-            if (!isValidEmail(email)) {
-                showMessage('Please enter a valid email address', 'error');
-                return;
-            }
-
-            if (password.length < 6) {
-                showMessage('Password must be at least 6 characters', 'error');
-                return;
-            }
-
-            if (password !== confirmPassword) {
-                showMessage('Passwords do not match', 'error');
-                return;
-            }
-
-            const submitBtn = document.querySelector('#signupForm button[type="submit"]');
-            const originalText = submitBtn.innerHTML;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner"></span> Creating...';
-
-            try {
-                // ─── STEP 1: Create User in Supabase Auth ──────────
-                const { data, error } = await supabase.auth.signUp({
-                    email,
-                    password,
-                    options: {
-                        data: {
-                            full_name: fullName || email.split('@')[0],
-                            phone: phone || ''
+                        if (updateError) {
+                            console.error('Update error:', updateError);
+                        } else {
+                            console.log('✅ Profile updated');
                         }
-                    }
-                });
-
-                if (error) {
-                    if (error.message.includes('User already registered')) {
-                        showMessage('📧 User already exists. Please login.', 'info');
+                        return existing;
                     } else {
-                        showMessage(error.message || 'Signup failed', 'error');
+                        // Create new profile
+                        const { error: insertError } = await supabase
+                            .from('user_profiles')
+                            .insert({
+                                id: userId,
+                                email: email,
+                                full_name: fullName || email.split('@')[0],
+                                first_login: true,
+                                has_vehicle: false,
+                                login_count: 1,
+                                last_login: new Date().toISOString(),
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            });
+
+                        if (insertError) {
+                            console.error('Insert error:', insertError);
+                            return null;
+                        }
+                        console.log('✅ New profile created');
+                        return { first_login: true, has_vehicle: false };
                     }
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = originalText;
+
+                } catch (err) {
+                    console.error('Profile error:', err);
+                    return null;
+                }
+            }
+
+            // ─── Database: Check User Status ───────────────────────────
+            async function getUserStatus(userId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('first_login, has_vehicle')
+                        .eq('id', userId)
+                        .maybeSingle();
+
+                    if (error) {
+                        console.error('Status check error:', error);
+                        return { isNew: true };
+                    }
+
+                    if (!data) {
+                        return { isNew: true };
+                    }
+
+                    const isNew = data.first_login === true || data.has_vehicle === false;
+                    return { isNew, profile: data };
+
+                } catch (err) {
+                    console.error('Status error:', err);
+                    return { isNew: true };
+                }
+            }
+
+            // ─── LOGIN HANDLER ────────────────────────────────────────────
+            async function handleLogin(e) {
+                e.preventDefault();
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
+
+                clearMessage();
+
+                if (!email || !password) {
+                    showMessage('Please enter both email and password', 'error');
                     return;
                 }
 
-                if (data.user) {
-                    // ─── STEP 2: Create Profile in Database ─────────
-                    await supabase.from('user_profiles').insert({
-                        id: data.user.id,
-                        email: email,
-                        full_name: fullName || email.split('@')[0],
-                        phone: phone || '',
-                        first_login: true,
-                        has_vehicle: false,
-                        login_count: 0,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    });
+                if (!isValidEmail(email)) {
+                    showMessage('Please enter a valid email address', 'error');
+                    return;
+                }
 
-                    showMessage('✅ Account created! Please check your email to verify.', 'success');
-                    document.getElementById('signupModal').style.display = 'none';
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
 
-                    // ─── STEP 3: Auto-login ─────────────────────────
-                    const { data: loginData } = await supabase.auth.signInWithPassword({ 
+                try {
+                    // ─── STEP 1: Authenticate with Supabase ─────────────
+                    const { data, error } = await supabase.auth.signInWithPassword({ 
                         email, 
                         password 
                     });
 
-                    if (loginData?.user) {
-                        // ─── STEP 4: New User → Onboarding ──────────
-                        setTimeout(() => {
-                            window.location.href = "customer-portal.html";
-                        }, 1000);
+                    if (error) {
+                        console.error('Login error:', error);
+                        if (error.message === 'Invalid login credentials') {
+                            showMessage('❌ Invalid email or password', 'error');
+                        } else if (error.message.includes('Email not confirmed')) {
+                            showMessage('📧 Please verify your email address first', 'info');
+                        } else {
+                            showMessage(error.message || 'Login failed', 'error');
+                        }
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = 'Login';
+                        return;
                     }
-                }
 
-            } catch (err) {
-                console.error('Signup error:', err);
-                showMessage('Network error. Please try again.', 'error');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-            }
-        }
+                    const user = data.user;
+                    console.log('👤 Logged in:', user.email);
 
-        // ─── CHECK EXISTING SESSION ──────────────────────────────────
-        async function checkExistingSession() {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-
-                if (session) {
-                    console.log('🔐 Existing session found');
-                    const user = session.user;
-
-                    // Ensure profile exists
-                    const fullName = user.user_metadata?.full_name || user.email.split('@')[0];
+                    // ─── STEP 2: Ensure Profile in Database ─────────────
+                    const fullName = user.user_metadata?.full_name || email.split('@')[0];
                     await ensureUserProfile(user.id, user.email, fullName);
 
-                    // Check user status
+                    // ─── STEP 3: Check User Status ──────────────────────
                     const { isNew } = await getUserStatus(user.id);
 
-                    // Redirect based on status
+                    // ─── STEP 4: Smart Redirect ─────────────────────────
                     if (isNew) {
-                        window.location.href = "customer-portal.html";
+                        console.log('🆕 NEW USER → customer-portal.html');
+                        showMessage('👋 Welcome! Setting up your account...', 'success');
+                        setTimeout(() => {
+                            window.location.href = "customer-portal.html";
+                        }, 800);
                     } else {
-                        window.location.href = "dashboard.html";
+                        console.log('✅ EXISTING USER → dashboard.html');
+                        showMessage('✅ Welcome back!', 'success');
+                        setTimeout(() => {
+                            window.location.href = "dashboard.html";
+                        }, 800);
                     }
-                } else {
-                    console.log('🔓 No active session');
+
+                } catch (err) {
+                    console.error('Unexpected error:', err);
+                    showMessage('Network error. Please try again.', 'error');
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = 'Login';
+                }
+            }
+
+            // ─── SIGNUP HANDLER ──────────────────────────────────────────
+            async function handleSignup(e) {
+                e.preventDefault();
+
+                const email = document.getElementById('signupEmail').value.trim();
+                const password = document.getElementById('signupPassword').value;
+                const confirmPassword = document.getElementById('signupConfirmPassword').value;
+                const fullName = document.getElementById('signupName').value.trim();
+                const phone = document.getElementById('signupPhone').value.trim();
+
+                if (!email || !password) {
+                    showMessage('Please enter email and password', 'error');
+                    return;
                 }
 
-            } catch (err) {
-                console.log('Session check error:', err);
+                if (!isValidEmail(email)) {
+                    showMessage('Please enter a valid email address', 'error');
+                    return;
+                }
+
+                if (password.length < 6) {
+                    showMessage('Password must be at least 6 characters', 'error');
+                    return;
+                }
+
+                if (password !== confirmPassword) {
+                    showMessage('Passwords do not match', 'error');
+                    return;
+                }
+
+                const submitBtn = document.querySelector('#signupForm button[type="submit"]');
+                const originalText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner"></span> Creating...';
+
+                try {
+                    // ─── STEP 1: Create User in Supabase Auth ──────────
+                    const { data, error } = await supabase.auth.signUp({
+                        email,
+                        password,
+                        options: {
+                            data: {
+                                full_name: fullName || email.split('@')[0],
+                                phone: phone || ''
+                            }
+                        }
+                    });
+
+                    if (error) {
+                        if (error.message.includes('User already registered')) {
+                            showMessage('📧 User already exists. Please login.', 'info');
+                        } else {
+                            showMessage(error.message || 'Signup failed', 'error');
+                        }
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalText;
+                        return;
+                    }
+
+                    if (data.user) {
+                        // ─── STEP 2: Create Profile in Database ─────────
+                        await supabase.from('user_profiles').insert({
+                            id: data.user.id,
+                            email: email,
+                            full_name: fullName || email.split('@')[0],
+                            phone: phone || '',
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 0,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        });
+
+                        showMessage('✅ Account created! Please check your email to verify.', 'success');
+                        document.getElementById('signupModal').style.display = 'none';
+
+                        // ─── STEP 3: Auto-login ─────────────────────────
+                        const { data: loginData } = await supabase.auth.signInWithPassword({ 
+                            email, 
+                            password 
+                        });
+
+                        if (loginData?.user) {
+                            // ─── STEP 4: New User → Onboarding ──────────
+                            setTimeout(() => {
+                                window.location.href = "customer-portal.html";
+                            }, 1000);
+                        }
+                    }
+
+                } catch (err) {
+                    console.error('Signup error:', err);
+                    showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                }
             }
-        }
 
-        // ─── EVENT LISTENERS ─────────────────────────────────────────
-        loginForm.addEventListener('submit', handleLogin);
-        signupForm.addEventListener('submit', handleSignup);
+            // ─── CHECK EXISTING SESSION ──────────────────────────────────
+            async function checkExistingSession() {
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
 
-        signupBtn.addEventListener('click', () => {
-            document.getElementById('signupModal').style.display = 'flex';
-        });
+                    if (session) {
+                        console.log('🔐 Existing session found');
+                        const user = session.user;
 
-        document.getElementById('closeSignupBtn').addEventListener('click', () => {
-            document.getElementById('signupModal').style.display = 'none';
-        });
+                        // Ensure profile exists
+                        const fullName = user.user_metadata?.full_name || user.email.split('@')[0];
+                        await ensureUserProfile(user.id, user.email, fullName);
 
-        document.getElementById('signupModal').addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) {
+                        // Check user status
+                        const { isNew } = await getUserStatus(user.id);
+
+                        // Redirect based on status
+                        if (isNew) {
+                            window.location.href = "customer-portal.html";
+                        } else {
+                            window.location.href = "dashboard.html";
+                        }
+                    } else {
+                        console.log('🔓 No active session');
+                    }
+
+                } catch (err) {
+                    console.log('Session check error:', err);
+                }
+            }
+
+            // ─── EVENT LISTENERS ─────────────────────────────────────────
+            loginForm.addEventListener('submit', handleLogin);
+            signupForm.addEventListener('submit', handleSignup);
+
+            signupBtn.addEventListener('click', () => {
+                document.getElementById('signupModal').style.display = 'flex';
+            });
+
+            document.getElementById('closeSignupBtn').addEventListener('click', () => {
                 document.getElementById('signupModal').style.display = 'none';
-            }
-        });
+            });
 
-        emailInput.addEventListener('input', clearMessage);
-        passwordInput.addEventListener('input', clearMessage);
+            document.getElementById('signupModal').addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) {
+                    document.getElementById('signupModal').style.display = 'none';
+                }
+            });
 
-        // ─── KEYBOARD SHORTCUTS ──────────────────────────────────────
-        emailInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleLogin(e);
-        });
+            emailInput.addEventListener('input', clearMessage);
+            passwordInput.addEventListener('input', clearMessage);
 
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleLogin(e);
-        });
+            // ─── KEYBOARD SHORTCUTS ──────────────────────────────────────
+            emailInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleLogin(e);
+            });
 
-        // ─── START APPLICATION ──────────────────────────────────────
-        checkExistingSession();
-        emailInput.focus();
+            passwordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleLogin(e);
+            });
 
-        console.log('🚀 AUTO-V Login ready');
-        console.log('📌 Single Source of Truth: Supabase');
-        console.log('📌 New users → customer-portal.html');
-        console.log('📌 Existing users → dashboard.html');
+            // ─── START APPLICATION ──────────────────────────────────────
+            checkExistingSession();
+            emailInput.focus();
+
+            console.log('🚀 AUTO-V Login ready');
+            console.log('📌 Single Source of Truth: Supabase');
+            console.log('📌 New users → customer-portal.html');
+            console.log('📌 Existing users → dashboard.html');
+
+        })(); // End of IIFE - prevents variable leakage
     </script>
 </body>
 </html>
