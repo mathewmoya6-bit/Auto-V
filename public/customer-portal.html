@@ -248,6 +248,34 @@
         .toast-warning { background: #eab308; color: #000; }
         @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
         
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 12, 21, 0.95);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .loading-overlay .spinner-big {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #1e293b;
+            border-top-color: #eab308;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .loading-overlay p {
+            margin-top: 20px;
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        
         @media (max-width: 768px) {
             .container { padding: 16px; }
             .card { padding: 20px; }
@@ -262,6 +290,12 @@
     </style>
 </head>
 <body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner-big"></div>
+        <p>Loading AUTO-V Customer Portal...</p>
+    </div>
+
     <div class="header">
         <div class="logo">🚗 AUTO-V <span>| Customer Portal</span></div>
         <button class="logout-btn" id="logoutBtn">Logout</button>
@@ -289,9 +323,6 @@
         <!-- STEP 1: LOGIN -->
         <div id="step1" class="card step active">
             <h2>🔐 Login to Continue</h2>
-            <div id="loginLoading" style="display:none;text-align:center;padding:20px;">
-                <div class="spinner"></div> <span style="color:#94a3b8;">Checking session...</span>
-            </div>
             <form id="loginForm">
                 <div class="form-group"><label class="required">Email</label><input type="email" id="loginEmail" placeholder="your@email.com" autocomplete="email"></div>
                 <div class="form-group"><label class="required">Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"></div>
@@ -481,7 +512,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL - COMPLETE WORKING VERSION
+        // AUTO-V CUSTOMER PORTAL - STABLE VERSION
         // ============================================================
         
         (function() {
@@ -495,12 +526,14 @@
             }
             const supabase = window.__supabase;
             
+            // ─── State ──────────────────────────────────────────────────
             let currentUser = null;
             let selectedService = null;
             let selectedPurpose = null;
             let clientType = 'individual';
             let currentPaymentStatus = null;
             let paymentInProgress = false;
+            let isInitialized = false;
             
             // ─── Service Data ──────────────────────────────────────────
             const services = {
@@ -523,12 +556,15 @@
                 verification: ["Valuation Certificates", "Inspection Reports", "Assessment Reports", "QR Verification"]
             };
             
-            // ─── Get Service from URL ──────────────────────────────────
-            function getServiceFromURL() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const service = urlParams.get('service');
-                console.log('📌 Service from URL:', service);
-                return service;
+            // ─── Hide Loading Overlay ──────────────────────────────────
+            function hideLoading() {
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) {
+                    overlay.style.opacity = '0';
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                    }, 500);
+                }
             }
             
             // ─── Utility Functions ──────────────────────────────────────
@@ -620,12 +656,26 @@
                 document.getElementById('summaryAmount').textContent = `KES ${Number(price || 0).toLocaleString()}`;
             }
             
+            // ─── Get Service from URL ──────────────────────────────────
+            function getServiceFromURL() {
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const service = urlParams.get('service');
+                    console.log('📌 Service from URL:', service);
+                    return service;
+                } catch (e) {
+                    console.warn('Error reading URL params:', e);
+                    return null;
+                }
+            }
+            
             // ─── Auto-select service from URL ──────────────────────────
             function autoSelectService() {
                 const serviceParam = getServiceFromURL();
                 if (serviceParam && services[serviceParam]) {
                     console.log('🎯 Auto-selecting service:', serviceParam);
                     const cards = document.querySelectorAll('.service-card');
+                    let found = false;
                     cards.forEach(card => {
                         if (card.dataset.service === serviceParam) {
                             card.click();
@@ -633,13 +683,16 @@
                             document.getElementById('selectedServiceMsg').innerHTML =
                                 `✅ Selected: ${getServiceName(serviceParam)} - ${formatKES(getServicePrice(serviceParam))}`;
                             updateSummary();
-                            // Auto-advance to purpose step after a delay
-                            setTimeout(() => {
-                                updatePurposeList(serviceParam);
-                                showStep(4);
-                            }, 800);
+                            found = true;
                         }
                     });
+                    if (found) {
+                        // Auto-advance to purpose step after a delay
+                        setTimeout(() => {
+                            updatePurposeList(serviceParam);
+                            showStep(4);
+                        }, 800);
+                    }
                 }
             }
             
@@ -688,23 +741,8 @@
                     currentUser = data.user;
                     console.log('👤 Logged in:', currentUser.email);
                     
-                    // Check if user has profile
-                    const { data: profile } = await supabase
-                        .from('user_profiles')
-                        .select('*')
-                        .eq('id', currentUser.id)
-                        .single();
-                    
-                    if (!profile || profile.first_login === true || !profile.full_name) {
-                        document.getElementById('welcomeBanner').style.display = 'block';
-                        document.getElementById('custEmail').value = currentUser.email;
-                        if (currentUser.user_metadata?.full_name) document.getElementById('custName').value = currentUser.user_metadata.full_name;
-                        if (currentUser.user_metadata?.phone) document.getElementById('custPhone').value = currentUser.user_metadata.phone;
-                        showStep(2);
-                    } else {
-                        showMessage('✅ Welcome back!', 'success');
-                        setTimeout(() => window.location.href = "dashboard.html", 1500);
-                    }
+                    // Check profile and redirect
+                    await handleUserRedirect(currentUser);
                     
                 } catch (err) {
                     showMessage('Network error. Please try again.', 'error');
@@ -795,6 +833,38 @@
                 }
             }
             
+            // ─── Handle User Redirect ──────────────────────────────────
+            async function handleUserRedirect(user) {
+                try {
+                    const { data: profile } = await supabase
+                        .from('user_profiles')
+                        .select('*')
+                        .eq('id', user.id)
+                        .single();
+                    
+                    if (!profile || profile.first_login === true || !profile.full_name) {
+                        // New/incomplete user - show onboarding
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = user.email;
+                        if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
+                        if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
+                        showStep(2);
+                    } else {
+                        // Existing user - redirect to dashboard
+                        showMessage('✅ Welcome back, ' + (profile.full_name || 'User') + '!', 'success');
+                        setTimeout(() => {
+                            window.location.href = "dashboard.html";
+                        }, 1500);
+                    }
+                } catch (err) {
+                    console.error('Profile check error:', err);
+                    // If error, show onboarding as fallback
+                    document.getElementById('welcomeBanner').style.display = 'block';
+                    document.getElementById('custEmail').value = user.email;
+                    showStep(2);
+                }
+            }
+            
             // ─── SAVE CLIENT DETAILS ─────────────────────────────────────
             async function handleClientDetails(e) {
                 e.preventDefault();
@@ -859,10 +929,10 @@
             
             // ─── SERVICE SELECTION ──────────────────────────────────────
             document.querySelectorAll('.service-card').forEach(card => {
-                card.onclick = () => {
+                card.onclick = function() {
                     document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
-                    card.classList.add('selected');
-                    selectedService = card.dataset.service;
+                    this.classList.add('selected');
+                    selectedService = this.dataset.service;
                     selectedPurpose = null;
                     document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
                     const price = getServicePrice(selectedService);
@@ -898,7 +968,6 @@
                 payBtn.disabled = true;
                 payBtn.innerHTML = '<span class="spinner"></span> Processing...';
                 
-                // Simulate payment (in production, call your API)
                 setPaymentStatus('pending', '⏳ Initiating payment...');
                 
                 setTimeout(() => {
@@ -1051,6 +1120,52 @@
                 }
             }
             
+            // ─── CHECK SESSION ON LOAD ──────────────────────────────────
+            async function checkSession() {
+                try {
+                    const { data: { user }, error } = await supabase.auth.getUser();
+                    
+                    if (error || !user) {
+                        console.log('No user found, showing login');
+                        hideLoading();
+                        showStep(1);
+                        return;
+                    }
+                    
+                    currentUser = user;
+                    console.log('👤 User found:', user.email);
+                    
+                    // Check if user has profile
+                    const { data: profile } = await supabase
+                        .from('user_profiles')
+                        .select('*')
+                        .eq('id', user.id)
+                        .single();
+                    
+                    if (!profile || profile.first_login === true || !profile.full_name) {
+                        // New user - show onboarding
+                        hideLoading();
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = user.email;
+                        if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
+                        if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
+                        showStep(2);
+                    } else {
+                        // Existing user - redirect to dashboard
+                        hideLoading();
+                        showMessage('✅ Welcome back, ' + (profile.full_name || 'User') + '!', 'success');
+                        setTimeout(() => {
+                            window.location.href = "dashboard.html";
+                        }, 1500);
+                    }
+                    
+                } catch (err) {
+                    console.error('Session check error:', err);
+                    hideLoading();
+                    showStep(1);
+                }
+            }
+            
             // ─── EVENT LISTENERS ─────────────────────────────────────────
             document.getElementById('loginForm').addEventListener('submit', handleLogin);
             document.getElementById('signupForm').addEventListener('submit', handleSignup);
@@ -1104,77 +1219,45 @@
             
             // ─── LOGOUT ──────────────────────────────────────────────────
             document.getElementById('logoutBtn').addEventListener('click', async () => {
-                await supabase.auth.signOut();
-                window.location.href = 'login.html';
+                try {
+                    await supabase.auth.signOut();
+                    window.location.href = 'login.html';
+                } catch (e) {
+                    console.error('Logout error:', e);
+                    window.location.href = 'login.html';
+                }
             });
             
-            // ─── CHECK SESSION ON LOAD ──────────────────────────────────
-            async function checkSession() {
+            // ─── INIT ────────────────────────────────────────────────────
+            async function init() {
+                console.log('🚀 Initializing AUTO-V Customer Portal...');
+                
                 try {
-                    // Show loading
-                    document.getElementById('loginLoading').style.display = 'block';
-                    document.getElementById('loginForm').style.display = 'none';
+                    populateYears();
+                    await checkSession();
                     
-                    const { data: { user }, error } = await supabase.auth.getUser();
+                    // Auto-select service from URL after session is checked
+                    setTimeout(() => {
+                        autoSelectService();
+                    }, 800);
                     
-                    if (error || !user) {
-                        console.log('No user found, showing login');
-                        document.getElementById('loginLoading').style.display = 'none';
-                        document.getElementById('loginForm').style.display = 'block';
-                        showStep(1);
-                        return;
-                    }
-                    
-                    currentUser = user;
-                    console.log('👤 User found:', user.email);
-                    
-                    // Check if user has profile
-                    const { data: profile } = await supabase
-                        .from('user_profiles')
-                        .select('*')
-                        .eq('id', user.id)
-                        .single();
-                    
-                    if (!profile || profile.first_login === true || !profile.full_name) {
-                        // New user - show onboarding
-                        document.getElementById('loginLoading').style.display = 'none';
-                        document.getElementById('loginForm').style.display = 'block';
-                        document.getElementById('welcomeBanner').style.display = 'block';
-                        document.getElementById('custEmail').value = user.email;
-                        if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
-                        if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
-                        showStep(2);
-                    } else {
-                        // Existing user - redirect to dashboard
-                        document.getElementById('loginLoading').style.display = 'none';
-                        document.getElementById('loginForm').style.display = 'block';
-                        showMessage('✅ Welcome back!', 'success');
-                        setTimeout(() => {
-                            window.location.href = "dashboard.html";
-                        }, 1500);
-                    }
+                    console.log('✅ AUTO-V Customer Portal initialized successfully');
+                    console.log('📌 Single Source of Truth: Supabase');
                     
                 } catch (err) {
-                    console.error('Session check error:', err);
-                    document.getElementById('loginLoading').style.display = 'none';
-                    document.getElementById('loginForm').style.display = 'block';
+                    console.error('Init error:', err);
+                    hideLoading();
                     showStep(1);
                 }
             }
             
-            // ─── INIT ────────────────────────────────────────────────────
-            populateYears();
-            
-            // Check session first, then auto-select service if applicable
-            await checkSession();
-            
-            // After session check, auto-select service from URL
-            setTimeout(() => {
-                autoSelectService();
-            }, 500);
-            
-            console.log('🚀 AUTO-V Customer Portal initialized');
-            console.log('📌 Single Source of Truth: Supabase');
+            // ─── START ──────────────────────────────────────────────────
+            // Wait for DOM to be ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
             
         })();
     </script>
