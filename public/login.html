@@ -215,13 +215,18 @@
 
     <script>
         // ============================================================
-        // AUTO-V LOGIN - COMPLETE WORKING VERSION
+        // AUTO-V LOGIN - FIXED (no duplicate declarations)
         // ============================================================
 
+        // ─── Supabase Config ──────────────────────────────────────────
         const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Check if supabase already exists, if not create it
+        if (typeof window._supabase === 'undefined') {
+            window._supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+        const supabase = window._supabase;
 
         // ─── DOM Elements ─────────────────────────────────────────────
         const emailInput = document.getElementById('email');
@@ -255,7 +260,6 @@
 
                 if (checkError) {
                     console.log('Check error:', checkError);
-                    // Try to create profile anyway
                 }
 
                 if (existing) {
@@ -347,30 +351,9 @@
 
                 // ─── Ensure Profile Exists ────────────────────────
                 const name = user.user_metadata?.full_name || email.split('@')[0];
-                const { exists, profile } = await ensureProfile(user.id, user.email, name);
-
-                if (!exists) {
-                    // Fallback: try direct insert
-                    try {
-                        await supabase
-                            .from('user_profiles')
-                            .insert({
-                                id: user.id,
-                                email: user.email,
-                                full_name: name,
-                                first_login: false,
-                                has_vehicle: true,
-                                login_count: 1,
-                                last_login: new Date().toISOString()
-                            });
-                        console.log('✅ Profile created via fallback');
-                    } catch (fallbackErr) {
-                        console.error('Fallback insert failed:', fallbackErr);
-                    }
-                }
+                await ensureProfile(user.id, user.email, name);
 
                 // ─── Check if user is new ─────────────────────────
-                // Get latest profile
                 const { data: latestProfile } = await supabase
                     .from('user_profiles')
                     .select('first_login, has_vehicle')
