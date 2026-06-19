@@ -215,8 +215,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V LOGIN - SINGLE SOURCE OF TRUTH: SUPABASE
-        // Fixed: No duplicate declarations
+        // AUTO-V LOGIN - FIXED REDIRECTS
         // ============================================================
 
         (function() {
@@ -224,8 +223,7 @@
             const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
-            // ─── SINGLE SOURCE OF TRUTH: Initialize Supabase ──────────
-            // Check if already initialized to prevent duplicate
+            // ─── Initialize Supabase ──────────────────────────────────────
             if (typeof window.__supabase === 'undefined') {
                 window.__supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             }
@@ -254,95 +252,115 @@
                 return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
             }
 
-            // ─── Database: Ensure User Profile Exists ──────────────────
-            async function ensureUserProfile(userId, email, fullName) {
+            // ─── Get User Profile ─────────────────────────────────────────
+            async function getProfile(userId) {
                 try {
-                    // Check if profile exists
-                    const { data: existing, error } = await supabase
+                    const { data, error } = await supabase
                         .from('user_profiles')
                         .select('*')
                         .eq('id', userId)
                         .maybeSingle();
 
                     if (error && error.code !== 'PGRST116') {
-                        console.error('Profile check error:', error);
+                        console.error('Profile fetch error:', error);
+                        return null;
                     }
-
-                    if (existing) {
-                        // Update existing profile
-                        const { error: updateError } = await supabase
-                            .from('user_profiles')
-                            .update({
-                                login_count: (existing.login_count || 0) + 1,
-                                last_login: new Date().toISOString(),
-                                updated_at: new Date().toISOString()
-                            })
-                            .eq('id', userId);
-
-                        if (updateError) {
-                            console.error('Update error:', updateError);
-                        } else {
-                            console.log('✅ Profile updated');
-                        }
-                        return existing;
-                    } else {
-                        // Create new profile
-                        const { error: insertError } = await supabase
-                            .from('user_profiles')
-                            .insert({
-                                id: userId,
-                                email: email,
-                                full_name: fullName || email.split('@')[0],
-                                first_login: true,
-                                has_vehicle: false,
-                                login_count: 1,
-                                last_login: new Date().toISOString(),
-                                created_at: new Date().toISOString(),
-                                updated_at: new Date().toISOString()
-                            });
-
-                        if (insertError) {
-                            console.error('Insert error:', insertError);
-                            return null;
-                        }
-                        console.log('✅ New profile created');
-                        return { first_login: true, has_vehicle: false };
-                    }
-
+                    return data;
                 } catch (err) {
                     console.error('Profile error:', err);
                     return null;
                 }
             }
 
-            // ─── Database: Check User Status ───────────────────────────
-            async function getUserStatus(userId) {
+            // ─── Create Profile ───────────────────────────────────────────
+            async function createProfile(userId, email, fullName) {
                 try {
-                    const { data, error } = await supabase
+                    const { error } = await supabase
                         .from('user_profiles')
-                        .select('first_login, has_vehicle')
-                        .eq('id', userId)
-                        .maybeSingle();
+                        .insert({
+                            id: userId,
+                            email: email,
+                            full_name: fullName || email.split('@')[0],
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 0,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        });
 
                     if (error) {
-                        console.error('Status check error:', error);
-                        return { isNew: true };
+                        console.error('Create profile error:', error);
+                        return false;
                     }
-
-                    if (!data) {
-                        return { isNew: true };
-                    }
-
-                    const isNew = data.first_login === true || data.has_vehicle === false;
-                    return { isNew, profile: data };
-
+                    console.log('✅ Profile created for new user');
+                    return true;
                 } catch (err) {
-                    console.error('Status error:', err);
-                    return { isNew: true };
+                    console.error('Create profile error:', err);
+                    return false;
                 }
             }
 
-            // ─── LOGIN HANDLER ────────────────────────────────────────────
+            // ─── Update Profile ───────────────────────────────────────────
+            async function updateProfile(userId) {
+                try {
+                    // Get current profile
+                    const profile = await getProfile(userId);
+                    if (!profile) return false;
+
+                    const { error } = await supabase
+                        .from('user_profiles')
+                        .update({
+                            login_count: (profile.login_count || 0) + 1,
+                            last_login: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', userId);
+
+                    if (error) {
+                        console.error('Update profile error:', error);
+                        return false;
+                    }
+                    console.log('✅ Profile updated');
+                    return true;
+                } catch (err) {
+                    console.error('Update profile error:', err);
+                    return false;
+                }
+            }
+
+            // ─── Check User Status ────────────────────────────────────────
+            async function checkUserStatus(userId) {
+                try {
+                    const profile = await getProfile(userId);
+                    
+                    if (!profile) {
+                        console.log('📭 No profile found - NEW USER');
+                        return { isNew: true, needsOnboarding: true };
+                    }
+
+                    // Check if user needs onboarding
+                    const needsOnboarding = profile.first_login === true || profile.has_vehicle === false;
+                    
+                    console.log('📊 User status:', {
+                        first_login: profile.first_login,
+                        has_vehicle: profile.has_vehicle,
+                        login_count: profile.login_count,
+                        needsOnboarding
+                    });
+
+                    return { 
+                        isNew: needsOnboarding,
+                        needsOnboarding,
+                        profile
+                    };
+
+                } catch (err) {
+                    console.error('Status check error:', err);
+                    return { isNew: true, needsOnboarding: true };
+                }
+            }
+
+            // ─── HANDLE LOGIN ────────────────────────────────────────────
             async function handleLogin(e) {
                 e.preventDefault();
                 const email = emailInput.value.trim();
@@ -364,7 +382,7 @@
                 loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
 
                 try {
-                    // ─── STEP 1: Authenticate with Supabase ─────────────
+                    // ─── 1. Authenticate ──────────────────────────────────
                     const { data, error } = await supabase.auth.signInWithPassword({ 
                         email, 
                         password 
@@ -387,15 +405,25 @@
                     const user = data.user;
                     console.log('👤 Logged in:', user.email);
 
-                    // ─── STEP 2: Ensure Profile in Database ─────────────
+                    // ─── 2. Check/Update Profile ─────────────────────────
                     const fullName = user.user_metadata?.full_name || email.split('@')[0];
-                    await ensureUserProfile(user.id, user.email, fullName);
+                    let profile = await getProfile(user.id);
 
-                    // ─── STEP 3: Check User Status ──────────────────────
-                    const { isNew } = await getUserStatus(user.id);
+                    if (!profile) {
+                        // New user - create profile
+                        await createProfile(user.id, user.email, fullName);
+                        profile = await getProfile(user.id);
+                    } else {
+                        // Existing user - update login count
+                        await updateProfile(user.id);
+                    }
 
-                    // ─── STEP 4: Smart Redirect ─────────────────────────
-                    if (isNew) {
+                    // ─── 3. Check User Status ─────────────────────────────
+                    const status = await checkUserStatus(user.id);
+                    console.log('🎯 Status:', status);
+
+                    // ─── 4. Redirect ──────────────────────────────────────
+                    if (status.needsOnboarding) {
                         console.log('🆕 NEW USER → customer-portal.html');
                         showMessage('👋 Welcome! Setting up your account...', 'success');
                         setTimeout(() => {
@@ -403,7 +431,7 @@
                         }, 800);
                     } else {
                         console.log('✅ EXISTING USER → dashboard.html');
-                        showMessage('✅ Welcome back!', 'success');
+                        showMessage('✅ Welcome back, ' + (profile?.full_name || 'User') + '!', 'success');
                         setTimeout(() => {
                             window.location.href = "dashboard.html";
                         }, 800);
@@ -417,7 +445,7 @@
                 }
             }
 
-            // ─── SIGNUP HANDLER ──────────────────────────────────────────
+            // ─── HANDLE SIGNUP ──────────────────────────────────────────
             async function handleSignup(e) {
                 e.preventDefault();
 
@@ -453,7 +481,7 @@
                 submitBtn.innerHTML = '<span class="spinner"></span> Creating...';
 
                 try {
-                    // ─── STEP 1: Create User in Supabase Auth ──────────
+                    // ─── 1. Sign Up ──────────────────────────────────────
                     const { data, error } = await supabase.auth.signUp({
                         email,
                         password,
@@ -477,30 +505,20 @@
                     }
 
                     if (data.user) {
-                        // ─── STEP 2: Create Profile in Database ─────────
-                        await supabase.from('user_profiles').insert({
-                            id: data.user.id,
-                            email: email,
-                            full_name: fullName || email.split('@')[0],
-                            phone: phone || '',
-                            first_login: true,
-                            has_vehicle: false,
-                            login_count: 0,
-                            created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        });
+                        // ─── 2. Create Profile ──────────────────────────
+                        await createProfile(data.user.id, email, fullName || email.split('@')[0]);
 
                         showMessage('✅ Account created! Please check your email to verify.', 'success');
                         document.getElementById('signupModal').style.display = 'none';
 
-                        // ─── STEP 3: Auto-login ─────────────────────────
+                        // ─── 3. Auto-login ──────────────────────────────
                         const { data: loginData } = await supabase.auth.signInWithPassword({ 
                             email, 
                             password 
                         });
 
                         if (loginData?.user) {
-                            // ─── STEP 4: New User → Onboarding ──────────
+                            // ─── 4. New User → Onboarding ──────────────
                             setTimeout(() => {
                                 window.location.href = "customer-portal.html";
                             }, 1000);
@@ -522,24 +540,22 @@
                     const { data: { session } } = await supabase.auth.getSession();
 
                     if (session) {
-                        console.log('🔐 Existing session found');
+                        console.log('🔐 Existing session found for:', session.user.email);
                         const user = session.user;
 
-                        // Ensure profile exists
-                        const fullName = user.user_metadata?.full_name || user.email.split('@')[0];
-                        await ensureUserProfile(user.id, user.email, fullName);
-
                         // Check user status
-                        const { isNew } = await getUserStatus(user.id);
+                        const status = await checkUserStatus(user.id);
 
                         // Redirect based on status
-                        if (isNew) {
+                        if (status.needsOnboarding) {
+                            console.log('🆕 Redirecting to customer-portal.html');
                             window.location.href = "customer-portal.html";
                         } else {
+                            console.log('✅ Redirecting to dashboard.html');
                             window.location.href = "dashboard.html";
                         }
                     } else {
-                        console.log('🔓 No active session');
+                        console.log('🔓 No active session - showing login');
                     }
 
                 } catch (err) {
@@ -582,11 +598,11 @@
             emailInput.focus();
 
             console.log('🚀 AUTO-V Login ready');
-            console.log('📌 Single Source of Truth: Supabase');
-            console.log('📌 New users → customer-portal.html');
-            console.log('📌 Existing users → dashboard.html');
+            console.log('📌 Redirect Logic:');
+            console.log('   🆕 New users → customer-portal.html');
+            console.log('   ✅ Existing users → dashboard.html');
 
-        })(); // End of IIFE - prevents variable leakage
+        })(); // End of IIFE
     </script>
 </body>
 </html>
