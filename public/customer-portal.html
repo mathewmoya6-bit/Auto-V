@@ -1014,11 +1014,16 @@
                     
                     const price = selectedService === 'valuation' ? valuationFee : inspectionFee;
                     
+                    const token = (await supabase.auth.getSession()).data.session?.access_token;
+                    if (!token) {
+                        throw new Error('No authentication token available');
+                    }
+                    
                     const response = await fetch(`${API_BASE}/mpesa/initiate`, {
                         method: 'POST',
                         headers: { 
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                            'Authorization': `Bearer ${token}`
                         },
                         body: JSON.stringify({
                             phone: mpesaPhone,
@@ -1034,27 +1039,39 @@
                     }
                     
                     const result = await response.json();
-                    console.log('STK Push response:', result);
+                    console.log('✅ Payment initiated:', result);
                     
                     paymentId = result.payment_id;
-                    
                     setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
                     payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
                     
                     if (pollInterval) clearInterval(pollInterval);
                     
                     let attempts = 0;
-                    const maxAttempts = 30;
+                    const maxAttempts = 30; // 30 * 3s = 90 seconds
+                    
                     pollInterval = setInterval(async () => {
                         attempts++;
+                        console.log(`⏳ Polling attempt ${attempts}/${maxAttempts} for payment ${paymentId}`);
+                        
                         try {
+                            const token = (await supabase.auth.getSession()).data.session?.access_token;
+                            if (!token) {
+                                console.error('❌ No auth token for status check');
+                                return;
+                            }
+                            
                             const statusResp = await fetch(`${API_BASE}/mpesa/status/${paymentId}`, {
                                 headers: {
-                                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                                    'Authorization': `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
                                 }
                             });
                             
+                            console.log(`📡 Status response: ${statusResp.status}`);
+                            
                             if (statusResp.status === 404) {
+                                console.log(`⏳ Payment not found yet (${attempts}/${maxAttempts})`);
                                 if (attempts >= maxAttempts) {
                                     clearInterval(pollInterval);
                                     setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
@@ -1067,10 +1084,15 @@
                                 return;
                             }
                             
-                            if (!statusResp.ok) throw new Error('Status check failed');
+                            if (!statusResp.ok) {
+                                console.error('❌ Status check failed:', statusResp.status);
+                                return;
+                            }
                             
                             const statusData = await statusResp.json();
-                            const status = statusData.status;
+                            console.log('📊 Status data:', statusData);
+                            
+                            const status = statusData.status || statusData.payment_status;
                             
                             if (status === 'completed') {
                                 clearInterval(pollInterval);
@@ -1087,6 +1109,7 @@
                                 // Refresh admin data if open
                                 if (showAdmin) loadPayments();
                                 return;
+                                
                             } else if (status === 'failed') {
                                 clearInterval(pollInterval);
                                 setPaymentStatus('failed', '❌ Payment failed. Please try again.');
@@ -1098,6 +1121,7 @@
                                 return;
                             }
                             
+                            // Still processing
                             if (attempts >= maxAttempts) {
                                 clearInterval(pollInterval);
                                 setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
@@ -1107,12 +1131,23 @@
                                 paymentInProgress = false;
                                 document.getElementById('paymentRetry').style.display = 'block';
                             }
+                            
                         } catch (err) {
-                            console.error('Polling error:', err);
+                            console.error('❌ Polling error:', err);
+                            if (attempts >= maxAttempts) {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('timeout', '⏰ Network error. Please retry.');
+                                showMessage('Network error. Please try again.', 'error');
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
+                                document.getElementById('paymentRetry').style.display = 'block';
+                            }
                         }
-                    }, 2000);
+                    }, 3000);
+                    
                 } catch (err) {
-                    console.error('Payment error:', err);
+                    console.error('❌ Payment error:', err);
                     setPaymentStatus('failed', '❌ ' + err.message);
                     showMessage('Payment failed: ' + err.message, 'error');
                     payBtn.disabled = false;
