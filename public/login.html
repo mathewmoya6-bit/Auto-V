@@ -209,7 +209,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.85);
             z-index: 9999;
             justify-content: center;
             align-items: center;
@@ -228,6 +228,13 @@
             margin-top: 20px;
             color: #eab308;
             font-weight: 600;
+            font-size: 16px;
+        }
+        .loading-overlay .sub {
+            color: #94a3b8;
+            font-size: 13px;
+            font-weight: 400;
+            margin-top: 8px;
         }
     </style>
 </head>
@@ -235,7 +242,8 @@
     <!-- ─── Loading Overlay ─── -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner-big"></div>
-        <p>Redirecting...</p>
+        <p id="loadingText">Redirecting...</p>
+        <p class="sub" id="loadingSub">Please wait</p>
     </div>
 
     <div class="login-container">
@@ -289,8 +297,8 @@
     <script>
         // ============================================
         // AUTO-V LOGIN - Smart Redirect
-        // First-time users → customer-portal.html
-        // Returning users → dashboard.html
+        // Existing users → dashboard.html
+        // New users → customer-portal.html
         // ============================================
         (function() {
             if (window.autoVLoginInitialized) return;
@@ -308,6 +316,8 @@
             const messageBox = document.getElementById('messageBox');
             const signupModal = document.getElementById('signupModal');
             const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            const loadingSub = document.getElementById('loadingSub');
             
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
@@ -322,8 +332,9 @@
                 messageBox.style.display = 'none';
             }
             
-            function showLoading(text = 'Redirecting...') {
-                loadingOverlay.querySelector('p').textContent = text;
+            function showLoading(text, sub = 'Please wait') {
+                loadingText.textContent = text;
+                loadingSub.textContent = sub;
                 loadingOverlay.classList.add('active');
             }
             
@@ -337,13 +348,13 @@
             }
 
             // ============================================
-            // CHECK IF USER IS NEW (first-time login)
+            // CHECK IF USER IS NEW
             // ============================================
-            async function isFirstTimeUser(userId) {
+            async function isNewUser(userId) {
                 try {
                     const { data, error } = await supabase
                         .from('user_profiles')
-                        .select('first_login, has_vehicle, login_count')
+                        .select('first_login, has_vehicle, login_count, full_name')
                         .eq('id', userId)
                         .maybeSingle();
                     
@@ -353,19 +364,29 @@
                     }
                     
                     if (!data) {
-                        // No profile exists → first time
+                        // No profile → new user
                         return true;
                     }
                     
                     // Check if user has completed onboarding
-                    // first_login = true → new user
-                    // has_vehicle = false → new user
-                    // login_count < 2 → new user
-                    if (data.first_login === true || data.has_vehicle === false || data.login_count < 2) {
+                    // If first_login is true → new user
+                    if (data.first_login === true) {
                         return true;
                     }
                     
+                    // If no vehicle → new user
+                    if (data.has_vehicle === false) {
+                        return true;
+                    }
+                    
+                    // If login_count is less than 2 → new user
+                    if (data.login_count < 2) {
+                        return true;
+                    }
+                    
+                    // Otherwise → existing user
                     return false;
+                    
                 } catch (err) {
                     console.error('Error checking user status:', err);
                     return true;
@@ -380,7 +401,7 @@
                     // Check if profile exists
                     const { data, error } = await supabase
                         .from('user_profiles')
-                        .select('id, login_count')
+                        .select('id, login_count, first_login, has_vehicle')
                         .eq('id', userId)
                         .maybeSingle();
                     
@@ -423,7 +444,7 @@
             }
 
             // ============================================
-            // GET USER FULL NAME
+            // GET USER NAME
             // ============================================
             function getUserName(user) {
                 if (user.user_metadata && user.user_metadata.full_name) {
@@ -433,18 +454,18 @@
             }
 
             // ============================================
-            // REDIRECT LOGIC
+            // REDIRECT USER
             // ============================================
-            function redirectUser(isFirstTime) {
-                if (isFirstTime) {
-                    // ✅ NEW USER → Customer Portal (onboarding)
-                    showLoading('👋 Welcome! Redirecting to onboarding...');
+            function redirectUser(isNew) {
+                if (isNew) {
+                    // ✅ NEW USER → Customer Portal (Onboarding)
+                    showLoading('👋 Welcome to AUTO-V!', 'Setting up your account...');
                     setTimeout(() => {
                         window.location.href = "customer-portal.html";
                     }, 1500);
                 } else {
-                    // ✅ RETURNING USER → Dashboard
-                    showLoading('✅ Welcome back! Redirecting to dashboard...');
+                    // ✅ EXISTING USER → Dashboard
+                    showLoading('✅ Welcome back!', 'Loading your dashboard...');
                     setTimeout(() => {
                         window.location.href = "dashboard.html";
                     }, 1500);
@@ -452,7 +473,7 @@
             }
 
             // ============================================
-            // LOGIN HANDLER - Smart Redirect
+            // LOGIN HANDLER
             // ============================================
             async function handleLogin(e) {
                 e.preventDefault();
@@ -510,29 +531,29 @@
                         name: userName
                     }));
                     
-                    // Update profile and check if new
+                    // Update profile
                     const isNew = await updateUserProfile(user.id, user.email, userName);
                     
-                    // CHECK IF FIRST TIME USER
-                    const isFirstTime = await isFirstTimeUser(user.id);
+                    // Check if user is new
+                    const isNewUserFlag = await isNewUser(user.id);
                     
                     // Log for debugging
                     console.log('User status:', { 
                         id: user.id, 
                         isNew, 
-                        isFirstTime,
+                        isNewUserFlag,
                         email: user.email 
                     });
                     
                     // Show success message
-                    if (isFirstTime || isNew) {
+                    if (isNew || isNewUserFlag) {
                         showMessage('👋 Welcome! Setting up your account...', 'success');
                     } else {
                         showMessage('✅ Welcome back!', 'success');
                     }
                     
                     // Redirect based on user type
-                    redirectUser(isFirstTime || isNew);
+                    redirectUser(isNew || isNewUserFlag);
                     
                 } catch (err) {
                     console.error('Unexpected error:', err);
@@ -669,16 +690,16 @@
                     if (session) {
                         console.log('Active session found, checking user status...');
                         
-                        // Check if user is first-time
-                        const isFirstTime = await isFirstTimeUser(session.user.id);
+                        // Check if user is new
+                        const isNew = await isNewUser(session.user.id);
                         
-                        if (isFirstTime) {
-                            showMessage('👋 Welcome! Let\'s set up your account...', 'success');
+                        if (isNew) {
+                            showMessage('👋 Welcome! Redirecting to onboarding...', 'success');
                             setTimeout(() => {
                                 window.location.href = "customer-portal.html";
                             }, 1000);
                         } else {
-                            showMessage('✅ Welcome back! Redirecting...', 'success');
+                            showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
                             setTimeout(() => {
                                 window.location.href = "dashboard.html";
                             }, 1000);
@@ -714,7 +735,6 @@
             emailInput.addEventListener('input', clearMessage);
             passwordInput.addEventListener('input', clearMessage);
             
-            // Focus on email input
             emailInput.focus();
             
             // Check existing session on page load
