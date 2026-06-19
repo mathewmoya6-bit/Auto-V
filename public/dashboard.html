@@ -263,7 +263,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V DASHBOARD - DIRECT SERVICE NAVIGATION
+        // AUTO-V DASHBOARD - FIXED NAVIGATION
         // ============================================================
         
         (function() {
@@ -278,46 +278,48 @@
             const supabase = window.__supabase;
             
             // ─── NAVIGATION - CORRECT PATHS ────────────────────────────
-            // customer-portal.html is in the root directory (same level as dashboard)
-            // Use: window.location.href = 'customer-portal.html?service=xxx'
+            // customer-portal.html is in the root directory
             
             function goToService(service) {
-                // Navigate directly to customer portal with service parameter
+                console.log('🔗 goToService called with:', service);
+                
                 let url = 'customer-portal.html';
                 if (service) {
                     url += `?service=${service}`;
                 }
-                console.log('🔗 Navigating to:', url);
-                console.log('📍 Service:', service || 'general');
                 
+                console.log('📍 Navigating to:', url);
+                
+                // Use direct navigation
                 try {
-                    window.location.href = url;
+                    window.location.assign(url);
                 } catch (e) {
                     console.error('Navigation error:', e);
-                    showToast('⚠️ Unable to navigate. Please check the file path.', 'warning');
-                    // Fallback: show service details in a modal or alert
-                    if (service) {
-                        const serviceNames = {
-                            'instant': '💡 Instant Value Check',
-                            'valuation': '💰 Vehicle Valuation',
-                            'inspection': '🔍 Vehicle Inspection',
-                            'mileage': '📏 Mileage Rate Report',
-                            'assessment': '⚠️ Vehicle Assessment',
-                            'fleet': '🚛 Fleet Services',
-                            'verification': '✅ Report Verification'
-                        };
-                        alert(`🚀 Starting: ${serviceNames[service] || service}\n\nPlease ensure customer-portal.html exists in the same folder.`);
+                    // Fallback: try with href
+                    try {
+                        window.location.href = url;
+                    } catch (e2) {
+                        console.error('Both navigation methods failed:', e2);
+                        showToast('⚠️ Unable to navigate to customer portal', 'error');
                     }
                 }
             }
             
             function goToCustomerPortal() {
+                console.log('🔗 goToCustomerPortal called');
+                const url = 'customer-portal.html';
+                console.log('📍 Navigating to:', url);
+                
                 try {
-                    window.location.href = 'customer-portal.html';
+                    window.location.assign(url);
                 } catch (e) {
                     console.error('Navigation error:', e);
-                    showToast('⚠️ Unable to navigate to customer portal.', 'warning');
-                    alert('📌 Please ensure customer-portal.html exists in the same folder.');
+                    try {
+                        window.location.href = url;
+                    } catch (e2) {
+                        console.error('Both navigation methods failed:', e2);
+                        showToast('⚠️ Unable to navigate to customer portal', 'error');
+                    }
                 }
             }
             
@@ -377,7 +379,6 @@
             // ─── Load Dashboard Data ────────────────────────────────────
             async function loadDashboard() {
                 try {
-                    // ─── Get Current User ──────────────────────────────
                     const { data: { user }, error: authError } = await supabase.auth.getUser();
                     
                     if (authError || !user) {
@@ -386,7 +387,6 @@
                         return;
                     }
                     
-                    // ─── Display User Info ──────────────────────────────
                     const userEmail = user.email;
                     const userName = user.user_metadata?.full_name || userEmail?.split('@')[0] || 'User';
                     
@@ -394,7 +394,6 @@
                     document.getElementById('userEmail').textContent = userEmail || 'user@email.com';
                     document.getElementById('welcomeMsg').textContent = `🚀 Welcome back, ${userName}!`;
                     
-                    // ─── Fetch Service Requests ─────────────────────────
                     let requestList = [];
                     let paymentList = [];
                     
@@ -414,7 +413,6 @@
                         console.warn('Service requests table error:', err.message);
                     }
                     
-                    // ─── Fetch Payments ─────────────────────────────────
                     try {
                         const { data: payments, error: payError } = await supabase
                             .from('payments')
@@ -430,7 +428,6 @@
                         console.warn('Payments table error:', err.message);
                     }
                     
-                    // ─── Update Stats ────────────────────────────────────
                     const totalRequests = requestList.length;
                     const completed = requestList.filter(r => 
                         r.status === 'completed' || r.payment_status === 'paid'
@@ -447,7 +444,6 @@
                     document.getElementById('pendingRequests').textContent = pending;
                     document.getElementById('totalSpent').innerHTML = formatKES(spent);
                     
-                    // ─── Render Recent Activity ──────────────────────────
                     const container = document.getElementById('recentActivity');
                     
                     if (requestList.length === 0) {
@@ -456,7 +452,7 @@
                                 <div class="empty-icon">🚀</div>
                                 <h4>No activity yet</h4>
                                 <p>Start your first service and see your activity here.</p>
-                                <button class="btn-cta-small" onclick="goToCustomerPortal()">Start Now →</button>
+                                <button class="btn-cta-small" onclick="window.goToCustomerPortal()">Start Now →</button>
                             </div>
                         `;
                         return;
@@ -538,26 +534,29 @@
             // ─── Initialize ─────────────────────────────────────────────
             async function init() {
                 try {
-                    // Check if user is logged in
                     const isLoggedIn = await checkSession();
                     if (!isLoggedIn) return;
                     
-                    // Load dashboard data
                     await loadDashboard();
                     
-                    // ─── Set up event listeners ──────────────────────────
                     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
                     
                     // ─── CTA Button Listeners ───────────────────────────
-                    document.getElementById('startServiceBtn')?.addEventListener('click', function() {
+                    document.getElementById('startServiceBtn')?.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        console.log('🔘 Start Service clicked');
                         goToCustomerPortal();
                     });
                     
-                    document.getElementById('browseServicesBtn')?.addEventListener('click', function() {
+                    document.getElementById('browseServicesBtn')?.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        console.log('🔘 Browse Services clicked');
                         goToCustomerPortal();
                     });
                     
-                    document.getElementById('viewAllBtn')?.addEventListener('click', function() {
+                    document.getElementById('viewAllBtn')?.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        console.log('🔘 View All clicked');
                         goToCustomerPortal();
                     });
                     
@@ -565,6 +564,7 @@
                     document.querySelectorAll('.action-card').forEach(card => {
                         card.addEventListener('click', function() {
                             const service = this.dataset.service;
+                            console.log('🔘 Action card clicked:', service);
                             if (service) {
                                 goToService(service);
                             } else {
@@ -573,12 +573,13 @@
                         });
                     });
                     
-                    // ─── Also handle "Start Now" button clicks ──────────
+                    // ─── "Start Now" button clicks ──────────────────────
                     document.querySelectorAll('.action-card .start-btn').forEach(btn => {
                         btn.addEventListener('click', function(e) {
-                            e.stopPropagation(); // Prevent double firing
+                            e.stopPropagation();
                             const card = this.closest('.action-card');
                             const service = card?.dataset?.service;
+                            console.log('🔘 Start Now clicked:', service);
                             if (service) {
                                 goToService(service);
                             } else {
@@ -587,7 +588,6 @@
                         });
                     });
                     
-                    // ─── Auto-refresh every 30 seconds ──────────────────
                     setInterval(loadDashboard, 30000);
                     
                     console.log('✅ AUTO-V Dashboard initialized');
