@@ -248,7 +248,6 @@
         .toast-warning { background: #eab308; color: #000; }
         @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
         
-        /* Loading overlay */
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -512,7 +511,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL - STABLE VERSION
+        // AUTO-V CUSTOMER PORTAL - CONFLICT RESOLVED
         // ============================================================
         
         (function() {
@@ -533,7 +532,6 @@
             let clientType = 'individual';
             let currentPaymentStatus = null;
             let paymentInProgress = false;
-            let isInitialized = false;
             
             // ─── Service Data ──────────────────────────────────────────
             const services = {
@@ -582,16 +580,6 @@
                     successDiv.style.display = 'block';
                     setTimeout(() => successDiv.style.display = 'none', 3000);
                 }
-            }
-            
-            function showToast(msg, type = 'success') {
-                const existing = document.querySelector('.toast');
-                if (existing) existing.remove();
-                const toast = document.createElement('div');
-                toast.className = `toast toast-${type}`;
-                toast.textContent = msg;
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 3000);
             }
             
             function formatKES(amount) {
@@ -660,11 +648,8 @@
             function getServiceFromURL() {
                 try {
                     const urlParams = new URLSearchParams(window.location.search);
-                    const service = urlParams.get('service');
-                    console.log('📌 Service from URL:', service);
-                    return service;
+                    return urlParams.get('service');
                 } catch (e) {
-                    console.warn('Error reading URL params:', e);
                     return null;
                 }
             }
@@ -673,9 +658,7 @@
             function autoSelectService() {
                 const serviceParam = getServiceFromURL();
                 if (serviceParam && services[serviceParam]) {
-                    console.log('🎯 Auto-selecting service:', serviceParam);
                     const cards = document.querySelectorAll('.service-card');
-                    let found = false;
                     cards.forEach(card => {
                         if (card.dataset.service === serviceParam) {
                             card.click();
@@ -683,16 +666,12 @@
                             document.getElementById('selectedServiceMsg').innerHTML =
                                 `✅ Selected: ${getServiceName(serviceParam)} - ${formatKES(getServicePrice(serviceParam))}`;
                             updateSummary();
-                            found = true;
+                            setTimeout(() => {
+                                updatePurposeList(serviceParam);
+                                showStep(4);
+                            }, 800);
                         }
                     });
-                    if (found) {
-                        // Auto-advance to purpose step after a delay
-                        setTimeout(() => {
-                            updatePurposeList(serviceParam);
-                            showStep(4);
-                        }, 800);
-                    }
                 }
             }
             
@@ -741,8 +720,25 @@
                     currentUser = data.user;
                     console.log('👤 Logged in:', currentUser.email);
                     
-                    // Check profile and redirect
-                    await handleUserRedirect(currentUser);
+                    // Check profile - KEEP USER ON THIS PAGE for onboarding
+                    const { data: profile } = await supabase
+                        .from('user_profiles')
+                        .select('*')
+                        .eq('id', currentUser.id)
+                        .single();
+                    
+                    if (!profile || profile.first_login === true || !profile.full_name) {
+                        // Show onboarding
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = currentUser.email;
+                        if (currentUser.user_metadata?.full_name) document.getElementById('custName').value = currentUser.user_metadata.full_name;
+                        if (currentUser.user_metadata?.phone) document.getElementById('custPhone').value = currentUser.user_metadata.phone;
+                        showStep(2);
+                    } else {
+                        // User is complete - go to service selection
+                        showMessage('✅ Welcome back!', 'success');
+                        showStep(3);
+                    }
                     
                 } catch (err) {
                     showMessage('Network error. Please try again.', 'error');
@@ -830,38 +826,6 @@
                 } finally {
                     signupBtn.disabled = false;
                     signupBtn.innerHTML = originalText;
-                }
-            }
-            
-            // ─── Handle User Redirect ──────────────────────────────────
-            async function handleUserRedirect(user) {
-                try {
-                    const { data: profile } = await supabase
-                        .from('user_profiles')
-                        .select('*')
-                        .eq('id', user.id)
-                        .single();
-                    
-                    if (!profile || profile.first_login === true || !profile.full_name) {
-                        // New/incomplete user - show onboarding
-                        document.getElementById('welcomeBanner').style.display = 'block';
-                        document.getElementById('custEmail').value = user.email;
-                        if (user.user_metadata?.full_name) document.getElementById('custName').value = user.user_metadata.full_name;
-                        if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
-                        showStep(2);
-                    } else {
-                        // Existing user - redirect to dashboard
-                        showMessage('✅ Welcome back, ' + (profile.full_name || 'User') + '!', 'success');
-                        setTimeout(() => {
-                            window.location.href = "dashboard.html";
-                        }, 1500);
-                    }
-                } catch (err) {
-                    console.error('Profile check error:', err);
-                    // If error, show onboarding as fallback
-                    document.getElementById('welcomeBanner').style.display = 'block';
-                    document.getElementById('custEmail').value = user.email;
-                    showStep(2);
                 }
             }
             
@@ -968,10 +932,14 @@
                 payBtn.disabled = true;
                 payBtn.innerHTML = '<span class="spinner"></span> Processing...';
                 
-                setPaymentStatus('pending', '⏳ Initiating payment...');
+                const statusEl = document.getElementById('paymentStatus');
+                statusEl.className = 'payment-status pending';
+                statusEl.textContent = '⏳ Initiating payment...';
+                statusEl.style.display = 'block';
                 
                 setTimeout(() => {
-                    setPaymentStatus('completed', '✅ Payment confirmed!');
+                    statusEl.className = 'payment-status completed';
+                    statusEl.textContent = '✅ Payment confirmed!';
                     currentPaymentStatus = 'completed';
                     payBtn.innerHTML = '✅ Payment Complete';
                     showMessage('Payment successful!', 'success');
@@ -979,15 +947,6 @@
                     payBtn.disabled = false;
                     paymentInProgress = false;
                 }, 3000);
-            }
-            
-            function setPaymentStatus(status, message = '') {
-                const el = document.getElementById('paymentStatus');
-                el.className = 'payment-status ' + status;
-                el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
-                el.style.display = 'block';
-                document.getElementById('paymentRetry').style.display = (status === 'failed') ? 'block' : 'none';
-                currentPaymentStatus = status;
             }
             
             // ─── SUBMIT VEHICLE REQUEST ──────────────────────────────────
@@ -1120,7 +1079,7 @@
                 }
             }
             
-            // ─── CHECK SESSION ON LOAD ──────────────────────────────────
+            // ─── CHECK SESSION ──────────────────────────────────────────
             async function checkSession() {
                 try {
                     const { data: { user }, error } = await supabase.auth.getUser();
@@ -1151,12 +1110,10 @@
                         if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
                         showStep(2);
                     } else {
-                        // Existing user - redirect to dashboard
+                        // Existing user with complete profile - go to service selection
                         hideLoading();
                         showMessage('✅ Welcome back, ' + (profile.full_name || 'User') + '!', 'success');
-                        setTimeout(() => {
-                            window.location.href = "dashboard.html";
-                        }, 1500);
+                        showStep(3);
                     }
                     
                 } catch (err) {
@@ -1166,18 +1123,23 @@
                 }
             }
             
+            // ─── LOGOUT ──────────────────────────────────────────────────
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                try {
+                    await supabase.auth.signOut();
+                    window.location.href = 'login.html';
+                } catch (e) {
+                    console.error('Logout error:', e);
+                    window.location.href = 'login.html';
+                }
+            });
+            
             // ─── EVENT LISTENERS ─────────────────────────────────────────
             document.getElementById('loginForm').addEventListener('submit', handleLogin);
             document.getElementById('signupForm').addEventListener('submit', handleSignup);
             document.getElementById('clientForm').addEventListener('submit', handleClientDetails);
             document.getElementById('paymentForm').addEventListener('submit', processPayment);
             document.getElementById('vehicleForm').addEventListener('submit', submitVehicleRequest);
-            
-            document.getElementById('retryPaymentBtn').addEventListener('click', function() {
-                document.getElementById('paymentStatus').style.display = 'none';
-                document.getElementById('paymentRetry').style.display = 'none';
-                processPayment(new Event('submit'));
-            });
             
             // Navigation
             document.getElementById('backToLogin').addEventListener('click', () => showStep(1));
@@ -1217,17 +1179,6 @@
                 document.getElementById('signupSection').style.display = 'none';
             });
             
-            // ─── LOGOUT ──────────────────────────────────────────────────
-            document.getElementById('logoutBtn').addEventListener('click', async () => {
-                try {
-                    await supabase.auth.signOut();
-                    window.location.href = 'login.html';
-                } catch (e) {
-                    console.error('Logout error:', e);
-                    window.location.href = 'login.html';
-                }
-            });
-            
             // ─── INIT ────────────────────────────────────────────────────
             async function init() {
                 console.log('🚀 Initializing AUTO-V Customer Portal...');
@@ -1236,13 +1187,11 @@
                     populateYears();
                     await checkSession();
                     
-                    // Auto-select service from URL after session is checked
                     setTimeout(() => {
                         autoSelectService();
                     }, 800);
                     
                     console.log('✅ AUTO-V Customer Portal initialized successfully');
-                    console.log('📌 Single Source of Truth: Supabase');
                     
                 } catch (err) {
                     console.error('Init error:', err);
@@ -1252,7 +1201,6 @@
             }
             
             // ─── START ──────────────────────────────────────────────────
-            // Wait for DOM to be ready
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', init);
             } else {
