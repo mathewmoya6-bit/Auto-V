@@ -269,20 +269,29 @@
                         .eq('id', userId)
                         .maybeSingle();
                     
-                    if (error || !data) {
+                    if (error) {
+                        console.log('Error checking profile:', error);
+                        // If error (like table missing), treat as new user
+                        return true;
+                    }
+                    
+                    if (!data) {
                         console.log('No profile found, treating as new user');
                         return true;
                     }
                     
                     console.log('User profile data:', data);
                     
-                    // Existing user: first_login = false, has_vehicle = true, login_count >= 1
+                    // ─── EXISTING USER CHECK ────────────────────────────
+                    // Check if user has completed onboarding
+                    // If first_login is false, has_vehicle is true, and login_count >= 1
                     if (data.first_login === false && data.has_vehicle === true && data.login_count >= 1) {
-                        console.log('✅ EXISTING USER detected');
+                        console.log('✅ EXISTING USER detected → dashboard.html');
                         return false;
                     }
                     
-                    console.log('🆕 NEW USER detected');
+                    // ─── NEW USER CHECK ──────────────────────────────────
+                    console.log('🆕 NEW USER detected → customer-portal.html');
                     return true;
                     
                 } catch (err) {
@@ -296,7 +305,7 @@
                 try {
                     const { data, error } = await supabase
                         .from('user_profiles')
-                        .select('id, login_count')
+                        .select('id, login_count, first_login, has_vehicle')
                         .eq('id', userId)
                         .maybeSingle();
                     
@@ -319,7 +328,7 @@
                         console.log('🆕 New profile created');
                         return true;
                     } else {
-                        // Update existing
+                        // Update existing - increment login count
                         const newCount = (data.login_count || 0) + 1;
                         await supabase.from('user_profiles')
                             .update({
@@ -409,12 +418,12 @@
                         showMessage('👋 Welcome! Redirecting to onboarding...', 'success');
                         setTimeout(() => {
                             window.location.href = "customer-portal.html";
-                        }, 1500);
+                        }, 1000);
                     } else {
                         showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
                         setTimeout(() => {
                             window.location.href = "dashboard.html";
-                        }, 1500);
+                        }, 1000);
                     }
                     
                 } catch (err) {
@@ -509,10 +518,11 @@
                                 .update({ login_count: 1, last_login: new Date().toISOString() })
                                 .eq('id', loginData.user.id);
                             
+                            // ✅ NEW USER → customer-portal.html
                             showMessage('👋 Welcome! Redirecting to onboarding...', 'success');
                             setTimeout(() => {
                                 window.location.href = "customer-portal.html";
-                            }, 1500);
+                            }, 1000);
                         }
                     }
                 } catch (err) {
