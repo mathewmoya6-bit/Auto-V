@@ -3,935 +3,351 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>AUTO-V | Login - Vehicle Intelligence Platform</title>
+    <title>AUTO-V | Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* ─── All your existing styles ─── */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #0a0c15 0%, #0f172a 50%, #1e1b4b 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            position: relative;
-            overflow-x: hidden;
-        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0a0c15; color: #fff; min-height: 100vh; }
+        .header { background: #111827; border-bottom: 2px solid #eab308; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .logo { font-size: 24px; font-weight: 800; color: #eab308; }
+        .logo small { font-size: 10px; color: #64748b; margin-left: 8px; }
+        .user-info { display: flex; align-items: center; gap: 16px; }
+        .user-avatar { width: 36px; height: 36px; background: #eab308; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000; }
+        .logout-btn { background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 40px; cursor: pointer; font-weight: 600; transition: all .2s; }
+        .logout-btn:hover { background: #b91c1c; transform: translateY(-1px); }
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
         
-        body::before {
-            content: '';
-            position: absolute;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(234,179,8,0.08) 0%, transparent 70%);
-            animation: rotate 40s linear infinite;
-            pointer-events: none;
+        /* ─── Welcome Banner with CTA ─── */
+        .welcome-banner { 
+            background: linear-gradient(135deg, #1e293b, #0f172a); 
+            border-radius: 20px; 
+            padding: 32px 40px; 
+            margin-bottom: 24px; 
+            border: 1px solid #334155; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap; 
+            gap: 20px;
         }
-        
-        @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        
-        .login-container {
-            background: rgba(15, 23, 42, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 32px;
-            padding: 48px 40px;
-            width: 100%;
-            max-width: 460px;
-            border: 1px solid rgba(234, 179, 8, 0.3);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            position: relative;
-            z-index: 1;
-            transition: all 0.3s ease;
-        }
-        
-        .logo { text-align: center; margin-bottom: 32px; }
-        .logo h1 {
-            font-size: 48px;
-            background: linear-gradient(135deg, #eab308, #facc15);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            font-weight: 800;
-        }
-        .logo p {
-            color: #94a3b8;
-            font-size: 14px;
-            margin-top: 8px;
-        }
-        
-        .form-group { margin-bottom: 24px; }
-        label { 
-            display: block; 
-            margin-bottom: 8px; 
-            color: #cbd5e1; 
-            font-weight: 600; 
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        label .optional { color: #64748b; font-weight: 400; text-transform: none; }
-        input, select {
-            width: 100%;
-            padding: 14px 18px;
-            background: #0a0f1c;
-            border: 2px solid #2d3a4e;
-            border-radius: 16px;
-            color: white;
-            font-size: 15px;
-            transition: all 0.3s;
-            font-family: inherit;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: #eab308;
-            box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.15);
-        }
-        input::placeholder {
-            color: #475569;
-        }
-        select option { background: #0f172a; color: #fff; }
-        
-        button {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #eab308, #facc15);
-            color: #0a0c15;
-            border: none;
-            border-radius: 40px;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 16px;
-            font-family: inherit;
-        }
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px -5px rgba(234, 179, 8, 0.3);
-        }
-        button:disabled {
-            background: #475569;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-        
-        .message {
-            padding: 14px 18px;
-            border-radius: 16px;
-            margin-bottom: 24px;
-            display: none;
-            text-align: center;
-            font-size: 14px;
-            font-weight: 500;
-            animation: slideDown 0.3s ease;
-        }
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .error-message { 
-            background: #7f1d1d; 
-            color: #fecaca; 
-            border-left: 4px solid #ef4444;
-        }
-        .success-message { 
-            background: #14532d; 
-            color: #bbf7d0; 
-            border-left: 4px solid #22c55e;
-        }
-        .info-message { 
-            background: #1e293b; 
-            color: #eab308; 
-            border-left: 4px solid #eab308;
-        }
-        
-        .signup-link { 
-            text-align: center; 
-            margin-top: 28px; 
-            color: #94a3b8; 
+        .welcome-banner .text { flex: 1; }
+        .welcome-banner h3 { color: #eab308; font-size: 24px; margin-bottom: 8px; }
+        .welcome-banner p { color: #94a3b8; font-size: 15px; }
+        .welcome-banner .cta-group { display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn-cta { 
+            padding: 12px 32px; 
+            border-radius: 40px; 
+            font-weight: 700; 
             font-size: 14px; 
-        }
-        .signup-link a { 
-            color: #eab308; 
+            border: none; 
             cursor: pointer; 
+            transition: all .3s; 
             text-decoration: none; 
-            font-weight: 700;
-            transition: all 0.2s;
-        }
-        .signup-link a:hover { 
-            text-decoration: underline;
-            color: #facc15;
-        }
-        
-        .mpesa-badge {
-            text-align: center;
-            margin-top: 28px;
-            padding-top: 24px;
-            border-top: 1px solid #1e293b;
-            font-size: 11px;
-            color: #64748b;
-        }
-        .mpesa-badge strong {
-            color: #22c55e;
-            font-size: 13px;
-        }
-        
-        .spinner {
             display: inline-block;
-            width: 18px;
-            height: 18px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            border-top-color: #eab308;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
+            text-align: center;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        .btn-cta-primary { background: #eab308; color: #0a0c15; }
+        .btn-cta-primary:hover { background: #facc15; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(234, 179, 8, 0.3); }
+        .btn-cta-secondary { background: transparent; color: #eab308; border: 2px solid #eab308; }
+        .btn-cta-secondary:hover { background: rgba(234, 179, 8, 0.1); transform: translateY(-2px); }
         
-        .user-type-toggle {
-            display: flex;
-            background: #0a0f1c;
-            border-radius: 40px;
-            padding: 4px;
-            margin-bottom: 24px;
-            border: 1px solid #2d3a4e;
+        /* ─── Quick Actions with Start Now CTAs ─── */
+        .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 28px; }
+        .action-card { 
+            background: #1e293b; 
+            border-radius: 16px; 
+            padding: 24px 20px; 
+            text-align: center; 
+            cursor: pointer; 
+            border: 1px solid #334155; 
+            transition: all .3s; 
+            text-decoration: none; 
+            color: inherit; 
+            position: relative;
+            overflow: hidden;
         }
-        .user-type-toggle button {
-            flex: 1;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 36px;
-            background: transparent;
-            color: #94a3b8;
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin: 0;
-            font-family: inherit;
-        }
-        .user-type-toggle button.active {
+        .action-card:hover { border-color: #eab308; transform: translateY(-6px); box-shadow: 0 12px 30px rgba(234, 179, 8, 0.1); }
+        .action-card .icon { font-size: 40px; margin-bottom: 10px; display: block; }
+        .action-card h4 { color: #eab308; font-size: 15px; margin-bottom: 4px; }
+        .action-card p { color: #94a3b8; font-size: 12px; margin-top: 4px; }
+        .action-card .price { color: #22c55e; font-weight: 700; font-size: 16px; margin-top: 10px; }
+        .action-card .start-btn {
+            display: inline-block;
+            margin-top: 14px;
+            padding: 8px 24px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 700;
             background: #eab308;
             color: #0a0c15;
-            box-shadow: 0 4px 15px rgba(234, 179, 8, 0.2);
+            border: none;
+            cursor: pointer;
+            transition: all .3s;
+            text-decoration: none;
         }
-        .user-type-toggle button:hover:not(.active) {
-            color: #fff;
-        }
-        
-        .corporate-fields {
-            display: none;
-            border-top: 1px solid #1e293b;
-            padding-top: 20px;
-            margin-top: 8px;
-        }
-        .corporate-fields.show {
-            display: block;
-        }
-        .corporate-fields .form-group { margin-bottom: 16px; }
-        .corporate-badge {
-            display: inline-block;
-            background: #3b82f6;
-            color: #fff;
-            font-size: 10px;
+        .action-card .start-btn:hover { background: #facc15; transform: scale(1.05); }
+        .action-card .popular-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #22c55e;
+            color: #000;
+            font-size: 9px;
+            font-weight: 700;
             padding: 2px 12px;
             border-radius: 20px;
-            margin-left: 8px;
-            font-weight: 600;
+            text-transform: uppercase;
         }
         
-        @media (max-width: 480px) {
-            .login-container { padding: 32px 24px; margin: 16px; }
-            .logo h1 { font-size: 36px; }
-            .user-type-toggle button { font-size: 11px; padding: 8px 12px; }
+        /* ─── Stats ─── */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: #0f172a; border-radius: 16px; padding: 20px; border: 1px solid #1e293b; text-align: center; }
+        .stat-card h4 { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .stat-card .number { font-size: 28px; font-weight: 800; color: #22c55e; }
+        
+        .card { background: #0f172a; border-radius: 20px; padding: 24px; border: 1px solid #1e293b; margin-bottom: 24px; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+        .card-header h2 { color: #eab308; font-size: 18px; border-left: 4px solid #eab308; padding-left: 12px; }
+        .card-header .view-all { color: #eab308; font-size: 13px; text-decoration: none; transition: all .2s; }
+        .card-header .view-all:hover { color: #facc15; }
+        
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { color: #eab308; text-align: left; padding: 10px 12px; border-bottom: 1px solid #1e293b; }
+        td { padding: 10px 12px; border-bottom: 1px solid #1e293b; color: #94a3b8; }
+        .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
+        .badge-pending { background: #f59e0b; color: #000; }
+        .badge-completed { background: #22c55e; color: #000; }
+        .badge-paid { background: #8b5cf6; color: #fff; }
+        .badge-failed { background: #ef4444; color: #fff; }
+        .badge-processing { background: #3b82f6; color: #fff; }
+        
+        .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #1e293b; border-top-color: #eab308; border-radius: 50%; animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; z-index: 9999; font-weight: 500; animation: slideIn .3s ease; }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
+        .text-center { text-align: center; padding: 40px; color: #64748b; }
+        
+        /* ─── Empty State CTA ─── */
+        .empty-state { text-align: center; padding: 40px; }
+        .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state h4 { color: #94a3b8; margin-bottom: 8px; }
+        .empty-state p { color: #64748b; font-size: 14px; }
+        .empty-state .btn-cta-small { 
+            display: inline-block; 
+            margin-top: 16px; 
+            padding: 10px 28px; 
+            background: #eab308; 
+            color: #0a0c15; 
+            border-radius: 40px; 
+            font-weight: 700; 
+            text-decoration: none; 
+            transition: all .3s; 
         }
-
-        .loading-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.85);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
-        .loading-overlay.active { display: flex; }
-        .loading-overlay .spinner-big {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #1e293b;
-            border-top-color: #eab308;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        .loading-overlay p {
-            margin-top: 20px;
-            color: #eab308;
-            font-weight: 600;
-            font-size: 16px;
-        }
-        .loading-overlay .sub {
-            color: #94a3b8;
-            font-size: 13px;
-            font-weight: 400;
-            margin-top: 8px;
+        .empty-state .btn-cta-small:hover { background: #facc15; transform: translateY(-2px); }
+        
+        @media (max-width: 768px) { 
+            .container { padding: 16px; } 
+            .quick-actions { grid-template-columns: 1fr 1fr; } 
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .welcome-banner { padding: 24px 20px; flex-direction: column; text-align: center; }
+            .welcome-banner .cta-group { justify-content: center; }
+            .action-card .start-btn { font-size: 11px; padding: 6px 18px; }
         }
     </style>
 </head>
 <body>
-    <!-- ─── Loading Overlay ─── -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="spinner-big"></div>
-        <p id="loadingText">Redirecting...</p>
-        <p class="sub" id="loadingSub">Please wait</p>
-    </div>
-
-    <div class="login-container">
-        <div class="logo">
-            <h1>🚗 AUTO-V</h1>
-            <p>Africa's Leading Vehicle Intelligence Platform</p>
-        </div>
-        
-        <div id="messageBox" class="message"></div>
-        
-        <!-- ─── User Type Toggle ─── -->
-        <div class="user-type-toggle" id="userTypeToggle">
-            <button class="active" data-type="individual">👤 Individual</button>
-            <button data-type="corporate">🏢 Corporate</button>
-        </div>
-        
-        <form id="loginForm">
-            <div class="form-group">
-                <label>📧 Email Address</label>
-                <input type="email" id="email" placeholder="your@email.com" autocomplete="email" required>
-            </div>
-            
-            <div class="form-group">
-                <label>🔒 Password</label>
-                <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
-            </div>
-            
-            <div class="corporate-fields" id="corporateFields">
-                <div class="form-group">
-                    <label>🏢 Company Name</label>
-                    <input type="text" id="companyName" placeholder="ABC Limited">
-                </div>
-                <div class="form-group">
-                    <label>📋 Business Registration Number <span class="optional">(optional)</span></label>
-                    <input type="text" id="businessReg" placeholder="PVT-2024-12345">
-                </div>
-                <div class="form-group">
-                    <label>👤 Contact Person</label>
-                    <input type="text" id="contactPerson" placeholder="Contact person name">
-                </div>
-                <div class="form-group">
-                    <label>📞 Work Phone</label>
-                    <input type="tel" id="workPhone" placeholder="0712345678">
-                </div>
-            </div>
-            
-            <button type="submit" id="loginBtn">Login</button>
-        </form>
-        
-        <div class="signup-link">
-            Don't have an account? <a id="signupBtn">Create Account</a>
-        </div>
-        
-        <div class="mpesa-badge">
-            💳 M-Pesa Paybill: <strong>4095377</strong> | Account: <strong>AUTO-V</strong><br>
-            <span style="font-size: 10px;">Valuations: KES 2,500 | Inspections: KES 3,500</span>
+    <div class="header">
+        <div class="logo">🚗 AUTO-V <small>| Dashboard</small></div>
+        <div class="user-info">
+            <div class="user-avatar" id="userAvatar">U</div>
+            <span id="userEmail" style="color:#94a3b8;font-size:13px;">Loading...</span>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
     </div>
 
-    <!-- ─── Signup Modal ─── -->
-    <div id="signupModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center;">
-        <div style="background: #0f172a; border-radius: 24px; padding: 32px; max-width: 400px; width: 90%; border: 2px solid #eab308; max-height: 90vh; overflow-y: auto;">
-            <h2 style="color: #eab308; margin-bottom: 20px;">📝 Create Account</h2>
-            <form id="signupForm">
-                <div class="form-group">
-                    <label>Account Type</label>
-                    <select id="signupUserType" required>
-                        <option value="individual">👤 Individual</option>
-                        <option value="corporate">🏢 Corporate</option>
-                    </select>
-                </div>
-                <div class="form-group"><label>Email</label><input type="email" id="signupEmail" autocomplete="email" required></div>
-                <div class="form-group"><label>Password (min 6 chars)</label><input type="password" id="signupPassword" autocomplete="new-password" required></div>
-                <div class="form-group"><label>Confirm Password</label><input type="password" id="signupConfirmPassword" autocomplete="new-password" required></div>
-                <div class="form-group"><label>Full Name</label><input type="text" id="signupName" autocomplete="name"></div>
-                <div class="form-group"><label>Phone</label><input type="tel" id="signupPhone" autocomplete="tel"></div>
-                
-                <div id="signupCorporateFields" style="display:none; border-top:1px solid #1e293b; padding-top:16px; margin-top:8px;">
-                    <div class="form-group"><label>Company Name</label><input type="text" id="signupCompanyName" placeholder="ABC Limited"></div>
-                    <div class="form-group"><label>Business Registration Number <span class="optional">(optional)</span></label><input type="text" id="signupBusinessReg" placeholder="PVT-2024-12345"></div>
-                    <div class="form-group"><label>Contact Person</label><input type="text" id="signupContactPerson" placeholder="Contact person name"></div>
-                    <div class="form-group"><label>Work Phone</label><input type="tel" id="signupWorkPhone" placeholder="0712345678"></div>
-                </div>
-                
-                <button type="submit" style="width:100%; margin-top:10px;">Sign Up</button>
-                <button type="button" id="closeSignupBtn" style="background: #334155; margin-top:10px;">Cancel</button>
-            </form>
+    <div class="container">
+        <!-- ─── Welcome Banner with CTAs ─── -->
+        <div class="welcome-banner">
+            <div class="text">
+                <h3 id="welcomeMsg">🚀 Welcome to AUTO-V</h3>
+                <p>Your complete vehicle intelligence platform. Get instant valuations, inspections, and more.</p>
+            </div>
+            <div class="cta-group">
+                <!-- ✅ FIXED: Goes directly to customer portal -->
+                <a href="customer-portal.html" class="btn-cta btn-cta-primary">🚗 Start New Service</a>
+                <a href="customer-portal.html" class="btn-cta btn-cta-secondary">Browse All Services</a>
+            </div>
+        </div>
+
+        <!-- ─── Quick Actions with "Start Now" CTAs ─── -->
+        <div class="quick-actions">
+            <!-- 1. Instant Value Check -->
+            <a href="customer-portal.html?service=instant" class="action-card">
+                <span class="popular-badge">🔥 Popular</span>
+                <span class="icon">💡</span>
+                <h4>Instant Value Check</h4>
+                <p>AI estimate in seconds</p>
+                <div class="price">KES 500</div>
+                <span class="start-btn">Start Now →</span>
+            </a>
+            <!-- 2. Vehicle Valuation -->
+            <a href="customer-portal.html?service=valuation" class="action-card">
+                <span class="icon">💰</span>
+                <h4>Vehicle Valuation</h4>
+                <p>Formal certified valuation</p>
+                <div class="price">KES 2,500</div>
+                <span class="start-btn">Start Now →</span>
+            </a>
+            <!-- 3. Vehicle Inspection -->
+            <a href="customer-portal.html?service=inspection" class="action-card">
+                <span class="icon">🔍</span>
+                <h4>Vehicle Inspection</h4>
+                <p>Professional inspection report</p>
+                <div class="price">KES 3,500</div>
+                <span class="start-btn">Start Now →</span>
+            </a>
+            <!-- 4. Mileage Rate Report -->
+            <a href="customer-portal.html?service=mileage" class="action-card">
+                <span class="icon">📏</span>
+                <h4>Mileage Rate Report</h4>
+                <p>Cost per km analysis</p>
+                <div class="price">KES 1,500</div>
+                <span class="start-btn">Start Now →</span>
+            </a>
+            <!-- 5. Vehicle Assessment -->
+            <a href="customer-portal.html?service=assessment" class="action-card">
+                <span class="icon">⚠️</span>
+                <h4>Vehicle Assessment</h4>
+                <p>Accident, claim, total loss</p>
+                <div class="price">KES 3,000</div>
+                <span class="start-btn">Start Now →</span>
+            </a>
+            <!-- 6. Fleet Services -->
+            <a href="customer-portal.html?service=fleet" class="action-card">
+                <span class="icon">🚛</span>
+                <h4>Fleet Services</h4>
+                <p>Fleet valuation & inspection</p>
+                <div class="price">KES 4,000</div>
+                <span class="start-btn">Start Now →</span>
+            </a>
+        </div>
+
+        <!-- ─── Stats ─── -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><h4>Total Requests</h4><div class="number" id="totalRequests">0</div></div>
+            <div class="stat-card"><h4>Completed</h4><div class="number" id="completedRequests">0</div></div>
+            <div class="stat-card"><h4>Pending</h4><div class="number" id="pendingRequests">0</div></div>
+            <div class="stat-card"><h4>Total Spent</h4><div class="number" id="totalSpent">KES 0</div></div>
+        </div>
+
+        <!-- ─── Recent Activity ─── -->
+        <div class="card">
+            <div class="card-header">
+                <h2>📋 Recent Activity</h2>
+                <a href="customer-portal.html" class="view-all">View All →</a>
+            </div>
+            <div id="recentActivity"><div class="text-center"><div class="spinner"></div></div></div>
         </div>
     </div>
 
     <script>
-        // ============================================
-        // AUTO-V LOGIN - FIXED Smart Redirect
-        // ============================================
         (function() {
-            if (window.autoVLoginInitialized) return;
-            window.autoVLoginInitialized = true;
-            
-            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-            
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            
-            // DOM Elements
-            const emailInput = document.getElementById('email');
-            const passwordInput = document.getElementById('password');
-            const loginBtn = document.getElementById('loginBtn');
-            const signupBtn = document.getElementById('signupBtn');
-            const messageBox = document.getElementById('messageBox');
-            const signupModal = document.getElementById('signupModal');
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            const loadingText = document.getElementById('loadingText');
-            const loadingSub = document.getElementById('loadingSub');
-            
-            // Corporate Toggle
-            const userTypeToggle = document.getElementById('userTypeToggle');
-            const corporateFields = document.getElementById('corporateFields');
-            let userType = 'individual';
-            
-            const signupCorporateFields = document.getElementById('signupCorporateFields');
-            const signupUserType = document.getElementById('signupUserType');
-            
-            // ─── User Type Toggle ─────────────────────────────────────
-            userTypeToggle.addEventListener('click', function(e) {
-                const btn = e.target.closest('button');
-                if (!btn || !btn.dataset.type) return;
-                
-                userTypeToggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                userType = btn.dataset.type;
-                
-                if (userType === 'corporate') {
-                    corporateFields.classList.add('show');
-                } else {
-                    corporateFields.classList.remove('show');
-                }
-            });
-            
-            signupUserType.addEventListener('change', function() {
-                if (this.value === 'corporate') {
-                    signupCorporateFields.style.display = 'block';
-                } else {
-                    signupCorporateFields.style.display = 'none';
-                }
-            });
-            
-            function showMessage(text, type = 'error') {
-                messageBox.textContent = text;
-                messageBox.className = `message ${type}-message`;
-                messageBox.style.display = 'block';
-                setTimeout(() => {
-                    messageBox.style.display = 'none';
-                }, 5000);
-            }
-            
-            function clearMessage() {
-                messageBox.style.display = 'none';
-            }
-            
-            function showLoading(text, sub = 'Please wait') {
-                loadingText.textContent = text;
-                loadingSub.textContent = sub;
-                loadingOverlay.classList.add('active');
-            }
-            
-            function hideLoading() {
-                loadingOverlay.classList.remove('active');
-            }
-            
-            function isValidEmail(email) {
-                const emailRegex = /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/;
-                return emailRegex.test(email);
+            if (window.autoVDashboardInitialized) return;
+            window.autoVDashboardInitialized = true;
+
+            function waitForAutoV(callback, retries = 10) {
+                if (window.autoV && window.autoV.supabase) { callback(); return; }
+                if (retries <= 0) { console.error('❌ autoV failed to initialize'); return; }
+                setTimeout(() => waitForAutoV(callback, retries - 1), 300);
             }
 
-            // ============================================
-            // CHECK IF USER IS NEW (FIXED)
-            // ============================================
-            async function isNewUser(userId) {
-                try {
-                    const { data, error } = await supabase
-                        .from('user_profiles')
+            waitForAutoV(async function() {
+                const supabase = window.autoV.supabase;
+                const formatKES = window.autoV.formatKES;
+                const formatDate = window.autoV.formatDate;
+
+                // ─── Check Auth ──────────────────────────────────────
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) { window.location.href = "login.html"; return; }
+
+                document.getElementById('userAvatar').textContent = user.email?.charAt(0).toUpperCase() || 'U';
+                document.getElementById('userEmail').textContent = user.email;
+                document.getElementById('welcomeMsg').textContent = `🚀 Welcome back, ${user.email?.split('@')[0] || 'User'}!`;
+
+                // ─── Load Data ──────────────────────────────────────
+                async function loadData() {
+                    // Fetch service requests
+                    const { data: requests } = await supabase
+                        .from('service_requests')
                         .select('*')
-                        .eq('id', userId)
-                        .maybeSingle();
-                    
-                    if (error) {
-                        console.error('Profile check error:', error);
-                        // If table doesn't exist or error, treat as existing user (go to dashboard)
-                        return false;
-                    }
-                    
-                    if (!data) {
-                        console.log('No profile found, creating profile...');
-                        // Create profile for existing user
-                        const { data: userData } = await supabase.auth.getUser();
-                        if (userData?.user) {
-                            await supabase
-                                .from('user_profiles')
-                                .insert({
-                                    id: userId,
-                                    email: userData.user.email,
-                                    full_name: userData.user.user_metadata?.full_name || userData.user.email.split('@')[0],
-                                    first_login: false,  // Existing user
-                                    has_vehicle: true,    // Existing user
-                                    login_count: 1,
-                                    user_type: 'individual',
-                                    created_at: new Date().toISOString(),
-                                    updated_at: new Date().toISOString()
-                                });
-                            console.log('✅ Profile created for existing user');
-                            return false; // Existing user → dashboard
-                        }
-                        return false;
-                    }
-                    
-                    console.log('User profile data:', data);
-                    
-                    // ─── FIXED: EXISTING USER CHECK ──────────────────────
-                    // If user has logged in before (login_count >= 1), they are existing
-                    if (data.login_count >= 1) {
-                        console.log('✅ EXISTING USER detected (login_count >= 1)');
-                        return false;
-                    }
-                    
-                    // ─── NEW USER CHECK ──────────────────────────────────
-                    // Only if login_count = 0 AND first_login = true
-                    if (data.login_count === 0 && data.first_login === true) {
-                        console.log('🆕 NEW USER detected');
-                        return true;
-                    }
-                    
-                    // Default: treat as existing (go to dashboard)
-                    console.log('✅ Default: treating as EXISTING user');
-                    return false;
-                    
-                } catch (err) {
-                    console.error('Error checking user status:', err);
-                    return false; // Default to existing user
-                }
-            }
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false });
 
-            // ============================================
-            // UPDATE USER PROFILE AFTER LOGIN (FIXED)
-            // ============================================
-            async function updateUserProfile(userId, email, name, userType = 'individual', corporateData = {}) {
-                try {
-                    const { data, error } = await supabase
-                        .from('user_profiles')
-                        .select('id, login_count, first_login, has_vehicle')
-                        .eq('id', userId)
-                        .maybeSingle();
-                    
-                    if (error && error.code !== 'PGRST116') {
-                        console.error('Profile fetch error:', error);
-                    }
-                    
-                    const profileData = {
-                        id: userId,
-                        email: email,
-                        full_name: name || email.split('@')[0],
-                        user_type: userType,
-                        updated_at: new Date().toISOString()
-                    };
-                    
-                    if (userType === 'corporate') {
-                        profileData.company_name = corporateData.companyName || '';
-                        profileData.business_reg = corporateData.businessReg || '';
-                        profileData.contact_person = corporateData.contactPerson || '';
-                        profileData.work_phone = corporateData.workPhone || '';
-                    }
-                    
-                    if (!data) {
-                        // Create new profile - set as existing user
-                        profileData.first_login = false;  // Existing user
-                        profileData.has_vehicle = true;    // Existing user
-                        profileData.login_count = 1;
-                        profileData.created_at = new Date().toISOString();
-                        
-                        await supabase.from('user_profiles').insert(profileData);
-                        console.log('✅ Profile created for existing user');
-                        return false; // Existing user
-                    } else {
-                        // Update existing - increment login count
-                        const newCount = (data.login_count || 0) + 1;
-                        await supabase
-                            .from('user_profiles')
-                            .update({
-                                login_count: newCount,
-                                last_login: new Date().toISOString(),
-                                updated_at: new Date().toISOString(),
-                                first_login: false,  // Ensure they are marked as existing
-                                has_vehicle: true,    // Ensure they have a vehicle
-                                user_type: userType,
-                                ...(userType === 'corporate' ? {
-                                    company_name: corporateData.companyName || '',
-                                    business_reg: corporateData.businessReg || '',
-                                    contact_person: corporateData.contactPerson || '',
-                                    work_phone: corporateData.workPhone || ''
-                                } : {})
-                            })
-                            .eq('id', userId);
-                        console.log(`✅ Profile updated: login_count = ${newCount}`);
-                        return false; // Existing user
-                    }
-                } catch (err) {
-                    console.error('Error updating profile:', err);
-                    return false;
-                }
-            }
+                    // Fetch payments
+                    const { data: payments } = await supabase
+                        .from('payments')
+                        .select('*')
+                        .eq('user_id', user.id);
 
-            function getUserName(user) {
-                if (user.user_metadata && user.user_metadata.full_name) {
-                    return user.user_metadata.full_name;
-                }
-                return user.email.split('@')[0];
-            }
+                    // Stats
+                    const total = requests?.length || 0;
+                    const completed = requests?.filter(r => r.status === 'completed' || r.payment_status === 'paid').length || 0;
+                    const pending = requests?.filter(r => r.status === 'pending' || r.payment_status === 'pending').length || 0;
+                    const spent = payments?.filter(p => p.status === 'completed').reduce((s, p) => s + (p.amount || 0), 0) || 0;
 
-            // ============================================
-            // REDIRECT USER
-            // ============================================
-            function redirectUser(isNew) {
-                if (isNew) {
-                    console.log('🔄 Redirecting NEW USER to customer-portal.html');
-                    showLoading('👋 Welcome to AUTO-V!', 'Setting up your account...');
-                    setTimeout(() => {
-                        window.location.href = "customer-portal.html";
-                    }, 1500);
-                } else {
-                    console.log('🔄 Redirecting EXISTING USER to dashboard.html');
-                    showLoading('✅ Welcome back!', 'Loading your dashboard...');
-                    setTimeout(() => {
-                        window.location.href = "dashboard.html";
-                    }, 1500);
-                }
-            }
+                    document.getElementById('totalRequests').textContent = total;
+                    document.getElementById('completedRequests').textContent = completed;
+                    document.getElementById('pendingRequests').textContent = pending;
+                    document.getElementById('totalSpent').innerHTML = formatKES(spent);
 
-            // ============================================
-            // LOGIN HANDLER (FIXED)
-            // ============================================
-            async function handleLogin(e) {
-                e.preventDefault();
-                const email = emailInput.value.trim();
-                const password = passwordInput.value;
-                const currentUserType = userType;
-                
-                const corporateData = {
-                    companyName: document.getElementById('companyName').value.trim(),
-                    businessReg: document.getElementById('businessReg').value.trim(),
-                    contactPerson: document.getElementById('contactPerson').value.trim(),
-                    workPhone: document.getElementById('workPhone').value.trim()
-                };
-                
-                clearMessage();
-                
-                if (!email || !password) {
-                    showMessage('Please enter both email and password', 'error');
-                    emailInput.focus();
-                    return;
-                }
-                
-                if (!isValidEmail(email)) {
-                    showMessage('Please enter a valid email address', 'error');
-                    emailInput.focus();
-                    return;
-                }
-                
-                if (password.length < 6) {
-                    showMessage('Password must be at least 6 characters', 'error');
-                    passwordInput.focus();
-                    return;
-                }
-                
-                loginBtn.disabled = true;
-                loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
-                
-                try {
-                    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-                    
-                    if (error) {
-                        console.error('Login error:', error);
-                        if (error.message === 'Invalid login credentials') {
-                            showMessage('❌ Invalid email or password. Please try again.', 'error');
-                        } else if (error.message.includes('Email not confirmed')) {
-                            showMessage('📧 Please verify your email address. Check your inbox (including spam folder).', 'info');
-                        } else {
-                            showMessage(error.message || 'Login failed. Please try again.', 'error');
-                        }
-                        loginBtn.disabled = false;
-                        loginBtn.innerHTML = 'Login';
+                    // Recent activity
+                    const container = document.getElementById('recentActivity');
+                    if (!requests || requests.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-icon">🚀</div>
+                                <h4>No activity yet</h4>
+                                <p>Start your first service and see your activity here.</p>
+                                <a href="customer-portal.html" class="btn-cta-small">Start Now →</a>
+                            </div>
+                        `;
                         return;
                     }
-                    
-                    const user = data.user;
-                    const userName = getUserName(user);
-                    
-                    console.log('👤 User logged in:', user.email);
-                    
-                    localStorage.setItem('autoV_user', JSON.stringify({
-                        id: user.id,
-                        email: user.email,
-                        name: userName,
-                        userType: currentUserType
-                    }));
-                    
-                    // Update profile - always treats as existing user
-                    await updateUserProfile(
-                        user.id, 
-                        user.email, 
-                        userName, 
-                        currentUserType,
-                        corporateData
-                    );
-                    
-                    // Check if user is new - FIXED logic
-                    const isNewUserFlag = await isNewUser(user.id);
-                    
-                    console.log('📊 User status:', { 
-                        id: user.id, 
-                        isNew: isNewUserFlag,
-                        userType: currentUserType,
-                        email: user.email 
-                    });
-                    
-                    if (isNewUserFlag) {
-                        showMessage('👋 Welcome! Setting up your account...', 'success');
-                    } else {
-                        showMessage('✅ Welcome back!', 'success');
-                    }
-                    
-                    redirectUser(isNewUserFlag);
-                    
-                } catch (err) {
-                    console.error('Unexpected error:', err);
-                    showMessage('🌐 Network error. Please check your connection and try again.', 'error');
-                    loginBtn.disabled = false;
-                    loginBtn.innerHTML = 'Login';
+
+                    container.innerHTML = `
+                        <table>
+                            <thead><tr><th>Date</th><th>Service</th><th>Amount</th><th>Status</th></tr></thead>
+                            <tbody>
+                                ${requests.slice(0, 5).map(r => {
+                                    const badge = r.status === 'completed' || r.payment_status === 'paid' ? 'completed' : 
+                                                  r.status === 'processing' ? 'processing' :
+                                                  r.status === 'pending' ? 'pending' : 'failed';
+                                    return `<tr>
+                                        <td>${formatDate(r.created_at)}</td>
+                                        <td>${r.service_type || 'N/A'}</td>
+                                        <td>${formatKES(r.amount || 0)}</td>
+                                        <td><span class="badge badge-${badge}">${badge.charAt(0).toUpperCase() + badge.slice(1)}</span></td>
+                                    </tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
                 }
-            }
-            
-            // ============================================
-            // SIGNUP HANDLER
-            // ============================================
-            async function handleSignup(e) {
-                e.preventDefault();
-                const email = document.getElementById('signupEmail').value.trim();
-                const password = document.getElementById('signupPassword').value;
-                const confirmPassword = document.getElementById('signupConfirmPassword').value;
-                const name = document.getElementById('signupName').value;
-                const phone = document.getElementById('signupPhone').value;
-                const userType = document.getElementById('signupUserType').value;
-                
-                const corporateData = {
-                    companyName: document.getElementById('signupCompanyName').value.trim(),
-                    businessReg: document.getElementById('signupBusinessReg').value.trim(),
-                    contactPerson: document.getElementById('signupContactPerson').value.trim(),
-                    workPhone: document.getElementById('signupWorkPhone').value.trim()
-                };
-                
-                if (!email || !password) {
-                    showMessage('Please enter email and password', 'error');
-                    return;
-                }
-                
-                if (!isValidEmail(email)) {
-                    showMessage('Please enter a valid email address', 'error');
-                    return;
-                }
-                
-                if (password.length < 6) {
-                    showMessage('Password must be at least 6 characters', 'error');
-                    return;
-                }
-                
-                if (password !== confirmPassword) {
-                    showMessage('Passwords do not match', 'error');
-                    return;
-                }
-                
-                const signupSubmitBtn = document.querySelector('#signupForm button[type="submit"]');
-                const originalText = signupSubmitBtn.innerHTML;
-                signupSubmitBtn.disabled = true;
-                signupSubmitBtn.innerHTML = '<span class="spinner"></span> Creating account...';
-                
-                try {
-                    const { data, error } = await supabase.auth.signUp({ 
-                        email, 
-                        password,
-                        options: {
-                            data: { 
-                                full_name: name, 
-                                phone: phone,
-                                user_type: userType,
-                                ...(userType === 'corporate' ? corporateData : {})
-                            }
-                        }
-                    });
-                    
-                    if (error) {
-                        if (error.message.includes('User already registered')) {
-                            showMessage('📧 User already registered. Please login instead.', 'info');
-                        } else {
-                            showMessage(error.message || 'Signup failed. Please try again.', 'error');
-                        }
-                    } else if (data.user) {
-                        const profileData = {
-                            id: data.user.id,
-                            email: email,
-                            full_name: name || email.split('@')[0],
-                            phone: phone || '',
-                            user_type: userType,
-                            first_login: true,   // New user
-                            has_vehicle: false,  // New user
-                            login_count: 0,      // New user
-                            created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        };
-                        
-                        if (userType === 'corporate') {
-                            profileData.company_name = corporateData.companyName || '';
-                            profileData.business_reg = corporateData.businessReg || '';
-                            profileData.contact_person = corporateData.contactPerson || '';
-                            profileData.work_phone = corporateData.workPhone || '';
-                        }
-                        
-                        await supabase.from('user_profiles').insert(profileData);
-                        
-                        showMessage('✅ Account created! Please check your email to verify.', 'success');
-                        signupModal.style.display = 'none';
-                        emailInput.value = email;
-                        
-                        document.getElementById('signupEmail').value = '';
-                        document.getElementById('signupPassword').value = '';
-                        document.getElementById('signupConfirmPassword').value = '';
-                        document.getElementById('signupName').value = '';
-                        document.getElementById('signupPhone').value = '';
-                        document.getElementById('signupCompanyName').value = '';
-                        document.getElementById('signupBusinessReg').value = '';
-                        document.getElementById('signupContactPerson').value = '';
-                        document.getElementById('signupWorkPhone').value = '';
-                        
-                        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
-                        if (!loginError && loginData.user) {
-                            await supabase
-                                .from('user_profiles')
-                                .update({ 
-                                    login_count: 1,
-                                    last_login: new Date().toISOString()
-                                })
-                                .eq('id', loginData.user.id);
-                            
-                            localStorage.setItem('autoV_user', JSON.stringify({
-                                id: loginData.user.id,
-                                email: email,
-                                name: name || email.split('@')[0],
-                                userType: userType
-                            }));
-                            
-                            // New user → customer portal
-                            showMessage('👋 Welcome! Redirecting to customer portal...', 'success');
-                            setTimeout(() => {
-                                window.location.href = "customer-portal.html";
-                            }, 1500);
-                        }
-                    }
-                } catch (err) {
-                    console.error('Signup error:', err);
-                    showMessage('Network error. Please try again.', 'error');
-                } finally {
-                    signupSubmitBtn.disabled = false;
-                    signupSubmitBtn.innerHTML = originalText;
-                }
-            }
-            
-            // ============================================
-            // CHECK SESSION
-            // ============================================
-            async function checkSession() {
-                try {
-                    const { data: { session }, error } = await supabase.auth.getSession();
-                    
-                    if (error) {
-                        console.error('Session check error:', error);
-                        return;
-                    }
-                    
-                    if (session) {
-                        console.log('Active session found, checking user status...');
-                        const isNew = await isNewUser(session.user.id);
-                        
-                        if (isNew) {
-                            showMessage('👋 Welcome! Redirecting to onboarding...', 'success');
-                            setTimeout(() => {
-                                window.location.href = "customer-portal.html";
-                            }, 1000);
-                        } else {
-                            showMessage('✅ Welcome back! Redirecting to dashboard...', 'success');
-                            setTimeout(() => {
-                                window.location.href = "dashboard.html";
-                            }, 1000);
-                        }
-                    }
-                } catch (err) {
-                    console.error('Session check error:', err);
-                }
-            }
-            
-            // ============================================
-            // EVENT LISTENERS
-            // ============================================
-            document.getElementById('loginForm').addEventListener('submit', handleLogin);
-            document.getElementById('signupForm').addEventListener('submit', handleSignup);
-            
-            signupBtn.addEventListener('click', () => {
-                signupModal.style.display = 'flex';
+
+                await loadData();
+
+                // ─── Logout ──────────────────────────────────────────
+                document.getElementById('logoutBtn').addEventListener('click', async () => {
+                    await supabase.auth.signOut();
+                    window.location.href = "login.html";
+                });
             });
-            
-            document.getElementById('closeSignupBtn').addEventListener('click', () => {
-                signupModal.style.display = 'none';
-            });
-            
-            signupModal.addEventListener('click', (e) => {
-                if (e.target === signupModal) {
-                    signupModal.style.display = 'none';
-                }
-            });
-            
-            emailInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(e); });
-            passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(e); });
-            emailInput.addEventListener('input', clearMessage);
-            passwordInput.addEventListener('input', clearMessage);
-            
-            emailInput.focus();
-            checkSession();
         })();
     </script>
 </body>
