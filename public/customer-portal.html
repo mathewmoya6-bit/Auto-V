@@ -737,15 +737,27 @@
                         const token = sessionData.session.access_token;
                         const API_BASE = 'https://auto-v.onrender.com/api';
                         
+                        // ─── Use fetch with timeout ──────────────────────
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 30000);
+                        
                         const response = await fetch(`${API_BASE}/mpesa/status/${paymentId}`, {
                             headers: {
                                 'Authorization': `Bearer ${token}`,
                                 'Content-Type': 'application/json'
-                            }
+                            },
+                            signal: controller.signal
                         });
+                        
+                        clearTimeout(timeoutId);
                         
                         if (response.status === 404) {
                             showMessage('Payment not found. Please try again later.', 'warning');
+                            return;
+                        }
+                        
+                        if (response.status === 429) {
+                            showMessage('Rate limited. Please wait a moment and try again.', 'warning');
                             return;
                         }
                         
@@ -759,7 +771,7 @@
                         
                         const status = data.status || data.payment_status;
                         
-                        if (status === 'completed') {
+                        if (status === 'completed' || data.result_code === '0') {
                             setPaymentStatus('completed', '✅ Payment confirmed!');
                             showMessage('Payment successful!', 'success');
                             const serviceType = getServiceName(selectedService);
@@ -767,6 +779,7 @@
                             showStep(6);
                             if (pollInterval) clearInterval(pollInterval);
                             paymentInProgress = false;
+                            manualCheckBtn.style.display = 'none';
                         } else if (status === 'failed') {
                             setPaymentStatus('failed', '❌ Payment failed.');
                             showMessage('Payment failed. Please retry.', 'error');
@@ -776,8 +789,12 @@
                             showMessage(`Payment status: ${status || 'pending'} (Attempt ${manualCheckAttempt})`, 'info');
                         }
                     } catch (err) {
-                        console.error('Manual check error:', err);
-                        showMessage('Error checking status. Please try again.', 'error');
+                        if (err.name === 'AbortError') {
+                            showMessage('Request timed out. Please try again.', 'error');
+                        } else {
+                            console.error('Manual check error:', err);
+                            showMessage('Error checking status. Please try again.', 'error');
+                        }
                     } finally {
                         manualCheckBtn.disabled = false;
                         manualCheckBtn.innerHTML = '🔄 Check Payment Status';
@@ -793,8 +810,18 @@
                     manualCheckAttempt = 0;
                     
                     const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
-                    if (!mpesaPhone || mpesaPhone.length < 10) {
-                        showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678)', 'error');
+                    // ─── Format phone number ────────────────────────────
+                    let formattedPhone = mpesaPhone.replace(/[\s\-+]/g, '');
+                    if (formattedPhone.startsWith('0')) {
+                        formattedPhone = '254' + formattedPhone.substring(1);
+                    } else if (formattedPhone.startsWith('7') && formattedPhone.length === 9) {
+                        formattedPhone = '254' + formattedPhone;
+                    } else if (formattedPhone.startsWith('1') && formattedPhone.length === 9) {
+                        formattedPhone = '254' + formattedPhone;
+                    }
+                    
+                    if (!formattedPhone || formattedPhone.length < 10) {
+                        showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678 or 254712345678)', 'error');
                         paymentInProgress = false;
                         return;
                     }
@@ -834,6 +861,11 @@
                         
                         // ─── Use /mpesa/initiate endpoint ──────────────
                         const API_BASE = 'https://auto-v.onrender.com/api';
+                        
+                        // ─── Use fetch with timeout ──────────────────────
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 30000);
+                        
                         const response = await fetch(`${API_BASE}/mpesa/initiate`, {
                             method: 'POST',
                             headers: { 
@@ -841,13 +873,16 @@
                                 'Authorization': `Bearer ${token}`
                             },
                             body: JSON.stringify({
-                                phone: mpesaPhone,
+                                phone: formattedPhone,
                                 amount: price,
                                 service: selectedService,
                                 purpose: selectedPurpose,
                                 client_type: clientType
-                            })
+                            }),
+                            signal: controller.signal
                         });
+                        
+                        clearTimeout(timeoutId);
                         
                         const contentType = response.headers.get('content-type');
                         if (!contentType || !contentType.includes('application/json')) {
@@ -875,10 +910,11 @@
                         if (pollInterval) clearInterval(pollInterval);
                         
                         let attempts = 0;
-                        const maxAttempts = 60;
+                        const maxAttempts = 30; // Reduced to 30 for better UX
+                        let pollDelay = 5000; // Start at 5 seconds
                         
-                        // ─── Improved Polling ───────────────────────────
-                        pollInterval = setInterval(async () => {
+                        // ─── Improved Polling with Exponential Backoff ──
+                        async function pollWithBackoff() {
                             attempts++;
                             console.log(`⏳ Polling attempt ${attempts}/${maxAttempts} for payment ${paymentId}`);
                             
@@ -887,6 +923,7 @@
                                 const token = sessionData?.session?.access_token;
                                 if (!token) {
                                     console.error('❌ No auth token for status check');
+                                    setTimeout(pollWithBackoff, pollDelay);
                                     return;
                                 }
                                 
@@ -911,13 +948,17 @@
                                         paymentInProgress = false;
                                         document.getElementById('paymentRetry').style.display = 'block';
                                         manualCheckBtn.style.display = 'block';
+                                        return;
                                     }
+                                    setTimeout(pollWithBackoff, pollDelay);
                                     return;
                                 }
                                 
                                 // ─── Handle 429 Rate Limiting ────────────
                                 if (statusResp.status === 429) {
-                                    console.log(`⏳ Rate limited, will retry...`);
+                                    console.log(`⏳ Rate limited, increasing delay...`);
+                                    pollDelay = Math.min(pollDelay * 1.5, 15000);
+                                    setTimeout(pollWithBackoff, pollDelay);
                                     return;
                                 }
                                 
@@ -937,6 +978,7 @@
                                 // ─── Handle other errors ────────────────
                                 if (!statusResp.ok) {
                                     console.error('❌ Status check failed:', statusResp.status);
+                                    setTimeout(pollWithBackoff, pollDelay);
                                     return;
                                 }
                                 
@@ -945,7 +987,8 @@
                                 
                                 const status = statusData.status || statusData.payment_status;
                                 
-                                if (status === 'completed') {
+                                // ─── Check if completed (by status or result_code) ──
+                                if (status === 'completed' || statusData.result_code === '0') {
                                     console.log('✅ Payment confirmed!');
                                     clearInterval(pollInterval);
                                     setPaymentStatus('completed', '✅ Payment confirmed!');
@@ -959,8 +1002,9 @@
                                     paymentInProgress = false;
                                     manualCheckBtn.style.display = 'none';
                                     return;
-                                    
-                                } else if (status === 'failed') {
+                                }
+                                
+                                if (status === 'failed') {
                                     console.log('❌ Payment failed');
                                     clearInterval(pollInterval);
                                     setPaymentStatus('failed', '❌ Payment failed. Please try again.');
@@ -983,17 +1027,34 @@
                                     paymentInProgress = false;
                                     document.getElementById('paymentRetry').style.display = 'block';
                                     manualCheckBtn.style.display = 'block';
+                                    return;
                                 }
+                                
+                                // ─── Increase delay for next attempt ──────
+                                pollDelay = Math.min(pollDelay * 1.2, 10000);
+                                setTimeout(pollWithBackoff, pollDelay);
                                 
                             } catch (err) {
                                 console.error('❌ Polling error:', err);
+                                if (attempts < maxAttempts) {
+                                    pollDelay = Math.min(pollDelay * 1.5, 15000);
+                                    setTimeout(pollWithBackoff, pollDelay);
+                                }
                             }
-                        }, 4000); // Poll every 4 seconds
+                        }
+                        
+                        // Start polling
+                        setTimeout(pollWithBackoff, 3000);
                         
                     } catch (err) {
                         console.error('❌ Payment error:', err);
-                        setPaymentStatus('failed', '❌ ' + err.message);
-                        showMessage('Payment failed: ' + err.message, 'error');
+                        if (err.name === 'AbortError') {
+                            setPaymentStatus('failed', '❌ Request timed out. Please try again.');
+                            showMessage('Request timed out. Please try again.', 'error');
+                        } else {
+                            setPaymentStatus('failed', '❌ ' + err.message);
+                            showMessage('Payment failed: ' + err.message, 'error');
+                        }
                         payBtn.disabled = false;
                         payBtn.innerHTML = originalText;
                         paymentInProgress = false;
