@@ -1,4 +1,4 @@
-# services/mpesa.py – FINTECH M-PESA ENGINE (HARDENED)
+# services/mpesa.py – FINTECH M-PESA ENGINE (FIXED)
 
 import os
 import base64
@@ -139,18 +139,32 @@ def initiate_stk_push(phone: str, amount: float, payment_id: str, service: str =
 
     url = f"{BASE_URL}/mpesa/stkpush/v1/processrequest"
 
-    res = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
-    data = res.json()
+    try:
+        res = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
+        res.raise_for_status()
+        data = res.json()
 
-    if data.get("ResponseCode") != "0":
-        raise Exception(data.get("errorMessage") or data.get("ResponseDescription"))
+        logger.info(f"📥 STK Push response: {data}")
 
-    # IMPORTANT: return CheckoutRequestID
-    return {
-        "checkout_request_id": data.get("CheckoutRequestID"),
-        "merchant_request_id": data.get("MerchantRequestID"),
-        "raw": data
-    }
+        if data.get("ResponseCode") != "0":
+            raise Exception(data.get("ResponseDescription") or "STK Push failed")
+
+        checkout_id = data.get("CheckoutRequestID")
+        if not checkout_id:
+            raise Exception("No CheckoutRequestID returned")
+
+        return {
+            "CheckoutRequestID": checkout_id,
+            "MerchantRequestID": data.get("MerchantRequestID"),
+            "ResponseCode": data.get("ResponseCode"),
+            "ResponseDescription": data.get("ResponseDescription")
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ STK Push request failed: {e}")
+        if hasattr(e, 'response') and e.response:
+            logger.error(f"Response: {e.response.text}")
+        raise Exception(f"STK Push failed: {str(e)}")
 
 
 # ─── STATUS QUERY ──────────────────────────────────────────
@@ -169,69 +183,136 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
         "CheckoutRequestID": checkout_request_id
     }
 
-    res = requests.post(
-        f"{BASE_URL}/mpesa/stkpushquery/v1/query",
-        json=payload,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        },
-        timeout=REQUEST_TIMEOUT
-    )
+    try:
+        res = requests.post(
+            f"{BASE_URL}/mpesa/stkpushquery/v1/query",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            timeout=REQUEST_TIMEOUT
+        )
+        res.raise_for_status()
+        data = res.json()
+        
+        logger.info(f"📥 Status query response: {data}")
+        return data
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Status query failed: {e}")
+        if hasattr(e, 'response') and e.response:
+            logger.error(f"Response: {e.response.text}")
+        raise Exception(f"Status query failed: {str(e)}")
 
-    return res.json()
 
-
-# ─── CALLBACK (BULLETPROOF ENGINE) ─────────────────────────
+# ─── CALLBACK (BULLETPROOF ENGINE - FIXED) ─────────────────────────
 def handle_mpesa_callback(callback_data: Dict[str, Any]) -> Dict[str, Any]:
     try:
+        logger.info("📥 Processing M-Pesa callback")
+        
+        # ─── Validate structure ──────────────────────────────────
+        if not callback_data:
+            logger.error("❌ No callback data")
+            return {"ResultCode": 1, "ResultDesc": "No data"}
+
         stk = callback_data.get("Body", {}).get("stkCallback", {})
+        
+        if not stk:
+            logger.error("❌ Missing stkCallback")
+            return {"ResultCode": 1, "ResultDesc": "Missing stkCallback"}
 
         checkout_id = stk.get("CheckoutRequestID")
         result_code = str(stk.get("ResultCode"))
         result_desc = stk.get("ResultDesc")
-        transaction_id = stk.get("CallbackMetadata", {}).get("Item", [{}])[1].get("Value")
+
+        logger.info(f"📊 CheckoutID: {checkout_id}, ResultCode: {result_code}")
 
         if not checkout_id:
-            return {"ResultCode": 1, "ResultDesc": "Missing checkout ID"}
+            logger.error("❌ Missing CheckoutRequestID")
+            return {"ResultCode": 1, "ResultDesc": "Missing CheckoutRequestID"}
 
+        # ─── Extract transaction ID safely ──────────────────────
+        transaction_id = None
+        amount = None
+        phone = None
+
+        metadata = stk.get("CallbackMetadata")
+        if metadata:
+            items = metadata.get("Item", [])
+            for item in items:
+                name = item.get("Name")
+                value = item.get("Value")
+                
+                if name == "MpesaReceiptNumber":
+                    transaction_id = value
+                    logger.info(f"✅ Found MpesaReceiptNumber: {value}")
+                elif name == "Amount":
+                    amount = value
+                elif name == "PhoneNumber":
+                    phone = value
+        else:
+            logger.warning("⚠️ No CallbackMetadata found")
+
+        # ─── Update database ────────────────────────────────────
         supabase = get_supabase()
 
-        # 🔥 FIXED FIELD NAME
+        # Find payment
         payment = supabase.table("payments") \
             .select("*") \
             .eq("checkout_request_id", checkout_id) \
             .execute()
 
         if not payment.data:
+            logger.error(f"❌ Payment not found for CheckoutID: {checkout_id}")
             return {"ResultCode": 1, "ResultDesc": "Payment not found"}
 
         payment = payment.data[0]
         payment_id = payment["id"]
+        logger.info(f"✅ Found payment: {payment_id}")
 
-        # 🧠 IDENTITY PROTECTION
+        # ─── Idempotency check ──────────────────────────────────
         if payment["status"] == "completed":
+            logger.info(f"ℹ️ Payment {payment_id} already completed")
             return {"ResultCode": 0, "ResultDesc": "Already processed"}
 
-        # ─── STATUS UPDATE ────────────────────────────────
-        if result_code == "0":
+        # ─── Update status ──────────────────────────────────────
+        if result_code == "0" and transaction_id:
             update = {
                 "status": "completed",
                 "transaction_id": transaction_id,
+                "mpesa_receipt_number": transaction_id,
+                "amount_paid": amount,
                 "completed_at": datetime.now().isoformat(),
-                "mpesa_result_desc": result_desc
+                "mpesa_result_code": result_code,
+                "mpesa_result_desc": result_desc or "Transaction completed"
             }
+            logger.info(f"✅ Payment {payment_id} completed. Receipt: {transaction_id}")
+        elif result_code in ["1037", "1032"]:
+            update = {
+                "status": "failed",
+                "mpesa_result_code": result_code,
+                "mpesa_result_desc": result_desc or "Transaction cancelled"
+            }
+            logger.warning(f"⚠️ Payment {payment_id} cancelled")
         else:
             update = {
                 "status": "failed",
-                "mpesa_result_desc": result_desc,
-                "mpesa_result_code": result_code
+                "mpesa_result_code": result_code,
+                "mpesa_result_desc": result_desc or f"Transaction failed"
             }
+            logger.warning(f"❌ Payment {payment_id} failed: {result_desc}")
 
-        supabase.table("payments").update(update).eq("id", payment_id).execute()
-
-        return {"ResultCode": 0, "ResultDesc": "Success"}
+        # ─── Execute update ──────────────────────────────────────
+        result = supabase.table("payments").update(update).eq("id", payment_id).execute()
+        
+        if result.data:
+            logger.info(f"✅ Database updated: {result.data[0].get('status')}")
+            return {"ResultCode": 0, "ResultDesc": "Success"}
+        else:
+            logger.error("❌ Database update failed")
+            return {"ResultCode": 1, "ResultDesc": "Update failed"}
 
     except Exception as e:
-        logger.error(f"Callback error: {e}", exc_info=True)
-        return {"ResultCode": 0, "ResultDesc": "Error handled safely"}
+        logger.error(f"❌ Callback error: {e}", exc_info=True)
+        return {"ResultCode": 1, "ResultDesc": str(e)}
