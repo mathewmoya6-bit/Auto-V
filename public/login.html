@@ -215,8 +215,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V LOGIN - NO AUTOMATIC REDIRECTION
-        // User stays on login page after authentication
+        // AUTO-V LOGIN - Redirect to dashboard.html after successful login
         // ============================================================
 
         (function() {
@@ -238,6 +237,9 @@
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
             const signupForm = document.getElementById('signupForm');
+
+            // ─── REDIRECT PATH ───────────────────────────────────────────
+            const DASHBOARD_URL = 'dashboard.html';
 
             // ─── Utility Functions ──────────────────────────────────────
             function showMessage(text, type = 'error') {
@@ -328,35 +330,10 @@
                 }
             }
 
-            // ─── Check User Status ────────────────────────────────────────
-            async function checkUserStatus(userId) {
-                try {
-                    const profile = await getProfile(userId);
-                    
-                    if (!profile) {
-                        console.log('📭 No profile found - NEW USER');
-                        return { isNew: true, needsOnboarding: true };
-                    }
-
-                    const needsOnboarding = profile.first_login === true || profile.has_vehicle === false;
-                    
-                    console.log('📊 User status:', {
-                        first_login: profile.first_login,
-                        has_vehicle: profile.has_vehicle,
-                        login_count: profile.login_count,
-                        needsOnboarding
-                    });
-
-                    return { 
-                        isNew: needsOnboarding,
-                        needsOnboarding,
-                        profile
-                    };
-
-                } catch (err) {
-                    console.error('Status check error:', err);
-                    return { isNew: true, needsOnboarding: true };
-                }
+            // ─── REDIRECT TO DASHBOARD ───────────────────────────────────
+            function redirectToDashboard() {
+                console.log('📌 Redirecting to:', DASHBOARD_URL);
+                window.location.href = DASHBOARD_URL;
             }
 
             // ─── HANDLE LOGIN ────────────────────────────────────────────
@@ -416,27 +393,14 @@
                         profile = await getProfile(user.id);
                     }
 
-                    // ─── 3. Check User Status ─────────────────────────────
-                    const status = await checkUserStatus(user.id);
-
-                    // ─── 4. SHOW SUCCESS MESSAGE (NO REDIRECT) ───────────
+                    // ─── 3. Show success message ─────────────────────────
                     const userName = profile?.full_name || user.user_metadata?.full_name || 'User';
-                    const userType = status.needsOnboarding ? '🆕 New User' : '✅ Existing User';
-                    showMessage(`✅ Welcome ${userName}! (${userType})`, 'success');
-                    
-                    // Update button to show success
-                    loginBtn.innerHTML = '✅ Logged In';
-                    loginBtn.style.background = '#22c55e';
-                    
-                    // Reset after 3 seconds
-                    setTimeout(() => {
-                        loginBtn.innerHTML = 'Login';
-                        loginBtn.style.background = '';
-                        loginBtn.disabled = false;
-                    }, 3000);
+                    showMessage(`✅ Welcome ${userName}! Redirecting to dashboard...`, 'success');
 
-                    // Log the user info (no redirect)
-                    console.log(`📌 User ${user.email} logged in successfully. Type: ${userType}`);
+                    // ─── 4. REDIRECT TO DASHBOARD ────────────────────────
+                    setTimeout(() => {
+                        redirectToDashboard();
+                    }, 1000);
 
                 } catch (err) {
                     console.error('Unexpected error:', err);
@@ -519,9 +483,11 @@
                         });
 
                         if (loginData?.user) {
-                            // ─── 4. Show success (NO REDIRECT) ──────────
-                            showMessage(`✅ Welcome ${fullName || email.split('@')[0]}! Account created successfully.`, 'success');
-                            console.log('📌 New user created and logged in:', email);
+                            // ─── 4. Redirect to dashboard ────────────────
+                            showMessage(`✅ Welcome ${fullName || email.split('@')[0]}! Redirecting to dashboard...`, 'success');
+                            setTimeout(() => {
+                                redirectToDashboard();
+                            }, 1200);
                         }
                     }
 
@@ -531,6 +497,24 @@
                 } finally {
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = originalText;
+                }
+            }
+
+            // ─── CHECK EXISTING SESSION ──────────────────────────────────
+            async function checkExistingSession() {
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+
+                    if (session) {
+                        console.log('🔐 Existing session found for:', session.user.email);
+                        // Redirect to dashboard immediately
+                        redirectToDashboard();
+                    } else {
+                        console.log('🔓 No active session - showing login');
+                    }
+
+                } catch (err) {
+                    console.log('Session check error:', err);
                 }
             }
 
@@ -565,11 +549,11 @@
             });
 
             // ─── START APPLICATION ──────────────────────────────────────
+            checkExistingSession();
             emailInput.focus();
 
-            console.log('🚀 AUTO-V Login ready (NO REDIRECT)');
-            console.log('📌 Users stay on this page after login');
-            console.log('📌 Signup also keeps users on this page');
+            console.log('🚀 AUTO-V Login ready');
+            console.log('📌 Redirects to:', DASHBOARD_URL);
 
         })(); // End of IIFE
     </script>
