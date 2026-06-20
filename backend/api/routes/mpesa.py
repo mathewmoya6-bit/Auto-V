@@ -6,6 +6,7 @@
 # ✅ FIXED: Payment confirmation detection
 # ✅ FIXED: Database constraint violations
 # ✅ FIXED: Status values matching
+# ✅ ADDED: Force complete endpoint for manual confirmation
 
 import os
 import logging
@@ -502,7 +503,91 @@ def get_payment_status(payment_id):
 
 
 # ─── =========================================================───
-# ─── ROUTE 6: DEBUG - CALLBACK TESTER ──────────────────────────
+# ─── ROUTE 6: FORCE COMPLETE PAYMENT (MANUAL CONFIRMATION) ──
+# ─── =========================================================───
+
+@mpesa_bp.route('/force-complete/<payment_id>', methods=['POST'])
+def force_complete_payment(payment_id):
+    """
+    Force complete a payment manually.
+    Used when user confirms payment via M-Pesa SMS but backend hasn't detected it.
+    """
+    try:
+        data = request.get_json() or {}
+        transaction_id = data.get('transaction_id')
+        
+        if not transaction_id:
+            return jsonify({
+                'success': False,
+                'message': 'Transaction ID is required'
+            }), 400
+        
+        supabase = get_supabase()
+        
+        # ─── Get payment ──────────────────────────────────────────
+        response = supabase.table('payments')\
+            .select('*')\
+            .eq('id', payment_id)\
+            .execute()
+        
+        if not response.data:
+            return jsonify({
+                'success': False,
+                'message': 'Payment not found'
+            }), 404
+        
+        payment = response.data[0]
+        
+        # ─── Check if already completed ──────────────────────────
+        if payment.get('status') == 'completed':
+            return jsonify({
+                'success': True,
+                'message': 'Payment already completed',
+                'payment_id': payment_id,
+                'status': 'completed',
+                'transaction_id': payment.get('transaction_id')
+            }), 200
+        
+        # ─── Update payment to completed ──────────────────────────
+        update_data = {
+            'status': 'completed',
+            'transaction_id': transaction_id,
+            'mpesa_receipt_number': transaction_id,
+            'mpesa_result_code': '0',
+            'mpesa_result_desc': 'Manually confirmed by user',
+            'completed_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        result = supabase.table('payments').update(update_data).eq('id', payment_id).execute()
+        
+        if hasattr(result, 'error') and result.error:
+            logger.error(f"❌ Database update error: {result.error}")
+            return jsonify({
+                'success': False,
+                'message': f'Database error: {result.error}'
+            }), 500
+        
+        logger.info(f"✅ Payment {payment_id} manually completed with TXN: {transaction_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Payment completed successfully!',
+            'payment_id': payment_id,
+            'status': 'completed',
+            'transaction_id': transaction_id
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Force complete error: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
+# ─── =========================================================───
+# ─── ROUTE 7: DEBUG - CALLBACK TESTER ──────────────────────────
 # ─── =========================================================───
 
 @mpesa_bp.route('/callback-debug', methods=['POST', 'GET'])
@@ -558,7 +643,7 @@ def mpesa_callback_debug():
 
 
 # ─── =========================================================───
-# ─── ROUTE 7: TEST ROUTE ──────────────────────────────────────
+# ─── ROUTE 8: TEST ROUTE ──────────────────────────────────────
 # ─── =========================================================───
 
 @mpesa_bp.route('/test', methods=['GET'])
@@ -574,7 +659,7 @@ def test_route():
 
 
 # ─── =========================================================───
-# ─── ROUTE 8: PAYMENT WEBHOOK (Optional) ──────────────────────
+# ─── ROUTE 9: PAYMENT WEBHOOK (Optional) ──────────────────────
 # ─── =========================================================───
 
 @mpesa_bp.route('/webhook/<payment_id>', methods=['POST'])
