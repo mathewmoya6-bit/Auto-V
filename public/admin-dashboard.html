@@ -18,6 +18,9 @@
         .logo span { font-size: 10px; color: #64748b; background: #1e293b; padding: 2px 10px; border-radius: 12px; font-weight: 600; }
         .user-info { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
         .user-avatar { width: 36px; height: 36px; background: #eab308; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000; }
+        .live-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #22c55e; background: rgba(34, 197, 94, 0.12); padding: 2px 12px; border-radius: 20px; }
+        .live-indicator .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .logout-btn { background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 40px; cursor: pointer; font-weight: 600; transition: all .2s; }
         .logout-btn:hover { background: #b91c1c; transform: translateY(-1px); }
         
@@ -128,6 +131,7 @@
     <div class="header">
         <div class="logo">🚗 AUTO-V <span>ADMIN</span></div>
         <div class="user-info">
+            <span class="live-indicator"><span class="dot"></span> Live</span>
             <div class="user-avatar" id="userAvatar">A</div>
             <span id="userEmail" style="color:#94a3b8;font-size:13px;">Loading...</span>
             <span id="userRole" style="color:#eab308;font-size:12px;font-weight:600;background:#1e293b;padding:2px 12px;border-radius:12px;">Admin</span>
@@ -407,662 +411,695 @@
 
     <script>
         // ============================================================
-        // AUTO-V ADMIN DASHBOARD - SINGLE SOURCE OF TRUTH
+        // AUTO-V ADMIN DASHBOARD - REAL-TIME SYNC
+        // Uses shared autoV client from supabase.js
         // ============================================================
         
         (function() {
-            // ─── Use autoV from supabase.js ──────────────────────────
-            if (!window.autoV || !window.autoV.supabase) {
-                console.error('❌ autoV not initialized. Please ensure supabase.js is loaded.');
-                document.getElementById('loadingOverlay').style.display = 'none';
-                return;
-            }
+            'use strict';
             
-            const supabase = window.autoV.supabase;
-            const formatKES = window.autoV.formatKES;
-            const formatDate = window.autoV.formatDate;
-            
-            let allRequests = [], allUsers = [], allPayments = [], allServices = [], allPrices = [];
-            let charts = {};
-            let currentUser = null;
-            
-            // ─── Hide Loading ──────────────────────────────────────────
-            function hideLoading() {
-                const overlay = document.getElementById('loadingOverlay');
-                if (overlay) {
-                    overlay.style.opacity = '0';
-                    setTimeout(() => {
-                        overlay.style.display = 'none';
-                    }, 500);
-                }
-            }
-            
-            function showToast(msg, type = 'success') {
-                const existing = document.querySelector('.toast');
-                if (existing) existing.remove();
-                const toast = document.createElement('div');
-                toast.className = `toast toast-${type}`;
-                toast.textContent = msg;
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 3000);
-            }
-            
-            function getBadgeClass(status) {
-                const map = { 'completed': 'completed', 'paid': 'paid', 'pending': 'pending', 'processing': 'processing', 'failed': 'failed', 'cancelled': 'cancelled', 'active': 'active', 'inactive': 'inactive', 'refunded': 'cancelled' };
-                return map[status] || 'pending';
-            }
-            
-            function getServiceName(type) {
-                const map = { 'instant': '💡 Instant', 'valuation': '💰 Valuation', 'inspection': '🔍 Inspection', 'mileage': '📏 Mileage', 'assessment': '⚠️ Assessment', 'fleet': '🚛 Fleet', 'verification': '✅ Verification' };
-                return map[type] || type || 'N/A';
-            }
-            
-            // ─── Modal Functions ──────────────────────────────────────
-            window.openModal = function(type) {
-                const map = { 'addUser': 'addUserModal', 'editUser': 'editUserModal', 'addService': 'addServiceModal', 'editService': 'editServiceModal', 'addPrice': 'addPriceModal', 'editPrice': 'editPriceModal' };
-                document.getElementById(map[type]).classList.add('active');
-            };
-            
-            window.closeModal = function(id) {
-                document.getElementById(id).classList.remove('active');
-            };
-            
-            document.querySelectorAll('.modal').forEach(m => {
-                m.addEventListener('click', function(e) {
-                    if (e.target === this) this.classList.remove('active');
-                });
-            });
-            
-            // ─── GET PROFILE ──────────────────────────────────────────
-            async function getProfile(userId) {
-                try {
-                    const { data, error } = await supabase.from('user_profiles').select('*').eq('id', userId).maybeSingle();
-                    if (error) return null;
-                    return data;
-                } catch (err) { return null; }
-            }
-            
-            // ─── LOAD STATS ──────────────────────────────────────────
-            async function loadStats() {
-                try {
-                    const { count: users } = await supabase.from('user_profiles').select('*', { count: 'exact', head: true });
-                    const { count: requests } = await supabase.from('service_requests').select('*', { count: 'exact', head: true });
-                    const { data: payments } = await supabase.from('payments').select('amount, status');
-                    const totalRevenue = payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0;
-                    const pending = payments?.filter(p => p.status === 'pending').length || 0;
-                    const { count: instant } = await supabase.from('service_requests').select('*', { count: 'exact', head: true }).eq('service_type', 'instant');
-                    
-                    document.getElementById('totalUsers').textContent = users || 0;
-                    document.getElementById('totalRequests').textContent = requests || 0;
-                    document.getElementById('totalRevenue').innerHTML = formatKES(totalRevenue);
-                    document.getElementById('pendingPayments').textContent = pending;
-                    document.getElementById('instantRequests').textContent = instant || 0;
-                } catch (err) { console.error('Stats error:', err); }
-            }
-            
-            // ─── LOAD REQUESTS ────────────────────────────────────────
-            async function loadRequests() {
-                try {
-                    const { data, error } = await supabase.from('service_requests').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false });
-                    if (error) throw error;
-                    allRequests = data || [];
-                    renderRequests(allRequests);
-                    document.getElementById('requestsCount').textContent = `${allRequests.length} requests`;
-                } catch (err) { console.error('Requests error:', err); }
-            }
-            
-            function renderRequests(requests) {
-                const tbody = document.getElementById('requestsTableBody');
-                if (!requests || requests.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#64748b;">No requests found</td></tr>`;
+            // ─── Wait for autoV ──────────────────────────────────────
+            function waitForAutoV(callback, retries = 20) {
+                if (window.autoV && window.autoV.supabase) {
+                    callback();
                     return;
                 }
-                tbody.innerHTML = requests.slice(0, 50).map(r => {
-                    const status = r.status || 'pending';
-                    const badge = getBadgeClass(status);
-                    const user = r.user_profiles?.full_name || r.user_profiles?.email || r.customer_name || 'Unknown';
-                    return `<tr>
-                        <td style="color:#eab308;font-weight:600;">#${r.id.slice(0,8)}</td>
-                        <td>${user}</td>
-                        <td>${getServiceName(r.service_type)}</td>
-                        <td style="font-weight:600;">${formatKES(r.amount || 0)}</td>
-                        <td><span class="badge badge-${badge}">${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
-                        <td style="font-size:12px;color:#64748b;">${formatDate(r.created_at)}</td>
-                        <td>
-                            <button class="action-btn view" onclick="viewRequest('${r.id}')">View</button>
-                            <button class="action-btn delete" onclick="deleteRequest('${r.id}')">Delete</button>
-                        </td>
-                    </tr>`;
-                }).join('');
-            }
-            
-            window.filterRequests = function() {
-                const search = document.getElementById('requestSearch').value.toLowerCase();
-                const filter = document.getElementById('requestFilter').value;
-                let filtered = allRequests;
-                if (search) filtered = filtered.filter(r => 
-                    (r.customer_name || '').toLowerCase().includes(search) ||
-                    (r.user_profiles?.full_name || '').toLowerCase().includes(search) ||
-                    (r.user_profiles?.email || '').toLowerCase().includes(search)
-                );
-                if (filter !== 'all') filtered = filtered.filter(r => r.status === filter);
-                renderRequests(filtered);
-            };
-            
-            window.viewRequest = function(id) {
-                const req = allRequests.find(r => r.id === id);
-                if (req) {
-                    alert(`📄 Request Details\n\nID: ${id.slice(0,8)}\nService: ${getServiceName(req.service_type)}\nAmount: ${formatKES(req.amount)}\nStatus: ${req.status}\nUser: ${req.customer_name || 'Unknown'}\nDate: ${formatDate(req.created_at)}`);
-                }
-            };
-            
-            window.deleteRequest = async function(id) {
-                if (!confirm('Delete this request permanently?')) return;
-                try {
-                    await supabase.from('service_requests').delete().eq('id', id);
-                    showToast('✅ Request deleted', 'success');
-                    loadRequests();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            };
-            
-            // ─── LOAD USERS ──────────────────────────────────────────
-            async function loadUsers() {
-                try {
-                    const { data, error } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
-                    if (error) throw error;
-                    allUsers = data || [];
-                    renderUsers(allUsers);
-                    document.getElementById('usersCount').textContent = `${allUsers.length} users`;
-                } catch (err) { console.error('Users error:', err); }
-            }
-            
-            function renderUsers(users) {
-                const tbody = document.getElementById('usersTableBody');
-                if (!users || users.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No users found</td></tr>`;
+                if (retries <= 0) {
+                    console.error('❌ autoV failed to initialize');
+                    document.getElementById('loadingOverlay').style.display = 'none';
                     return;
                 }
-                tbody.innerHTML = users.map(u => {
-                    const status = u.first_login === true ? 'New' : 'Active';
-                    const badge = status === 'Active' ? 'active' : 'pending';
-                    return `<tr>
-                        <td><div style="display:flex;align-items:center;gap:8px;"><div style="width:30px;height:30px;border-radius:50%;background:#eab308;display:flex;align-items:center;justify-content:center;color:#000;font-weight:600;font-size:12px;">${(u.full_name || u.email || 'U')[0].toUpperCase()}</div> ${u.full_name || '—'}</div></td>
-                        <td style="color:#94a3b8;font-size:13px;">${u.email || '—'}</td>
-                        <td><span class="badge ${u.role === 'admin' ? 'badge-paid' : u.role === 'inspector' ? 'badge-processing' : ''}">${u.role || 'user'}</span></td>
-                        <td><span class="badge badge-${badge}">${status}</span></td>
-                        <td style="font-size:12px;color:#64748b;">${formatDate(u.created_at)}</td>
-                        <td>
-                            <button class="action-btn edit" onclick="openEditUser('${u.id}')">Edit</button>
-                            <button class="action-btn delete" onclick="deleteUser('${u.id}')">Delete</button>
-                        </td>
-                    </tr>`;
-                }).join('');
+                setTimeout(() => waitForAutoV(callback, retries - 1), 300);
             }
             
-            window.filterUsers = function() {
-                const search = document.getElementById('userSearch').value.toLowerCase();
-                const filtered = allUsers.filter(u => 
-                    (u.email || '').toLowerCase().includes(search) ||
-                    (u.full_name || '').toLowerCase().includes(search)
-                );
-                renderUsers(filtered);
-            };
-            
-            window.openEditUser = async function(id) {
-                const user = allUsers.find(u => u.id === id);
-                if (!user) return;
-                document.getElementById('editUserId').value = user.id;
-                document.getElementById('editUserEmail').value = user.email || '';
-                document.getElementById('editUserName').value = user.full_name || '';
-                document.getElementById('editUserRole').value = user.role || 'user';
-                document.getElementById('editUserPassword').value = '';
-                openModal('editUser');
-            };
-            
-            window.deleteUser = async function(id) {
-                if (!confirm('Delete this user permanently?')) return;
-                try {
-                    await supabase.from('user_profiles').delete().eq('id', id);
-                    showToast('✅ User deleted', 'success');
-                    loadUsers();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            };
-            
-            // ─── LOAD PAYMENTS ──────────────────────────────────────
-            async function loadPayments() {
-                try {
-                    const { data, error } = await supabase.from('payments').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false });
-                    if (error) throw error;
-                    allPayments = data || [];
-                    renderPayments(allPayments);
-                    document.getElementById('paymentsCount').textContent = `${allPayments.length} payments`;
-                } catch (err) { console.error('Payments error:', err); }
-            }
-            
-            function renderPayments(payments) {
-                const tbody = document.getElementById('paymentsTableBody');
-                if (!payments || payments.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No payments found</td></tr>`;
-                    return;
-                }
-                tbody.innerHTML = payments.slice(0, 50).map(p => {
-                    const status = p.status || 'pending';
-                    const badge = getBadgeClass(status);
-                    const user = p.user_profiles?.full_name || p.user_profiles?.email || 'Unknown';
-                    return `<tr>
-                        <td>${user}</td>
-                        <td style="font-weight:600;color:#22c55e;">${formatKES(p.amount || 0)}</td>
-                        <td style="color:#94a3b8;">${p.payment_method || '—'}</td>
-                        <td><span class="badge badge-${badge}">${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
-                        <td style="font-size:12px;color:#64748b;">${formatDate(p.created_at)}</td>
-                        <td style="font-size:12px;color:#64748b;">${p.transaction_id || p.mpesa_code || '—'}</td>
-                    </tr>`;
-                }).join('');
-            }
-            
-            window.filterPayments = function() {
-                const search = document.getElementById('paymentSearch').value.toLowerCase();
-                const filter = document.getElementById('paymentFilter').value;
-                let filtered = allPayments;
-                if (search) filtered = filtered.filter(p => 
-                    (p.user_profiles?.full_name || '').toLowerCase().includes(search) ||
-                    (p.user_profiles?.email || '').toLowerCase().includes(search)
-                );
-                if (filter !== 'all') filtered = filtered.filter(p => p.status === filter);
-                renderPayments(filtered);
-            };
-            
-            // ─── LOAD SERVICES ──────────────────────────────────────
-            async function loadServices() {
-                try {
-                    const { data, error } = await supabase.from('service_fees').select('*').order('service_name');
-                    if (error) throw error;
-                    allServices = data || [];
-                    renderServices(allServices);
-                } catch (err) { console.error('Services error:', err); }
-            }
-            
-            function renderServices(services) {
-                const tbody = document.getElementById('servicesTableBody');
-                if (!services || services.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#64748b;">No services found</td></tr>`;
-                    return;
-                }
-                tbody.innerHTML = services.map(s => {
-                    const active = s.is_active !== false;
-                    return `<tr>
-                        <td style="font-weight:600;">${s.service_name}</td>
-                        <td style="color:#94a3b8;">${s.service_type || '—'}</td>
-                        <td style="font-weight:600;color:#22c55e;">${formatKES(s.fee || 0)}</td>
-                        <td><span class="badge ${active ? 'badge-active' : 'badge-inactive'}">${active ? 'Yes' : 'No'}</span></td>
-                        <td>
-                            <button class="action-btn edit" onclick="openEditService('${s.id}')">Edit</button>
-                            <button class="action-btn delete" onclick="deleteService('${s.id}')">Delete</button>
-                        </td>
-                    </tr>`;
-                }).join('');
-            }
-            
-            window.filterServices = function() {
-                const search = document.getElementById('serviceSearch').value.toLowerCase();
-                const filtered = allServices.filter(s => 
-                    (s.service_name || '').toLowerCase().includes(search) ||
-                    (s.service_type || '').toLowerCase().includes(search)
-                );
-                renderServices(filtered);
-            };
-            
-            window.openEditService = async function(id) {
-                const service = allServices.find(s => s.id === id);
-                if (!service) return;
-                document.getElementById('editServiceId').value = service.id;
-                document.getElementById('editServiceName').value = service.service_name || '';
-                document.getElementById('editServiceType').value = service.service_type || '';
-                document.getElementById('editServicePrice').value = service.fee || 0;
-                document.getElementById('editServiceActive').value = service.is_active !== false ? 'true' : 'false';
-                openModal('editService');
-            };
-            
-            window.deleteService = async function(id) {
-                if (!confirm('Delete this service?')) return;
-                try {
-                    await supabase.from('service_fees').delete().eq('id', id);
-                    showToast('✅ Service deleted', 'success');
-                    loadServices();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            };
-            
-            // ─── LOAD PRICES ────────────────────────────────────────
-            async function loadPrices() {
-                try {
-                    const { data, error } = await supabase.from('price_management').select('*').order('category');
-                    if (error) throw error;
-                    allPrices = data || [];
-                    renderPrices(allPrices);
-                } catch (err) { console.error('Prices error:', err); }
-            }
-            
-            function renderPrices(prices) {
-                const tbody = document.getElementById('pricesTableBody');
-                if (!prices || prices.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No price items found</td></tr>`;
-                    return;
-                }
-                tbody.innerHTML = prices.map(p => {
-                    const active = p.is_active !== false;
-                    return `<tr>
-                        <td style="font-weight:600;color:#eab308;">${p.category}</td>
-                        <td>${p.item_name}</td>
-                        <td style="font-weight:600;color:#22c55e;">${formatKES(p.unit_price || 0)}</td>
-                        <td style="color:#94a3b8;">${p.cost_price ? formatKES(p.cost_price) : '—'}</td>
-                        <td><span class="badge ${active ? 'badge-active' : 'badge-inactive'}">${active ? 'Yes' : 'No'}</span></td>
-                        <td>
-                            <button class="action-btn edit" onclick="openEditPrice('${p.id}')">Edit</button>
-                            <button class="action-btn delete" onclick="deletePrice('${p.id}')">Delete</button>
-                        </td>
-                    </tr>`;
-                }).join('');
-            }
-            
-            window.filterPrices = function() {
-                const search = document.getElementById('priceSearch').value.toLowerCase();
-                const filtered = allPrices.filter(p => 
-                    (p.category || '').toLowerCase().includes(search) ||
-                    (p.item_name || '').toLowerCase().includes(search)
-                );
-                renderPrices(filtered);
-            };
-            
-            window.openEditPrice = async function(id) {
-                const price = allPrices.find(p => p.id === id);
-                if (!price) return;
-                document.getElementById('editPriceId').value = price.id;
-                document.getElementById('editPriceCategory').value = price.category || '';
-                document.getElementById('editPriceItem').value = price.item_name || '';
-                document.getElementById('editPriceUnit').value = price.unit_price || 0;
-                document.getElementById('editPriceCost').value = price.cost_price || '';
-                document.getElementById('editPriceActive').value = price.is_active !== false ? 'true' : 'false';
-                openModal('editPrice');
-            };
-            
-            window.deletePrice = async function(id) {
-                if (!confirm('Delete this price item?')) return;
-                try {
-                    await supabase.from('price_management').delete().eq('id', id);
-                    showToast('✅ Price item deleted', 'success');
-                    loadPrices();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            };
-            
-            // ─── ADD USER FORM ──────────────────────────────────────
-            document.getElementById('addUserForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const email = document.getElementById('newUserEmail').value.trim();
-                const password = document.getElementById('newUserPassword').value;
-                const fullName = document.getElementById('newUserName').value.trim();
-                const role = document.getElementById('newUserRole').value;
+            waitForAutoV(function() {
+                // ─── Get shared utilities ────────────────────────────
+                const autoV = window.autoV;
+                const supabase = autoV.supabase;
+                const formatKES = autoV.formatKES;
+                const formatDate = autoV.formatDate;
+                const formatNumber = autoV.formatNumber;
+                const getServiceName = autoV.getServiceName;
+                const getStatusBadge = autoV.getStatusBadge;
+                const showToast = autoV.showToast;
                 
-                if (!email || !password) { showToast('Email and password required', 'error'); return; }
-                if (password.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+                let allRequests = [], allUsers = [], allPayments = [], allServices = [], allPrices = [];
+                let charts = {};
+                let currentUser = null;
+                let isInitialized = false;
                 
-                try {
-                    const { data, error } = await supabase.auth.signUp({
-                        email, password,
-                        options: { data: { full_name: fullName || email.split('@')[0], role } }
-                    });
-                    if (error) throw error;
-                    if (data.user) {
-                        await supabase.from('user_profiles').insert({
-                            id: data.user.id, email, full_name: fullName || email.split('@')[0],
-                            role, first_login: true, has_vehicle: false, login_count: 0,
-                            created_at: new Date().toISOString()
-                        });
-                        showToast('✅ User created', 'success');
-                        closeModal('addUserModal');
-                        document.getElementById('addUserForm').reset();
+                // ─── Hide Loading ──────────────────────────────────────
+                function hideLoading() {
+                    const overlay = document.getElementById('loadingOverlay');
+                    if (overlay) {
+                        overlay.style.opacity = '0';
+                        setTimeout(() => {
+                            overlay.style.display = 'none';
+                        }, 500);
+                    }
+                }
+                
+                // ─── GET PROFILE ──────────────────────────────────────
+                async function getProfile(userId) {
+                    try {
+                        const { data, error } = await supabase.from('user_profiles').select('*').eq('id', userId).maybeSingle();
+                        if (error) return null;
+                        return data;
+                    } catch (err) { return null; }
+                }
+                
+                // ─── LOAD STATS ──────────────────────────────────────
+                async function loadStats() {
+                    try {
+                        const { count: users } = await supabase.from('user_profiles').select('*', { count: 'exact', head: true });
+                        const { count: requests } = await supabase.from('service_requests').select('*', { count: 'exact', head: true });
+                        const { data: payments } = await supabase.from('payments').select('amount, status');
+                        const totalRevenue = payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0;
+                        const pending = payments?.filter(p => p.status === 'pending').length || 0;
+                        const { count: instant } = await supabase.from('service_requests').select('*', { count: 'exact', head: true }).eq('service_type', 'instant');
+                        
+                        document.getElementById('totalUsers').textContent = formatNumber(users);
+                        document.getElementById('totalRequests').textContent = formatNumber(requests);
+                        document.getElementById('totalRevenue').innerHTML = formatKES(totalRevenue);
+                        document.getElementById('pendingPayments').textContent = formatNumber(pending);
+                        document.getElementById('instantRequests').textContent = formatNumber(instant);
+                    } catch (err) { console.error('Stats error:', err); }
+                }
+                
+                // ─── LOAD REQUESTS ────────────────────────────────────
+                async function loadRequests() {
+                    try {
+                        const { data, error } = await supabase.from('service_requests').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false });
+                        if (error) throw error;
+                        allRequests = data || [];
+                        renderRequests(allRequests);
+                        document.getElementById('requestsCount').textContent = `${allRequests.length} requests`;
+                    } catch (err) { console.error('Requests error:', err); }
+                }
+                
+                function renderRequests(requests) {
+                    const tbody = document.getElementById('requestsTableBody');
+                    if (!requests || requests.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#64748b;">No requests found</td></tr>`;
+                        return;
+                    }
+                    tbody.innerHTML = requests.slice(0, 50).map(r => {
+                        const status = r.status || 'pending';
+                        const badge = getStatusBadge(status);
+                        const user = r.user_profiles?.full_name || r.user_profiles?.email || r.customer_name || 'Unknown';
+                        return `<tr>
+                            <td style="color:#eab308;font-weight:600;">#${r.id.slice(0,8)}</td>
+                            <td>${user}</td>
+                            <td>${getServiceName(r.service_type)}</td>
+                            <td style="font-weight:600;">${formatKES(r.amount || 0)}</td>
+                            <td><span class="badge ${badge}">${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
+                            <td style="font-size:12px;color:#64748b;">${formatDate(r.created_at)}</td>
+                            <td>
+                                <button class="action-btn view" onclick="viewRequest('${r.id}')">View</button>
+                                <button class="action-btn delete" onclick="deleteRequest('${r.id}')">Delete</button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                }
+                
+                window.filterRequests = function() {
+                    const search = document.getElementById('requestSearch').value.toLowerCase();
+                    const filter = document.getElementById('requestFilter').value;
+                    let filtered = allRequests;
+                    if (search) filtered = filtered.filter(r => 
+                        (r.customer_name || '').toLowerCase().includes(search) ||
+                        (r.user_profiles?.full_name || '').toLowerCase().includes(search) ||
+                        (r.user_profiles?.email || '').toLowerCase().includes(search)
+                    );
+                    if (filter !== 'all') filtered = filtered.filter(r => r.status === filter);
+                    renderRequests(filtered);
+                };
+                
+                window.viewRequest = function(id) {
+                    const req = allRequests.find(r => r.id === id);
+                    if (req) {
+                        alert(`📄 Request Details\n\nID: ${id.slice(0,8)}\nService: ${getServiceName(req.service_type)}\nAmount: ${formatKES(req.amount)}\nStatus: ${req.status}\nUser: ${req.customer_name || 'Unknown'}\nDate: ${formatDate(req.created_at)}`);
+                    }
+                };
+                
+                window.deleteRequest = async function(id) {
+                    if (!confirm('Delete this request permanently?')) return;
+                    try {
+                        await supabase.from('service_requests').delete().eq('id', id);
+                        showToast('✅ Request deleted', 'success');
+                        loadRequests();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                };
+                
+                // ─── LOAD USERS ──────────────────────────────────────
+                async function loadUsers() {
+                    try {
+                        const { data, error } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
+                        if (error) throw error;
+                        allUsers = data || [];
+                        renderUsers(allUsers);
+                        document.getElementById('usersCount').textContent = `${allUsers.length} users`;
+                    } catch (err) { console.error('Users error:', err); }
+                }
+                
+                function renderUsers(users) {
+                    const tbody = document.getElementById('usersTableBody');
+                    if (!users || users.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No users found</td></tr>`;
+                        return;
+                    }
+                    tbody.innerHTML = users.map(u => {
+                        const status = u.first_login === true ? 'New' : 'Active';
+                        const badge = status === 'Active' ? 'active' : 'pending';
+                        return `<tr>
+                            <td><div style="display:flex;align-items:center;gap:8px;"><div style="width:30px;height:30px;border-radius:50%;background:#eab308;display:flex;align-items:center;justify-content:center;color:#000;font-weight:600;font-size:12px;">${(u.full_name || u.email || 'U')[0].toUpperCase()}</div> ${u.full_name || '—'}</div></td>
+                            <td style="color:#94a3b8;font-size:13px;">${u.email || '—'}</td>
+                            <td><span class="badge ${u.role === 'admin' ? 'badge-paid' : u.role === 'inspector' ? 'badge-processing' : ''}">${u.role || 'user'}</span></td>
+                            <td><span class="badge badge-${badge}">${status}</span></td>
+                            <td style="font-size:12px;color:#64748b;">${formatDate(u.created_at)}</td>
+                            <td>
+                                <button class="action-btn edit" onclick="openEditUser('${u.id}')">Edit</button>
+                                <button class="action-btn delete" onclick="deleteUser('${u.id}')">Delete</button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                }
+                
+                window.filterUsers = function() {
+                    const search = document.getElementById('userSearch').value.toLowerCase();
+                    const filtered = allUsers.filter(u => 
+                        (u.email || '').toLowerCase().includes(search) ||
+                        (u.full_name || '').toLowerCase().includes(search)
+                    );
+                    renderUsers(filtered);
+                };
+                
+                window.openEditUser = async function(id) {
+                    const user = allUsers.find(u => u.id === id);
+                    if (!user) return;
+                    document.getElementById('editUserId').value = user.id;
+                    document.getElementById('editUserEmail').value = user.email || '';
+                    document.getElementById('editUserName').value = user.full_name || '';
+                    document.getElementById('editUserRole').value = user.role || 'user';
+                    document.getElementById('editUserPassword').value = '';
+                    openModal('editUser');
+                };
+                
+                window.deleteUser = async function(id) {
+                    if (!confirm('Delete this user permanently?')) return;
+                    try {
+                        await supabase.from('user_profiles').delete().eq('id', id);
+                        showToast('✅ User deleted', 'success');
                         loadUsers();
-                    }
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            });
-            
-            // ─── EDIT USER FORM ────────────────────────────────────
-            document.getElementById('editUserForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const id = document.getElementById('editUserId').value;
-                const fullName = document.getElementById('editUserName').value.trim();
-                const role = document.getElementById('editUserRole').value;
-                const password = document.getElementById('editUserPassword').value;
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                };
                 
-                try {
-                    const updates = { full_name: fullName, role, updated_at: new Date().toISOString() };
-                    await supabase.from('user_profiles').update(updates).eq('id', id);
-                    if (password && password.length >= 6) {
-                        showToast('⚠️ Password update requires admin function', 'warning');
-                    }
-                    showToast('✅ User updated', 'success');
-                    closeModal('editUserModal');
-                    loadUsers();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            });
-            
-            // ─── ADD SERVICE FORM ──────────────────────────────────
-            document.getElementById('addServiceForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const name = document.getElementById('newServiceName').value.trim();
-                const type = document.getElementById('newServiceType').value.trim();
-                const price = parseFloat(document.getElementById('newServicePrice').value);
-                const active = document.getElementById('newServiceActive').value === 'true';
-                
-                if (!name || !price) { showToast('Name and price required', 'error'); return; }
-                
-                try {
-                    await supabase.from('service_fees').insert({
-                        service_name: name, service_type: type || null,
-                        fee: price, is_active: active,
-                        created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-                    });
-                    showToast('✅ Service added', 'success');
-                    closeModal('addServiceModal');
-                    document.getElementById('addServiceForm').reset();
-                    loadServices();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            });
-            
-            // ─── EDIT SERVICE FORM ────────────────────────────────
-            document.getElementById('editServiceForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const id = document.getElementById('editServiceId').value;
-                const name = document.getElementById('editServiceName').value.trim();
-                const type = document.getElementById('editServiceType').value.trim();
-                const price = parseFloat(document.getElementById('editServicePrice').value);
-                const active = document.getElementById('editServiceActive').value === 'true';
-                
-                if (!name || !price) { showToast('Name and price required', 'error'); return; }
-                
-                try {
-                    await supabase.from('service_fees').update({
-                        service_name: name, service_type: type || null,
-                        fee: price, is_active: active, updated_at: new Date().toISOString()
-                    }).eq('id', id);
-                    showToast('✅ Service updated', 'success');
-                    closeModal('editServiceModal');
-                    loadServices();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            });
-            
-            // ─── ADD PRICE FORM ────────────────────────────────────
-            document.getElementById('addPriceForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const category = document.getElementById('newPriceCategory').value.trim();
-                const item = document.getElementById('newPriceItem').value.trim();
-                const unitPrice = parseFloat(document.getElementById('newPriceUnit').value);
-                const costPrice = parseFloat(document.getElementById('newPriceCost').value) || null;
-                const active = document.getElementById('newPriceActive').value === 'true';
-                
-                if (!category || !item || !unitPrice) { showToast('Category, item, and unit price required', 'error'); return; }
-                
-                try {
-                    await supabase.from('price_management').insert({
-                        category, item_name: item, unit_price: unitPrice,
-                        cost_price: costPrice, is_active: active,
-                        created_at: new Date().toISOString(), updated_at: new Date().toISOString()
-                    });
-                    showToast('✅ Price item added', 'success');
-                    closeModal('addPriceModal');
-                    document.getElementById('addPriceForm').reset();
-                    loadPrices();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            });
-            
-            // ─── EDIT PRICE FORM ──────────────────────────────────
-            document.getElementById('editPriceForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const id = document.getElementById('editPriceId').value;
-                const category = document.getElementById('editPriceCategory').value.trim();
-                const item = document.getElementById('editPriceItem').value.trim();
-                const unitPrice = parseFloat(document.getElementById('editPriceUnit').value);
-                const costPrice = parseFloat(document.getElementById('editPriceCost').value) || null;
-                const active = document.getElementById('editPriceActive').value === 'true';
-                
-                if (!category || !item || !unitPrice) { showToast('Category, item, and unit price required', 'error'); return; }
-                
-                try {
-                    await supabase.from('price_management').update({
-                        category, item_name: item, unit_price: unitPrice,
-                        cost_price: costPrice, is_active: active, updated_at: new Date().toISOString()
-                    }).eq('id', id);
-                    showToast('✅ Price item updated', 'success');
-                    closeModal('editPriceModal');
-                    loadPrices();
-                } catch (err) { showToast('Error: ' + err.message, 'error'); }
-            });
-            
-            // ─── EXPORT ────────────────────────────────────────────
-            window.exportData = function(type) {
-                let data = [], headers = [], rows = [];
-                if (type === 'requests') {
-                    data = allRequests.slice(0, 20);
-                    headers = ['ID', 'User', 'Service', 'Amount', 'Status', 'Date'];
-                    rows = data.map(r => [r.id.slice(0,8), r.customer_name || 'Unknown', r.service_type || 'N/A', r.amount || 0, r.status || 'pending', formatDate(r.created_at)]);
+                // ─── LOAD PAYMENTS ──────────────────────────────────
+                async function loadPayments() {
+                    try {
+                        const { data, error } = await supabase.from('payments').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false });
+                        if (error) throw error;
+                        allPayments = data || [];
+                        renderPayments(allPayments);
+                        document.getElementById('paymentsCount').textContent = `${allPayments.length} payments`;
+                    } catch (err) { console.error('Payments error:', err); }
                 }
-                const csv = headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = `auto_v_${type}_${Date.now()}.csv`;
-                link.click();
-                showToast('📤 Exported', 'success');
-            };
-            
-            // ─── CHARTS ────────────────────────────────────────────
-            function initCharts() {
-                const ctx1 = document.getElementById('revenueChart').getContext('2d');
-                charts.revenue = new Chart(ctx1, {
-                    type: 'line',
-                    data: {
-                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-                        datasets: [{ label: 'Revenue', data: [1250000, 1420000, 1580000, 1750000, 1920000, 2080000, 2250000, 2400000, 2550000, 2680000, 2820000, 2980000], borderColor: '#eab308', backgroundColor: 'rgba(234,179,8,0.08)', fill: true, tension: 0.4, pointBackgroundColor: '#eab308' }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', callback: v => `KES ${(v/1000).toFixed(0)}k` } } } }
+                
+                function renderPayments(payments) {
+                    const tbody = document.getElementById('paymentsTableBody');
+                    if (!payments || payments.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No payments found</td></tr>`;
+                        return;
+                    }
+                    tbody.innerHTML = payments.slice(0, 50).map(p => {
+                        const status = p.status || 'pending';
+                        const badge = getStatusBadge(status);
+                        const user = p.user_profiles?.full_name || p.user_profiles?.email || 'Unknown';
+                        return `<tr>
+                            <td>${user}</td>
+                            <td style="font-weight:600;color:#22c55e;">${formatKES(p.amount || 0)}</td>
+                            <td style="color:#94a3b8;">${p.payment_method || '—'}</td>
+                            <td><span class="badge ${badge}">${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
+                            <td style="font-size:12px;color:#64748b;">${formatDate(p.created_at)}</td>
+                            <td style="font-size:12px;color:#64748b;">${p.transaction_id || p.mpesa_code || '—'}</td>
+                        </tr>`;
+                    }).join('');
+                }
+                
+                window.filterPayments = function() {
+                    const search = document.getElementById('paymentSearch').value.toLowerCase();
+                    const filter = document.getElementById('paymentFilter').value;
+                    let filtered = allPayments;
+                    if (search) filtered = filtered.filter(p => 
+                        (p.user_profiles?.full_name || '').toLowerCase().includes(search) ||
+                        (p.user_profiles?.email || '').toLowerCase().includes(search)
+                    );
+                    if (filter !== 'all') filtered = filtered.filter(p => p.status === filter);
+                    renderPayments(filtered);
+                };
+                
+                // ─── LOAD SERVICES ──────────────────────────────────
+                async function loadServices() {
+                    try {
+                        const { data, error } = await supabase.from('service_fees').select('*').order('service_name');
+                        if (error) throw error;
+                        allServices = data || [];
+                        renderServices(allServices);
+                    } catch (err) { console.error('Services error:', err); }
+                }
+                
+                function renderServices(services) {
+                    const tbody = document.getElementById('servicesTableBody');
+                    if (!services || services.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:#64748b;">No services found</td></tr>`;
+                        return;
+                    }
+                    tbody.innerHTML = services.map(s => {
+                        const active = s.is_active !== false;
+                        return `<tr>
+                            <td style="font-weight:600;">${s.service_name}</td>
+                            <td style="color:#94a3b8;">${s.service_type || '—'}</td>
+                            <td style="font-weight:600;color:#22c55e;">${formatKES(s.fee || 0)}</td>
+                            <td><span class="badge ${active ? 'badge-active' : 'badge-inactive'}">${active ? 'Yes' : 'No'}</span></td>
+                            <td>
+                                <button class="action-btn edit" onclick="openEditService('${s.id}')">Edit</button>
+                                <button class="action-btn delete" onclick="deleteService('${s.id}')">Delete</button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                }
+                
+                window.filterServices = function() {
+                    const search = document.getElementById('serviceSearch').value.toLowerCase();
+                    const filtered = allServices.filter(s => 
+                        (s.service_name || '').toLowerCase().includes(search) ||
+                        (s.service_type || '').toLowerCase().includes(search)
+                    );
+                    renderServices(filtered);
+                };
+                
+                window.openEditService = async function(id) {
+                    const service = allServices.find(s => s.id === id);
+                    if (!service) return;
+                    document.getElementById('editServiceId').value = service.id;
+                    document.getElementById('editServiceName').value = service.service_name || '';
+                    document.getElementById('editServiceType').value = service.service_type || '';
+                    document.getElementById('editServicePrice').value = service.fee || 0;
+                    document.getElementById('editServiceActive').value = service.is_active !== false ? 'true' : 'false';
+                    openModal('editService');
+                };
+                
+                window.deleteService = async function(id) {
+                    if (!confirm('Delete this service?')) return;
+                    try {
+                        await supabase.from('service_fees').delete().eq('id', id);
+                        showToast('✅ Service deleted', 'success');
+                        loadServices();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                };
+                
+                // ─── LOAD PRICES ────────────────────────────────────
+                async function loadPrices() {
+                    try {
+                        const { data, error } = await supabase.from('price_management').select('*').order('category');
+                        if (error) throw error;
+                        allPrices = data || [];
+                        renderPrices(allPrices);
+                    } catch (err) { console.error('Prices error:', err); }
+                }
+                
+                function renderPrices(prices) {
+                    const tbody = document.getElementById('pricesTableBody');
+                    if (!prices || prices.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No price items found</td></tr>`;
+                        return;
+                    }
+                    tbody.innerHTML = prices.map(p => {
+                        const active = p.is_active !== false;
+                        return `<tr>
+                            <td style="font-weight:600;color:#eab308;">${p.category}</td>
+                            <td>${p.item_name}</td>
+                            <td style="font-weight:600;color:#22c55e;">${formatKES(p.unit_price || 0)}</td>
+                            <td style="color:#94a3b8;">${p.cost_price ? formatKES(p.cost_price) : '—'}</td>
+                            <td><span class="badge ${active ? 'badge-active' : 'badge-inactive'}">${active ? 'Yes' : 'No'}</span></td>
+                            <td>
+                                <button class="action-btn edit" onclick="openEditPrice('${p.id}')">Edit</button>
+                                <button class="action-btn delete" onclick="deletePrice('${p.id}')">Delete</button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                }
+                
+                window.filterPrices = function() {
+                    const search = document.getElementById('priceSearch').value.toLowerCase();
+                    const filtered = allPrices.filter(p => 
+                        (p.category || '').toLowerCase().includes(search) ||
+                        (p.item_name || '').toLowerCase().includes(search)
+                    );
+                    renderPrices(filtered);
+                };
+                
+                window.openEditPrice = async function(id) {
+                    const price = allPrices.find(p => p.id === id);
+                    if (!price) return;
+                    document.getElementById('editPriceId').value = price.id;
+                    document.getElementById('editPriceCategory').value = price.category || '';
+                    document.getElementById('editPriceItem').value = price.item_name || '';
+                    document.getElementById('editPriceUnit').value = price.unit_price || 0;
+                    document.getElementById('editPriceCost').value = price.cost_price || '';
+                    document.getElementById('editPriceActive').value = price.is_active !== false ? 'true' : 'false';
+                    openModal('editPrice');
+                };
+                
+                window.deletePrice = async function(id) {
+                    if (!confirm('Delete this price item?')) return;
+                    try {
+                        await supabase.from('price_management').delete().eq('id', id);
+                        showToast('✅ Price item deleted', 'success');
+                        loadPrices();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                };
+                
+                // ─── MODAL FUNCTIONS ──────────────────────────────────
+                window.openModal = function(type) {
+                    const map = { 'addUser': 'addUserModal', 'editUser': 'editUserModal', 'addService': 'addServiceModal', 'editService': 'editServiceModal', 'addPrice': 'addPriceModal', 'editPrice': 'editPriceModal' };
+                    document.getElementById(map[type]).classList.add('active');
+                };
+                
+                window.closeModal = function(id) {
+                    document.getElementById(id).classList.remove('active');
+                };
+                
+                document.querySelectorAll('.modal').forEach(m => {
+                    m.addEventListener('click', function(e) {
+                        if (e.target === this) this.classList.remove('active');
+                    });
                 });
                 
-                const ctx2 = document.getElementById('serviceChart').getContext('2d');
-                charts.service = new Chart(ctx2, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Valuation', 'Inspection', 'Instant', 'Assessment', 'Fleet', 'Mileage', 'Verification'],
-                        datasets: [{ data: [28, 22, 18, 14, 10, 5, 3], backgroundColor: ['#eab308', '#22c55e', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'], borderColor: '#0a0c15', borderWidth: 2 }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', padding: 12, usePointStyle: true } } }, cutout: '65%' }
-                });
-                
-                const ctx3 = document.getElementById('revenueByServiceChart').getContext('2d');
-                charts.revenueByService = new Chart(ctx3, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Valuation', 'Inspection', 'Instant', 'Assessment', 'Fleet', 'Mileage', 'Verification'],
-                        datasets: [{ label: 'Revenue (KES)', data: [3200000, 2800000, 1800000, 1500000, 1200000, 800000, 500000], backgroundColor: ['#eab308', '#22c55e', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'], borderRadius: 6 }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', callback: v => `KES ${(v/1000).toFixed(0)}k` } } } }
-                });
-                
-                const ctx4 = document.getElementById('requestsTrendChart').getContext('2d');
-                charts.requestsTrend = new Chart(ctx4, {
-                    type: 'line',
-                    data: {
-                        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-                        datasets: [{ label: 'Requests', data: [45, 62, 58, 78], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', fill: true, tension: 0.4, pointBackgroundColor: '#22c55e' }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } } } }
-                });
-                
-                const ctx5 = document.getElementById('userGrowthChart').getContext('2d');
-                charts.userGrowth = new Chart(ctx5, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-                        datasets: [{ label: 'New Users', data: [45, 52, 60, 55, 70, 65, 80, 75, 90, 85, 95, 110], backgroundColor: 'rgba(234,179,8,0.7)', borderRadius: 6 }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } } } }
-                });
-            }
-            
-            // ─── TABS ──────────────────────────────────────────────
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-                    document.getElementById(`tab-${this.dataset.tab}`).classList.add('active');
-                });
-            });
-            
-            // ─── LOGOUT ────────────────────────────────────────────
-            document.getElementById('logoutBtn').addEventListener('click', async () => {
-                await supabase.auth.signOut();
-                window.location.href = 'login.html';
-            });
-            
-            // ─── CHECK SESSION ────────────────────────────────────
-            async function checkSession() {
-                try {
-                    const { data: { user }, error } = await supabase.auth.getUser();
-                    if (error || !user) { window.location.href = 'login.html'; return false; }
-                    const profile = await getProfile(user.id);
-                    if (profile?.role !== 'admin') { window.location.href = 'dashboard.html'; return false; }
-                    currentUser = user;
-                    document.getElementById('userAvatar').textContent = (profile?.full_name || user.email)[0].toUpperCase();
-                    document.getElementById('userEmail').textContent = user.email;
-                    document.getElementById('userRole').textContent = profile?.role || 'Admin';
-                    return true;
-                } catch (err) { window.location.href = 'login.html'; return false; }
-            }
-            
-            // ─── INIT ──────────────────────────────────────────────
-            async function init() {
-                console.log('🚀 Initializing AUTO-V Admin Dashboard...');
-                try {
-                    const isAdmin = await checkSession();
-                    if (!isAdmin) return;
+                // ─── ADD USER FORM ──────────────────────────────────
+                document.getElementById('addUserForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const email = document.getElementById('newUserEmail').value.trim();
+                    const password = document.getElementById('newUserPassword').value;
+                    const fullName = document.getElementById('newUserName').value.trim();
+                    const role = document.getElementById('newUserRole').value;
                     
-                    await Promise.all([loadStats(), loadRequests(), loadUsers(), loadPayments(), loadServices(), loadPrices()]);
-                    initCharts();
-                    hideLoading();
-                    console.log('✅ Admin Dashboard initialized');
-                } catch (err) {
-                    console.error('Init error:', err);
-                    hideLoading();
-                    showToast('Failed to load dashboard', 'error');
+                    if (!email || !password) { showToast('Email and password required', 'error'); return; }
+                    if (password.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+                    
+                    try {
+                        const { data, error } = await supabase.auth.signUp({
+                            email, password,
+                            options: { data: { full_name: fullName || email.split('@')[0], role } }
+                        });
+                        if (error) throw error;
+                        if (data.user) {
+                            await supabase.from('user_profiles').insert({
+                                id: data.user.id, email, full_name: fullName || email.split('@')[0],
+                                role, first_login: true, has_vehicle: false, login_count: 0,
+                                created_at: new Date().toISOString()
+                            });
+                            showToast('✅ User created', 'success');
+                            closeModal('addUserModal');
+                            document.getElementById('addUserForm').reset();
+                            loadUsers();
+                        }
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                });
+                
+                // ─── EDIT USER FORM ────────────────────────────────
+                document.getElementById('editUserForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const id = document.getElementById('editUserId').value;
+                    const fullName = document.getElementById('editUserName').value.trim();
+                    const role = document.getElementById('editUserRole').value;
+                    const password = document.getElementById('editUserPassword').value;
+                    
+                    try {
+                        const updates = { full_name: fullName, role, updated_at: new Date().toISOString() };
+                        await supabase.from('user_profiles').update(updates).eq('id', id);
+                        if (password && password.length >= 6) {
+                            showToast('⚠️ Password update requires admin function', 'warning');
+                        }
+                        showToast('✅ User updated', 'success');
+                        closeModal('editUserModal');
+                        loadUsers();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                });
+                
+                // ─── ADD SERVICE FORM ──────────────────────────────
+                document.getElementById('addServiceForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const name = document.getElementById('newServiceName').value.trim();
+                    const type = document.getElementById('newServiceType').value.trim();
+                    const price = parseFloat(document.getElementById('newServicePrice').value);
+                    const active = document.getElementById('newServiceActive').value === 'true';
+                    
+                    if (!name || !price) { showToast('Name and price required', 'error'); return; }
+                    
+                    try {
+                        await supabase.from('service_fees').insert({
+                            service_name: name, service_type: type || null,
+                            fee: price, is_active: active,
+                            created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+                        });
+                        showToast('✅ Service added', 'success');
+                        closeModal('addServiceModal');
+                        document.getElementById('addServiceForm').reset();
+                        loadServices();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                });
+                
+                // ─── EDIT SERVICE FORM ────────────────────────────
+                document.getElementById('editServiceForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const id = document.getElementById('editServiceId').value;
+                    const name = document.getElementById('editServiceName').value.trim();
+                    const type = document.getElementById('editServiceType').value.trim();
+                    const price = parseFloat(document.getElementById('editServicePrice').value);
+                    const active = document.getElementById('editServiceActive').value === 'true';
+                    
+                    if (!name || !price) { showToast('Name and price required', 'error'); return; }
+                    
+                    try {
+                        await supabase.from('service_fees').update({
+                            service_name: name, service_type: type || null,
+                            fee: price, is_active: active, updated_at: new Date().toISOString()
+                        }).eq('id', id);
+                        showToast('✅ Service updated', 'success');
+                        closeModal('editServiceModal');
+                        loadServices();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                });
+                
+                // ─── ADD PRICE FORM ────────────────────────────────
+                document.getElementById('addPriceForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const category = document.getElementById('newPriceCategory').value.trim();
+                    const item = document.getElementById('newPriceItem').value.trim();
+                    const unitPrice = parseFloat(document.getElementById('newPriceUnit').value);
+                    const costPrice = parseFloat(document.getElementById('newPriceCost').value) || null;
+                    const active = document.getElementById('newPriceActive').value === 'true';
+                    
+                    if (!category || !item || !unitPrice) { showToast('Category, item, and unit price required', 'error'); return; }
+                    
+                    try {
+                        await supabase.from('price_management').insert({
+                            category, item_name: item, unit_price: unitPrice,
+                            cost_price: costPrice, is_active: active,
+                            created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+                        });
+                        showToast('✅ Price item added', 'success');
+                        closeModal('addPriceModal');
+                        document.getElementById('addPriceForm').reset();
+                        loadPrices();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                });
+                
+                // ─── EDIT PRICE FORM ──────────────────────────────
+                document.getElementById('editPriceForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const id = document.getElementById('editPriceId').value;
+                    const category = document.getElementById('editPriceCategory').value.trim();
+                    const item = document.getElementById('editPriceItem').value.trim();
+                    const unitPrice = parseFloat(document.getElementById('editPriceUnit').value);
+                    const costPrice = parseFloat(document.getElementById('editPriceCost').value) || null;
+                    const active = document.getElementById('editPriceActive').value === 'true';
+                    
+                    if (!category || !item || !unitPrice) { showToast('Category, item, and unit price required', 'error'); return; }
+                    
+                    try {
+                        await supabase.from('price_management').update({
+                            category, item_name: item, unit_price: unitPrice,
+                            cost_price: costPrice, is_active: active, updated_at: new Date().toISOString()
+                        }).eq('id', id);
+                        showToast('✅ Price item updated', 'success');
+                        closeModal('editPriceModal');
+                        loadPrices();
+                    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                });
+                
+                // ─── EXPORT ────────────────────────────────────────────
+                window.exportData = function(type) {
+                    let data = [], headers = [], rows = [];
+                    if (type === 'requests') {
+                        data = allRequests.slice(0, 20);
+                        headers = ['ID', 'User', 'Service', 'Amount', 'Status', 'Date'];
+                        rows = data.map(r => [r.id.slice(0,8), r.customer_name || 'Unknown', r.service_type || 'N/A', r.amount || 0, r.status || 'pending', formatDate(r.created_at)]);
+                    }
+                    const csv = headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `auto_v_${type}_${Date.now()}.csv`;
+                    link.click();
+                    showToast('📤 Exported', 'success');
+                };
+                
+                // ─── CHARTS ────────────────────────────────────────────
+                function initCharts() {
+                    const ctx1 = document.getElementById('revenueChart').getContext('2d');
+                    charts.revenue = new Chart(ctx1, {
+                        type: 'line',
+                        data: {
+                            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            datasets: [{ label: 'Revenue', data: [1250000, 1420000, 1580000, 1750000, 1920000, 2080000, 2250000, 2400000, 2550000, 2680000, 2820000, 2980000], borderColor: '#eab308', backgroundColor: 'rgba(234,179,8,0.08)', fill: true, tension: 0.4, pointBackgroundColor: '#eab308' }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', callback: v => `KES ${(v/1000).toFixed(0)}k` } } } }
+                    });
+                    
+                    const ctx2 = document.getElementById('serviceChart').getContext('2d');
+                    charts.service = new Chart(ctx2, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Valuation', 'Inspection', 'Instant', 'Assessment', 'Fleet', 'Mileage', 'Verification'],
+                            datasets: [{ data: [28, 22, 18, 14, 10, 5, 3], backgroundColor: ['#eab308', '#22c55e', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'], borderColor: '#0a0c15', borderWidth: 2 }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', padding: 12, usePointStyle: true } } }, cutout: '65%' }
+                    });
+                    
+                    const ctx3 = document.getElementById('revenueByServiceChart').getContext('2d');
+                    charts.revenueByService = new Chart(ctx3, {
+                        type: 'bar',
+                        data: {
+                            labels: ['Valuation', 'Inspection', 'Instant', 'Assessment', 'Fleet', 'Mileage', 'Verification'],
+                            datasets: [{ label: 'Revenue (KES)', data: [3200000, 2800000, 1800000, 1500000, 1200000, 800000, 500000], backgroundColor: ['#eab308', '#22c55e', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'], borderRadius: 6 }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', callback: v => `KES ${(v/1000).toFixed(0)}k` } } } }
+                    });
+                    
+                    const ctx4 = document.getElementById('requestsTrendChart').getContext('2d');
+                    charts.requestsTrend = new Chart(ctx4, {
+                        type: 'line',
+                        data: {
+                            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                            datasets: [{ label: 'Requests', data: [45, 62, 58, 78], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', fill: true, tension: 0.4, pointBackgroundColor: '#22c55e' }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } } } }
+                    });
+                    
+                    const ctx5 = document.getElementById('userGrowthChart').getContext('2d');
+                    charts.userGrowth = new Chart(ctx5, {
+                        type: 'bar',
+                        data: {
+                            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                            datasets: [{ label: 'New Users', data: [45, 52, 60, 55, 70, 65, 80, 75, 90, 85, 95, 110], backgroundColor: 'rgba(234,179,8,0.7)', borderRadius: 6 }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } } } }
+                    });
                 }
-            }
-            
-            // ─── AUTO-REFRESH ────────────────────────────────────
-            setInterval(() => { loadStats(); loadRequests(); loadUsers(); loadPayments(); }, 60000);
-            
-            // ─── START ────────────────────────────────────────────
-            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-            else init();
-            
+                
+                // ─── TABS ──────────────────────────────────────────────
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                        document.getElementById(`tab-${this.dataset.tab}`).classList.add('active');
+                    });
+                });
+                
+                // ─── LOGOUT ────────────────────────────────────────────
+                document.getElementById('logoutBtn').addEventListener('click', async () => {
+                    await supabase.auth.signOut();
+                    window.location.href = 'login.html';
+                });
+                
+                // ─── CHECK SESSION ────────────────────────────────────
+                async function checkSession() {
+                    try {
+                        const { data: { user }, error } = await supabase.auth.getUser();
+                        if (error || !user) { window.location.href = 'login.html'; return false; }
+                        const profile = await getProfile(user.id);
+                        if (profile?.role !== 'admin') { window.location.href = 'dashboard.html'; return false; }
+                        currentUser = user;
+                        document.getElementById('userAvatar').textContent = (profile?.full_name || user.email)[0].toUpperCase();
+                        document.getElementById('userEmail').textContent = user.email;
+                        document.getElementById('userRole').textContent = profile?.role || 'Admin';
+                        return true;
+                    } catch (err) { window.location.href = 'login.html'; return false; }
+                }
+                
+                // ─── REAL-TIME LISTENER ──────────────────────────────
+                function setupRealtime() {
+                    // Listen for changes and refresh data
+                    autoV.addListener(function(data) {
+                        console.log('🔄 Real-time update received in Admin');
+                        // Refresh all data
+                        loadStats();
+                        loadRequests();
+                        loadUsers();
+                        loadPayments();
+                        loadServices();
+                        loadPrices();
+                    });
+                    
+                    // Subscribe to real-time changes
+                    autoV.subscribeToChanges();
+                }
+                
+                // ─── INIT ──────────────────────────────────────────────
+                async function init() {
+                    console.log('🚀 Initializing AUTO-V Admin Dashboard...');
+                    try {
+                        const isAdmin = await checkSession();
+                        if (!isAdmin) return;
+                        
+                        // Load all data
+                        await Promise.all([loadStats(), loadRequests(), loadUsers(), loadPayments(), loadServices(), loadPrices()]);
+                        initCharts();
+                        
+                        // Set up real-time sync
+                        setupRealtime();
+                        
+                        hideLoading();
+                        isInitialized = true;
+                        console.log('✅ Admin Dashboard initialized with real-time sync');
+                    } catch (err) {
+                        console.error('Init error:', err);
+                        hideLoading();
+                        showToast('Failed to load dashboard', 'error');
+                    }
+                }
+                
+                // ─── AUTO-REFRESH (fallback) ─────────────────────────
+                setInterval(() => {
+                    if (isInitialized) {
+                        loadStats();
+                        loadRequests();
+                        loadUsers();
+                        loadPayments();
+                    }
+                }, 60000);
+                
+                // ─── START ────────────────────────────────────────────
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', init);
+                } else {
+                    init();
+                }
+                
+            }); // end waitForAutoV
         })();
     </script>
 </body>
