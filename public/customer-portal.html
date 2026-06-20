@@ -102,6 +102,8 @@
         .btn-secondary:hover { background: #475569; }
         .btn-success { background: #22c55e; color: #fff; }
         .btn-success:hover { background: #16a34a; transform: translateY(-2px); }
+        .btn-danger { background: #dc2626; color: #fff; }
+        .btn-danger:hover { background: #b91c1c; transform: translateY(-2px); }
         .nav-buttons { display: flex; justify-content: space-between; margin-top: 30px; gap: 10px; }
         .nav-buttons button { flex: 1; }
         
@@ -273,6 +275,23 @@
             margin-top: 20px;
             color: #94a3b8;
             font-size: 14px;
+        }
+        
+        /* Payment status indicators */
+        .payment-status-icon {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .payment-status-icon.success { background: #22c55e; }
+        .payment-status-icon.pending { background: #f59e0b; animation: pulse 1.5s ease-in-out infinite; }
+        .payment-status-icon.failed { background: #ef4444; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
         }
         
         @media (max-width: 768px) {
@@ -464,6 +483,7 @@
                 </div>
                 <div style="background:#1e293b;border-radius:12px;padding:15px;margin-bottom:20px;">
                     <p style="color:#94a3b8;font-size:12px;">💡 M-Pesa Paybill: <strong style="color:#eab308;">4095377</strong> | Account: <strong style="color:#eab308;">AUTO-V</strong></p>
+                    <p style="color:#94a3b8;font-size:11px;margin-top:8px;">You will receive a prompt on your phone. Enter your M-Pesa PIN to confirm payment.</p>
                 </div>
                 <div class="nav-buttons">
                     <button type="button" class="btn btn-secondary" id="backToPurpose">← Back</button>
@@ -518,6 +538,9 @@
             const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
             
+            // ─── BACKEND API URL ──────────────────────────────────────────
+            const API_BASE_URL = 'https://auto-v-backend.onrender.com/api';
+            
             // ─── Initialize Supabase ──────────────────────────────────────
             if (typeof window.__supabase === 'undefined') {
                 window.__supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -531,6 +554,7 @@
             let clientType = 'individual';
             let currentPaymentStatus = null;
             let paymentInProgress = false;
+            let paymentTransactionId = null;
             
             // ─── Service Data ──────────────────────────────────────────
             const services = {
@@ -1012,21 +1036,180 @@
                 payBtn.innerHTML = '<span class="spinner"></span> Processing...';
                 
                 const statusEl = document.getElementById('paymentStatus');
-                statusEl.className = 'payment-status pending';
-                statusEl.textContent = '⏳ Initiating payment...';
+                statusEl.className = 'payment-status processing';
+                statusEl.textContent = '⏳ ⏳ Initiating payment... Please check your phone for the M-Pesa prompt.';
                 statusEl.style.display = 'block';
+                document.getElementById('paymentRetry').style.display = 'none';
                 
-                setTimeout(() => {
-                    statusEl.className = 'payment-status completed';
-                    statusEl.textContent = '✅ Payment confirmed!';
-                    currentPaymentStatus = 'completed';
-                    payBtn.innerHTML = '✅ Payment Complete';
-                    showMessage('Payment successful!', 'success');
-                    showStep(6);
-                    payBtn.disabled = false;
+                try {
+                    const amount = getServicePrice(selectedService);
+                    const serviceName = getServiceName(selectedService);
+                    
+                    // Build customer data
+                    const customerData = {
+                        name: document.getElementById('custName').value.trim(),
+                        phone: document.getElementById('custPhone').value.trim(),
+                        email: document.getElementById('custEmail').value.trim(),
+                        id_number: document.getElementById('custId').value.trim()
+                    };
+                    
+                    // CALL REAL PAYMENT BACKEND
+                    const response = await fetch(`${API_BASE_URL}/payments/mpesa`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            phone_number: mpesaPhone,
+                            amount: amount,
+                            service: selectedService,
+                            purpose: selectedPurpose,
+                            customer: customerData,
+                            user_id: currentUser?.id || null
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Payment initiation failed');
+                    }
+                    
+                    // Payment initiated successfully
+                    paymentTransactionId = data.transaction_id || data.id || null;
+                    
+                    statusEl.className = 'payment-status pending';
+                    statusEl.innerHTML = `
+                        <span class="payment-status-icon pending"></span>
+                        ⏳ Awaiting M-Pesa confirmation...
+                        <br><small style="font-weight:400;opacity:0.8;">You will receive a prompt on your phone. Enter your PIN to confirm.</small>
+                    `;
+                    statusEl.style.display = 'block';
+                    
+                    showToast('📱 Check your phone for M-Pesa prompt!', 'warning');
+                    
+                    // Poll for payment confirmation
+                    await pollPaymentStatus(paymentTransactionId, statusEl, payBtn, originalText);
+                    
+                } catch (err) {
+                    console.error('Payment error:', err);
+                    statusEl.className = 'payment-status failed';
+                    statusEl.innerHTML = `
+                        <span class="payment-status-icon failed"></span>
+                        ❌ Payment failed: ${err.message || 'Please try again'}
+                    `;
+                    statusEl.style.display = 'block';
+                    document.getElementById('paymentRetry').style.display = 'block';
+                    
+                    showMessage('Payment failed: ' + err.message, 'error');
                     paymentInProgress = false;
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = originalText;
+                }
+            }
+            
+            // ─── Poll Payment Status ─────────────────────────────────────
+            async function pollPaymentStatus(transactionId, statusEl, payBtn, originalText) {
+                let attempts = 0;
+                const maxAttempts = 20; // 20 * 3 seconds = 60 seconds max
+                
+                const pollInterval = setInterval(async () => {
+                    attempts++;
+                    
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/payments/status/${transactionId}`);
+                        const data = await response.json();
+                        
+                        if (data.status === 'completed' || data.status === 'success') {
+                            clearInterval(pollInterval);
+                            
+                            // Payment confirmed
+                            currentPaymentStatus = 'completed';
+                            statusEl.className = 'payment-status completed';
+                            statusEl.innerHTML = `
+                                <span class="payment-status-icon success"></span>
+                                ✅ Payment confirmed successfully!
+                                <br><small style="font-weight:400;opacity:0.8;">Transaction ID: ${transactionId}</small>
+                            `;
+                            statusEl.style.display = 'block';
+                            
+                            payBtn.innerHTML = '✅ Payment Complete';
+                            payBtn.disabled = false;
+                            paymentInProgress = false;
+                            
+                            showToast('✅ Payment successful! Proceed to vehicle data.', 'success');
+                            
+                            // Proceed to vehicle data step
+                            setTimeout(() => {
+                                showStep(6);
+                            }, 1500);
+                            
+                            return;
+                            
+                        } else if (data.status === 'failed' || data.status === 'cancelled') {
+                            clearInterval(pollInterval);
+                            
+                            statusEl.className = 'payment-status failed';
+                            statusEl.innerHTML = `
+                                <span class="payment-status-icon failed"></span>
+                                ❌ Payment ${data.status}: ${data.message || 'Transaction failed'}
+                            `;
+                            statusEl.style.display = 'block';
+                            document.getElementById('paymentRetry').style.display = 'block';
+                            
+                            payBtn.disabled = false;
+                            payBtn.innerHTML = originalText;
+                            paymentInProgress = false;
+                            
+                            showMessage('Payment ' + data.status, 'error');
+                            return;
+                        }
+                        
+                        // Update status message
+                        statusEl.innerHTML = `
+                            <span class="payment-status-icon pending"></span>
+                            ⏳ Waiting for M-Pesa confirmation... (${attempts}/${maxAttempts})
+                            <br><small style="font-weight:400;opacity:0.8;">Did you enter your PIN on your phone?</small>
+                        `;
+                        
+                    } catch (err) {
+                        console.error('Polling error:', err);
+                        // Continue polling, might be network hiccup
+                    }
+                    
+                    if (attempts >= maxAttempts) {
+                        clearInterval(pollInterval);
+                        statusEl.className = 'payment-status pending';
+                        statusEl.innerHTML = `
+                            <span class="payment-status-icon pending"></span>
+                            ⏳ Payment still pending...
+                            <br><small style="font-weight:400;opacity:0.8;">If you've already confirmed, please wait a moment.</small>
+                        `;
+                        // Don't fail completely, let user check manually
+                        document.getElementById('paymentRetry').style.display = 'block';
+                        document.getElementById('paymentRetry').innerHTML = `
+                            <button class="btn btn-secondary" id="checkPaymentBtn">🔄 Check Payment Status</button>
+                        `;
+                        document.getElementById('checkPaymentBtn').addEventListener('click', () => {
+                            pollPaymentStatus(transactionId, statusEl, payBtn, originalText);
+                        });
+                        
+                        payBtn.disabled = false;
+                        payBtn.innerHTML = originalText;
+                        paymentInProgress = false;
+                    }
+                    
                 }, 3000);
             }
+            
+            // ─── Retry Payment ──────────────────────────────────────────
+            document.getElementById('retryPaymentBtn').addEventListener('click', () => {
+                document.getElementById('paymentStatus').style.display = 'none';
+                document.getElementById('paymentRetry').style.display = 'none';
+                paymentInProgress = false;
+                document.getElementById('payBtn').disabled = false;
+                document.getElementById('payBtn').innerHTML = '💳 Pay Now';
+            });
             
             // ─── SUBMIT VEHICLE REQUEST ──────────────────────────────────
             async function submitVehicleRequest(e) {
@@ -1108,6 +1291,7 @@
                             valuation_purpose: selectedPurpose,
                             amount: getServicePrice(selectedService),
                             payment_status: 'paid',
+                            payment_transaction_id: paymentTransactionId,
                             status: 'completed',
                             result: result,
                             created_at: new Date().toISOString()
@@ -1139,6 +1323,11 @@
                                 <span style="color:#94a3b8;">Certificate Number</span>
                                 <strong style="color:#eab308;font-size:12px;">${result.certificate_number}</strong>
                             </div>
+                            ${paymentTransactionId ? `
+                            <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Transaction ID</span>
+                                <strong style="color:#22c55e;font-size:12px;">${paymentTransactionId}</strong>
+                            </div>` : ''}
                         </div>
                         <div style="margin-top:20px;padding:15px;background:#14532d;border-radius:12px;">
                             <p style="color:#22c55e;font-weight:600;">✅ Request Submitted!</p>
