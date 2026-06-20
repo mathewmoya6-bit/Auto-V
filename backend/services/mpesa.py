@@ -1,8 +1,4 @@
-# services/mpesa.py – PRODUCTION READY WITH YOUR REAL CREDENTIALS
-# ✅ Your actual production credentials
-# ✅ Shortcode: 4095377
-# ✅ Production environment
-# ✅ Full security implementation
+# services/mpesa.py – FIXED: Remove non-existent column
 
 import os
 import base64
@@ -21,31 +17,27 @@ from services.supabase_client import get_supabase
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-# ─── YOUR PRODUCTION CREDENTIALS ─────────────────────────────
-# REAL Production credentials - DO NOT COMMIT TO GITHUB
-# Use environment variables in production
+# ─── PRODUCTION CONFIGURATION ────────────────────────────────
 MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', 'LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv')
 MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', 'aGGo8AuPJVpsZLcs')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '7eb17a031bdfd5b4251863a1ddb72c5b9cd14f3385aa6a258c1442a0116e8277')
-MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')  # Your Paybill
-MPESA_SHORTCODE_TYPE = os.getenv('MPESA_SHORTCODE_TYPE', 'paybill')  # paybill
-CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')  # MUST be set in production
-MPESA_ENV = os.getenv('MPESA_ENV', 'production')  # PRODUCTION
+MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
+MPESA_SHORTCODE_TYPE = os.getenv('MPESA_SHORTCODE_TYPE', 'paybill')
+CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')
+MPESA_ENV = os.getenv('MPESA_ENV', 'production').lower()
 
-# ─── PRODUCTION URL ──────────────────────────────────────────
 BASE_URL = 'https://api.safaricom.co.ke'  # Production endpoint
 
-# ─── TIMEOUTS ──────────────────────────────────────────────────
 REQUEST_TIMEOUT = 30
 MAX_RETRIES = 3
 RETRY_DELAY = 2
 
-# ─── TOKEN CACHE ─────────────────────────────────────────────
 _token_cache = {
     'token': None,
     'expires_at': None,
     'acquired_at': None
 }
+
 
 # ─── VALIDATION ──────────────────────────────────────────────
 def is_mpesa_configured() -> bool:
@@ -62,7 +54,7 @@ def is_mpesa_configured() -> bool:
         logger.error(f"❌ Missing configuration: {', '.join(missing)}")
         return False
     
-    if len(MPESA_SHORTCODE) != 7:  # 4095377 is 7 digits
+    if len(MPESA_SHORTCODE) != 7:
         logger.error(f"❌ Invalid shortcode: {MPESA_SHORTCODE}")
         return False
     
@@ -75,15 +67,11 @@ def is_mpesa_configured() -> bool:
 
 
 def verify_safaricom_ip(ip: str) -> bool:
-    """
-    Verify if an IP address belongs to Safaricom's production ranges.
-    CRITICAL for production security.
-    """
+    """Verify if an IP address belongs to Safaricom's production ranges."""
     if not ip:
         logger.warning("⚠️ No IP address provided for verification")
         return False
     
-    # Safaricom production IP ranges
     SAFARICOM_IP_RANGES = [
         '196.201.214.0/24',
         '196.201.215.0/24', 
@@ -113,27 +101,21 @@ def verify_safaricom_ip(ip: str) -> bool:
 
 
 def normalize_phone(phone: str) -> str:
-    """
-    Normalize phone number to 254XXXXXXXXX format for production.
-    """
+    """Normalize phone number to 254XXXXXXXXX format."""
     if not phone:
         raise ValueError("Phone number is required")
     
-    # Remove any non-digit characters
     phone = ''.join(filter(str.isdigit, phone))
     
-    # Remove leading 0
     if phone.startswith('0'):
         phone = phone[1:]
     
-    # Add 254 if missing
     if not phone.startswith('254'):
         if phone.startswith('7') and len(phone) == 9:
             phone = '254' + phone
         elif len(phone) == 10 and phone.startswith('7'):
             phone = '254' + phone[1:]
     
-    # Validate final format
     if not phone.startswith('254') or len(phone) != 12:
         raise ValueError(f"Invalid phone number format: {phone}")
     
@@ -142,13 +124,9 @@ def normalize_phone(phone: str) -> str:
 
 # ─── TOKEN MANAGEMENT ────────────────────────────────────────
 def get_mpesa_token(force: bool = False) -> str:
-    """
-    Get M-Pesa access token with caching.
-    Production tokens expire after 3600 seconds.
-    """
+    """Get M-Pesa access token with caching."""
     global _token_cache
     
-    # Check cache
     if not force and _token_cache['token'] and _token_cache['expires_at']:
         if datetime.now() < _token_cache['expires_at']:
             logger.debug("✅ Using cached M-Pesa token")
@@ -156,7 +134,6 @@ def get_mpesa_token(force: bool = False) -> str:
     
     logger.info("🔄 Acquiring new M-Pesa access token")
     
-    # Prepare authentication
     auth_string = f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}"
     auth_bytes = auth_string.encode('ascii')
     auth_base64 = base64.b64encode(auth_bytes).decode('ascii')
@@ -190,7 +167,6 @@ def get_mpesa_token(force: bool = False) -> str:
             
             token = data['access_token']
             
-            # Cache token (expire 60 seconds early for safety)
             _token_cache = {
                 'token': token,
                 'expires_at': datetime.now() + timedelta(seconds=3540),
@@ -216,42 +192,31 @@ def initiate_stk_push(
     service: str = "AUTO-V",
     account_reference: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Initiate STK Push payment in production.
-    Using your Paybill: 4095377
-    """
+    """Initiate STK Push payment in production."""
     if not is_mpesa_configured():
         raise Exception("M-Pesa is not properly configured")
     
-    # Validate amount
     if amount <= 0:
         raise ValueError("Amount must be greater than 0")
     
     if amount < 1:
         raise ValueError("Minimum payment is 1 KES")
     
-    # Normalize phone
     phone = normalize_phone(phone)
-    
-    # Get token
     token = get_mpesa_token()
     
-    # Generate timestamp
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    
-    # Generate password
     password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
     password = base64.b64encode(password_str.encode()).decode()
     
-    # Prepare payload for Paybill (4095377)
     payload = {
         "BusinessShortCode": MPESA_SHORTCODE,
         "Password": password,
         "Timestamp": timestamp,
-        "TransactionType": "CustomerPayBillOnline",  # Paybill
+        "TransactionType": "CustomerPayBillOnline",
         "Amount": int(round(amount)),
         "PartyA": phone,
-        "PartyB": MPESA_SHORTCODE,  # Your Paybill
+        "PartyB": MPESA_SHORTCODE,
         "PhoneNumber": phone,
         "CallBackURL": CALLBACK_URL,
         "AccountReference": account_reference or f"AUTO-{payment_id[:8].upper()}",
@@ -288,7 +253,6 @@ def initiate_stk_push(
             data = response.json()
             logger.info(f"📥 STK Push response: {data}")
             
-            # Check for errors
             if data.get("ResponseCode") != "0":
                 error_msg = data.get("ResponseDescription", "Unknown error")
                 raise Exception(f"M-Pesa error: {error_msg}")
@@ -297,13 +261,13 @@ def initiate_stk_push(
             if not checkout_id:
                 raise Exception("No CheckoutRequestID returned from M-Pesa")
             
-            # Update payment with checkout ID
+            # ─── FIXED: Update payment with checkout ID ──────────────
+            # Only update columns that exist in the database
             supabase = get_supabase()
             result = supabase.table('payments').update({
                 'checkout_request_id': checkout_id,
                 'merchant_request_id': data.get("MerchantRequestID"),
-                'mpesa_request_sent_at': datetime.now().isoformat(),
-                'mpesa_response': data
+                'updated_at': datetime.now().isoformat()
             }).eq('id', payment_id).execute()
             
             if hasattr(result, 'error') and result.error:
@@ -329,9 +293,7 @@ def initiate_stk_push(
 
 # ─── STATUS QUERY ────────────────────────────────────────────
 def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
-    """
-    Query payment status from M-Pesa.
-    """
+    """Query payment status from M-Pesa."""
     if not checkout_request_id:
         raise ValueError("CheckoutRequestID is required")
     
@@ -388,25 +350,20 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
 
 # ─── CALLBACK HANDLER ────────────────────────────────────────
 def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) -> Dict[str, Any]:
-    """
-    Handle M-Pesa callback with proper validation and transaction processing.
-    """
+    """Handle M-Pesa callback with proper validation."""
     try:
         logger.info("=" * 60)
         logger.info("📥 Processing M-Pesa callback")
         
-        # ─── IP Validation (PRODUCTION) ─────────────────────────
         if client_ip:
             if not verify_safaricom_ip(client_ip):
                 logger.error(f"❌ Callback from unauthorized IP: {client_ip}")
                 return {"ResultCode": 1, "ResultDesc": "Unauthorized IP"}
         
-        # ─── Validate callback data ────────────────────────────
         if not callback_data:
             logger.error("❌ No callback data received")
             return {"ResultCode": 1, "ResultDesc": "No data"}
         
-        # Extract stkCallback
         stk = callback_data.get("Body", {}).get("stkCallback", {})
         
         if not stk:
@@ -423,7 +380,6 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             logger.error("❌ Missing CheckoutRequestID in callback")
             return {"ResultCode": 1, "ResultDesc": "Missing CheckoutRequestID"}
         
-        # ─── Extract transaction details ──────────────────────
         transaction_id = None
         amount = None
         phone = None
@@ -441,10 +397,8 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
                 elif name == "PhoneNumber":
                     phone = value
         
-        # ─── Process payment ──────────────────────────────────
         supabase = get_supabase()
         
-        # Find payment
         payment_result = supabase.table('payments') \
             .select("*") \
             .eq("checkout_request_id", checkout_id) \
@@ -457,14 +411,12 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         payment = payment_result.data[0]
         payment_id = payment["id"]
         
-        # Check if already processed
         if payment.get("status") in ["completed", "failed"]:
             logger.info(f"ℹ️ Payment {payment_id} already processed: {payment.get('status')}")
             return {"ResultCode": 0, "ResultDesc": "Already processed"}
         
-        # ─── Update payment status ─────────────────────────────
+        # ─── FIXED: Only update columns that exist ──────────────
         if result_code == "0" and transaction_id:
-            # Success
             update_data = {
                 "status": "completed",
                 "transaction_id": transaction_id,
@@ -477,36 +429,29 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             logger.info(f"✅ Payment {payment_id} completed! Receipt: {transaction_id}")
             
         elif result_code in ["1037", "1032"]:
-            # User cancelled
             update_data = {
                 "status": "failed",
                 "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or "Transaction cancelled by user",
-                "failed_at": datetime.now().isoformat()
+                "mpesa_result_desc": result_desc or "Transaction cancelled by user"
             }
             logger.warning(f"⚠️ Payment {payment_id} cancelled by user")
             
         elif result_code == "2001":
-            # Timeout - still pending
             update_data = {
                 "status": "pending",
                 "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or "Transaction still processing",
-                "mpesa_timeout_at": datetime.now().isoformat()
+                "mpesa_result_desc": result_desc or "Transaction still processing"
             }
             logger.warning(f"⏳ Payment {payment_id} still pending (timeout)")
             
         else:
-            # Other error
             update_data = {
                 "status": "failed",
                 "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or "Transaction failed",
-                "failed_at": datetime.now().isoformat()
+                "mpesa_result_desc": result_desc or "Transaction failed"
             }
             logger.error(f"❌ Payment {payment_id} failed: {result_desc}")
         
-        # Update database
         result = supabase.table('payments').update(update_data).eq("id", payment_id).execute()
         
         if hasattr(result, 'error') and result.error:
