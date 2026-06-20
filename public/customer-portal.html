@@ -529,7 +529,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL - FIXED PAYMENT (NO PHONE_NUMBER COLUMN)
+        // AUTO-V CUSTOMER PORTAL - FIXED PAYMENT (ADAPTS TO SCHEMA)
         // ============================================================
         
         (function() {
@@ -942,6 +942,24 @@
                 };
             });
             
+            // ─── Get Table Columns ──────────────────────────────────────
+            async function getTableColumns(tableName) {
+                try {
+                    const { data, error } = await supabase
+                        .from(tableName)
+                        .select('*')
+                        .limit(1);
+                    if (error) throw error;
+                    if (data && data.length > 0) {
+                        return Object.keys(data[0]);
+                    }
+                    return [];
+                } catch (err) {
+                    console.warn(`Could not get columns for ${tableName}:`, err);
+                    return [];
+                }
+            }
+            
             // ─── PAYMENT ──────────────────────────────────────────────────
             async function processPayment(e) {
                 e.preventDefault();
@@ -977,36 +995,65 @@
                     const amount = getServicePrice(selectedService);
                     paymentTransactionId = `MPESA-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
                     
-                    // Save payment record - using only columns that exist in your schema
+                    // First, get the actual columns of the payments table
+                    const columns = await getTableColumns('payments');
+                    console.log('Payments table columns:', columns);
+                    
+                    // Build payment data with only existing columns
                     const paymentData = {
                         user_id: currentUser.id,
                         transaction_id: paymentTransactionId,
                         amount: amount,
-                        service_type: selectedService,
-                        purpose: selectedPurpose,
                         status: 'pending',
                         created_at: new Date().toISOString()
                     };
+                    
+                    // Add optional fields only if they exist in the table
+                    if (columns.includes('service_type')) {
+                        paymentData.service_type = selectedService;
+                    }
+                    if (columns.includes('purpose')) {
+                        paymentData.purpose = selectedPurpose;
+                    }
+                    if (columns.includes('service')) {
+                        paymentData.service = selectedService;
+                    }
+                    if (columns.includes('description')) {
+                        paymentData.description = `${getServiceName(selectedService)} - ${selectedPurpose}`;
+                    }
+                    if (columns.includes('phone')) {
+                        paymentData.phone = mpesaPhone;
+                    }
+                    if (columns.includes('phone_number')) {
+                        paymentData.phone_number = mpesaPhone;
+                    }
+                    if (columns.includes('mpesa_phone')) {
+                        paymentData.mpesa_phone = mpesaPhone;
+                    }
+                    if (columns.includes('customer_phone')) {
+                        paymentData.customer_phone = mpesaPhone;
+                    }
+                    
+                    console.log('Saving payment with data:', paymentData);
                     
                     const { error: paymentError } = await supabase
                         .from('payments')
                         .insert(paymentData);
                     
                     if (paymentError) {
-                        // If phone_number column doesn't exist, try without it
-                        if (paymentError.message.includes('phone_number')) {
-                            console.log('Retrying without phone_number column...');
+                        console.error('Payment insert error:', paymentError);
+                        // Try with minimal fields if error persists
+                        if (paymentError.message.includes('column')) {
+                            const minimalData = {
+                                user_id: currentUser.id,
+                                transaction_id: paymentTransactionId,
+                                amount: amount,
+                                status: 'pending'
+                            };
+                            console.log('Retrying with minimal data:', minimalData);
                             const { error: retryError } = await supabase
                                 .from('payments')
-                                .insert({
-                                    user_id: currentUser.id,
-                                    transaction_id: paymentTransactionId,
-                                    amount: amount,
-                                    service_type: selectedService,
-                                    purpose: selectedPurpose,
-                                    status: 'pending',
-                                    created_at: new Date().toISOString()
-                                });
+                                .insert(minimalData);
                             if (retryError) throw retryError;
                         } else {
                             throw paymentError;
@@ -1143,31 +1190,48 @@
                         certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
                     };
                     
-                    // Save to Supabase
-                    if (currentUser) {
-                        await supabase.from('service_requests').insert({
-                            user_id: currentUser.id,
-                            service_type: selectedService,
-                            client_type: clientType,
-                            customer_name: document.getElementById('custName').value.trim(),
-                            customer_phone: document.getElementById('custPhone').value.trim(),
-                            customer_email: document.getElementById('custEmail').value.trim(),
-                            registration_number: reg,
-                            make: make,
-                            model: model,
-                            year: year,
-                            odometer: odometer,
-                            condition: condition,
-                            accident_history: accident,
-                            valuation_purpose: selectedPurpose,
-                            amount: getServicePrice(selectedService),
-                            payment_status: 'paid',
-                            payment_transaction_id: paymentTransactionId,
-                            status: 'completed',
-                            result: result,
-                            created_at: new Date().toISOString()
-                        });
+                    // Check service_requests columns
+                    const srColumns = await getTableColumns('service_requests');
+                    console.log('Service requests columns:', srColumns);
+                    
+                    // Build service request data
+                    const srData = {
+                        user_id: currentUser.id,
+                        service_type: selectedService,
+                        client_type: clientType,
+                        customer_name: document.getElementById('custName').value.trim(),
+                        customer_phone: document.getElementById('custPhone').value.trim(),
+                        customer_email: document.getElementById('custEmail').value.trim(),
+                        registration_number: reg,
+                        make: make,
+                        model: model,
+                        year: year,
+                        odometer: odometer,
+                        condition: condition,
+                        accident_history: accident,
+                        amount: getServicePrice(selectedService),
+                        status: 'completed',
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    // Add optional fields if they exist
+                    if (srColumns.includes('valuation_purpose')) {
+                        srData.valuation_purpose = selectedPurpose;
                     }
+                    if (srColumns.includes('purpose')) {
+                        srData.purpose = selectedPurpose;
+                    }
+                    if (srColumns.includes('payment_status')) {
+                        srData.payment_status = 'paid';
+                    }
+                    if (srColumns.includes('payment_transaction_id')) {
+                        srData.payment_transaction_id = paymentTransactionId;
+                    }
+                    if (srColumns.includes('result')) {
+                        srData.result = result;
+                    }
+                    
+                    await supabase.from('service_requests').insert(srData);
                     
                     // Show results
                     const serviceName = getServiceName(selectedService);
