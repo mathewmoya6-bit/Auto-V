@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>AUTO-V | Customer Portal</title>
+    <title>AUTO-V | Customer Portal - REAL M-Pesa</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -313,7 +313,7 @@
     </div>
 
     <div class="header">
-        <div class="logo">🚗 AUTO-V <span>| Customer Portal</span></div>
+        <div class="logo">🚗 AUTO-V <span>| REAL M-Pesa Integration</span></div>
         <button class="logout-btn" id="logoutBtn">Logout</button>
     </div>
     
@@ -466,15 +466,19 @@
             <div class="dashboard-link"><a href="dashboard.html">← Back to Dashboard</a></div>
         </div>
         
-        <!-- STEP 5: PAYMENT -->
+        <!-- STEP 5: PAYMENT (REAL M-PESA) -->
         <div id="step5" class="card step">
-            <h2>💳 Payment</h2>
+            <h2>💳 M-Pesa Payment</h2>
             <div id="paymentStatus" class="payment-status"></div>
             <div id="paymentRetry" style="display:none;text-align:center;margin-bottom:15px;">
                 <button class="btn btn-secondary" id="retryPaymentBtn">🔄 Retry Payment</button>
             </div>
             <form id="paymentForm">
-                <div class="form-group"><label class="required">M-Pesa Phone Number</label><input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel"></div>
+                <div class="form-group">
+                    <label class="required">M-Pesa Phone Number</label>
+                    <input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel" required>
+                    <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Enter the phone number registered with M-Pesa (e.g., 0712345678)</div>
+                </div>
                 <div class="payment-summary">
                     <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
                     <div class="row"><span class="label">Purpose</span><span class="value" id="summaryPurpose">-</span></div>
@@ -529,13 +533,24 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL - FIXED PAYMENT (ADAPTS TO SCHEMA)
+        // AUTO-V CUSTOMER PORTAL - REAL M-PESA INTEGRATION
+        // Uses Safaricom Daraja API with STK Push
         // ============================================================
         
         (function() {
             // ─── Supabase Configuration ──────────────────────────────────
             const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+            
+            // ─── M-Pesa API Configuration ──────────────────────────────
+            const MPESA_CONFIG = {
+                consumerKey: 'YOUR_CONSUMER_KEY',  // Replace with actual
+                consumerSecret: 'YOUR_CONSUMER_SECRET', // Replace with actual
+                passkey: 'YOUR_PASSKEY', // Replace with actual
+                shortCode: '4095377',
+                callbackUrl: 'https://your-domain.com/api/mpesa-callback', // Replace with actual
+                environment: 'sandbox' // 'sandbox' or 'production'
+            };
             
             // ─── Initialize Supabase ──────────────────────────────────────
             if (typeof window.__supabase === 'undefined') {
@@ -551,6 +566,7 @@
             let paymentInProgress = false;
             let paymentCompleted = false;
             let paymentTransactionId = null;
+            let paymentCheckInterval = null;
             
             // ─── Service Data ──────────────────────────────────────────
             const services = {
@@ -593,11 +609,11 @@
                 if (type === 'error') {
                     errorDiv.textContent = msg;
                     errorDiv.style.display = 'block';
-                    setTimeout(() => errorDiv.style.display = 'none', 5000);
+                    setTimeout(() => errorDiv.style.display = 'none', 8000);
                 } else {
                     successDiv.textContent = msg;
                     successDiv.style.display = 'block';
-                    setTimeout(() => successDiv.style.display = 'none', 3000);
+                    setTimeout(() => successDiv.style.display = 'none', 5000);
                 }
             }
             
@@ -608,7 +624,7 @@
                 toast.className = `toast toast-${type}`;
                 toast.textContent = msg;
                 document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 3000);
+                setTimeout(() => toast.remove(), 5000);
             }
             
             function formatKES(amount) {
@@ -942,32 +958,215 @@
                 };
             });
             
-            // ─── Get Table Columns ──────────────────────────────────────
-            async function getTableColumns(tableName) {
+            // ─── M-Pesa API Functions ──────────────────────────────────
+            
+            // Get OAuth token from Safaricom
+            async function getMpesaToken() {
+                const auth = btoa(`${MPESA_CONFIG.consumerKey}:${MPESA_CONFIG.consumerSecret}`);
+                const url = MPESA_CONFIG.environment === 'production' 
+                    ? 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
+                    : 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Basic ${auth}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`OAuth failed: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                return data.access_token;
+            }
+            
+            // Format phone number to 254xxxxxxxxx
+            function formatPhoneNumber(phone) {
+                let cleaned = phone.replace(/\s/g, '').replace(/^\+?254/, '');
+                if (cleaned.startsWith('0')) {
+                    cleaned = cleaned.substring(1);
+                }
+                if (!cleaned.startsWith('254')) {
+                    cleaned = '254' + cleaned;
+                }
+                return cleaned;
+            }
+            
+            // Initiate STK Push
+            async function initiateSTKPush(token, phoneNumber, amount, transactionId, serviceName) {
+                const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+                const password = Buffer.from(
+                    `${MPESA_CONFIG.shortCode}${MPESA_CONFIG.passkey}${timestamp}`
+                ).toString('base64');
+                
+                const url = MPESA_CONFIG.environment === 'production'
+                    ? 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+                    : 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
+                
+                const payload = {
+                    BusinessShortCode: MPESA_CONFIG.shortCode,
+                    Password: password,
+                    Timestamp: timestamp,
+                    TransactionType: 'CustomerPayBillOnline',
+                    Amount: amount,
+                    PartyA: phoneNumber,
+                    PartyB: MPESA_CONFIG.shortCode,
+                    PhoneNumber: phoneNumber,
+                    CallBackURL: MPESA_CONFIG.callbackUrl,
+                    AccountReference: transactionId,
+                    TransactionDesc: `${serviceName} - ${selectedPurpose || 'Valuation'}`
+                };
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`STK Push failed: ${errorText}`);
+                }
+                
+                return await response.json();
+            }
+            
+            // ─── Check Payment Status ──────────────────────────────────
+            async function checkPaymentStatus(transactionId) {
                 try {
                     const { data, error } = await supabase
-                        .from(tableName)
-                        .select('*')
-                        .limit(1);
-                    if (error) throw error;
-                    if (data && data.length > 0) {
-                        return Object.keys(data[0]);
+                        .from('payments')
+                        .select('status, mpesa_response')
+                        .eq('transaction_id', transactionId)
+                        .maybeSingle();
+                    
+                    if (error) {
+                        console.error('Status check error:', error);
+                        return null;
                     }
-                    return [];
+                    
+                    return data;
                 } catch (err) {
-                    console.warn(`Could not get columns for ${tableName}:`, err);
-                    return [];
+                    console.error('Status check error:', err);
+                    return null;
                 }
             }
             
-            // ─── PAYMENT ──────────────────────────────────────────────────
+            // ─── POLL PAYMENT STATUS ──────────────────────────────────
+            function pollPaymentStatus(transactionId, statusEl, payBtn, originalText) {
+                let attempts = 0;
+                const maxAttempts = 40; // 40 * 3 seconds = 120 seconds max
+                
+                if (paymentCheckInterval) {
+                    clearInterval(paymentCheckInterval);
+                }
+                
+                paymentCheckInterval = setInterval(async () => {
+                    attempts++;
+                    
+                    try {
+                        const result = await checkPaymentStatus(transactionId);
+                        
+                        if (result) {
+                            if (result.status === 'completed') {
+                                clearInterval(paymentCheckInterval);
+                                paymentCheckInterval = null;
+                                
+                                statusEl.className = 'payment-status completed';
+                                statusEl.innerHTML = `
+                                    <span class="payment-status-icon success"></span>
+                                    ✅ Payment confirmed successfully!
+                                    <br><small style="font-weight:400;opacity:0.8;">Transaction ID: ${transactionId}</small>
+                                `;
+                                statusEl.style.display = 'block';
+                                
+                                paymentCompleted = true;
+                                payBtn.innerHTML = '✅ Payment Complete';
+                                payBtn.disabled = false;
+                                paymentInProgress = false;
+                                
+                                showToast('✅ Payment successful! Proceed to vehicle data.', 'success');
+                                
+                                setTimeout(() => {
+                                    showStep(6);
+                                }, 1500);
+                                
+                                return;
+                                
+                            } else if (result.status === 'failed') {
+                                clearInterval(paymentCheckInterval);
+                                paymentCheckInterval = null;
+                                
+                                statusEl.className = 'payment-status failed';
+                                statusEl.innerHTML = `
+                                    <span class="payment-status-icon failed"></span>
+                                    ❌ Payment failed: ${result.mpesa_response?.ResultDesc || 'Transaction failed'}
+                                `;
+                                statusEl.style.display = 'block';
+                                document.getElementById('paymentRetry').style.display = 'block';
+                                
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
+                                
+                                showMessage('Payment failed. Please try again.', 'error');
+                                return;
+                            }
+                        }
+                        
+                        // Update status message
+                        statusEl.innerHTML = `
+                            <span class="payment-status-icon pending"></span>
+                            ⏳ Waiting for M-Pesa confirmation... (${attempts}/${maxAttempts})
+                            <br><small style="font-weight:400;opacity:0.8;">Did you enter your PIN on your phone?</small>
+                        `;
+                        
+                    } catch (err) {
+                        console.error('Polling error:', err);
+                    }
+                    
+                    if (attempts >= maxAttempts) {
+                        clearInterval(paymentCheckInterval);
+                        paymentCheckInterval = null;
+                        
+                        statusEl.className = 'payment-status pending';
+                        statusEl.innerHTML = `
+                            <span class="payment-status-icon pending"></span>
+                            ⏳ Payment still pending...
+                            <br><small style="font-weight:400;opacity:0.8;">If you've already confirmed, please wait a moment.</small>
+                            <br><small style="font-weight:400;opacity:0.8;">Transaction ID: ${transactionId}</small>
+                        `;
+                        statusEl.style.display = 'block';
+                        
+                        document.getElementById('paymentRetry').style.display = 'block';
+                        document.getElementById('paymentRetry').innerHTML = `
+                            <button class="btn btn-secondary" id="checkPaymentBtn">🔄 Check Payment Status</button>
+                        `;
+                        document.getElementById('checkPaymentBtn').addEventListener('click', () => {
+                            pollPaymentStatus(transactionId, statusEl, payBtn, originalText);
+                        });
+                        
+                        payBtn.disabled = false;
+                        payBtn.innerHTML = originalText;
+                        paymentInProgress = false;
+                    }
+                }, 3000);
+            }
+            
+            // ─── REAL PAYMENT PROCESS ──────────────────────────────────
             async function processPayment(e) {
                 e.preventDefault();
                 if (paymentInProgress) return;
                 
                 const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
                 if (!mpesaPhone || mpesaPhone.length < 10) {
-                    showMessage('Enter a valid M-Pesa phone number', 'error');
+                    showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678)', 'error');
                     return;
                 }
                 if (!selectedService) {
@@ -983,58 +1182,48 @@
                 const payBtn = document.getElementById('payBtn');
                 const originalText = payBtn.innerHTML;
                 payBtn.disabled = true;
-                payBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                payBtn.innerHTML = '<span class="spinner"></span> Initiating...';
                 
                 const statusEl = document.getElementById('paymentStatus');
                 statusEl.className = 'payment-status processing';
-                statusEl.textContent = '⏳ Processing payment... Please check your phone.';
+                statusEl.textContent = '⏳ Initializing payment...';
                 statusEl.style.display = 'block';
                 document.getElementById('paymentRetry').style.display = 'none';
                 
                 try {
                     const amount = getServicePrice(selectedService);
-                    paymentTransactionId = `MPESA-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+                    const formattedPhone = formatPhoneNumber(mpesaPhone);
+                    paymentTransactionId = `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
                     
-                    // First, get the actual columns of the payments table
-                    const columns = await getTableColumns('payments');
-                    console.log('Payments table columns:', columns);
+                    // 1. Get M-Pesa token
+                    statusEl.textContent = '🔐 Connecting to M-Pesa...';
+                    const token = await getMpesaToken();
                     
-                    // Build payment data with only existing columns
+                    // 2. Initiate STK Push
+                    statusEl.textContent = '📱 Sending payment request to your phone...';
+                    const stkResponse = await initiateSTKPush(
+                        token,
+                        formattedPhone,
+                        amount,
+                        paymentTransactionId,
+                        getServiceName(selectedService)
+                    );
+                    
+                    console.log('STK Response:', stkResponse);
+                    
+                    // 3. Save payment record with CheckoutRequestID
                     const paymentData = {
                         user_id: currentUser.id,
                         transaction_id: paymentTransactionId,
+                        checkout_request_id: stkResponse.CheckoutRequestID,
                         amount: amount,
+                        service_type: selectedService,
+                        purpose: selectedPurpose,
+                        phone_number: mpesaPhone,
                         status: 'pending',
+                        mpesa_response: stkResponse,
                         created_at: new Date().toISOString()
                     };
-                    
-                    // Add optional fields only if they exist in the table
-                    if (columns.includes('service_type')) {
-                        paymentData.service_type = selectedService;
-                    }
-                    if (columns.includes('purpose')) {
-                        paymentData.purpose = selectedPurpose;
-                    }
-                    if (columns.includes('service')) {
-                        paymentData.service = selectedService;
-                    }
-                    if (columns.includes('description')) {
-                        paymentData.description = `${getServiceName(selectedService)} - ${selectedPurpose}`;
-                    }
-                    if (columns.includes('phone')) {
-                        paymentData.phone = mpesaPhone;
-                    }
-                    if (columns.includes('phone_number')) {
-                        paymentData.phone_number = mpesaPhone;
-                    }
-                    if (columns.includes('mpesa_phone')) {
-                        paymentData.mpesa_phone = mpesaPhone;
-                    }
-                    if (columns.includes('customer_phone')) {
-                        paymentData.customer_phone = mpesaPhone;
-                    }
-                    
-                    console.log('Saving payment with data:', paymentData);
                     
                     const { error: paymentError } = await supabase
                         .from('payments')
@@ -1042,65 +1231,33 @@
                     
                     if (paymentError) {
                         console.error('Payment insert error:', paymentError);
-                        // Try with minimal fields if error persists
-                        if (paymentError.message.includes('column')) {
-                            const minimalData = {
-                                user_id: currentUser.id,
-                                transaction_id: paymentTransactionId,
-                                amount: amount,
-                                status: 'pending'
-                            };
-                            console.log('Retrying with minimal data:', minimalData);
-                            const { error: retryError } = await supabase
-                                .from('payments')
-                                .insert(minimalData);
-                            if (retryError) throw retryError;
-                        } else {
-                            throw paymentError;
-                        }
+                        // Try minimal insert
+                        const minimalData = {
+                            user_id: currentUser.id,
+                            transaction_id: paymentTransactionId,
+                            amount: amount,
+                            status: 'pending'
+                        };
+                        const { error: retryError } = await supabase
+                            .from('payments')
+                            .insert(minimalData);
+                        if (retryError) throw retryError;
                     }
                     
-                    // SIMULATE M-Pesa confirmation
+                    // 4. Show pending status
                     statusEl.className = 'payment-status pending';
                     statusEl.innerHTML = `
                         <span class="payment-status-icon pending"></span>
-                        ⏳ Awaiting M-Pesa confirmation...
-                        <br><small style="font-weight:400;opacity:0.8;">You will receive a prompt on your phone. Enter your PIN to confirm.</small>
+                        📱 M-Pesa prompt sent to ${mpesaPhone}
+                        <br><small style="font-weight:400;opacity:0.8;">Check your phone and enter your PIN to confirm payment.</small>
+                        <br><small style="font-weight:400;opacity:0.8;">Transaction ID: ${paymentTransactionId}</small>
                     `;
                     statusEl.style.display = 'block';
                     
                     showToast('📱 Check your phone for M-Pesa prompt!', 'warning');
                     
-                    // Simulate payment confirmation after 5 seconds
-                    setTimeout(async () => {
-                        try {
-                            await supabase.from('payments')
-                                .update({ status: 'completed', updated_at: new Date().toISOString() })
-                                .eq('transaction_id', paymentTransactionId);
-                        } catch (updateErr) {
-                            console.warn('Could not update payment status:', updateErr);
-                        }
-                        
-                        statusEl.className = 'payment-status completed';
-                        statusEl.innerHTML = `
-                            <span class="payment-status-icon success"></span>
-                            ✅ Payment confirmed successfully!
-                            <br><small style="font-weight:400;opacity:0.8;">Transaction ID: ${paymentTransactionId}</small>
-                        `;
-                        statusEl.style.display = 'block';
-                        
-                        paymentCompleted = true;
-                        payBtn.innerHTML = '✅ Payment Complete';
-                        payBtn.disabled = false;
-                        paymentInProgress = false;
-                        
-                        showToast('✅ Payment successful! Proceed to vehicle data.', 'success');
-                        
-                        setTimeout(() => {
-                            showStep(6);
-                        }, 1500);
-                        
-                    }, 5000);
+                    // 5. Start polling for payment confirmation
+                    pollPaymentStatus(paymentTransactionId, statusEl, payBtn, originalText);
                     
                 } catch (err) {
                     console.error('Payment error:', err);
@@ -1108,6 +1265,7 @@
                     statusEl.innerHTML = `
                         <span class="payment-status-icon failed"></span>
                         ❌ Payment failed: ${err.message || 'Please try again'}
+                        <br><small style="font-weight:400;opacity:0.8;">${err.stack || ''}</small>
                     `;
                     statusEl.style.display = 'block';
                     document.getElementById('paymentRetry').style.display = 'block';
@@ -1125,6 +1283,10 @@
                 document.getElementById('paymentRetry').style.display = 'none';
                 paymentInProgress = false;
                 paymentCompleted = false;
+                if (paymentCheckInterval) {
+                    clearInterval(paymentCheckInterval);
+                    paymentCheckInterval = null;
+                }
                 document.getElementById('payBtn').disabled = false;
                 document.getElementById('payBtn').innerHTML = '💳 Pay Now';
             });
@@ -1190,11 +1352,7 @@
                         certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
                     };
                     
-                    // Check service_requests columns
-                    const srColumns = await getTableColumns('service_requests');
-                    console.log('Service requests columns:', srColumns);
-                    
-                    // Build service request data
+                    // Save to Supabase
                     const srData = {
                         user_id: currentUser.id,
                         service_type: selectedService,
@@ -1209,27 +1367,14 @@
                         odometer: odometer,
                         condition: condition,
                         accident_history: accident,
+                        valuation_purpose: selectedPurpose,
                         amount: getServicePrice(selectedService),
+                        payment_status: 'paid',
+                        payment_transaction_id: paymentTransactionId,
                         status: 'completed',
+                        result: result,
                         created_at: new Date().toISOString()
                     };
-                    
-                    // Add optional fields if they exist
-                    if (srColumns.includes('valuation_purpose')) {
-                        srData.valuation_purpose = selectedPurpose;
-                    }
-                    if (srColumns.includes('purpose')) {
-                        srData.purpose = selectedPurpose;
-                    }
-                    if (srColumns.includes('payment_status')) {
-                        srData.payment_status = 'paid';
-                    }
-                    if (srColumns.includes('payment_transaction_id')) {
-                        srData.payment_transaction_id = paymentTransactionId;
-                    }
-                    if (srColumns.includes('result')) {
-                        srData.result = result;
-                    }
                     
                     await supabase.from('service_requests').insert(srData);
                     
@@ -1382,11 +1527,13 @@
             
             // ─── INIT ────────────────────────────────────────────────────
             async function init() {
-                console.log('🚀 Initializing AUTO-V Customer Portal...');
+                console.log('🚀 Initializing AUTO-V Customer Portal with REAL M-Pesa...');
                 try {
                     populateYears();
                     await checkSession();
                     console.log('✅ AUTO-V Customer Portal initialized successfully');
+                    console.log('📱 M-Pesa Environment:', MPESA_CONFIG.environment);
+                    console.log('📱 Paybill:', MPESA_CONFIG.shortCode);
                 } catch (err) {
                     console.error('Init error:', err);
                     hideLoading();
