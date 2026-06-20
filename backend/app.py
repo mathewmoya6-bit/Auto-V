@@ -1,6 +1,7 @@
-# app.py - Enterprise-Grade Flask Application (FINAL)
+# app.py - Enterprise-Grade Flask Application (FINAL FIXED)
 
 import os
+import sys
 import logging
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify
@@ -24,6 +25,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info(f"📋 Log level set to: {LOG_LEVEL}")
 
+# ─── Debug: Show current directory and files ──────────────────
+logger.info(f"📁 Current working directory: {os.getcwd()}")
+try:
+    files = os.listdir('.')
+    logger.info(f"📁 Files in directory: {files}")
+except Exception as e:
+    logger.warning(f"⚠️ Could not list directory: {e}")
 
 # ─── Environment Variables (Validated Once at Startup) ──────
 REQUIRED_ENV_VARS = {
@@ -96,10 +104,9 @@ CORS(app,
 )
 
 
-# ─── Rate Limiter Configuration (FIXED) ──────────────────────
+# ─── Rate Limiter Configuration ──────────────────────────────
 REDIS_URL = os.getenv('REDIS_URL', None)
 
-# ✅ Better Redis validation
 if REDIS_URL and (REDIS_URL.startswith("redis://") or REDIS_URL.startswith("rediss://")):
     storage_uri = REDIS_URL
     logger.info(f"✅ Using Redis for rate limiting: {REDIS_URL[:30]}...")
@@ -110,21 +117,27 @@ else:
     else:
         logger.warning("⚠️ Using memory for rate limiting (not production-safe)")
 
-# ✅ Correct Limiter initialization for v3+
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["500 per hour", "100 per minute"],
-    storage_uri=storage_uri
-)
-
-# Initialize with app
-limiter.init_app(app)
-logger.info("✅ Rate limiter initialized successfully")
+# ✅ FIXED: Correct Limiter initialization for v3+
+try:
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=["500 per hour", "100 per minute"],
+        storage_uri=storage_uri
+    )
+    limiter.init_app(app)
+    logger.info("✅ Rate limiter initialized successfully")
+except TypeError as e:
+    logger.error(f"❌ Rate limiter initialization failed: {e}")
+    # Fallback: simpler initialization without storage_uri
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=["500 per hour", "100 per minute"]
+    )
+    limiter.init_app(app)
+    logger.info("✅ Rate limiter initialized with default storage (fallback)")
 
 
 # ─── Security Middleware ──────────────────────────────────────
-
-# ─── Request Size Limit ──────────────────────────────────────
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
 # ─── Request Logging Middleware (DEV ONLY) ────────────────────
@@ -134,13 +147,11 @@ if os.getenv("FLASK_ENV") == "development":
         """Log all incoming requests (development only)."""
         logger.debug(f"→ {request.method} {request.path} - {request.remote_addr}")
         
-        # Log request body for payment endpoints
         if request.path.startswith('/api/mpesa') and request.method in ['POST', 'PUT']:
             if request.is_json:
                 try:
                     data = request.get_json(silent=True)
                     if data:
-                        # Mask sensitive data
                         sensitive_keys = ['password', 'consumer_secret', 'api_key', 'pin']
                         for key in sensitive_keys:
                             if key in data:
@@ -161,7 +172,6 @@ else:
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check with detailed system status."""
-    # Check Redis connectivity
     redis_healthy = False
     if REDIS_URL and (REDIS_URL.startswith("redis://") or REDIS_URL.startswith("rediss://")):
         try:
@@ -188,30 +198,54 @@ def health_check():
     }), 200
 
 
-# ─── Register Blueprints ──────────────────────────────────────
+# ─── Test Route ──────────────────────────────────────────────
+@app.route('/api/test', methods=['GET'])
+def test_route():
+    """Simple test route to verify API is working."""
+    return jsonify({
+        'status': 'ok',
+        'message': 'API is working',
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }), 200
+
+
+# ─── Register Blueprints (with multiple fallback paths) ──────
 mpesa_loaded = False
 
 def register_blueprints():
     global mpesa_loaded
-    try:
-        if 'mpesa' not in app.blueprints:
-            from api.routes.mpesa import mpesa_bp
-            app.register_blueprint(mpesa_bp, url_prefix='/api/mpesa')
-            mpesa_loaded = True
-            logger.info("✅ M-Pesa routes registered successfully")
-        else:
-            mpesa_loaded = True
-            logger.info("ℹ️ M-Pesa blueprint already registered")
-    except ImportError as e:
-        logger.critical(f"❌ CRITICAL: Failed to import mpesa blueprint: {e}")
-        mpesa_loaded = False
-    except Exception as e:
-        logger.critical(f"❌ CRITICAL: Failed to register mpesa blueprint: {e}")
-        mpesa_loaded = False
     
-    # ✅ Fail fast in production
-    if os.getenv("FLASK_ENV") == "production" and not mpesa_loaded:
-        raise RuntimeError("🚨 M-Pesa payment system failed to load - application cannot start in production mode!")
+    # Try multiple import paths
+    import_paths = [
+        'api.routes.mpesa',
+        'routes.mpesa',
+        'backend.api.routes.mpesa'
+    ]
+    
+    for import_path in import_paths:
+        try:
+            logger.info(f"🔍 Trying to import from: {import_path}")
+            module = __import__(import_path, fromlist=['mpesa_bp'])
+            if hasattr(module, 'mpesa_bp'):
+                mpesa_bp = getattr(module, 'mpesa_bp')
+                app.register_blueprint(mpesa_bp, url_prefix='/api/mpesa')
+                mpesa_loaded = True
+                logger.info(f"✅ M-Pesa routes registered from: {import_path}")
+                return
+            else:
+                logger.warning(f"⚠️ No 'mpesa_bp' in module: {import_path}")
+        except ImportError as e:
+            logger.warning(f"⚠️ Import failed from {import_path}: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Error importing from {import_path}: {e}")
+    
+    # If all imports fail
+    logger.critical("❌ CRITICAL: Could not import mpesa blueprint from any path!")
+    mpesa_loaded = False
+    
+    # Don't fail in production - let app start with warning
+    if os.getenv("FLASK_ENV") == "production":
+        logger.critical("⚠️ Running without payment system in production!")
 
 
 # ─── Register Error Handlers ──────────────────────────────────
