@@ -1,4 +1,4 @@
-# api/auth_middleware.py – Enterprise Auth Layer v2
+# api/auth_middleware.py – Enterprise Auth Layer v2 (FIXED)
 
 import os
 import logging
@@ -51,7 +51,9 @@ PUBLIC_ENDPOINTS = [
     '/api/auth/login',
     '/api/auth/refresh',
     '/api/auth/reset-password',
-    '/api/auth/register'
+    '/api/auth/register',
+    '/api/ping',
+    '/api/test'
 ]
 
 # ─── IP WHITELIST (OPTIONAL) ──────────────────────────────
@@ -64,7 +66,7 @@ class SessionManager:
     """Manage user sessions with tracking and revocation."""
 
     @staticmethod
-    async def create_session(user_id: str, device_info: Dict[str, Any]) -> Dict[str, Any]:
+    def create_session(user_id: str, device_info: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new session for a user."""
         try:
             supabase = get_supabase()
@@ -90,7 +92,7 @@ class SessionManager:
             return None
 
     @staticmethod
-    async def validate_session(session_token: str) -> Tuple[bool, Optional[Dict]]:
+    def validate_session(session_token: str) -> Tuple[bool, Optional[Dict]]:
         """Validate a session token."""
         try:
             supabase = get_supabase()
@@ -125,7 +127,7 @@ class SessionManager:
             return False, None
 
     @staticmethod
-    async def revoke_session(session_token: str) -> bool:
+    def revoke_session(session_token: str) -> bool:
         """Revoke a session."""
         try:
             supabase = get_supabase()
@@ -142,7 +144,7 @@ class SessionManager:
             return False
 
     @staticmethod
-    async def revoke_all_sessions(user_id: str) -> bool:
+    def revoke_all_sessions(user_id: str) -> bool:
         """Revoke all sessions for a user."""
         try:
             supabase = get_supabase()
@@ -164,7 +166,7 @@ class AuditLogger:
     """Log all authentication and authorization events."""
 
     @staticmethod
-    async def log_event(user_id: Optional[str], action: str, details: Dict[str, Any], status: str = 'success'):
+    def log_event(user_id: Optional[str], action: str, details: Dict[str, Any], status: str = 'success'):
         """Log an audit event."""
         try:
             supabase = get_supabase()
@@ -261,7 +263,6 @@ def get_device_info() -> Dict[str, Any]:
     accept_language = request.headers.get('Accept-Language', 'unknown')
     ip = request.remote_addr
 
-    # Create a simple device fingerprint
     fingerprint_string = f"{user_agent}|{accept_language}|{ip}"
     device_id = hashlib.sha256(fingerprint_string.encode()).hexdigest()[:16]
 
@@ -330,7 +331,6 @@ def has_permission(role: str, permission: str) -> bool:
     if permission in permissions:
         return True
 
-    # Check hierarchy (higher roles inherit permissions)
     role_level = ROLES.get(role, 0)
     for r, level in ROLES.items():
         if level < role_level and permission in ROLE_PERMISSIONS.get(r, []):
@@ -357,7 +357,7 @@ def require_auth(f):
             ip_valid, ip_message = validate_ip(request.remote_addr)
             if not ip_valid:
                 logger.warning(f"IP validation failed: {ip_message}")
-                await AuditLogger.log_event(None, 'ip_blocked', {'ip': request.remote_addr, 'reason': ip_message}, 'failed')
+                AuditLogger.log_event(None, 'ip_blocked', {'ip': request.remote_addr, 'reason': ip_message}, 'failed')
                 return jsonify({
                     'error': 'Access denied',
                     'code': 'IP_BLOCKED',
@@ -368,7 +368,7 @@ def require_auth(f):
             auth_header = request.headers.get('Authorization')
             if not auth_header:
                 logger.warning(f"Missing Authorization header from {request.remote_addr}")
-                await AuditLogger.log_event(None, 'auth_missing', {'ip': request.remote_addr}, 'failed')
+                AuditLogger.log_event(None, 'auth_missing', {'ip': request.remote_addr}, 'failed')
                 return jsonify({
                     'error': 'Missing authorization header',
                     'code': 'AUTH_HEADER_MISSING'
@@ -377,7 +377,7 @@ def require_auth(f):
             parts = auth_header.split()
             if len(parts) != 2 or parts[0].lower() != 'bearer':
                 logger.warning(f"Invalid Authorization header format from {request.remote_addr}")
-                await AuditLogger.log_event(None, 'auth_invalid', {'ip': request.remote_addr}, 'failed')
+                AuditLogger.log_event(None, 'auth_invalid', {'ip': request.remote_addr}, 'failed')
                 return jsonify({
                     'error': 'Invalid authorization header format',
                     'code': 'AUTH_HEADER_INVALID'
@@ -388,7 +388,7 @@ def require_auth(f):
             # ─── Session Validation ──────────────────────────────
             session_token = request.headers.get('X-Session-Token')
             if session_token:
-                is_valid, session = await SessionManager.validate_session(session_token)
+                is_valid, session = SessionManager.validate_session(session_token)
                 if not is_valid:
                     logger.warning(f"Invalid session token: {session_token[:16]}...")
                     return jsonify({
@@ -403,7 +403,7 @@ def require_auth(f):
                     raise ValueError("Invalid user data")
             except ValueError as e:
                 logger.warning(f"Token validation failed: {e}")
-                await AuditLogger.log_event(None, 'auth_token_invalid', {'error': str(e)}, 'failed')
+                AuditLogger.log_event(None, 'auth_token_invalid', {'error': str(e)}, 'failed')
                 return jsonify({
                     'error': 'Invalid or expired token',
                     'code': 'AUTH_TOKEN_INVALID'
@@ -412,7 +412,7 @@ def require_auth(f):
             # ─── Check User Status ────────────────────────────────
             if not user_data.get('is_active', True):
                 logger.warning(f"Inactive user attempted access: {user_data['id']}")
-                await AuditLogger.log_event(user_data['id'], 'auth_inactive', {}, 'failed')
+                AuditLogger.log_event(user_data['id'], 'auth_inactive', {}, 'failed')
                 return jsonify({
                     'error': 'Account is deactivated',
                     'code': 'USER_INACTIVE'
@@ -420,7 +420,7 @@ def require_auth(f):
 
             if not user_data.get('is_verified', True):
                 logger.warning(f"Unverified user attempted access: {user_data['id']}")
-                await AuditLogger.log_event(user_data['id'], 'auth_unverified', {}, 'failed')
+                AuditLogger.log_event(user_data['id'], 'auth_unverified', {}, 'failed')
                 return jsonify({
                     'error': 'Email verification required',
                     'code': 'USER_UNVERIFIED'
@@ -431,7 +431,7 @@ def require_auth(f):
             g.user_id = user_data['id']
 
             # ─── Log successful auth ──────────────────────────────
-            await AuditLogger.log_event(user_data['id'], 'auth_success', {
+            AuditLogger.log_event(user_data['id'], 'auth_success', {
                 'ip': request.remote_addr,
                 'path': request.path
             }, 'success')
@@ -441,7 +441,7 @@ def require_auth(f):
 
         except Exception as e:
             logger.error(f"Auth middleware error: {e}", exc_info=True)
-            await AuditLogger.log_event(None, 'auth_error', {'error': str(e)}, 'failed')
+            AuditLogger.log_event(None, 'auth_error', {'error': str(e)}, 'failed')
             return jsonify({
                 'error': 'Authentication failed',
                 'code': 'AUTH_FAILED'
@@ -458,7 +458,7 @@ def require_admin(f):
     def decorated_function(user, *args, **kwargs):
         if not user or user.get('role') != 'admin':
             logger.warning(f"Admin access denied for {user.get('id') if user else 'unknown'}")
-            await AuditLogger.log_event(user.get('id') if user else None, 'admin_denied', {
+            AuditLogger.log_event(user.get('id') if user else None, 'admin_denied', {
                 'path': request.path,
                 'role': user.get('role') if user else 'none'
             }, 'failed')
@@ -482,7 +482,7 @@ def require_permission(permission: str):
             role = user.get('role', 'user')
             if not has_permission(role, permission):
                 logger.warning(f"Permission denied for {user['id']}: {permission}")
-                await AuditLogger.log_event(user['id'], 'permission_denied', {
+                AuditLogger.log_event(user['id'], 'permission_denied', {
                     'permission': permission,
                     'role': role,
                     'path': request.path
@@ -527,12 +527,10 @@ def optional_auth(f):
 # ─── RATE LIMIT KEY FUNCTION ──────────────────────────────
 def get_user_rate_limit_key():
     """Get rate limit key based on authenticated user."""
-    # Check if user is in global context
     user_id = getattr(g, 'user_id', None)
     if user_id:
         return f"user:{user_id}"
 
-    # Fallback to token from header
     try:
         auth_header = request.headers.get('Authorization')
         if auth_header:
@@ -544,10 +542,4 @@ def get_user_rate_limit_key():
     except:
         pass
 
-    # Fallback to IP
     return f"ip:{get_remote_address()}"
-
-
-# ─── IMPORTANT: Update your Flask-Limiter integration ──────
-# In app.py, use this as the key function:
-# limiter = Limiter(app, key_func=get_user_rate_limit_key, ...)
