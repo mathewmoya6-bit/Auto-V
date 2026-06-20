@@ -98,6 +98,10 @@
         .welcome-banner { background: linear-gradient(135deg, #1e293b, #2d3a4e); border: 2px solid #eab308; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px; text-align: center; display: none; }
         .welcome-banner h3 { color: #eab308; font-size: 20px; margin-bottom: 8px; }
         .welcome-banner p { color: #94a3b8; font-size: 14px; }
+        .vehicle-summary { background: #1e293b; border-radius: 12px; padding: 15px; margin-top: 15px; display: none; }
+        .vehicle-summary.show { display: block; }
+        .vehicle-summary .row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #2d3a4e; }
+        .vehicle-summary .row:last-child { border-bottom: none; }
         @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
         @media (max-width:768px) { .service-cards { grid-template-columns:1fr 1fr; } .purpose-list { grid-template-columns:1fr; } .nav-buttons { flex-direction:column; gap:10px; } .nav-buttons button { width:100%; } .progress-step { font-size:10px; padding:8px; } .row { grid-template-columns:1fr; } }
     </style>
@@ -223,15 +227,83 @@
             <h2>🚗 Vehicle Data Entry</h2>
             <p style="color:#94a3b8; margin-bottom:15px; font-size:14px;">Enter vehicle details for your selected service.</p>
             <form id="vehicleForm">
-                <div class="form-group"><label class="required">Registration Number</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
-                <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456"></div>
-                <div class="form-group"><label class="required">Make</label><input type="text" id="vehicleMake" placeholder="Toyota"></div>
-                <div class="form-group"><label class="required">Model</label><input type="text" id="vehicleModel" placeholder="Axio"></div>
-                <div class="form-group"><label class="required">Year</label><select id="vehicleYear"></select></div>
-                <div class="form-group"><label class="required">Odometer (km)</label><input type="number" id="vehicleOdometer" placeholder="50000"></div>
-                <div class="form-group"><label>Condition</label><select id="vehicleCondition"><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
-                <div class="form-group"><label>Accident History</label><select id="vehicleAccident"><option>None</option><option>Minor</option><option>Moderate</option><option>Major</option></select></div>
-                <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPay">← Back</button><button type="submit" class="btn btn-primary">🚀 Calculate & Complete</button></div>
+                <div class="form-group">
+                    <label class="required">Registration Number</label>
+                    <input type="text" id="vehicleReg" placeholder="KCA 123A" required>
+                    <small style="color:#64748b;font-size:11px;">Enter full registration number (e.g., KCA 123A)</small>
+                </div>
+                <div class="form-group">
+                    <label>VIN / Chassis</label>
+                    <input type="text" id="vehicleVin" placeholder="JTEGD34V000123456">
+                </div>
+                <div class="form-group">
+                    <label class="required">Make</label>
+                    <input type="text" id="vehicleMake" placeholder="e.g., Toyota" list="makeList" required>
+                    <datalist id="makeList">
+                        <option value="Toyota">
+                        <option value="Mercedes">
+                        <option value="BMW">
+                        <option value="Nissan">
+                        <option value="Honda">
+                        <option value="Volkswagen">
+                        <option value="Audi">
+                        <option value="Ford">
+                        <option value="Mazda">
+                        <option value="Subaru">
+                        <option value="Mitsubishi">
+                        <option value="Isuzu">
+                        <option value="Peugeot">
+                        <option value="Volvo">
+                        <option value="Lexus">
+                        <option value="Land Rover">
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label class="required">Model</label>
+                    <input type="text" id="vehicleModel" placeholder="e.g., Axio" list="modelList" required>
+                    <datalist id="modelList">
+                        <!-- Populated dynamically based on make -->
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label class="required">Year</label>
+                    <select id="vehicleYear" required></select>
+                </div>
+                <div class="form-group">
+                    <label class="required">Odometer Reading (km)</label>
+                    <input type="number" id="vehicleOdometer" placeholder="Enter current odometer reading" required min="0" step="100">
+                    <small style="color:#64748b;font-size:11px;">Enter the current odometer reading in kilometers</small>
+                </div>
+                <div class="form-group">
+                    <label>Condition</label>
+                    <select id="vehicleCondition">
+                        <option value="Excellent">Excellent</option>
+                        <option value="Good" selected>Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Accident History</label>
+                    <select id="vehicleAccident">
+                        <option value="None">None</option>
+                        <option value="Minor">Minor</option>
+                        <option value="Moderate">Moderate</option>
+                        <option value="Major">Major</option>
+                    </select>
+                </div>
+                <!-- Vehicle Summary Preview -->
+                <div class="vehicle-summary" id="vehicleSummary">
+                    <h4 style="color:#eab308;font-size:14px;margin-bottom:10px;">📋 Vehicle Summary</h4>
+                    <div class="row"><span class="label">Registration</span><span class="value" id="summaryReg">-</span></div>
+                    <div class="row"><span class="label">Make/Model</span><span class="value" id="summaryMakeModel">-</span></div>
+                    <div class="row"><span class="label">Year</span><span class="value" id="summaryYear">-</span></div>
+                    <div class="row"><span class="label">Odometer</span><span class="value" id="summaryOdometer">-</span></div>
+                </div>
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" id="backToPay">← Back</button>
+                    <button type="submit" class="btn btn-primary">🚀 Calculate & Complete</button>
+                </div>
             </form>
         </div>
 
@@ -342,6 +414,26 @@
                 }
             };
 
+            // ─── Vehicle Models Database ──────────────────────────────
+            const vehicleModels = {
+                'toyota': ['Axio', 'Camry', 'Corolla', 'Fortuner', 'Hiace', 'Land Cruiser', 'Prado', 'Premio', 'Rav4', 'Sienta', 'Vitz', 'Yaris'],
+                'mercedes': ['A-Class', 'C-Class', 'E-Class', 'G-Class', 'GLA', 'GLC', 'GLE', 'S-Class', 'Sprinter', 'V-Class'],
+                'bmw': ['1 Series', '3 Series', '5 Series', '7 Series', 'X1', 'X3', 'X5', 'X6', 'M3', 'M5'],
+                'nissan': ['Note', 'Qashqai', 'X-Trail', 'Patrol', 'Navara', 'Skyline', 'GTR', 'Juke', 'Leaf', 'Murano'],
+                'honda': ['Accord', 'Civic', 'CR-V', 'Fit', 'HR-V', 'Odyssey', 'Pilot', 'Vezel', 'Insight', 'Passport'],
+                'volkswagen': ['Golf', 'Jetta', 'Passat', 'Polo', 'Tiguan', 'Touareg', 'Atlas', 'Beetle', 'CC', 'Scirocco'],
+                'audi': ['A3', 'A4', 'A6', 'A8', 'Q3', 'Q5', 'Q7', 'R8', 'TT', 'e-tron'],
+                'ford': ['Fiesta', 'Focus', 'Mustang', 'Ranger', 'Explorer', 'Edge', 'Expedition', 'Escape', 'Bronco'],
+                'mazda': ['3', '6', 'CX-3', 'CX-5', 'CX-9', 'MX-5', 'BT-50', 'Demio', 'Atenza', 'Axela'],
+                'subaru': ['Impreza', 'Legacy', 'Outback', 'Forester', 'WRX', 'XV', 'Levorg', 'Baja', 'Tribeca'],
+                'mitsubishi': ['Outlander', 'Pajero', 'Lancer', 'Eclipse', 'Triton', 'ASX', 'Delica', 'Galant'],
+                'isuzu': ['D-Max', 'MU-X', 'N-Series', 'F-Series'],
+                'peugeot': ['208', '308', '508', '3008', '5008', 'Partner', 'Boxer', 'Expert'],
+                'volvo': ['S60', 'S90', 'V60', 'V90', 'XC40', 'XC60', 'XC90', 'C40'],
+                'lexus': ['ES', 'GS', 'IS', 'LS', 'NX', 'RX', 'LX', 'GX', 'UX', 'LC'],
+                'land rover': ['Defender', 'Discovery', 'Range Rover', 'Evoque', 'Sport', 'Velar']
+            };
+
             // ─── DOM Elements ───────────────────────────────────────────
             const serviceCardsContainer = document.getElementById('serviceCards');
             const purposeList = document.getElementById('purposeList');
@@ -380,10 +472,8 @@
                 el.style.display = 'block';
                 document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
                 
-                // Show/hide manual check button
                 if (status === 'processing' || status === 'pending') {
                     manualCheckBtn.style.display = 'block';
-                    // Show force complete button when pending
                     forceCompleteBtn.style.display = 'block';
                 } else {
                     manualCheckBtn.style.display = 'none';
@@ -514,6 +604,43 @@
                 yearSelect.innerHTML = '';
                 for (let y = currentYear; y >= 1950; y--) {
                     yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+                }
+            }
+
+            // ─── Update Model List based on Make ──────────────────────
+            function updateModelList() {
+                const make = document.getElementById('vehicleMake').value.toLowerCase().trim();
+                const modelInput = document.getElementById('vehicleModel');
+                const modelList = document.getElementById('modelList');
+                
+                if (make && vehicleModels[make]) {
+                    modelList.innerHTML = vehicleModels[make].map(m => `<option value="${m}">`).join('');
+                    modelInput.placeholder = `e.g., ${vehicleModels[make][0]}`;
+                } else {
+                    modelList.innerHTML = '';
+                    modelInput.placeholder = 'Enter model';
+                }
+            }
+
+            // ─── Update Vehicle Summary ──────────────────────────────
+            function updateVehicleSummary() {
+                const reg = document.getElementById('vehicleReg').value.toUpperCase().trim();
+                const make = document.getElementById('vehicleMake').value.trim();
+                const model = document.getElementById('vehicleModel').value.trim();
+                const year = document.getElementById('vehicleYear').value;
+                const odometer = document.getElementById('vehicleOdometer').value;
+                
+                const summary = document.getElementById('vehicleSummary');
+                const hasData = reg || make || model || year || odometer;
+                
+                if (hasData) {
+                    summary.classList.add('show');
+                    document.getElementById('summaryReg').textContent = reg || '-';
+                    document.getElementById('summaryMakeModel').textContent = (make && model) ? `${make} ${model}` : (make || model || '-');
+                    document.getElementById('summaryYear').textContent = year || '-';
+                    document.getElementById('summaryOdometer').textContent = odometer ? `${Number(odometer).toLocaleString()} km` : '-';
+                } else {
+                    summary.classList.remove('show');
                 }
             }
 
@@ -698,96 +825,224 @@
                 }
             }
 
-            // ─── Force Complete Payment ──────────────────────────────
-            async function forceCompletePayment() {
-                if (!paymentId) {
-                    showMessage('No payment in progress', 'error');
-                    return;
+            // ─── Calculate Service (FIXED - Proper Mileage Handling) ──
+            async function calculateService(e) {
+                e.preventDefault();
+                
+                const reg = document.getElementById('vehicleReg').value.toUpperCase().trim();
+                const vin = document.getElementById('vehicleVin').value.toUpperCase().trim();
+                const make = document.getElementById('vehicleMake').value.trim();
+                const model = document.getElementById('vehicleModel').value.trim();
+                const year = parseInt(document.getElementById('vehicleYear').value);
+                const odometer = parseInt(document.getElementById('vehicleOdometer').value);
+                const condition = document.getElementById('vehicleCondition').value;
+                const accident = document.getElementById('vehicleAccident').value;
+                
+                // ─── Validate all required fields ──────────────────────────────
+                if (!reg) { 
+                    showMessage('Please enter the registration number', 'error'); 
+                    document.getElementById('vehicleReg').focus();
+                    return; 
+                }
+                if (reg.length < 3) { 
+                    showMessage('Registration number is too short (e.g., KCA 123A)', 'error'); 
+                    document.getElementById('vehicleReg').focus();
+                    return; 
+                }
+                if (!make) { 
+                    showMessage('Please enter the vehicle make', 'error'); 
+                    document.getElementById('vehicleMake').focus();
+                    return; 
+                }
+                if (!model) { 
+                    showMessage('Please enter the vehicle model', 'error'); 
+                    document.getElementById('vehicleModel').focus();
+                    return; 
+                }
+                if (!year || year < 1950 || year > new Date().getFullYear()) { 
+                    showMessage('Please select a valid year', 'error'); 
+                    return; 
+                }
+                if (!odometer || odometer < 0) { 
+                    showMessage('Please enter the odometer reading in kilometers', 'error'); 
+                    document.getElementById('vehicleOdometer').focus();
+                    return; 
+                }
+                if (odometer > 1000000) { 
+                    showMessage('Odometer reading seems too high. Please verify.', 'error'); 
+                    document.getElementById('vehicleOdometer').focus();
+                    return; 
                 }
                 
-                // Show confirmation dialog
-                if (!confirm('Have you confirmed the payment on your M-Pesa phone? This will mark the payment as complete.')) {
-                    return;
-                }
+                console.log('📊 Vehicle Data:', { reg, make, model, year, odometer, condition, accident });
                 
-                forceCompleteBtn.disabled = true;
-                const originalText = forceCompleteBtn.innerHTML;
-                forceCompleteBtn.innerHTML = '<span class="spinner"></span> Confirming...';
+                const submitBtn = document.querySelector('#vehicleForm button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
                 
                 try {
-                    const { data: sessionData } = await supabase.auth.getSession();
-                    const token = sessionData?.session?.access_token;
-                    if (!token) {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
                         showMessage('Please login again', 'error');
+                        window.location.href = "login.html";
                         return;
                     }
                     
-                    // ─── Check current status first ──────────────────────────
-                    const statusResp = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        }
-                    });
+                    // ─── Calculate valuation based on vehicle data ──────────────
+                    const age = new Date().getFullYear() - year;
                     
-                    if (statusResp.ok) {
-                        const statusData = await statusResp.json();
-                        if (statusData.status === 'completed' || statusData.result_code === '0') {
-                            setPaymentStatus('completed', '✅ Payment already confirmed!');
-                            showMessage('Payment already completed!', 'success');
-                            const serviceType = getServiceName(selectedService);
-                            document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
-                            showStep(6);
-                            if (pollInterval) clearInterval(pollInterval);
-                            paymentInProgress = false;
-                            manualCheckBtn.style.display = 'none';
-                            forceCompleteBtn.style.display = 'none';
-                            return;
-                        }
+                    let baseValue = 2000000;
+                    const makeLower = make.toLowerCase();
+                    if (makeLower === 'toyota') baseValue = 2800000;
+                    else if (makeLower === 'mercedes') baseValue = 5000000;
+                    else if (makeLower === 'bmw') baseValue = 4500000;
+                    else if (makeLower === 'nissan') baseValue = 2200000;
+                    else if (makeLower === 'honda') baseValue = 2400000;
+                    else if (makeLower === 'volkswagen') baseValue = 2600000;
+                    else if (makeLower === 'audi') baseValue = 3500000;
+                    else if (makeLower === 'ford') baseValue = 2300000;
+                    else if (makeLower === 'mazda') baseValue = 2100000;
+                    else if (makeLower === 'subaru') baseValue = 2500000;
+                    else if (makeLower === 'mitsubishi') baseValue = 2000000;
+                    else if (makeLower === 'isuzu') baseValue = 3000000;
+                    else if (makeLower === 'land rover') baseValue = 5500000;
+                    else if (makeLower === 'lexus') baseValue = 4800000;
+                    else if (makeLower === 'volvo') baseValue = 3800000;
+                    
+                    const conditionFactor = condition === 'Excellent' ? 1.15 : 
+                                           condition === 'Good' ? 1.0 : 
+                                           condition === 'Fair' ? 0.85 : 0.7;
+                    
+                    const accidentFactor = accident === 'None' ? 1.0 : 
+                                           accident === 'Minor' ? 0.85 : 
+                                           accident === 'Moderate' ? 0.65 : 0.4;
+                    
+                    const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
+                    const ageFactor = Math.max(0.35, 1 - (age * 0.08));
+                    
+                    let marketValue = Math.round(baseValue * ageFactor * mileageFactor * conditionFactor * accidentFactor);
+                    marketValue = Math.max(150000, marketValue);
+                    
+                    const result = {
+                        market_value: marketValue,
+                        insurance_value: Math.round(marketValue * 1.1),
+                        trade_in_value: Math.round(marketValue * 0.8),
+                        forced_sale_value: Math.round(marketValue * 0.7),
+                        certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+                    };
+                    
+                    // ─── Save to Supabase ──────────────────────────────────────────
+                    const serviceData = {
+                        user_id: user.id,
+                        service_type: selectedService,
+                        client_type: clientType,
+                        customer_name: document.getElementById('custName').value || document.getElementById('companyName').value,
+                        customer_phone: document.getElementById('custPhone').value,
+                        customer_email: document.getElementById('custEmail').value,
+                        company_name: document.getElementById('companyName').value || null,
+                        company_reg: document.getElementById('companyReg').value || null,
+                        contact_person: document.getElementById('contactPerson').value || null,
+                        registration_number: reg,
+                        vin: vin || null,
+                        make: make,
+                        model: model,
+                        year: year,
+                        odometer_reading: odometer,
+                        condition: condition,
+                        accident_history: accident,
+                        service_purpose: selectedPurpose,
+                        amount: getServicePrice(selectedService),
+                        payment_status: 'paid',
+                        status: 'completed',
+                        result: result,
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    console.log('📤 Saving service request:', serviceData);
+                    
+                    const { data: insertResult, error: insertError } = await supabase
+                        .from('service_requests')
+                        .insert(serviceData)
+                        .select();
+                    
+                    if (insertError) {
+                        console.error('❌ Insert error:', insertError);
+                        throw new Error(insertError.message);
                     }
                     
-                    // ─── Ask for transaction ID ──────────────────────────────
-                    const transactionId = prompt('Enter the M-Pesa transaction ID from your SMS (e.g., QWERTY123):');
-                    if (!transactionId || transactionId.length < 5) {
-                        showMessage('Transaction ID is required to confirm payment.', 'error');
-                        return;
-                    }
+                    console.log('✅ Service request saved:', insertResult);
                     
-                    // ─── Force complete ──────────────────────────────────────
-                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/force-complete/${paymentId}`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            transaction_id: transactionId
+                    // ─── Update user profile ──────────────────────────────────────
+                    await supabase
+                        .from('user_profiles')
+                        .update({ 
+                            has_vehicle: true, 
+                            first_login: false,
+                            client_type: clientType,
+                            updated_at: new Date().toISOString()
                         })
-                    });
+                        .eq('id', user.id);
                     
-                    const result = await response.json();
-                    console.log('Force complete result:', result);
-                    
-                    if (result.success) {
-                        setPaymentStatus('completed', '✅ Payment confirmed!');
-                        showMessage('Payment confirmed successfully!', 'success');
-                        const serviceType = getServiceName(selectedService);
-                        document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
-                        showStep(6);
-                        if (pollInterval) clearInterval(pollInterval);
-                        paymentInProgress = false;
-                        manualCheckBtn.style.display = 'none';
-                        forceCompleteBtn.style.display = 'none';
-                    } else {
-                        showMessage(result.message || 'Failed to confirm payment', 'error');
-                    }
+                    // ─── Show results with mileage included ──────────────────────
+                    const serviceName = getServiceName(selectedService);
+                    document.getElementById('resultsContainer').innerHTML = `
+                        <div style="margin-bottom:20px;">
+                            <span style="background:#22c55e; color:#000; padding:4px 16px; border-radius:30px; font-weight:600;">✅ ${serviceName} Complete</span>
+                        </div>
+                        <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
+                        <p style="color:#eab308; font-weight:600;">Estimated Value</p>
+                        <div class="result-detail">
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Vehicle</span>
+                                <strong style="color:#eab308;">${make} ${model} (${year})</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Registration</span>
+                                <strong style="color:#eab308;">${reg}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Odometer Reading</span>
+                                <strong style="color:#f59e0b;">${odometer.toLocaleString()} km</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Insurance Value</span>
+                                <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Trade-In Value</span>
+                                <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Forced Sale Value</span>
+                                <strong style="color:#ef4444;">KES ${result.forced_sale_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0;">
+                                <span style="color:#94a3b8;">Certificate Number</span>
+                                <strong style="color:#eab308; font-size:12px;">${result.certificate_number}</strong>
+                            </div>
+                            ${clientType === 'corporate' ? `
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid #2d3a4e; margin-top:10px;">
+                                <span style="color:#94a3b8;">Company</span>
+                                <strong style="color:#eab308;">${document.getElementById('companyName').value}</strong>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
+                            <p style="color:#22c55e; font-weight:600;">✅ ${serviceName} Complete!</p>
+                            <p style="color:#bbf7d0; font-size:13px; margin-top:5px;">
+                                Vehicle ${reg} (${make} ${model}) with ${odometer.toLocaleString()} km has been successfully processed.
+                                ${isFirstTimeUser ? 'Your account is now fully set up!' : ''}
+                            </p>
+                        </div>
+                    `;
+                    showStep(7);
                     
                 } catch (err) {
-                    console.error('Force complete error:', err);
-                    showMessage('Error confirming payment. Please try again.', 'error');
+                    console.error('❌ Error:', err);
+                    showMessage('Error processing request: ' + err.message, 'error');
                 } finally {
-                    forceCompleteBtn.disabled = false;
-                    forceCompleteBtn.innerHTML = originalText;
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '🚀 Calculate & Complete';
                 }
             }
 
@@ -1096,145 +1351,92 @@
                 }
             }
 
-            // ─── Calculate Service ──────────────────────────────────
-            async function calculateService(e) {
-                e.preventDefault();
-                const reg = document.getElementById('vehicleReg').value.toUpperCase();
-                const make = document.getElementById('vehicleMake').value;
-                const model = document.getElementById('vehicleModel').value;
-                const year = parseInt(document.getElementById('vehicleYear').value);
-                const odometer = parseInt(document.getElementById('vehicleOdometer').value);
-                const condition = document.getElementById('vehicleCondition').value;
-                const accident = document.getElementById('vehicleAccident').value;
-                
-                if (!reg || !make || !model || !year) { 
-                    showMessage('Fill all required vehicle details', 'error'); 
-                    return; 
+            // ─── Force Complete Payment ──────────────────────────────
+            async function forceCompletePayment() {
+                if (!paymentId) {
+                    showMessage('No payment in progress', 'error');
+                    return;
                 }
                 
-                const submitBtn = document.querySelector('#vehicleForm button[type="submit"]');
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                if (!confirm('Have you confirmed the payment on your M-Pesa phone? This will mark the payment as complete.')) {
+                    return;
+                }
+                
+                forceCompleteBtn.disabled = true;
+                const originalText = forceCompleteBtn.innerHTML;
+                forceCompleteBtn.innerHTML = '<span class="spinner"></span> Confirming...';
                 
                 try {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) {
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) {
                         showMessage('Please login again', 'error');
-                        window.location.href = "login.html";
                         return;
                     }
                     
-                    // Calculate valuation
-                    const age = new Date().getFullYear() - year;
-                    let baseValue = 2000000;
-                    const makeLower = make.toLowerCase();
-                    if (makeLower === 'toyota') baseValue = 2800000;
-                    else if (makeLower === 'mercedes') baseValue = 5000000;
-                    else if (makeLower === 'bmw') baseValue = 4500000;
-                    else if (makeLower === 'nissan') baseValue = 2200000;
-                    else if (makeLower === 'honda') baseValue = 2400000;
-                    else if (makeLower === 'volkswagen') baseValue = 2600000;
-                    
-                    const conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Good' ? 1.0 : condition === 'Fair' ? 0.85 : 0.7;
-                    const accidentFactor = accident === 'None' ? 1.0 : accident === 'Minor' ? 0.85 : accident === 'Moderate' ? 0.65 : 0.4;
-                    const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
-                    const ageFactor = Math.max(0.35, 1 - (age * 0.08));
-                    
-                    let marketValue = Math.round(baseValue * ageFactor * mileageFactor * conditionFactor * accidentFactor);
-                    marketValue = Math.max(150000, marketValue);
-                    
-                    const result = {
-                        market_value: marketValue,
-                        insurance_value: Math.round(marketValue * 1.1),
-                        trade_in_value: Math.round(marketValue * 0.8),
-                        forced_sale_value: Math.round(marketValue * 0.7),
-                        certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-                    };
-                    
-                    // Save to Supabase
-                    await supabase.from('service_requests').insert({
-                        user_id: user.id,
-                        service_type: selectedService,
-                        client_type: clientType,
-                        customer_name: document.getElementById('custName').value || document.getElementById('companyName').value,
-                        customer_phone: document.getElementById('custPhone').value,
-                        customer_email: document.getElementById('custEmail').value,
-                        company_name: document.getElementById('companyName').value || null,
-                        company_reg: document.getElementById('companyReg').value || null,
-                        contact_person: document.getElementById('contactPerson').value || null,
-                        registration_number: reg,
-                        make: make,
-                        model: model,
-                        year: year,
-                        odometer: odometer,
-                        condition: condition,
-                        accident_history: accident,
-                        service_purpose: selectedPurpose,
-                        amount: getServicePrice(selectedService),
-                        payment_status: 'paid',
-                        status: 'completed',
-                        result: result,
-                        created_at: new Date().toISOString()
+                    const statusResp = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
                     });
                     
-                    // Update user profile
-                    await supabase
-                        .from('user_profiles')
-                        .update({ 
-                            has_vehicle: true, 
-                            first_login: false,
-                            client_type: clientType,
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', user.id);
+                    if (statusResp.ok) {
+                        const statusData = await statusResp.json();
+                        if (statusData.status === 'completed' || statusData.result_code === '0') {
+                            setPaymentStatus('completed', '✅ Payment already confirmed!');
+                            showMessage('Payment already completed!', 'success');
+                            const serviceType = getServiceName(selectedService);
+                            document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                            showStep(6);
+                            if (pollInterval) clearInterval(pollInterval);
+                            paymentInProgress = false;
+                            manualCheckBtn.style.display = 'none';
+                            forceCompleteBtn.style.display = 'none';
+                            return;
+                        }
+                    }
                     
-                    // Show results
-                    const serviceName = getServiceName(selectedService);
-                    document.getElementById('resultsContainer').innerHTML = `
-                        <div style="margin-bottom:20px;">
-                            <span style="background:#22c55e; color:#000; padding:4px 16px; border-radius:30px; font-weight:600;">✅ ${serviceName} Complete</span>
-                        </div>
-                        <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
-                        <p style="color:#eab308; font-weight:600;">Estimated Value</p>
-                        <div class="result-detail">
-                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
-                                <span style="color:#94a3b8;">Insurance Value</span>
-                                <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
-                                <span style="color:#94a3b8;">Trade-In Value</span>
-                                <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
-                                <span style="color:#94a3b8;">Forced Sale Value</span>
-                                <strong style="color:#ef4444;">KES ${result.forced_sale_value.toLocaleString()}</strong>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; padding:10px 0;">
-                                <span style="color:#94a3b8;">Certificate Number</span>
-                                <strong style="color:#eab308; font-size:12px;">${result.certificate_number}</strong>
-                            </div>
-                            ${clientType === 'corporate' ? `
-                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid #2d3a4e; margin-top:10px;">
-                                <span style="color:#94a3b8;">Company</span>
-                                <strong style="color:#eab308;">${document.getElementById('companyName').value}</strong>
-                            </div>
-                            ` : ''}
-                        </div>
-                        <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
-                            <p style="color:#22c55e; font-weight:600;">✅ ${serviceName} Complete!</p>
-                            <p style="color:#bbf7d0; font-size:13px; margin-top:5px;">
-                                Vehicle ${reg} has been successfully processed.
-                                ${isFirstTimeUser ? 'Your account is now fully set up!' : ''}
-                            </p>
-                        </div>
-                    `;
-                    showStep(7);
+                    const transactionId = prompt('Enter the M-Pesa transaction ID from your SMS (e.g., QWERTY123):');
+                    if (!transactionId || transactionId.length < 5) {
+                        showMessage('Transaction ID is required to confirm payment.', 'error');
+                        return;
+                    }
+                    
+                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/force-complete/${paymentId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            transaction_id: transactionId
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    console.log('Force complete result:', result);
+                    
+                    if (result.success) {
+                        setPaymentStatus('completed', '✅ Payment confirmed!');
+                        showMessage('Payment confirmed successfully!', 'success');
+                        const serviceType = getServiceName(selectedService);
+                        document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                        showStep(6);
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                        manualCheckBtn.style.display = 'none';
+                        forceCompleteBtn.style.display = 'none';
+                    } else {
+                        showMessage(result.message || 'Failed to confirm payment', 'error');
+                    }
+                    
                 } catch (err) {
-                    console.error('Error:', err);
-                    showMessage('Error processing request. Please try again.', 'error');
+                    console.error('Force complete error:', err);
+                    showMessage('Error confirming payment. Please try again.', 'error');
                 } finally {
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = '🚀 Calculate & Complete';
+                    forceCompleteBtn.disabled = false;
+                    forceCompleteBtn.innerHTML = originalText;
                 }
             }
 
@@ -1310,6 +1512,16 @@
 
             manualCheckBtn?.addEventListener('click', manualCheckPayment);
             forceCompleteBtn?.addEventListener('click', forceCompletePayment);
+
+            // ─── Vehicle Form Live Preview ──────────────────────────
+            document.getElementById('vehicleMake')?.addEventListener('input', function() {
+                updateModelList();
+                updateVehicleSummary();
+            });
+            document.getElementById('vehicleModel')?.addEventListener('input', updateVehicleSummary);
+            document.getElementById('vehicleReg')?.addEventListener('input', updateVehicleSummary);
+            document.getElementById('vehicleYear')?.addEventListener('change', updateVehicleSummary);
+            document.getElementById('vehicleOdometer')?.addEventListener('input', updateVehicleSummary);
 
             // ─── Client Type Selector ──────────────────────────────
             document.querySelectorAll('.client-type-btn').forEach(btn => {
