@@ -1,4 +1,4 @@
-# api/routes/mpesa.py – M-Pesa Routes (FULLY UPDATED)
+# api/routes/mpesa.py – M-Pesa Routes (FULLY FIXED)
 
 import os
 import logging
@@ -7,7 +7,13 @@ import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from services.supabase_client import get_supabase
-from services.mpesa import initiate_stk_push, query_payment_status, is_mpesa_configured, get_mpesa_token
+from services.mpesa import (
+    initiate_stk_push, 
+    query_payment_status, 
+    is_mpesa_configured, 
+    get_mpesa_token,
+    handle_mpesa_callback
+)
 from api.auth_middleware import require_auth
 
 logger = logging.getLogger(__name__)
@@ -49,11 +55,11 @@ def config_status():
 def initiate_payment(user):
     """
     Initiate M-Pesa STK Push payment.
-    Creates payment record in Supabase, then sends STK Push.
     """
     try:
         data = request.get_json()
         logger.info(f"📥 Payment initiation request from user {user.id}")
+        logger.info(f"📋 Request data: {data}")
         
         # Validate required fields
         required = ['phone', 'amount', 'service', 'purpose']
@@ -73,6 +79,11 @@ def initiate_payment(user):
         # Check M-Pesa configuration
         if not is_mpesa_configured():
             logger.error("❌ M-Pesa not configured")
+            logger.info(f"CONSUMER_KEY: {'✅' if os.getenv('MPESA_CONSUMER_KEY') else '❌'}")
+            logger.info(f"CONSUMER_SECRET: {'✅' if os.getenv('MPESA_CONSUMER_SECRET') else '❌'}")
+            logger.info(f"PASSKEY: {'✅' if os.getenv('MPESA_PASSKEY') else '❌'}")
+            logger.info(f"SHORTCODE: {os.getenv('MPESA_SHORTCODE', 'not set')}")
+            logger.info(f"CALLBACK_URL: {os.getenv('MPESA_CALLBACK_URL', 'not set')}")
             return jsonify({
                 'error': 'M-Pesa is not configured. Please contact support.',
                 'code': 'MPESA_NOT_CONFIGURED'
@@ -80,7 +91,7 @@ def initiate_payment(user):
         
         supabase = get_supabase()
         
-        # ─── Create payment record in Supabase ────────────────
+        # ─── Create payment record ────────────────────────────────
         payment_data = {
             'user_id': user.id,
             'service_type': service,
@@ -114,7 +125,7 @@ def initiate_payment(user):
             checkout_id = mpesa_response.get('CheckoutRequestID')
             merchant_request_id = mpesa_response.get('MerchantRequestID')
             
-            # ─── VALIDATE checkout_id is not None ────────────────
+            # ─── VALIDATE checkout_id ────────────────────────────────
             if not checkout_id:
                 logger.error(f"❌ No CheckoutRequestID received for payment {payment_id}")
                 supabase.table('payments').update({
@@ -292,13 +303,14 @@ def get_payment_status(user, payment_id):
 def mpesa_callback():
     """
     Handle M-Pesa callback from Safaricom.
-    Properly parses the callback structure.
+    Uses the hardened callback handler from services.mpesa.
     """
     try:
         # ─── Log raw request ──────────────────────────────────────
         raw_data = request.get_data(as_text=True)
         logger.info("=" * 60)
         logger.info("📥 M-PESA CALLBACK RECEIVED")
+        logger.info(f"Raw data length: {len(raw_data)}")
         
         # ─── Parse JSON ────────────────────────────────────────────
         data = request.get_json()
@@ -307,134 +319,20 @@ def mpesa_callback():
             logger.info(f"Raw data: {raw_data[:200]}")
             return jsonify({'ResultCode': 1, 'ResultDesc': 'No data'}), 400
         
-        logger.info(f"Full callback: {json.dumps(data, indent=2)}")
+        logger.info(f"Callback data: {json.dumps(data, indent=2)}")
         
-        # ─── Extract callback data ──────────────────────────────
-        stk_callback = data.get('Body', {}).get('stkCallback', {})
+        # ─── Use the hardened callback handler ──────────────────────
+        result = handle_mpesa_callback(data)
         
-        if not stk_callback:
-            logger.error("❌ No stkCallback found")
-            return jsonify({'ResultCode': 1, 'ResultDesc': 'Invalid structure'}), 400
-        
-        checkout_id = stk_callback.get('CheckoutRequestID')
-        result_code = stk_callback.get('ResultCode')
-        result_desc = stk_callback.get('ResultDesc')
-        
-        logger.info(f"📊 CheckoutID: {checkout_id}")
-        logger.info(f"📊 ResultCode: {result_code}")
-        logger.info(f"📊 ResultDesc: {result_desc}")
-        
-        if not checkout_id:
-            logger.error("❌ No CheckoutRequestID")
-            return jsonify({'ResultCode': 1, 'ResultDesc': 'Missing CheckoutRequestID'}), 400
-        
-        # ─── Extract transaction details ─────────────────────────
-        transaction_id = None
-        mpesa_receipt = None
-        amount = None
-        phone = None
-        
-        callback_metadata = stk_callback.get('CallbackMetadata')
-        if callback_metadata:
-            logger.info(f"📋 Metadata: {callback_metadata}")
-            items = callback_metadata.get('Item', [])
-            for item in items:
-                name = item.get('Name')
-                value = item.get('Value')
-                logger.info(f"  {name}: {value}")
-                
-                # ✅ CORRECT M-Pesa field name
-                if name == 'MpesaReceiptNumber':
-                    mpesa_receipt = value
-                    transaction_id = value
-                elif name == 'Amount':
-                    amount = value
-                elif name == 'PhoneNumber':
-                    phone = value
-                elif name == 'TransactionID' and not mpesa_receipt:
-                    mpesa_receipt = value
-                    transaction_id = value
-        else:
-            logger.warning("⚠️ No CallbackMetadata found")
-        
-        logger.info(f"💰 Receipt: {mpesa_receipt}")
-        logger.info(f"💰 Amount: {amount}")
-        logger.info(f"📱 Phone: {phone}")
-        
-        # ─── Update database ──────────────────────────────────────
-        supabase = get_supabase()
-        
-        # Primary: Find by checkout_request_id
-        response = supabase.table('payments')\
-            .select('*')\
-            .eq('checkout_request_id', checkout_id)\
-            .execute()
-        
-        # Fallback: Try to find by transaction_id
-        if not response.data and transaction_id:
-            logger.info(f"🔍 Trying transaction_id: {transaction_id}")
-            response = supabase.table('payments')\
-                .select('*')\
-                .eq('transaction_id', transaction_id)\
-                .execute()
-        
-        if not response.data:
-            logger.error(f"❌ Payment not found for CheckoutID: {checkout_id}")
-            return jsonify({'ResultCode': 1, 'ResultDesc': 'Payment not found'}), 404
-        
-        payment = response.data[0]
-        payment_id = payment['id']
-        logger.info(f"✅ Found payment: {payment_id}")
-        
-        # ─── Idempotency check ─────────────────────────────────────
-        if payment.get('status') == 'completed':
-            logger.info(f"ℹ️ Payment {payment_id} already completed. Skipping duplicate.")
-            return jsonify({'ResultCode': 0, 'ResultDesc': 'Success'}), 200
-        
-        # ─── Update status ────────────────────────────────────────
-        if str(result_code) == '0':
-            update_data = {
-                'status': 'completed',
-                'mpesa_result_code': str(result_code),
-                'mpesa_result_desc': result_desc or 'Transaction completed',
-                'transaction_id': transaction_id,
-                'mpesa_receipt_number': mpesa_receipt,
-                'amount_paid': amount,
-                'completed_at': datetime.now().isoformat()
-            }
-            logger.info(f"✅ Updating payment {payment_id} to COMPLETED")
-            
-        elif str(result_code) in ['1037', '1032']:
-            update_data = {
-                'status': 'failed',
-                'mpesa_result_code': str(result_code),
-                'mpesa_result_desc': result_desc or 'Transaction cancelled'
-            }
-            logger.warning(f"⚠️ Payment {payment_id} CANCELLED")
-            
-        else:
-            update_data = {
-                'status': 'failed',
-                'mpesa_result_code': str(result_code),
-                'mpesa_result_desc': result_desc or f'Failed with code {result_code}'
-            }
-            logger.warning(f"❌ Payment {payment_id} FAILED")
-        
-        # ─── Execute update ──────────────────────────────────────
-        result = supabase.table('payments').update(update_data).eq('id', payment_id).execute()
-        
-        if result.data:
-            logger.info(f"✅ Database updated successfully: {result.data[0].get('status')}")
-        else:
-            logger.error("❌ Database update failed")
-            return jsonify({'ResultCode': 1, 'ResultDesc': 'Update failed'}), 500
-        
-        logger.info("=" * 60)
-        return jsonify({'ResultCode': 0, 'ResultDesc': 'Success'}), 200
+        # ─── Return response ────────────────────────────────────────
+        return jsonify({
+            'ResultCode': result.get('ResultCode', 0),
+            'ResultDesc': result.get('ResultDesc', 'Success')
+        }), 200
         
     except Exception as e:
         logger.error(f"❌ Callback error: {e}", exc_info=True)
-        return jsonify({'ResultCode': 1, 'ResultDesc': str(e)}), 500
+        return jsonify({'ResultCode': 1, 'ResultDesc': str(e)}), 200
 
 
 # ─── Debug: Force Complete Payment ──────────────────────────
