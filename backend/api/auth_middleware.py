@@ -1,4 +1,4 @@
-# api/auth_middleware.py – Enterprise Auth Layer v2 (FIXED)
+# api/auth_middleware.py – Enterprise Auth Layer v2 (PRODUCTION READY - NO AWAIT)
 
 import os
 import logging
