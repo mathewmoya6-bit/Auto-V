@@ -1,4 +1,4 @@
-# api/routes/mpesa.py - COMPLETE FIXED VERSION
+# api/routes/mpesa.py - COMPLETE PRODUCTION FILE
 
 import os
 import logging
@@ -25,7 +25,65 @@ logger = logging.getLogger(__name__)
 mpesa_bp = Blueprint('mpesa', __name__)
 
 
-# ─── TEST ROUTE ─────────────────────────────────────────────────
+# ─── =========================================================───
+# ─── ROUTE 1: CALLBACK (MUST BE FIRST FOR M-PESA) ──────────────
+# ─── =========================================================───
+
+@mpesa_bp.route('/callback', methods=['POST', 'GET'])
+def mpesa_callback():
+    """
+    Handle M-Pesa callback from Safaricom.
+    This is where M-Pesa sends payment confirmations.
+    """
+    logger.info("=" * 60)
+    logger.info("📥 M-PESA CALLBACK ENDPOINT HIT")
+    logger.info(f"Method: {request.method}")
+    logger.info(f"Client IP: {request.remote_addr}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    
+    try:
+        # ─── Get raw data ──────────────────────────────────────────
+        raw_data = request.get_data(as_text=True)
+        logger.info(f"Raw data: {raw_data[:500] if raw_data else 'Empty'}")
+        
+        # ─── Parse JSON ────────────────────────────────────────────
+        data = request.get_json()
+        if not data:
+            # Try form data
+            data = request.form.to_dict()
+            if not data:
+                logger.error("❌ No data in callback")
+                return jsonify({'ResultCode': 1, 'ResultDesc': 'No data'}), 400
+        
+        # ─── Sanitize before logging ──────────────────────────────
+        try:
+            sanitized = sanitize_log_data(data)
+            logger.info(f"Callback data (sanitized): {json.dumps(sanitized, indent=2)[:500]}")
+        except Exception as e:
+            logger.warning(f"Could not sanitize callback data: {e}")
+        
+        # ─── Process the callback ──────────────────────────────────
+        result = handle_mpesa_callback(
+            callback_data=data,
+            client_ip=request.remote_addr
+        )
+        
+        logger.info(f"Callback result: {result}")
+        
+        return jsonify({
+            'ResultCode': result.get('ResultCode', 0),
+            'ResultDesc': result.get('ResultDesc', 'Success')
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Callback error: {e}", exc_info=True)
+        return jsonify({'ResultCode': 1, 'ResultDesc': str(e)}), 200
+
+
+# ─── =========================================================───
+# ─── ROUTE 2: TEST ROUTE ──────────────────────────────────────
+# ─── =========================================================───
+
 @mpesa_bp.route('/test', methods=['GET'])
 def test_route():
     """Simple test to verify blueprint is loaded."""
@@ -36,7 +94,10 @@ def test_route():
     }), 200
 
 
-# ─── CONFIG STATUS ──────────────────────────────────────────────
+# ─── =========================================================───
+# ─── ROUTE 3: CONFIG STATUS ────────────────────────────────────
+# ─── =========================================================───
+
 @mpesa_bp.route('/config-status', methods=['GET'])
 def config_status():
     """Check M-Pesa configuration status."""
@@ -70,7 +131,10 @@ def config_status():
         return jsonify({'error': str(e)}), 500
 
 
-# ─── INITIATE PAYMENT ────────────────────────────────────────
+# ─── =========================================================───
+# ─── ROUTE 4: INITIATE PAYMENT ─────────────────────────────────
+# ─── =========================================================───
+
 @mpesa_bp.route('/initiate', methods=['POST', 'OPTIONS'])
 def initiate_payment():
     """Initiate M-Pesa STK Push payment."""
@@ -81,6 +145,7 @@ def initiate_payment():
         data = request.get_json()
         logger.info(f"📥 Payment initiation request received")
 
+        # ─── Validate required fields ──────────────────────────
         required = ['phone', 'amount', 'service', 'purpose']
         for field in required:
             if not data.get(field):
@@ -99,6 +164,7 @@ def initiate_payment():
         if amount_int < 1:
             return jsonify({'error': 'Amount must be at least 1 KES'}), 400
 
+        # ─── Check M-Pesa configuration ──────────────────────────
         if not is_mpesa_configured():
             logger.error("❌ M-Pesa not configured")
             return jsonify({
@@ -106,8 +172,10 @@ def initiate_payment():
                 'code': 'MPESA_NOT_CONFIGURED'
             }), 503
 
+        # ─── Get Supabase client ──────────────────────────────────
         supabase = get_supabase()
 
+        # ─── Create payment record ──────────────────────────────
         payment_data = {
             'user_id': 'test-user-id',
             'service_type': service,
@@ -131,6 +199,7 @@ def initiate_payment():
         payment_id = payment['id']
         logger.info(f"✅ Created payment: {payment_id[:8]}")
 
+        # ─── Initiate STK Push ──────────────────────────────────
         try:
             mpesa_response = initiate_stk_push(
                 phone=phone,
@@ -153,11 +222,15 @@ def initiate_payment():
                     'payment_id': payment_id
                 }), 400
 
+            # ─── Update payment with checkout ID ──────────────────
             update_result = supabase.table('payments').update({
                 'checkout_request_id': checkout_id,
                 'merchant_request_id': merchant_request_id,
                 'updated_at': datetime.now().isoformat()
             }).eq('id', payment_id).execute()
+
+            if hasattr(update_result, 'error') and update_result.error:
+                logger.error(f"❌ Update error: {update_result.error}")
 
             logger.info(f"✅ STK Push sent for payment {payment_id[:8]}, CheckoutID: {checkout_id[:8]}")
 
@@ -170,6 +243,7 @@ def initiate_payment():
             }), 200
 
         except Exception as e:
+            # Update payment as failed
             supabase.table('payments').update({
                 'status': 'failed',
                 'mpesa_result_desc': str(e)
@@ -181,12 +255,17 @@ def initiate_payment():
                 'payment_id': payment_id
             }), 400
 
+    except ValueError as e:
+        return jsonify({'error': f'Invalid amount: {str(e)}'}), 400
     except Exception as e:
         logger.error(f"❌ Payment initiation error: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 
-# ─── GET PAYMENT STATUS ──────────────────────────────────────
+# ─── =========================================================───
+# ─── ROUTE 5: GET PAYMENT STATUS ───────────────────────────────
+# ─── =========================================================───
+
 @mpesa_bp.route('/status/<payment_id>', methods=['GET', 'OPTIONS'])
 def get_payment_status(payment_id):
     """Get payment status."""
@@ -208,6 +287,7 @@ def get_payment_status(payment_id):
         status = payment.get('status')
         logger.info(f"📊 Payment {payment_id[:8]} status: {status}")
 
+        # ─── If pending and has checkout_id, query M-Pesa ──────
         if status == 'pending' and payment.get('checkout_request_id'):
             try:
                 checkout_id = payment['checkout_request_id']
@@ -218,7 +298,10 @@ def get_payment_status(payment_id):
                 result_desc = mpesa_status.get('ResultDesc')
                 transaction_id = mpesa_status.get('TransactionID')
 
+                logger.info(f"📥 M-Pesa query result: {result_code}")
+
                 if str(result_code) == '0':
+                    # ✅ Payment completed
                     update_data = {
                         'status': 'completed',
                         'transaction_id': transaction_id,
@@ -228,9 +311,10 @@ def get_payment_status(payment_id):
                     }
                     supabase.table('payments').update(update_data).eq('id', payment_id).execute()
                     status = 'completed'
-                    logger.info(f"✅ Payment {payment_id[:8]} completed!")
+                    logger.info(f"✅ Payment {payment_id[:8]} completed! TXN: {transaction_id[:8] if transaction_id else 'N/A'}")
 
                 elif str(result_code) in ['1037', '1032']:
+                    # ❌ User cancelled
                     update_data = {
                         'status': 'failed',
                         'mpesa_result_code': str(result_code),
@@ -238,10 +322,11 @@ def get_payment_status(payment_id):
                     }
                     supabase.table('payments').update(update_data).eq('id', payment_id).execute()
                     status = 'failed'
-                    logger.warning(f"⚠️ Payment {payment_id[:8]} cancelled")
+                    logger.warning(f"⚠️ Payment {payment_id[:8]} cancelled: {result_desc}")
 
                 elif str(result_code) == '2001':
-                    logger.info(f"⏳ Payment {payment_id[:8]} still pending")
+                    # ⏳ Still pending
+                    logger.info(f"⏳ Payment {payment_id[:8]} still pending at M-Pesa")
                     return jsonify({
                         'payment_id': payment_id,
                         'status': 'pending',
@@ -249,10 +334,11 @@ def get_payment_status(payment_id):
                         'service_type': payment.get('service_type'),
                         'phone': payment.get('phone'),
                         'checkout_request_id': checkout_id,
-                        'message': 'Transaction still processing'
+                        'message': 'Transaction still processing at M-Pesa'
                     }), 200
 
                 else:
+                    # ❌ Failed
                     update_data = {
                         'status': 'failed',
                         'mpesa_result_code': str(result_code),
@@ -260,11 +346,21 @@ def get_payment_status(payment_id):
                     }
                     supabase.table('payments').update(update_data).eq('id', payment_id).execute()
                     status = 'failed'
-                    logger.warning(f"❌ Payment {payment_id[:8]} failed")
+                    logger.warning(f"❌ Payment {payment_id[:8]} failed: {result_desc}")
 
             except Exception as e:
                 logger.warning(f"⚠️ Failed to query M-Pesa status: {e}")
+                return jsonify({
+                    'payment_id': payment_id,
+                    'status': 'pending',
+                    'amount': payment.get('amount'),
+                    'service_type': payment.get('service_type'),
+                    'phone': payment.get('phone'),
+                    'checkout_request_id': payment.get('checkout_request_id'),
+                    'message': 'Unable to verify status with M-Pesa'
+                }), 200
 
+        # ─── Return current status ──────────────────────────────
         return jsonify({
             'payment_id': payment_id,
             'status': status,
@@ -284,79 +380,30 @@ def get_payment_status(payment_id):
         return jsonify({'error': 'Internal server error'}), 500
 
 
-# ─── M-PESA CALLBACK ──────────────────────────────────────────
-@mpesa_bp.route('/callback', methods=['POST', 'GET'])
-def mpesa_callback():
-    """
-    Handle M-Pesa callback from Safaricom.
-    This is where M-Pesa sends payment confirmations.
-    """
-    try:
-        logger.info("=" * 60)
-        logger.info("📥 M-PESA CALLBACK ENDPOINT HIT")
-        
-        # Get raw data
-        raw_data = request.get_data(as_text=True)
-        logger.info(f"Raw data: {raw_data[:500] if raw_data else 'Empty'}")
-        logger.info(f"Client IP: {request.remote_addr}")
-        logger.info(f"Request method: {request.method}")
-        logger.info(f"Request headers: {dict(request.headers)}")
+# ─── =========================================================───
+# ─── ROUTE 6: DEBUG - CALLBACK TESTER ──────────────────────────
+# ─── =========================================================───
 
-        # Parse JSON
-        data = request.get_json()
-        if not data:
-            # Try to parse as form data
-            data = request.form.to_dict()
-            if not data:
-                logger.error("❌ No data in callback")
-                return jsonify({'ResultCode': 1, 'ResultDesc': 'No data'}), 400
-
-        # Process the callback
-        result = handle_mpesa_callback(
-            callback_data=data,
-            client_ip=request.remote_addr
-        )
-
-        logger.info(f"Callback result: {result}")
-        return jsonify({
-            'ResultCode': result.get('ResultCode', 0),
-            'ResultDesc': result.get('ResultDesc', 'Success')
-        }), 200
-
-    except Exception as e:
-        logger.error(f"❌ Callback error: {e}", exc_info=True)
-        return jsonify({'ResultCode': 1, 'ResultDesc': str(e)}), 200
-
-
-# ─── DEBUG: SIMPLE CALLBACK TEST ─────────────────────────────
-@mpesa_bp.route('/callback-test', methods=['POST', 'GET'])
-def callback_test():
-    """Simple test endpoint for callback debugging."""
-    if request.method == 'POST':
-        data = request.get_json() or {}
-        logger.info(f"🔍 TEST CALLBACK RECEIVED: {data}")
-        return jsonify({
-            'status': 'ok',
-            'received': data,
-            'message': 'Test callback received successfully'
-        }), 200
-    
-    return jsonify({
-        'message': 'Send POST to test callback',
-        'example': 'curl -X POST https://auto-v-backend.onrender.com/api/mpesa/callback-test -H "Content-Type: application/json" -d \'{"test":"data"}\''
-    }), 200
-
-
-# ─── DEBUG: CALLBACK TESTER ──────────────────────────────────
 @mpesa_bp.route('/callback-debug', methods=['POST', 'GET'])
 def mpesa_callback_debug():
-    """Debug endpoint to see what M-Pesa is sending."""
+    """
+    Debug endpoint to see what M-Pesa is sending.
+    """
     if request.method == 'POST':
         try:
             data = request.get_json()
             logger.info("=" * 60)
             logger.info("🔍 CALLBACK DEBUG - FULL PAYLOAD:")
-            logger.info(json.dumps(data, indent=2) if data else "No data")
+
+            if data:
+                try:
+                    sanitized = sanitize_log_data(data)
+                    logger.info(json.dumps(sanitized, indent=2))
+                except:
+                    logger.info(str(data)[:1000])
+            else:
+                logger.info("No data")
+
             logger.info("=" * 60)
 
             checkout_id = None
@@ -381,4 +428,43 @@ def mpesa_callback_debug():
     return jsonify({
         'message': 'Send POST to this endpoint for debugging',
         'usage': 'curl -X POST https://auto-v-backend.onrender.com/api/mpesa/callback-debug -H "Content-Type: application/json" -d \'{"test":"data"}\''
+    }), 200
+
+
+# ─── =========================================================───
+# ─── ROUTE 7: SIMPLE CALLBACK TEST ─────────────────────────────
+# ─── =========================================================───
+
+@mpesa_bp.route('/callback-test', methods=['POST', 'GET'])
+def callback_test():
+    """Simple test endpoint for callback debugging."""
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        logger.info(f"🔍 TEST CALLBACK RECEIVED: {data}")
+        return jsonify({
+            'status': 'ok',
+            'received': data,
+            'message': 'Test callback received successfully'
+        }), 200
+    
+    return jsonify({
+        'message': 'Send POST to test callback',
+        'example': 'curl -X POST https://auto-v-backend.onrender.com/api/mpesa/callback-test -H "Content-Type: application/json" -d \'{"test":"data"}\''
+    }), 200
+
+
+# ─── =========================================================───
+# ─── ROUTE 8: HEALTH CHECK (MPESA SPECIFIC) ────────────────────
+# ─── =========================================================───
+
+@mpesa_bp.route('/health', methods=['GET'])
+def mpesa_health():
+    """M-Pesa specific health check."""
+    return jsonify({
+        'status': 'healthy',
+        'is_configured': is_mpesa_configured(),
+        'environment': os.getenv('MPESA_ENV', 'not_set'),
+        'shortcode': os.getenv('MPESA_SHORTCODE', 'not_set'),
+        'callback_url': os.getenv('MPESA_CALLBACK_URL', 'not_set'),
+        'timestamp': datetime.now().isoformat()
     }), 200
