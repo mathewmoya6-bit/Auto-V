@@ -229,7 +229,10 @@
                 <button class="btn btn-retry" id="retryPaymentBtn">🔄 Retry Payment</button>
             </div>
             <form id="paymentForm">
-                <div class="form-group"><label class="required">M-Pesa Phone Number</label><input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel"></div>
+                <div class="form-group"><label class="required">M-Pesa Phone Number</label>
+                    <input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel">
+                    <small style="color:#64748b;font-size:11px;">Enter the phone number registered with M-Pesa</small>
+                </div>
                 <div class="payment-summary">
                     <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
                     <div class="row"><span class="label">Purpose</span><span class="value" id="summaryPurpose">-</span></div>
@@ -237,6 +240,7 @@
                 </div>
                 <div style="background:#1e293b;border-radius:12px;padding:15px;margin-bottom:20px;">
                     <p style="color:#94a3b8;font-size:12px;">💡 M-Pesa Paybill: <strong style="color:#eab308;">4095377</strong> | Account: <strong style="color:#eab308;">AUTO-V</strong></p>
+                    <p style="color:#64748b;font-size:11px;margin-top:8px;">You will receive an STK Push on your phone to confirm payment.</p>
                 </div>
                 <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPurpose">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
             </form>
@@ -1033,22 +1037,34 @@
                         })
                     });
                     
+                    // Check if response is JSON
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        console.error('Non-JSON response:', text);
+                        throw new Error('Server returned non-JSON response. Please check server logs.');
+                    }
+                    
                     if (!response.ok) {
                         const err = await response.json();
-                        throw new Error(err.error || 'STK Push initiation failed');
+                        throw new Error(err.error || err.details || 'STK Push initiation failed');
                     }
                     
                     const result = await response.json();
                     console.log('✅ Payment initiated:', result);
                     
-                    paymentId = result.payment_id;
+                    paymentId = result.payment_id || result.id;
+                    if (!paymentId) {
+                        throw new Error('No payment ID returned from server');
+                    }
+                    
                     setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
                     payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
                     
                     if (pollInterval) clearInterval(pollInterval);
                     
                     let attempts = 0;
-                    const maxAttempts = 30; // 30 * 3s = 90 seconds
+                    const maxAttempts = 40; // 40 * 3s = 120 seconds (2 minutes)
                     
                     pollInterval = setInterval(async () => {
                         attempts++;
