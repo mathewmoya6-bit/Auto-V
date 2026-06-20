@@ -1,4 +1,4 @@
-# api/routes/mpesa.py - M-Pesa Routes (COMPLETE WITH CALLBACK)
+# api/routes/mpesa.py - COMPLETE FIXED VERSION
 
 import os
 import logging
@@ -292,38 +292,32 @@ def mpesa_callback():
     This is where M-Pesa sends payment confirmations.
     """
     try:
-        # Log the incoming request
-        raw_data = request.get_data(as_text=True)
         logger.info("=" * 60)
-        logger.info("📥 M-PESA CALLBACK RECEIVED")
-        logger.info(f"Raw data length: {len(raw_data)}")
+        logger.info("📥 M-PESA CALLBACK ENDPOINT HIT")
+        
+        # Get raw data
+        raw_data = request.get_data(as_text=True)
+        logger.info(f"Raw data: {raw_data[:500] if raw_data else 'Empty'}")
         logger.info(f"Client IP: {request.remote_addr}")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request headers: {dict(request.headers)}")
 
-        # Parse the callback data
+        # Parse JSON
         data = request.get_json()
         if not data:
-            logger.error("❌ No JSON data in callback")
-            return jsonify({'ResultCode': 1, 'ResultDesc': 'No data'}), 400
+            # Try to parse as form data
+            data = request.form.to_dict()
+            if not data:
+                logger.error("❌ No data in callback")
+                return jsonify({'ResultCode': 1, 'ResultDesc': 'No data'}), 400
 
-        # Sanitize before logging
-        try:
-            sanitized = sanitize_log_data(data)
-            logger.info(f"Callback data (sanitized): {json.dumps(sanitized, indent=2)[:500]}")
-        except Exception as e:
-            logger.warning(f"Could not sanitize callback data: {e}")
-
-        # Process the callback using the hardened handler
+        # Process the callback
         result = handle_mpesa_callback(
             callback_data=data,
             client_ip=request.remote_addr
         )
 
-        # Return response to M-Pesa
-        if result.get('ResultCode') == 0:
-            logger.info(f"✅ Callback processed successfully")
-        else:
-            logger.warning(f"⚠️ Callback processing failed: {result.get('ResultDesc')}")
-
+        logger.info(f"Callback result: {result}")
         return jsonify({
             'ResultCode': result.get('ResultCode', 0),
             'ResultDesc': result.get('ResultDesc', 'Success')
@@ -334,27 +328,35 @@ def mpesa_callback():
         return jsonify({'ResultCode': 1, 'ResultDesc': str(e)}), 200
 
 
+# ─── DEBUG: SIMPLE CALLBACK TEST ─────────────────────────────
+@mpesa_bp.route('/callback-test', methods=['POST', 'GET'])
+def callback_test():
+    """Simple test endpoint for callback debugging."""
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        logger.info(f"🔍 TEST CALLBACK RECEIVED: {data}")
+        return jsonify({
+            'status': 'ok',
+            'received': data,
+            'message': 'Test callback received successfully'
+        }), 200
+    
+    return jsonify({
+        'message': 'Send POST to test callback',
+        'example': 'curl -X POST https://auto-v-backend.onrender.com/api/mpesa/callback-test -H "Content-Type: application/json" -d \'{"test":"data"}\''
+    }), 200
+
+
 # ─── DEBUG: CALLBACK TESTER ──────────────────────────────────
 @mpesa_bp.route('/callback-debug', methods=['POST', 'GET'])
 def mpesa_callback_debug():
-    """
-    Debug endpoint to see what M-Pesa is sending.
-    """
+    """Debug endpoint to see what M-Pesa is sending."""
     if request.method == 'POST':
         try:
             data = request.get_json()
             logger.info("=" * 60)
             logger.info("🔍 CALLBACK DEBUG - FULL PAYLOAD:")
-
-            if data:
-                try:
-                    sanitized = sanitize_log_data(data)
-                    logger.info(json.dumps(sanitized, indent=2))
-                except:
-                    logger.info(str(data)[:1000])
-            else:
-                logger.info("No data")
-
+            logger.info(json.dumps(data, indent=2) if data else "No data")
             logger.info("=" * 60)
 
             checkout_id = None
