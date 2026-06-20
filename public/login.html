@@ -215,9 +215,8 @@
 
     <script>
         // ============================================================
-        // AUTO-V LOGIN - FIXED PATHS
-        // NEW USER → customer-portal.html (ROOT)
-        // EXISTING USER → dashboard.html (ROOT)
+        // AUTO-V LOGIN - NO AUTOMATIC REDIRECTION
+        // User stays on login page after authentication
         // ============================================================
 
         (function() {
@@ -239,13 +238,6 @@
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
             const signupForm = document.getElementById('signupForm');
-
-            // ─── REDIRECT PATHS (ROOT DIRECTORY) ─────────────────────────
-            const PATHS = {
-                NEW_USER: 'customer-portal.html',
-                EXISTING_USER: 'dashboard.html',
-                LOGIN: 'login.html'
-            };
 
             // ─── Utility Functions ──────────────────────────────────────
             function showMessage(text, type = 'error') {
@@ -346,8 +338,6 @@
                         return { isNew: true, needsOnboarding: true };
                     }
 
-                    // NEW USER: first_login = true OR has_vehicle = false
-                    // EXISTING USER: first_login = false AND has_vehicle = true
                     const needsOnboarding = profile.first_login === true || profile.has_vehicle === false;
                     
                     console.log('📊 User status:', {
@@ -366,24 +356,6 @@
                 } catch (err) {
                     console.error('Status check error:', err);
                     return { isNew: true, needsOnboarding: true };
-                }
-            }
-
-            // ─── REDIRECT FUNCTION ────────────────────────────────────────
-            function redirectUser(isNew, profile, user) {
-                if (isNew) {
-                    console.log('🆕 NEW USER → ' + PATHS.NEW_USER);
-                    showMessage('👋 Welcome! Setting up your account...', 'success');
-                    setTimeout(() => {
-                        window.location.href = PATHS.NEW_USER;
-                    }, 800);
-                } else {
-                    console.log('✅ EXISTING USER → ' + PATHS.EXISTING_USER);
-                    const name = profile?.full_name || user?.user_metadata?.full_name || 'User';
-                    showMessage(`✅ Welcome back, ${name}!`, 'success');
-                    setTimeout(() => {
-                        window.location.href = PATHS.EXISTING_USER;
-                    }, 800);
                 }
             }
 
@@ -447,8 +419,24 @@
                     // ─── 3. Check User Status ─────────────────────────────
                     const status = await checkUserStatus(user.id);
 
-                    // ─── 4. REDIRECT ──────────────────────────────────────
-                    redirectUser(status.needsOnboarding, profile, user);
+                    // ─── 4. SHOW SUCCESS MESSAGE (NO REDIRECT) ───────────
+                    const userName = profile?.full_name || user.user_metadata?.full_name || 'User';
+                    const userType = status.needsOnboarding ? '🆕 New User' : '✅ Existing User';
+                    showMessage(`✅ Welcome ${userName}! (${userType})`, 'success');
+                    
+                    // Update button to show success
+                    loginBtn.innerHTML = '✅ Logged In';
+                    loginBtn.style.background = '#22c55e';
+                    
+                    // Reset after 3 seconds
+                    setTimeout(() => {
+                        loginBtn.innerHTML = 'Login';
+                        loginBtn.style.background = '';
+                        loginBtn.disabled = false;
+                    }, 3000);
+
+                    // Log the user info (no redirect)
+                    console.log(`📌 User ${user.email} logged in successfully. Type: ${userType}`);
 
                 } catch (err) {
                     console.error('Unexpected error:', err);
@@ -531,10 +519,9 @@
                         });
 
                         if (loginData?.user) {
-                            // ─── 4. NEW USER → customer-portal.html ─────
-                            setTimeout(() => {
-                                window.location.href = PATHS.NEW_USER;
-                            }, 1000);
+                            // ─── 4. Show success (NO REDIRECT) ──────────
+                            showMessage(`✅ Welcome ${fullName || email.split('@')[0]}! Account created successfully.`, 'success');
+                            console.log('📌 New user created and logged in:', email);
                         }
                     }
 
@@ -544,37 +531,6 @@
                 } finally {
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = originalText;
-                }
-            }
-
-            // ─── CHECK EXISTING SESSION ──────────────────────────────────
-            async function checkExistingSession() {
-                try {
-                    const { data: { session } } = await supabase.auth.getSession();
-
-                    if (session) {
-                        console.log('🔐 Existing session found for:', session.user.email);
-                        const user = session.user;
-
-                        // Make sure profile exists
-                        let profile = await getProfile(user.id);
-                        if (!profile) {
-                            const fullName = user.user_metadata?.full_name || user.email.split('@')[0];
-                            await createProfile(user.id, user.email, fullName);
-                            profile = await getProfile(user.id);
-                        }
-
-                        // Check user status
-                        const status = await checkUserStatus(user.id);
-
-                        // ─── REDIRECT ──────────────────────────────────────
-                        redirectUser(status.needsOnboarding, profile, user);
-                    } else {
-                        console.log('🔓 No active session - showing login');
-                    }
-
-                } catch (err) {
-                    console.log('Session check error:', err);
                 }
             }
 
@@ -609,17 +565,11 @@
             });
 
             // ─── START APPLICATION ──────────────────────────────────────
-            checkExistingSession();
             emailInput.focus();
 
-            console.log('🚀 AUTO-V Login ready');
-            console.log('📌 Redirect Logic:');
-            console.log('   🆕 NEW USER (first_login=true OR has_vehicle=false) → ' + PATHS.NEW_USER);
-            console.log('   ✅ EXISTING USER (first_login=false AND has_vehicle=true) → ' + PATHS.EXISTING_USER);
-            console.log('📁 Files are in ROOT directory:');
-            console.log('   - ' + PATHS.NEW_USER);
-            console.log('   - ' + PATHS.EXISTING_USER);
-            console.log('   - login.html');
+            console.log('🚀 AUTO-V Login ready (NO REDIRECT)');
+            console.log('📌 Users stay on this page after login');
+            console.log('📌 Signup also keeps users on this page');
 
         })(); // End of IIFE
     </script>
