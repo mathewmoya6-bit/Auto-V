@@ -441,7 +441,7 @@
     <script>
         // ============================================================
         // AUTO-V CUSTOMER PORTAL WITH ADMIN DASHBOARD
-        // Single Source of Truth: Supabase
+        // Aligned with backend endpoints: /mpesa/initiate and /mpesa/status
         // ============================================================
         (function() {
             if (window.autoVCustomerPortalInitialized) return;
@@ -529,7 +529,6 @@
                     return;
                 }
 
-                // Update stats
                 const total = payments.length;
                 const completed = payments.filter(p => p.status === 'completed').length;
                 const pending = payments.filter(p => p.status === 'pending' || p.status === 'processing').length;
@@ -542,7 +541,6 @@
                 document.getElementById('failedPayments').textContent = failed;
                 document.getElementById('totalRevenue').textContent = `KES ${revenue.toLocaleString()}`;
 
-                // Render table
                 tbody.innerHTML = payments.slice(0, 50).map(p => `
                     <tr>
                         <td style="font-size:12px;">${p.id.slice(0, 8)}...</td>
@@ -705,7 +703,7 @@
                 }
             }
 
-            // ─── Existing Functions ─────────────────────────────────
+            // ─── Utility Functions ─────────────────────────────────
             function populateYears() {
                 const yearSelect = document.getElementById('vehicleYear');
                 const currentYear = new Date().getFullYear();
@@ -977,7 +975,7 @@
                 }
             }
 
-            // ─── Payment Handler ─────────────────────────────────────
+            // ─── PAYMENT HANDLER - ALIGNED WITH /mpesa/ ENDPOINTS ──
             async function processPayment(e) {
                 e.preventDefault();
                 
@@ -1023,6 +1021,7 @@
                         throw new Error('No authentication token available');
                     }
                     
+                    // ─── USING /mpesa/initiate ENDPOINT ───
                     const response = await fetch(`${API_BASE}/mpesa/initiate`, {
                         method: 'POST',
                         headers: { 
@@ -1037,7 +1036,6 @@
                         })
                     });
                     
-                    // Check if response is JSON
                     const contentType = response.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
                         const text = await response.text();
@@ -1064,7 +1062,7 @@
                     if (pollInterval) clearInterval(pollInterval);
                     
                     let attempts = 0;
-                    const maxAttempts = 40; // 40 * 3s = 120 seconds (2 minutes)
+                    const maxAttempts = 40;
                     
                     pollInterval = setInterval(async () => {
                         attempts++;
@@ -1077,6 +1075,7 @@
                                 return;
                             }
                             
+                            // ─── USING /mpesa/status ENDPOINT ───
                             const statusResp = await fetch(`${API_BASE}/mpesa/status/${paymentId}`, {
                                 headers: {
                                     'Authorization': `Bearer ${token}`,
@@ -1122,7 +1121,6 @@
                                 payBtn.disabled = false;
                                 paymentInProgress = false;
                                 
-                                // Refresh admin data if open
                                 if (showAdmin) loadPayments();
                                 return;
                                 
@@ -1137,7 +1135,6 @@
                                 return;
                             }
                             
-                            // Still processing
                             if (attempts >= maxAttempts) {
                                 clearInterval(pollInterval);
                                 setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
@@ -1210,7 +1207,6 @@
                         return;
                     }
                     
-                    // Calculate valuation
                     const age = new Date().getFullYear() - year;
                     let baseValue = 2000000;
                     const makeLower = make.toLowerCase();
@@ -1237,7 +1233,6 @@
                         certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
                     };
                     
-                    // Save to Supabase
                     await supabase.from('service_requests').insert({
                         user_id: user.id,
                         service_type: selectedService,
@@ -1259,7 +1254,6 @@
                         created_at: new Date().toISOString()
                     });
                     
-                    // Update user profile
                     await supabase
                         .from('user_profiles')
                         .update({ 
@@ -1269,7 +1263,6 @@
                         })
                         .eq('id', user.id);
                     
-                    // Show results
                     const serviceName = selectedService === 'valuation' ? 'Valuation' : 'Inspection';
                     document.getElementById('resultsContainer').innerHTML = `
                         <div style="margin-bottom:20px;">
@@ -1321,17 +1314,14 @@
             document.getElementById('vehicleForm')?.addEventListener('submit', calculateValuation);
             document.getElementById('settingsForm')?.addEventListener('submit', saveSettings);
             
-            // Admin toggle
             document.getElementById('adminToggleBtn')?.addEventListener('click', toggleAdmin);
             
-            // Admin tabs
             document.querySelectorAll('.admin-tab').forEach(tab => {
                 tab.addEventListener('click', function() {
                     switchAdminTab(this.dataset.tab);
                 });
             });
             
-            // Navigation buttons
             document.getElementById('backToLogin')?.addEventListener('click', () => showStep(1));
             document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
             document.getElementById('backToService')?.addEventListener('click', () => showStep(3));
@@ -1364,7 +1354,6 @@
                 document.getElementById('signupSection').style.display = 'none';
             });
 
-            // Service selection
             document.querySelectorAll('.service-card').forEach(card => {
                 card.onclick = () => {
                     document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
