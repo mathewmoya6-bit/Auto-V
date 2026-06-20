@@ -41,6 +41,8 @@
         .btn-success:hover { background:#16a34a; transform:translateY(-2px); }
         .btn-retry { background:#f59e0b; color:#000; }
         .btn-retry:hover { background:#d97706; }
+        .btn-force { background: #22c55e; color: #000; }
+        .btn-force:hover { background: #16a34a; transform:translateY(-2px); }
         .nav-buttons { display:flex; justify-content:space-between; margin-top:30px; gap:10px; }
         .service-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:20px; margin-top:20px; }
         .service-card { background:#1e293b; border-radius:16px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s; }
@@ -90,6 +92,9 @@
         .manual-check-btn { margin-top: 10px; width: 100%; padding: 10px; border-radius: 40px; background: #334155; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; }
         .manual-check-btn:hover { background: #475569; }
         .manual-check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .force-complete-btn { margin-top: 5px; width: 100%; padding: 10px; border-radius: 40px; background: #22c55e; color: #000; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
+        .force-complete-btn:hover { background: #16a34a; transform:translateY(-2px); }
+        .force-complete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .welcome-banner { background: linear-gradient(135deg, #1e293b, #2d3a4e); border: 2px solid #eab308; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px; text-align: center; display: none; }
         .welcome-banner h3 { color: #eab308; font-size: 20px; margin-bottom: 8px; }
         .welcome-banner p { color: #94a3b8; font-size: 14px; }
@@ -210,6 +215,7 @@
                 <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPurpose">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
             </form>
             <button class="manual-check-btn" id="manualCheckBtn" style="display:none;">🔄 Check Payment Status</button>
+            <button class="force-complete-btn" id="forceCompleteBtn">✅ I've Confirmed Payment</button>
         </div>
 
         <!-- STEP 6: VEHICLE DATA ENTRY -->
@@ -343,6 +349,7 @@
             const summaryPurpose = document.getElementById('summaryPurpose');
             const summaryAmount = document.getElementById('summaryAmount');
             const manualCheckBtn = document.getElementById('manualCheckBtn');
+            const forceCompleteBtn = document.getElementById('forceCompleteBtn');
 
             // ─── Helper Functions ──────────────────────────────────────
             function formatKES(amount) {
@@ -372,10 +379,15 @@
                 el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
                 el.style.display = 'block';
                 document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
+                
+                // Show/hide manual check button
                 if (status === 'processing' || status === 'pending') {
                     manualCheckBtn.style.display = 'block';
+                    // Show force complete button when pending
+                    forceCompleteBtn.style.display = 'block';
                 } else {
                     manualCheckBtn.style.display = 'none';
+                    forceCompleteBtn.style.display = 'none';
                 }
             }
 
@@ -686,6 +698,99 @@
                 }
             }
 
+            // ─── Force Complete Payment ──────────────────────────────
+            async function forceCompletePayment() {
+                if (!paymentId) {
+                    showMessage('No payment in progress', 'error');
+                    return;
+                }
+                
+                // Show confirmation dialog
+                if (!confirm('Have you confirmed the payment on your M-Pesa phone? This will mark the payment as complete.')) {
+                    return;
+                }
+                
+                forceCompleteBtn.disabled = true;
+                const originalText = forceCompleteBtn.innerHTML;
+                forceCompleteBtn.innerHTML = '<span class="spinner"></span> Confirming...';
+                
+                try {
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) {
+                        showMessage('Please login again', 'error');
+                        return;
+                    }
+                    
+                    // ─── Check current status first ──────────────────────────
+                    const statusResp = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (statusResp.ok) {
+                        const statusData = await statusResp.json();
+                        if (statusData.status === 'completed' || statusData.result_code === '0') {
+                            setPaymentStatus('completed', '✅ Payment already confirmed!');
+                            showMessage('Payment already completed!', 'success');
+                            const serviceType = getServiceName(selectedService);
+                            document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                            showStep(6);
+                            if (pollInterval) clearInterval(pollInterval);
+                            paymentInProgress = false;
+                            manualCheckBtn.style.display = 'none';
+                            forceCompleteBtn.style.display = 'none';
+                            return;
+                        }
+                    }
+                    
+                    // ─── Ask for transaction ID ──────────────────────────────
+                    const transactionId = prompt('Enter the M-Pesa transaction ID from your SMS (e.g., QWERTY123):');
+                    if (!transactionId || transactionId.length < 5) {
+                        showMessage('Transaction ID is required to confirm payment.', 'error');
+                        return;
+                    }
+                    
+                    // ─── Force complete ──────────────────────────────────────
+                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/force-complete/${paymentId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            transaction_id: transactionId
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    console.log('Force complete result:', result);
+                    
+                    if (result.success) {
+                        setPaymentStatus('completed', '✅ Payment confirmed!');
+                        showMessage('Payment confirmed successfully!', 'success');
+                        const serviceType = getServiceName(selectedService);
+                        document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                        showStep(6);
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                        manualCheckBtn.style.display = 'none';
+                        forceCompleteBtn.style.display = 'none';
+                    } else {
+                        showMessage(result.message || 'Failed to confirm payment', 'error');
+                    }
+                    
+                } catch (err) {
+                    console.error('Force complete error:', err);
+                    showMessage('Error confirming payment. Please try again.', 'error');
+                } finally {
+                    forceCompleteBtn.disabled = false;
+                    forceCompleteBtn.innerHTML = originalText;
+                }
+            }
+
             // ─── Payment Handler ──────────────────────────────────────
             async function processPayment(e) {
                 e.preventDefault();
@@ -820,6 +925,7 @@
                                     paymentInProgress = false;
                                     document.getElementById('paymentRetry').style.display = 'block';
                                     manualCheckBtn.style.display = 'block';
+                                    forceCompleteBtn.style.display = 'block';
                                     return;
                                 }
                                 setTimeout(pollWithBackoff, pollDelay);
@@ -852,6 +958,7 @@
                                 payBtn.disabled = false;
                                 paymentInProgress = false;
                                 manualCheckBtn.style.display = 'none';
+                                forceCompleteBtn.style.display = 'none';
                                 return;
                             }
                             
@@ -864,6 +971,7 @@
                                 paymentInProgress = false;
                                 document.getElementById('paymentRetry').style.display = 'block';
                                 manualCheckBtn.style.display = 'block';
+                                forceCompleteBtn.style.display = 'block';
                                 return;
                             }
                             
@@ -876,6 +984,7 @@
                                 paymentInProgress = false;
                                 document.getElementById('paymentRetry').style.display = 'block';
                                 manualCheckBtn.style.display = 'block';
+                                forceCompleteBtn.style.display = 'block';
                                 return;
                             }
                             
@@ -907,6 +1016,7 @@
                     paymentInProgress = false;
                     document.getElementById('paymentRetry').style.display = 'block';
                     manualCheckBtn.style.display = 'block';
+                    forceCompleteBtn.style.display = 'block';
                 }
             }
 
@@ -964,6 +1074,7 @@
                         if (pollInterval) clearInterval(pollInterval);
                         paymentInProgress = false;
                         manualCheckBtn.style.display = 'none';
+                        forceCompleteBtn.style.display = 'none';
                     } else if (status === 'failed') {
                         setPaymentStatus('failed', '❌ Payment failed.');
                         showMessage('Payment failed. Please retry.', 'error');
@@ -1191,12 +1302,14 @@
                 document.getElementById('paymentStatus').style.display = 'none';
                 document.getElementById('paymentRetry').style.display = 'none';
                 manualCheckBtn.style.display = 'none';
+                forceCompleteBtn.style.display = 'none';
                 if (pollInterval) clearInterval(pollInterval);
                 paymentInProgress = false;
                 processPayment(new Event('submit'));
             });
 
             manualCheckBtn?.addEventListener('click', manualCheckPayment);
+            forceCompleteBtn?.addEventListener('click', forceCompletePayment);
 
             // ─── Client Type Selector ──────────────────────────────
             document.querySelectorAll('.client-type-btn').forEach(btn => {
