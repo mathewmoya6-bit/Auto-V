@@ -1,10 +1,11 @@
-# api/routes/mpesa.py – M-Pesa Routes (BANK-GRADE v2)
+# api/routes/mpesa.py – M-Pesa Routes (PRODUCTION READY)
 
 import os
 import logging
 import uuid
 import json
 import hashlib
+from functools import wraps
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
@@ -256,7 +257,10 @@ def retry_mpesa_query(checkout_id: str, max_retries: int = 3) -> dict:
     raise Exception(f"Failed to query M-Pesa after {max_retries} attempts")
 
 
-# ─── Config Status ──────────────────────────────────────────────
+# ─── =========================================================───
+# ─── ROUTES ──────────────────────────────────────────────────────
+# ─── =========================================================───
+
 @mpesa_bp.route('/config-status', methods=['GET'])
 def config_status():
     """Check M-Pesa configuration status."""
@@ -292,12 +296,16 @@ def config_status():
 
 
 # ─── Initiate Payment ────────────────────────────────────────
-@mpesa_bp.route('/initiate', methods=['POST'])
+@mpesa_bp.route('/initiate', methods=['POST', 'OPTIONS'])
 @require_auth
 def initiate_payment(user):
     """
     Initiate M-Pesa STK Push payment.
     """
+    # ─── Handle OPTIONS preflight ───────────────────────────────
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     try:
         data = request.get_json()
         logger.info(f"📥 Payment initiation request from user {user['id'][:8]}")
@@ -434,12 +442,16 @@ def initiate_payment(user):
 
 
 # ─── Get Payment Status ──────────────────────────────────────
-@mpesa_bp.route('/status/<payment_id>', methods=['GET'])
+@mpesa_bp.route('/status/<payment_id>', methods=['GET', 'OPTIONS'])
 @require_auth
 def get_payment_status(user, payment_id):
     """
     Get the current status of a payment from Supabase and query M-Pesa if pending.
     """
+    # ─── Handle OPTIONS preflight ───────────────────────────────
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     try:
         supabase = get_supabase()
 
