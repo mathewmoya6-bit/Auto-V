@@ -64,6 +64,7 @@ def initiate_payment(user):
         amount = float(data.get('amount'))
         service = data.get('service')
         purpose = data.get('purpose')
+        client_type = data.get('client_type', 'individual')
         
         if amount <= 0:
             return jsonify({'error': 'Amount must be greater than 0'}), 400
@@ -85,6 +86,7 @@ def initiate_payment(user):
             'purpose': purpose,
             'amount': amount,
             'phone': phone,
+            'client_type': client_type,
             'status': 'pending',
             'reference': f'AUTO-{uuid.uuid4().hex[:8].upper()}',
             'created_at': datetime.now().isoformat()
@@ -109,11 +111,13 @@ def initiate_payment(user):
             )
             
             checkout_id = mpesa_response.get('CheckoutRequestID')
+            merchant_request_id = mpesa_response.get('MerchantRequestID')
             
             # Update payment with checkout ID
             if checkout_id:
                 supabase.table('payments').update({
-                    'checkout_request_id': checkout_id
+                    'checkout_request_id': checkout_id,
+                    'merchant_request_id': merchant_request_id
                 }).eq('id', payment_id).execute()
             
             logger.info(f"✅ STK Push sent for payment {payment_id}, CheckoutID: {checkout_id}")
@@ -121,6 +125,7 @@ def initiate_payment(user):
             return jsonify({
                 'payment_id': payment_id,
                 'checkout_id': checkout_id,
+                'merchant_request_id': merchant_request_id,
                 'status': 'pending',
                 'message': 'STK Push sent to your phone. Please confirm the transaction.'
             }), 200
@@ -150,7 +155,7 @@ def initiate_payment(user):
 @require_auth
 def get_payment_status(user, payment_id):
     """
-    Get the current status of a payment from Supabase.
+    Get the current status of a payment from Supabase and query M-Pesa if pending.
     """
     try:
         supabase = get_supabase()
@@ -165,51 +170,86 @@ def get_payment_status(user, payment_id):
             return jsonify({'error': 'Payment not found'}), 404
         
         payment = response.data[0]
+        logger.info(f"📊 Payment status check: {payment_id} - current status: {payment.get('status')}")
         
         # ─── Query M-Pesa if still pending ──────────────────────
         if payment['status'] == 'pending' and payment.get('checkout_request_id'):
             try:
                 checkout_id = payment['checkout_request_id']
+                logger.info(f"🔍 Querying M-Pesa for checkout: {checkout_id}")
+                
                 mpesa_status = query_payment_status(checkout_id)
+                logger.info(f"📥 M-Pesa query response: {mpesa_status}")
                 
                 result_code = mpesa_status.get('ResultCode')
                 result_desc = mpesa_status.get('ResultDesc')
+                transaction_id = mpesa_status.get('TransactionID')
                 
+                # ─── Update payment based on M-Pesa response ──────────
                 if str(result_code) == '0':
+                    # ✅ Payment completed
                     new_status = 'completed'
                     update_data = {
                         'status': new_status,
-                        'mpesa_result_code': result_code,
-                        'mpesa_result_desc': result_desc,
-                        'transaction_id': mpesa_status.get('TransactionID'),
+                        'mpesa_result_code': str(result_code),
+                        'mpesa_result_desc': result_desc or 'Transaction completed',
+                        'transaction_id': transaction_id,
                         'completed_at': datetime.now().isoformat()
                     }
-                    logger.info(f"✅ Payment {payment_id} completed via status query")
+                    logger.info(f"✅ Payment {payment_id} completed! Transaction ID: {transaction_id}")
+                    
                 elif str(result_code) == '1037':
+                    # ❌ User cancelled
                     new_status = 'failed'
                     update_data = {
                         'status': new_status,
-                        'mpesa_result_code': result_code,
+                        'mpesa_result_code': str(result_code),
                         'mpesa_result_desc': result_desc or 'User cancelled transaction'
                     }
                     logger.warning(f"⚠️ Payment {payment_id} cancelled by user")
+                    
+                elif str(result_code) == '2001':
+                    # ⏳ Transaction still pending at M-Pesa
+                    logger.info(f"⏳ Payment {payment_id} still pending at M-Pesa")
+                    # Don't update status, keep as pending
+                    return jsonify({
+                        'payment_id': payment_id,
+                        'status': 'pending',
+                        'amount': payment.get('amount'),
+                        'service_type': payment.get('service_type'),
+                        'phone': payment.get('phone'),
+                        'checkout_request_id': checkout_id,
+                        'message': 'Transaction still processing at M-Pesa'
+                    }), 200
+                    
                 else:
+                    # ❌ Transaction failed
                     new_status = 'failed'
                     update_data = {
                         'status': new_status,
-                        'mpesa_result_code': result_code,
+                        'mpesa_result_code': str(result_code),
                         'mpesa_result_desc': result_desc or 'Transaction failed'
                     }
-                    logger.warning(f"❌ Payment {payment_id} failed: {result_desc}")
+                    logger.warning(f"❌ Payment {payment_id} failed: {result_desc} (Code: {result_code})")
                 
-                # Update Supabase
-                supabase.table('payments').update(update_data).eq('id', payment_id).execute()
-                
-                # Update the payment object for response
-                payment.update(update_data)
+                # ─── Update Supabase if status changed ──────────────────
+                if new_status != payment['status']:
+                    supabase.table('payments').update(update_data).eq('id', payment_id).execute()
+                    payment.update(update_data)
+                    logger.info(f"📝 Payment {payment_id} updated to: {new_status}")
                 
             except Exception as e:
-                logger.warning(f"⚠️ Failed to query payment status: {e}")
+                logger.warning(f"⚠️ Failed to query M-Pesa status: {e}")
+                # Return pending if can't query M-Pesa
+                return jsonify({
+                    'payment_id': payment_id,
+                    'status': 'pending',
+                    'amount': payment.get('amount'),
+                    'service_type': payment.get('service_type'),
+                    'phone': payment.get('phone'),
+                    'checkout_request_id': payment.get('checkout_request_id'),
+                    'message': 'Unable to verify status with M-Pesa'
+                }), 200
         
         # ─── Return payment status ──────────────────────────────
         return jsonify({
@@ -220,11 +260,13 @@ def get_payment_status(user, payment_id):
             'phone': payment.get('phone'),
             'transaction_id': payment.get('transaction_id'),
             'result_code': payment.get('mpesa_result_code'),
-            'result_desc': payment.get('mpesa_result_desc')
+            'result_desc': payment.get('mpesa_result_desc'),
+            'checkout_request_id': payment.get('checkout_request_id'),
+            'completed_at': payment.get('completed_at')
         }), 200
         
     except Exception as e:
-        logger.error(f"❌ Error getting payment status: {e}")
+        logger.error(f"❌ Error getting payment status: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -237,7 +279,7 @@ def mpesa_callback():
     """
     try:
         data = request.get_json()
-        logger.info(f"📥 M-Pesa callback received")
+        logger.info(f"📥 M-Pesa callback received: {data}")
         
         # Extract callback data
         stk_callback = data.get('Body', {}).get('stkCallback', {})
@@ -251,7 +293,15 @@ def mpesa_callback():
         result_desc = stk_callback.get('ResultDesc')
         transaction_id = stk_callback.get('TransactionID')
         
-        logger.info(f"📦 Callback: CheckoutID={checkout_id}, ResultCode={result_code}")
+        # Get transaction ID from callback metadata if available
+        if not transaction_id and stk_callback.get('CallbackMetadata'):
+            metadata = stk_callback.get('CallbackMetadata', {}).get('Item', [])
+            for item in metadata:
+                if item.get('Name') == 'TransactionID':
+                    transaction_id = item.get('Value')
+                    break
+        
+        logger.info(f"📦 Callback: CheckoutID={checkout_id}, ResultCode={result_code}, TransactionID={transaction_id}")
         
         if not checkout_id:
             logger.error("❌ Callback missing CheckoutRequestID")
@@ -283,23 +333,34 @@ def mpesa_callback():
             new_status = 'completed'
             update_data = {
                 'status': new_status,
-                'mpesa_result_code': result_code,
-                'mpesa_result_desc': result_desc,
+                'mpesa_result_code': str(result_code),
+                'mpesa_result_desc': result_desc or 'Transaction completed successfully',
                 'transaction_id': transaction_id,
                 'completed_at': datetime.now().isoformat()
             }
             logger.info(f"✅ Payment {payment_id} completed successfully. Transaction ID: {transaction_id}")
+            
+        elif str(result_code) == '1037':
+            new_status = 'failed'
+            update_data = {
+                'status': new_status,
+                'mpesa_result_code': str(result_code),
+                'mpesa_result_desc': result_desc or 'User cancelled transaction'
+            }
+            logger.warning(f"⚠️ Payment {payment_id} cancelled by user")
+            
         else:
             new_status = 'failed'
             update_data = {
                 'status': new_status,
-                'mpesa_result_code': result_code,
-                'mpesa_result_desc': result_desc or 'Transaction failed'
+                'mpesa_result_code': str(result_code),
+                'mpesa_result_desc': result_desc or f'Transaction failed with code {result_code}'
             }
             logger.warning(f"❌ Payment {payment_id} failed: {result_desc} (Code: {result_code})")
         
         # Update Supabase
         supabase.table('payments').update(update_data).eq('id', payment_id).execute()
+        logger.info(f"📝 Payment {payment_id} status updated to: {new_status}")
         
         return jsonify({'ResultCode': 0, 'ResultDesc': 'Success'}), 200
         
