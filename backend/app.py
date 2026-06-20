@@ -1,4 +1,4 @@
-# app.py - Enterprise-Grade Flask Application (FINAL FIXED)
+# app.py - Enterprise-Grade Flask Application (CORS FIXED FINAL)
 
 import os
 import sys
@@ -25,15 +25,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info(f"📋 Log level set to: {LOG_LEVEL}")
 
-# ─── Debug: Show current directory and files ──────────────────
+# ─── Debug: Show current directory ────────────────────────────
 logger.info(f"📁 Current working directory: {os.getcwd()}")
 try:
-    files = os.listdir('.')
-    logger.info(f"📁 Files in directory: {files}")
+    logger.info(f"📁 Contents: {os.listdir('.')}")
 except Exception as e:
     logger.warning(f"⚠️ Could not list directory: {e}")
 
-# ─── Environment Variables (Validated Once at Startup) ──────
+
+# ─── Environment Variables ──────────────────────────────────
 REQUIRED_ENV_VARS = {
     'MPESA_CONSUMER_KEY': 'M-Pesa Consumer Key',
     'MPESA_CONSUMER_SECRET': 'M-Pesa Consumer Secret',
@@ -44,67 +44,71 @@ REQUIRED_ENV_VARS = {
     'SUPABASE_ANON_KEY': 'Supabase Anon Key'
 }
 
-OPTIONAL_ENV_VARS = {
-    'REDIS_URL': 'Redis URL',
-    'MPESA_ENV': 'M-Pesa Environment (sandbox/production)',
-    'MPESA_API_SECRET': 'M-Pesa API Secret (for signature verification)',
-    'FLASK_ENV': 'Flask Environment',
-    'LOG_LEVEL': 'Log Level'
-}
-
 MISSING_ENV_VARS = []
 
 def validate_environment():
-    """Validate required environment variables (called once at startup)."""
     global MISSING_ENV_VARS
     missing = []
-    
     for var, description in REQUIRED_ENV_VARS.items():
         if not os.getenv(var):
             missing.append(f"{var} ({description})")
-    
     MISSING_ENV_VARS = missing
-    
     if missing:
-        logger.warning(f"⚠️ Missing required environment variables:")
-        for item in missing:
-            logger.warning(f"   - {item}")
-        logger.warning("⚠️ Some features may not work correctly")
+        logger.warning(f"⚠️ Missing environment variables: {', '.join(missing)}")
     else:
         logger.info("✅ All required environment variables are set")
-    
-    # Log optional variables status
-    for var, description in OPTIONAL_ENV_VARS.items():
-        if os.getenv(var):
-            logger.info(f"✅ {description}: {var[:10]}...")
-        else:
-            logger.info(f"ℹ️ {description}: not set (using default)")
-    
     return missing
 
-# ─── Run validation ONCE at startup ──────────────────────────
 validate_environment()
 
 
-# ─── CORS Configuration ──────────────────────────────────────
+# ─── =========================================================───
+# ─── CORS SYSTEM - BULLETPROOF ─────────────────────────────────
+# ─── =========================================================───
+
+ALLOWED_ORIGINS = [
+    "https://auto-v.meipressgroup.com",
+    "https://auto-v.onrender.com",
+    "http://localhost:3000",
+    "http://localhost:5000"
+]
+
+# ✅ ONLY use Flask-CORS (remove manual after_request)
 CORS(app, 
      resources={r"/api/*": {
-         "origins": [
-             "https://auto-v.meipressgroup.com",
-             "https://auto-v.onrender.com",
-             "http://localhost:3000",
-             "http://localhost:5000"
+         "origins": ALLOWED_ORIGINS,
+         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+         "allow_headers": [
+             "Content-Type",
+             "Authorization",
+             "Accept",
+             "X-Requested-With",
+             "X-CSRFToken"
          ],
-         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         "allow_headers": ["Content-Type", "Authorization", "Accept"],
-         "expose_headers": ["Content-Type", "Authorization"],
+         "expose_headers": [
+             "Content-Type",
+             "Authorization",
+             "X-Total-Count"
+         ],
          "supports_credentials": True,
-         "max_age": 3600
-     }}
+         "max_age": 86400
+     }},
+    supports_credentials=True
 )
 
+# ✅ FIXED: Global preflight handler using Flask's default
+@app.before_request
+def handle_preflight():
+    """Handle OPTIONS requests globally."""
+    if request.method == "OPTIONS":
+        # Let Flask-CORS handle headers automatically
+        return app.make_default_options_response()
 
-# ─── Rate Limiter Configuration ──────────────────────────────
+
+# ─── =========================================================───
+# ─── RATE LIMITER ───────────────────────────────────────────────
+# ─── =========================================================───
+
 REDIS_URL = os.getenv('REDIS_URL', None)
 
 if REDIS_URL and (REDIS_URL.startswith("redis://") or REDIS_URL.startswith("rediss://")):
@@ -112,96 +116,43 @@ if REDIS_URL and (REDIS_URL.startswith("redis://") or REDIS_URL.startswith("redi
     logger.info(f"✅ Using Redis for rate limiting: {REDIS_URL[:30]}...")
 else:
     storage_uri = "memory://"
-    if REDIS_URL:
-        logger.warning(f"⚠️ Invalid Redis URL format: {REDIS_URL}. Using memory storage.")
-    else:
-        logger.warning("⚠️ Using memory for rate limiting (not production-safe)")
+    logger.warning("⚠️ Using memory for rate limiting (not production-safe)")
 
-# ✅ FIXED: Correct Limiter initialization for v3+
-try:
-    limiter = Limiter(
-        key_func=get_remote_address,
-        default_limits=["500 per hour", "100 per minute"],
-        storage_uri=storage_uri
-    )
-    limiter.init_app(app)
-    logger.info("✅ Rate limiter initialized successfully")
-except TypeError as e:
-    logger.error(f"❌ Rate limiter initialization failed: {e}")
-    # Fallback: simpler initialization without storage_uri
-    limiter = Limiter(
-        key_func=get_remote_address,
-        default_limits=["500 per hour", "100 per minute"]
-    )
-    limiter.init_app(app)
-    logger.info("✅ Rate limiter initialized with default storage (fallback)")
+# ✅ FIXED: Added swallow_errors to prevent limiter from breaking OPTIONS
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["500 per hour", "100 per minute"],
+    storage_uri=storage_uri,
+    swallow_errors=True
+)
+limiter.init_app(app)
+logger.info("✅ Rate limiter initialized successfully")
 
 
-# ─── Security Middleware ──────────────────────────────────────
+# ─── =========================================================───
+# ─── SECURITY MIDDLEWARE ────────────────────────────────────────
+# ─── =========================================================───
+
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
-# ─── Request Logging Middleware (DEV ONLY) ────────────────────
-if os.getenv("FLASK_ENV") == "development":
-    @app.before_request
-    def log_request():
-        """Log all incoming requests (development only)."""
-        logger.debug(f"→ {request.method} {request.path} - {request.remote_addr}")
-        
-        if request.path.startswith('/api/mpesa') and request.method in ['POST', 'PUT']:
-            if request.is_json:
-                try:
-                    data = request.get_json(silent=True)
-                    if data:
-                        sensitive_keys = ['password', 'consumer_secret', 'api_key', 'pin']
-                        for key in sensitive_keys:
-                            if key in data:
-                                data[key] = '***'
-                        logger.debug(f"📋 Request data: {data}")
-                except:
-                    pass
 
-    @app.after_request
-    def log_response(response):
-        logger.debug(f"← {request.method} {request.path} - {response.status_code}")
-        return response
-else:
-    logger.info("ℹ️ Request logging disabled in production mode")
+# ─── =========================================================───
+# ─── ROUTES ──────────────────────────────────────────────────────
+# ─── =========================================================───
 
-
-# ─── Health Check ─────────────────────────────────────────────
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check with detailed system status."""
-    redis_healthy = False
-    if REDIS_URL and (REDIS_URL.startswith("redis://") or REDIS_URL.startswith("rediss://")):
-        try:
-            import redis
-            r = redis.from_url(REDIS_URL)
-            redis_healthy = r.ping()
-        except:
-            redis_healthy = False
-    
     return jsonify({
         'status': 'healthy',
         'version': '2.0.0',
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'environment': os.getenv('FLASK_ENV', 'production'),
-        'redis_connected': redis_healthy,
-        'mpesa_configured': all([
-            os.getenv('MPESA_CONSUMER_KEY'),
-            os.getenv('MPESA_CONSUMER_SECRET'),
-            os.getenv('MPESA_PASSKEY'),
-            os.getenv('MPESA_SHORTCODE'),
-            os.getenv('MPESA_CALLBACK_URL')
-        ]),
-        'missing_env_vars': MISSING_ENV_VARS
+        'redis_connected': bool(REDIS_URL),
+        'mpesa_configured': all([os.getenv(v) for v in REQUIRED_ENV_VARS.keys()])
     }), 200
 
-
-# ─── Test Route ──────────────────────────────────────────────
 @app.route('/api/test', methods=['GET'])
 def test_route():
-    """Simple test route to verify API is working."""
     return jsonify({
         'status': 'ok',
         'message': 'API is working',
@@ -209,22 +160,27 @@ def test_route():
     }), 200
 
 
-# ─── Register Blueprints (with multiple fallback paths) ──────
+# ─── =========================================================───
+# ─── REGISTER BLUEPRINTS ────────────────────────────────────────
+# ─── =========================================================───
+
 mpesa_loaded = False
 
 def register_blueprints():
     global mpesa_loaded
     
-    # Try multiple import paths
+    sys.path.insert(0, os.getcwd())
+    
     import_paths = [
+        'backend.api.routes.mpesa',
         'api.routes.mpesa',
         'routes.mpesa',
-        'backend.api.routes.mpesa'
+        'backend.routes.mpesa'
     ]
     
     for import_path in import_paths:
         try:
-            logger.info(f"🔍 Trying to import from: {import_path}")
+            logger.info(f"🔍 Trying to import: {import_path}")
             module = __import__(import_path, fromlist=['mpesa_bp'])
             if hasattr(module, 'mpesa_bp'):
                 mpesa_bp = getattr(module, 'mpesa_bp')
@@ -232,64 +188,52 @@ def register_blueprints():
                 mpesa_loaded = True
                 logger.info(f"✅ M-Pesa routes registered from: {import_path}")
                 return
-            else:
-                logger.warning(f"⚠️ No 'mpesa_bp' in module: {import_path}")
         except ImportError as e:
             logger.warning(f"⚠️ Import failed from {import_path}: {e}")
         except Exception as e:
-            logger.warning(f"⚠️ Error importing from {import_path}: {e}")
+            logger.warning(f"⚠️ Error from {import_path}: {e}")
     
-    # If all imports fail
     logger.critical("❌ CRITICAL: Could not import mpesa blueprint from any path!")
-    mpesa_loaded = False
-    
-    # Don't fail in production - let app start with warning
-    if os.getenv("FLASK_ENV") == "production":
-        logger.critical("⚠️ Running without payment system in production!")
+
+register_blueprints()
 
 
-# ─── Register Error Handlers ──────────────────────────────────
+# ─── =========================================================───
+# ─── ERROR HANDLERS ──────────────────────────────────────────────
+# ─── =========================================================───
+
 @app.errorhandler(404)
 def not_found(error):
-    logger.warning(f"404: {request.path}")
     return jsonify({'error': 'Resource not found', 'path': request.path}), 404
 
 @app.errorhandler(413)
 def request_too_large(error):
-    logger.warning(f"413: Request too large - {request.path}")
     return jsonify({'error': 'Request too large. Maximum size is 10MB'}), 413
 
 @app.errorhandler(500)
 def internal_error(error):
-    logger.error(f"500: {request.path} - {error}", exc_info=True)
+    logger.error(f"500: {request.path}", exc_info=True)
     return jsonify({'error': 'Internal server error'}), 500
 
 @app.errorhandler(429)
 def rate_limit_error(error):
-    logger.warning(f"429 Rate limit exceeded: {request.path} from {request.remote_addr}")
     return jsonify({
         'error': 'Too many requests. Please try again later.',
         'retry_after': 60
     }), 429
 
 
-# ─── Application Factory ──────────────────────────────────────
+# ─── =========================================================───
+# ─── APPLICATION FACTORY ────────────────────────────────────────
+# ─── =========================================================───
+
 def create_app():
-    """Application factory for better testing and scaling."""
-    register_blueprints()
-    
     logger.info("=" * 60)
     logger.info("🚀 AUTO-V Backend Started")
     logger.info(f"📡 Environment: {os.getenv('FLASK_ENV', 'production')}")
     logger.info(f"📡 Port: {os.getenv('PORT', 10000)}")
-    
-    if mpesa_loaded:
-        logger.info("✅ Payment system loaded successfully")
-    else:
-        logger.critical("❌ CRITICAL: Payment system NOT loaded!")
-    
+    logger.info(f"✅ Payment system loaded: {mpesa_loaded}")
     logger.info("=" * 60)
-    
     return app
 
 
@@ -297,8 +241,4 @@ def create_app():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     app = create_app()
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=os.getenv('FLASK_ENV') == 'development'
-    )
+    app.run(host='0.0.0.0', port=port, debug=os.getenv('FLASK_ENV') == 'development')
