@@ -1,4 +1,4 @@
-# app.py - Complete Hardened Flask Application (FINAL)
+# app.py - Complete Hardened Flask Application (FIXED)
 
 import os
 import logging
@@ -59,7 +59,7 @@ def validate_environment():
 validate_environment()
 
 
-# ─── CORS Configuration (HARDENED) ────────────────────────────
+# ─── CORS Configuration ──────────────────────────────────────
 CORS(app, 
      resources={r"/api/*": {
          "origins": [
@@ -77,10 +77,9 @@ CORS(app,
 )
 
 
-# ─── Rate Limiter Configuration (PRODUCTION) ──────────────────
+# ─── Rate Limiter Configuration (FIXED) ──────────────────────
 REDIS_URL = os.getenv('REDIS_URL', None)
 
-# ✅ Validate Redis URL format
 if REDIS_URL and REDIS_URL.startswith("redis"):
     storage_uri = REDIS_URL
     logger.info(f"✅ Using Redis for rate limiting: {REDIS_URL[:30]}...")
@@ -91,12 +90,12 @@ else:
     else:
         logger.warning("⚠️ Using memory for rate limiting (not production-safe)")
 
+# ✅ FIX: Create limiter with unique key_func
 limiter = Limiter(
     app,
     key_func=get_remote_address,
     default_limits=["500 per hour", "100 per minute"],
-    storage_uri=storage_uri,
-    strategy="fixed-window"
+    storage_uri=storage_uri
 )
 
 
@@ -107,13 +106,11 @@ if os.getenv("FLASK_ENV") == "development":
         """Log all incoming requests (development only)."""
         logger.debug(f"→ {request.method} {request.path} - {request.remote_addr}")
         
-        # Only log request body for payment endpoints in debug mode
         if request.path.startswith('/api/mpesa') and request.method in ['POST', 'PUT']:
             if request.is_json:
                 try:
                     data = request.get_json(silent=True)
                     if data:
-                        # Mask sensitive data
                         if 'password' in data:
                             data['password'] = '***'
                         if 'consumer_secret' in data:
@@ -124,7 +121,6 @@ if os.getenv("FLASK_ENV") == "development":
 
     @app.after_request
     def log_response(response):
-        """Log all responses (development only)."""
         logger.debug(f"← {request.method} {request.path} - {response.status_code}")
         return response
 else:
@@ -134,7 +130,6 @@ else:
 # ─── Health Check ─────────────────────────────────────────────
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint with system status."""
     return jsonify({
         'status': 'healthy',
         'version': '2.0.0',
@@ -152,15 +147,12 @@ def health_check():
     }), 200
 
 
-# ─── Register Blueprints (SAFE WITH CORRECT GUARD) ──────────
+# ─── Register Blueprints ──────────────────────────────────────
 mpesa_loaded = False
 
 def register_blueprints():
-    """Safely register blueprints with error handling and correct guard."""
     global mpesa_loaded
-    
     try:
-        # ✅ CORRECT guard: blueprint name is 'mpesa' (from Blueprint('mpesa', __name__))
         if 'mpesa' not in app.blueprints:
             from api.routes.mpesa import mpesa_bp
             app.register_blueprint(mpesa_bp, url_prefix='/api/mpesa')
@@ -199,10 +191,8 @@ def rate_limit_error(error):
 # ─── Application Factory ──────────────────────────────────────
 def create_app():
     """Application factory for better testing and scaling."""
-    # Register blueprints
     register_blueprints()
     
-    # Log startup with payment system status
     logger.info("🚀 AUTO-V Backend Started")
     logger.info(f"📡 Environment: {os.getenv('FLASK_ENV', 'production')}")
     logger.info(f"📡 Port: {os.getenv('PORT', 10000)}")
@@ -218,11 +208,7 @@ def create_app():
 # ─── Main Entry Point ─────────────────────────────────────────
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
-    
-    # Create app with factory
     app = create_app()
-    
-    # Run app
     app.run(
         host='0.0.0.0',
         port=port,
