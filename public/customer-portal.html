@@ -88,7 +88,10 @@
         .toast-success { background:#22c55e; color:#000; }
         .toast-error { background:#ef4444; color:#fff; }
         .toast-warning { background:#eab308; color:#000; }
-        @keyframes slideIn { from { opacity:0; transform:translateX(100px); } to { opacity:1; transform:translateX(0); } }
+        .manual-check-btn { margin-top: 10px; width: 100%; padding: 10px; border-radius: 40px; background: #334155; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; }
+        .manual-check-btn:hover { background: #475569; }
+        .manual-check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
         @media (max-width:768px) { .service-cards { grid-template-columns:1fr 1fr; } .purpose-list { grid-template-columns:1fr; } .nav-buttons { flex-direction:column; gap:10px; } .nav-buttons button { width:100%; } .progress-step { font-size:10px; padding:8px; } .row { grid-template-columns:1fr; } }
     </style>
 </head>
@@ -206,6 +209,8 @@
                 </div>
                 <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPurpose">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
             </form>
+            <!-- Manual Check Button -->
+            <button class="manual-check-btn" id="manualCheckBtn" style="display:none;">🔄 Check Payment Status</button>
         </div>
 
         <!-- STEP 6: VEHICLE DATA ENTRY -->
@@ -264,9 +269,18 @@
                 // ─── Get shared utilities ────────────────────────────
                 const autoV = window.autoV;
                 const supabase = autoV.supabase;
-                const formatKES = autoV.formatKES;
-                const formatDate = autoV.formatDate;
-                const showToast = autoV.showToast;
+                const formatKES = autoV.formatKES || function(amount) {
+                    if (amount === undefined || amount === null) return 'KES 0';
+                    return 'KES ' + Number(amount).toLocaleString('en-KE');
+                };
+                const formatDate = autoV.formatDate || function(date) {
+                    if (!date) return '—';
+                    const d = new Date(date);
+                    return d.toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' });
+                };
+                const showToast = autoV.showToast || function(msg, type) {
+                    console.log(msg);
+                };
                 
                 // ─── State ─────────────────────────────────────────────────
                 let currentUser = null;
@@ -277,6 +291,7 @@
                 let pollInterval = null;
                 let paymentId = null;
                 let paymentInProgress = false;
+                let manualCheckAttempt = 0;
                 
                 // ─── Fee state (synced with system_settings) ────────────
                 let fees = {
@@ -337,6 +352,7 @@
                 const summaryService = document.getElementById('summaryService');
                 const summaryPurpose = document.getElementById('summaryPurpose');
                 const summaryAmount = document.getElementById('summaryAmount');
+                const manualCheckBtn = document.getElementById('manualCheckBtn');
 
                 // ─── Load Fees from Supabase ───────────────────────────
                 async function loadFees() {
@@ -483,6 +499,13 @@
                     el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
                     el.style.display = 'block';
                     document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
+                    
+                    // Show manual check button when processing
+                    if (status === 'processing' || status === 'pending') {
+                        manualCheckBtn.style.display = 'block';
+                    } else {
+                        manualCheckBtn.style.display = 'none';
+                    }
                 }
 
                 // ─── Auth Functions ──────────────────────────────────────
@@ -693,12 +716,81 @@
                     }
                 }
 
+                // ─── Manual Check Payment Status ──────────────────────
+                async function manualCheckPayment() {
+                    if (!paymentId) {
+                        showMessage('No payment in progress', 'error');
+                        return;
+                    }
+                    
+                    manualCheckBtn.disabled = true;
+                    manualCheckBtn.innerHTML = '<span class="spinner"></span> Checking...';
+                    manualCheckAttempt++;
+                    
+                    try {
+                        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+                        if (sessionError || !sessionData?.session?.access_token) {
+                            showMessage('Please login again', 'error');
+                            return;
+                        }
+                        
+                        const token = sessionData.session.access_token;
+                        const API_BASE = 'https://auto-v.onrender.com/api';
+                        
+                        const response = await fetch(`${API_BASE}/mpesa/status/${paymentId}`, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (response.status === 404) {
+                            showMessage('Payment not found. Please try again later.', 'warning');
+                            return;
+                        }
+                        
+                        if (!response.ok) {
+                            showMessage(`Status check failed: ${response.status}`, 'error');
+                            return;
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Manual check result:', data);
+                        
+                        const status = data.status || data.payment_status;
+                        
+                        if (status === 'completed') {
+                            setPaymentStatus('completed', '✅ Payment confirmed!');
+                            showMessage('Payment successful!', 'success');
+                            const serviceType = getServiceName(selectedService);
+                            document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                            showStep(6);
+                            if (pollInterval) clearInterval(pollInterval);
+                            paymentInProgress = false;
+                        } else if (status === 'failed') {
+                            setPaymentStatus('failed', '❌ Payment failed.');
+                            showMessage('Payment failed. Please retry.', 'error');
+                            if (pollInterval) clearInterval(pollInterval);
+                            paymentInProgress = false;
+                        } else {
+                            showMessage(`Payment status: ${status || 'pending'} (Attempt ${manualCheckAttempt})`, 'info');
+                        }
+                    } catch (err) {
+                        console.error('Manual check error:', err);
+                        showMessage('Error checking status. Please try again.', 'error');
+                    } finally {
+                        manualCheckBtn.disabled = false;
+                        manualCheckBtn.innerHTML = '🔄 Check Payment Status';
+                    }
+                }
+
                 // ─── PAYMENT HANDLER ────────────────────────────────────
                 async function processPayment(e) {
                     e.preventDefault();
                     
                     if (paymentInProgress) return;
                     paymentInProgress = true;
+                    manualCheckAttempt = 0;
                     
                     const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
                     if (!mpesaPhone || mpesaPhone.length < 10) {
@@ -734,7 +826,8 @@
                         
                         const price = getServicePrice(selectedService);
                         
-                        const token = (await supabase.auth.getSession()).data.session?.access_token;
+                        const { data: sessionData } = await supabase.auth.getSession();
+                        const token = sessionData?.session?.access_token;
                         if (!token) {
                             throw new Error('No authentication token available');
                         }
@@ -782,14 +875,16 @@
                         if (pollInterval) clearInterval(pollInterval);
                         
                         let attempts = 0;
-                        const maxAttempts = 40;
+                        const maxAttempts = 60;
                         
+                        // ─── Improved Polling ───────────────────────────
                         pollInterval = setInterval(async () => {
                             attempts++;
                             console.log(`⏳ Polling attempt ${attempts}/${maxAttempts} for payment ${paymentId}`);
                             
                             try {
-                                const token = (await supabase.auth.getSession()).data.session?.access_token;
+                                const { data: sessionData } = await supabase.auth.getSession();
+                                const token = sessionData?.session?.access_token;
                                 if (!token) {
                                     console.error('❌ No auth token for status check');
                                     return;
@@ -804,8 +899,9 @@
                                 
                                 console.log(`📡 Status response: ${statusResp.status}`);
                                 
+                                // ─── Handle 404 - Payment not found yet ──
                                 if (statusResp.status === 404) {
-                                    console.log(`⏳ Payment not found yet (${attempts}/${maxAttempts})`);
+                                    console.log(`⏳ Payment not found (${attempts}/${maxAttempts})`);
                                     if (attempts >= maxAttempts) {
                                         clearInterval(pollInterval);
                                         setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
@@ -814,10 +910,31 @@
                                         payBtn.innerHTML = originalText;
                                         paymentInProgress = false;
                                         document.getElementById('paymentRetry').style.display = 'block';
+                                        manualCheckBtn.style.display = 'block';
                                     }
                                     return;
                                 }
                                 
+                                // ─── Handle 429 Rate Limiting ────────────
+                                if (statusResp.status === 429) {
+                                    console.log(`⏳ Rate limited, will retry...`);
+                                    return;
+                                }
+                                
+                                // ─── Handle 401 Unauthorized ────────────
+                                if (statusResp.status === 401) {
+                                    console.error('❌ Unauthorized - token invalid');
+                                    showMessage('Session expired. Please login again.', 'error');
+                                    clearInterval(pollInterval);
+                                    payBtn.disabled = false;
+                                    payBtn.innerHTML = originalText;
+                                    paymentInProgress = false;
+                                    await supabase.auth.signOut();
+                                    window.location.href = "login.html";
+                                    return;
+                                }
+                                
+                                // ─── Handle other errors ────────────────
                                 if (!statusResp.ok) {
                                     console.error('❌ Status check failed:', statusResp.status);
                                     return;
@@ -829,6 +946,7 @@
                                 const status = statusData.status || statusData.payment_status;
                                 
                                 if (status === 'completed') {
+                                    console.log('✅ Payment confirmed!');
                                     clearInterval(pollInterval);
                                     setPaymentStatus('completed', '✅ Payment confirmed!');
                                     payBtn.innerHTML = '✅ Payment Complete';
@@ -839,9 +957,11 @@
                                     showStep(6);
                                     payBtn.disabled = false;
                                     paymentInProgress = false;
+                                    manualCheckBtn.style.display = 'none';
                                     return;
                                     
                                 } else if (status === 'failed') {
+                                    console.log('❌ Payment failed');
                                     clearInterval(pollInterval);
                                     setPaymentStatus('failed', '❌ Payment failed. Please try again.');
                                     showMessage('Payment failed. Please try again.', 'error');
@@ -849,10 +969,12 @@
                                     payBtn.innerHTML = originalText;
                                     paymentInProgress = false;
                                     document.getElementById('paymentRetry').style.display = 'block';
+                                    manualCheckBtn.style.display = 'block';
                                     return;
                                 }
                                 
                                 if (attempts >= maxAttempts) {
+                                    console.log('⏰ Max attempts reached');
                                     clearInterval(pollInterval);
                                     setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
                                     showMessage('Payment timed out. Check your M-Pesa messages.', 'error');
@@ -860,21 +982,13 @@
                                     payBtn.innerHTML = originalText;
                                     paymentInProgress = false;
                                     document.getElementById('paymentRetry').style.display = 'block';
+                                    manualCheckBtn.style.display = 'block';
                                 }
                                 
                             } catch (err) {
                                 console.error('❌ Polling error:', err);
-                                if (attempts >= maxAttempts) {
-                                    clearInterval(pollInterval);
-                                    setPaymentStatus('timeout', '⏰ Network error. Please retry.');
-                                    showMessage('Network error. Please try again.', 'error');
-                                    payBtn.disabled = false;
-                                    payBtn.innerHTML = originalText;
-                                    paymentInProgress = false;
-                                    document.getElementById('paymentRetry').style.display = 'block';
-                                }
                             }
-                        }, 3000);
+                        }, 4000); // Poll every 4 seconds
                         
                     } catch (err) {
                         console.error('❌ Payment error:', err);
@@ -884,6 +998,7 @@
                         payBtn.innerHTML = originalText;
                         paymentInProgress = false;
                         document.getElementById('paymentRetry').style.display = 'block';
+                        manualCheckBtn.style.display = 'block';
                     }
                 }
 
@@ -891,10 +1006,14 @@
                 document.getElementById('retryPaymentBtn')?.addEventListener('click', function() {
                     document.getElementById('paymentStatus').style.display = 'none';
                     document.getElementById('paymentRetry').style.display = 'none';
+                    manualCheckBtn.style.display = 'none';
                     if (pollInterval) clearInterval(pollInterval);
                     paymentInProgress = false;
                     processPayment(new Event('submit'));
                 });
+
+                // ─── Manual Check Button ──────────────────────────────
+                manualCheckBtn?.addEventListener('click', manualCheckPayment);
 
                 // ─── Calculate Service ──────────────────────────────────
                 async function calculateService(e) {
@@ -1044,7 +1163,6 @@
                     autoV.addListener(function(data) {
                         console.log('🔄 Real-time update received in Customer Portal');
                         if (data.fees) {
-                            // Update fees
                             const feeMap = {
                                 'instant': 'instant',
                                 'valuation': 'valuation',
@@ -1061,7 +1179,6 @@
                                 }
                             }
                             
-                            // Re-render services with updated prices
                             renderServices();
                             if (selectedService) {
                                 updateSummary();
@@ -1071,7 +1188,6 @@
                         }
                     });
                     
-                    // Subscribe to real-time changes
                     autoV.subscribeToChanges();
                 }
 
