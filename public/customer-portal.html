@@ -6,7 +6,6 @@
     <title>AUTO-V | Customer Portal</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         /* ─── All existing styles ─── */
@@ -91,6 +90,9 @@
         .manual-check-btn { margin-top: 10px; width: 100%; padding: 10px; border-radius: 40px; background: #334155; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; }
         .manual-check-btn:hover { background: #475569; }
         .manual-check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .welcome-banner { background: linear-gradient(135deg, #1e293b, #2d3a4e); border: 2px solid #eab308; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px; text-align: center; display: none; }
+        .welcome-banner h3 { color: #eab308; font-size: 20px; margin-bottom: 8px; }
+        .welcome-banner p { color: #94a3b8; font-size: 14px; }
         @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
         @media (max-width:768px) { .service-cards { grid-template-columns:1fr 1fr; } .purpose-list { grid-template-columns:1fr; } .nav-buttons { flex-direction:column; gap:10px; } .nav-buttons button { width:100%; } .progress-step { font-size:10px; padding:8px; } .row { grid-template-columns:1fr; } }
     </style>
@@ -108,7 +110,7 @@
         <div id="successMsg" class="success"></div>
 
         <!-- Welcome Banner -->
-        <div id="welcomeBanner" class="welcome-banner" style="display:none;">
+        <div id="welcomeBanner" class="welcome-banner">
             <h3>👋 Welcome to AUTO-V!</h3>
             <p>Africa's leading vehicle intelligence platform. Let's get started.</p>
         </div>
@@ -171,9 +173,7 @@
         <!-- STEP 3: CHOOSE SERVICE -->
         <div id="step3" class="card step">
             <h2>🔧 Choose Service</h2>
-            <div class="service-cards" id="serviceCards">
-                <!-- Dynamically populated -->
-            </div>
+            <div class="service-cards" id="serviceCards"></div>
             <div id="selectedServiceMsg" style="margin-top:15px;text-align:center;color:#eab308;"></div>
             <div class="nav-buttons"><button class="btn btn-secondary" id="backToClient">← Back</button><button class="btn btn-primary" id="nextStep3Btn">Next →</button></div>
         </div>
@@ -209,7 +209,6 @@
                 </div>
                 <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPurpose">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
             </form>
-            <!-- Manual Check Button -->
             <button class="manual-check-btn" id="manualCheckBtn" style="display:none;">🔄 Check Payment Status</button>
         </div>
 
@@ -246,1089 +245,991 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL - REAL-TIME SYNC
-        // Uses shared autoV client from supabase.js
+        // AUTO-V CUSTOMER PORTAL - PRODUCTION CONFIGURATION
+        // Backend: https://auto-v.onrender.com
+        // Supabase: https://tsvejnzxrxrrecgquxbq.supabase.co
+        // M-Pesa: 4095377 (Production)
         // ============================================================
         (function() {
             'use strict';
             
-            // ─── Wait for autoV ──────────────────────────────────────
-            function waitForAutoV(callback, retries = 20) {
-                if (window.autoV && window.autoV.supabase) {
-                    callback();
-                    return;
+            // ─── PRODUCTION CONFIGURATION ──────────────────────────────
+            const CONFIG = {
+                SUPABASE_URL: 'https://tsvejnzxrxrrecgquxbq.supabase.co',
+                SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ',
+                API_BASE: 'https://auto-v.onrender.com/api',
+                MPESA_SHORTCODE: '4095377',
+                ENV: 'production'
+            };
+
+            console.log('🚀 AUTO-V Customer Portal v2.0 (Production)');
+            console.log(`📡 API: ${CONFIG.API_BASE}`);
+            console.log(`🔑 Shortcode: ${CONFIG.MPESA_SHORTCODE}`);
+
+            // ─── Initialize Supabase ────────────────────────────────────
+            const supabase = window.supabase.createClient(
+                CONFIG.SUPABASE_URL,
+                CONFIG.SUPABASE_ANON_KEY
+            );
+
+            // ─── State ─────────────────────────────────────────────────
+            let currentUser = null;
+            let selectedService = null;
+            let selectedPurpose = null;
+            let clientType = 'individual';
+            let isFirstTimeUser = false;
+            let pollInterval = null;
+            let paymentId = null;
+            let paymentInProgress = false;
+            let manualCheckAttempt = 0;
+
+            // ─── Fee state ────────────────────────────────────────────
+            let fees = {
+                instant: 500,
+                valuation: 2500,
+                inspection: 3500,
+                assessment: 3000,
+                mileage: 1500,
+                fleet: 4000,
+                verification: 1000
+            };
+
+            // ─── Service definitions ──────────────────────────────────
+            const serviceDefinitions = [
+                { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', desc: 'Quick AI market estimate', key: 'instant' },
+                { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', desc: 'Formal certified valuation', key: 'valuation' },
+                { id: 'inspection', icon: '🔍', name: 'Vehicle Inspection', desc: '150+ point condition report', key: 'inspection' },
+                { id: 'assessment', icon: '⚠️', name: 'Vehicle Assessment', desc: 'Accident & repair evaluation', key: 'assessment' },
+                { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per kilometre analysis', key: 'mileage' },
+                { id: 'fleet', icon: '🚛', name: 'Fleet Services', desc: 'Full fleet management', key: 'fleet' },
+                { id: 'report-verification', icon: '✅', name: 'Report Verification', desc: 'QR code verification', key: 'verification' }
+            ];
+
+            const servicePurposes = {
+                'instant-value-check': {
+                    title: '💡 Instant Value Check Purposes',
+                    purposes: ["Quick Market Estimate", "Selling Price Guide", "Buying Price Check", "Trade-In Value", "Just Curious"]
+                },
+                'valuation': {
+                    title: '💰 Vehicle Valuation Purposes',
+                    purposes: ["Insurance Valuation", "Bank Loan / Security", "Legal Proceedings", "Estate / Probate", "Divorce Settlement", "Import Duty", "Tax Assessment", "Fleet Accounting", "Court Evidence", "Market Value Certificate"]
+                },
+                'inspection': {
+                    title: '🔍 Vehicle Inspection Purposes',
+                    purposes: ["Pre-Purchase Inspection", "Mechanical Check", "Roadworthiness Test", "Insurance Claim Assessment", "Fleet Condition Report", "Safety Compliance", "Accident Damage Report", "Maintenance Planning"]
+                },
+                'assessment': {
+                    title: '⚠️ Vehicle Assessment Purposes',
+                    purposes: ["Accident Damage Evaluation", "Insurance Claim Assessment", "Repair Cost Estimate", "Total Loss Determination", "Salvage Value Assessment", "Pre-Repair Inspection", "Post-Repair Verification"]
+                },
+                'mileage-rate': {
+                    title: '📏 Mileage Rate Report Purposes',
+                    purposes: ["Travel Reimbursement", "Running Cost Analysis", "Fleet Budgeting", "Tax Deduction", "Fuel Efficiency Audit", "Cost Per Kilometre", "Vehicle Operating Cost"]
+                },
+                'fleet': {
+                    title: '🚛 Fleet Services Purposes',
+                    purposes: ["Full Fleet Valuation", "Fleet Condition Audit", "Running Cost Management", "Fleet Performance Review", "Asset Management", "Fleet Insurance", "Disposal Planning", "Fleet Expansion"]
+                },
+                'report-verification': {
+                    title: '✅ Report Verification Purposes',
+                    purposes: ["Verify Valuation Certificate", "Inspection Report Check", "Assessment Document Confirmation", "QR Code Verification", "Document Authenticity", "Third-Party Verification"]
                 }
-                if (retries <= 0) {
-                    console.error('❌ autoV failed to initialize');
-                    return;
-                }
-                setTimeout(() => waitForAutoV(callback, retries - 1), 300);
+            };
+
+            // ─── DOM Elements ───────────────────────────────────────────
+            const serviceCardsContainer = document.getElementById('serviceCards');
+            const purposeList = document.getElementById('purposeList');
+            const summaryService = document.getElementById('summaryService');
+            const summaryPurpose = document.getElementById('summaryPurpose');
+            const summaryAmount = document.getElementById('summaryAmount');
+            const manualCheckBtn = document.getElementById('manualCheckBtn');
+
+            // ─── Helper Functions ──────────────────────────────────────
+            function formatKES(amount) {
+                if (amount === undefined || amount === null) return 'KES 0';
+                return 'KES ' + Number(amount).toLocaleString('en-KE');
             }
-            
-            waitForAutoV(function() {
-                // ─── Get shared utilities ────────────────────────────
-                const autoV = window.autoV;
-                const supabase = autoV.supabase;
-                const formatKES = autoV.formatKES || function(amount) {
-                    if (amount === undefined || amount === null) return 'KES 0';
-                    return 'KES ' + Number(amount).toLocaleString('en-KE');
-                };
-                const formatDate = autoV.formatDate || function(date) {
-                    if (!date) return '—';
-                    const d = new Date(date);
-                    return d.toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' });
-                };
-                const showToast = autoV.showToast || function(msg, type) {
-                    console.log(msg);
-                };
-                
-                // ─── State ─────────────────────────────────────────────────
-                let currentUser = null;
-                let selectedService = null;
-                let selectedPurpose = null;
-                let clientType = 'individual';
-                let isFirstTimeUser = false;
-                let pollInterval = null;
-                let paymentId = null;
-                let paymentInProgress = false;
-                let manualCheckAttempt = 0;
-                
-                // ─── Fee state (synced with system_settings) ────────────
-                let fees = {
-                    instant: 500,
-                    valuation: 2500,
-                    inspection: 3500,
-                    assessment: 3000,
-                    mileage: 1500,
-                    fleet: 4000,
-                    verification: 1000
-                };
 
-                // ─── Service definitions ──────────────────────────────
-                const serviceDefinitions = [
-                    { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', desc: 'Quick AI market estimate', key: 'instant' },
-                    { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', desc: 'Formal certified valuation', key: 'valuation' },
-                    { id: 'inspection', icon: '🔍', name: 'Vehicle Inspection', desc: '150+ point condition report', key: 'inspection' },
-                    { id: 'assessment', icon: '⚠️', name: 'Vehicle Assessment', desc: 'Accident & repair evaluation', key: 'assessment' },
-                    { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per kilometre analysis', key: 'mileage' },
-                    { id: 'fleet', icon: '🚛', name: 'Fleet Services', desc: 'Full fleet management', key: 'fleet' },
-                    { id: 'report-verification', icon: '✅', name: 'Report Verification', desc: 'QR code verification', key: 'verification' }
-                ];
+            function showMessage(msg, type = 'success') {
+                const errorDiv = document.getElementById('errorMsg');
+                const successDiv = document.getElementById('successMsg');
+                errorDiv.style.display = 'none';
+                successDiv.style.display = 'none';
+                if (type === 'error') {
+                    errorDiv.textContent = msg;
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => errorDiv.style.display = 'none', 5000);
+                } else {
+                    successDiv.textContent = msg;
+                    successDiv.style.display = 'block';
+                    setTimeout(() => successDiv.style.display = 'none', 3000);
+                }
+            }
 
-                const servicePurposes = {
-                    'instant-value-check': {
-                        title: '💡 Instant Value Check Purposes',
-                        purposes: ["Quick Market Estimate", "Selling Price Guide", "Buying Price Check", "Trade-In Value", "Just Curious"]
-                    },
-                    'valuation': {
-                        title: '💰 Vehicle Valuation Purposes',
-                        purposes: ["Insurance Valuation", "Bank Loan / Security", "Legal Proceedings", "Estate / Probate", "Divorce Settlement", "Import Duty", "Tax Assessment", "Fleet Accounting", "Court Evidence", "Market Value Certificate"]
-                    },
-                    'inspection': {
-                        title: '🔍 Vehicle Inspection Purposes',
-                        purposes: ["Pre-Purchase Inspection", "Mechanical Check", "Roadworthiness Test", "Insurance Claim Assessment", "Fleet Condition Report", "Safety Compliance", "Accident Damage Report", "Maintenance Planning"]
-                    },
-                    'assessment': {
-                        title: '⚠️ Vehicle Assessment Purposes',
-                        purposes: ["Accident Damage Evaluation", "Insurance Claim Assessment", "Repair Cost Estimate", "Total Loss Determination", "Salvage Value Assessment", "Pre-Repair Inspection", "Post-Repair Verification"]
-                    },
-                    'mileage-rate': {
-                        title: '📏 Mileage Rate Report Purposes',
-                        purposes: ["Travel Reimbursement", "Running Cost Analysis", "Fleet Budgeting", "Tax Deduction", "Fuel Efficiency Audit", "Cost Per Kilometre", "Vehicle Operating Cost"]
-                    },
-                    'fleet': {
-                        title: '🚛 Fleet Services Purposes',
-                        purposes: ["Full Fleet Valuation", "Fleet Condition Audit", "Running Cost Management", "Fleet Performance Review", "Asset Management", "Fleet Insurance", "Disposal Planning", "Fleet Expansion"]
-                    },
-                    'report-verification': {
-                        title: '✅ Report Verification Purposes',
-                        purposes: ["Verify Valuation Certificate", "Inspection Report Check", "Assessment Document Confirmation", "QR Code Verification", "Document Authenticity", "Third-Party Verification"]
+            function setPaymentStatus(status, message = '') {
+                const el = document.getElementById('paymentStatus');
+                el.className = 'payment-status ' + status;
+                el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
+                el.style.display = 'block';
+                document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
+                if (status === 'processing' || status === 'pending') {
+                    manualCheckBtn.style.display = 'block';
+                } else {
+                    manualCheckBtn.style.display = 'none';
+                }
+            }
+
+            function showStep(step) {
+                for (let i = 1; i <= 7; i++) {
+                    const el = document.getElementById(`step${i}`);
+                    if (el) el.classList.remove('active');
+                    const prog = document.getElementById(`step${i}Prog`);
+                    if (prog) {
+                        prog.classList.remove('active', 'completed');
+                        if (i < step) prog.classList.add('completed');
+                        if (i === step) prog.classList.add('active');
                     }
-                };
+                }
+                document.getElementById(`step${step}`).classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
 
-                // ─── DOM Elements ───────────────────────────────────────
-                const serviceCardsContainer = document.getElementById('serviceCards');
-                const purposeList = document.getElementById('purposeList');
-                const summaryService = document.getElementById('summaryService');
-                const summaryPurpose = document.getElementById('summaryPurpose');
-                const summaryAmount = document.getElementById('summaryAmount');
-                const manualCheckBtn = document.getElementById('manualCheckBtn');
+            function getServicePrice(serviceId) {
+                const def = serviceDefinitions.find(s => s.id === serviceId);
+                return def ? fees[def.key] || 0 : 0;
+            }
 
-                // ─── Load Fees from Supabase ───────────────────────────
-                async function loadFees() {
-                    try {
-                        const { data, error } = await supabase
-                            .from('system_settings')
-                            .select('setting_key, setting_value')
-                            .in('setting_key', ['instant_fee', 'valuation_fee', 'inspection_fee', 'assessment_fee', 'mileage_fee', 'fleet_fee', 'verification_fee']);
-                        
-                        if (error) throw error;
-                        
-                        const feeMap = {
-                            'instant_fee': 'instant',
-                            'valuation_fee': 'valuation',
-                            'inspection_fee': 'inspection',
-                            'assessment_fee': 'assessment',
-                            'mileage_fee': 'mileage',
-                            'fleet_fee': 'fleet',
-                            'verification_fee': 'verification'
-                        };
-                        
-                        data.forEach(row => {
-                            const key = feeMap[row.setting_key];
-                            if (key) {
-                                fees[key] = parseInt(row.setting_value) || fees[key];
-                            }
+            function getServiceName(serviceId) {
+                const def = serviceDefinitions.find(s => s.id === serviceId);
+                return def ? def.name : 'Service';
+            }
+
+            function updateSummary() {
+                summaryService.textContent = selectedService ? getServiceName(selectedService) : '-';
+                summaryPurpose.textContent = selectedPurpose || 'Not selected';
+                summaryAmount.textContent = selectedService ? formatKES(getServicePrice(selectedService)) : 'KES 0';
+            }
+
+            // ─── Load Fees ─────────────────────────────────────────────
+            async function loadFees() {
+                try {
+                    const { data, error } = await supabase
+                        .from('system_settings')
+                        .select('setting_key, setting_value')
+                        .in('setting_key', ['instant_fee', 'valuation_fee', 'inspection_fee', 'assessment_fee', 'mileage_fee', 'fleet_fee', 'verification_fee']);
+                    
+                    if (error) throw error;
+                    
+                    const feeMap = {
+                        'instant_fee': 'instant',
+                        'valuation_fee': 'valuation',
+                        'inspection_fee': 'inspection',
+                        'assessment_fee': 'assessment',
+                        'mileage_fee': 'mileage',
+                        'fleet_fee': 'fleet',
+                        'verification_fee': 'verification'
+                    };
+                    
+                    data.forEach(row => {
+                        const key = feeMap[row.setting_key];
+                        if (key) fees[key] = parseInt(row.setting_value) || fees[key];
+                    });
+                    
+                    renderServices();
+                    console.log('✅ Fees loaded:', fees);
+                } catch (err) {
+                    console.warn('Could not load fees, using defaults:', err);
+                    renderServices();
+                }
+            }
+
+            // ─── Render Services ──────────────────────────────────────
+            function renderServices() {
+                serviceCardsContainer.innerHTML = serviceDefinitions.map(s => `
+                    <div class="service-card" data-service="${s.id}">
+                        <div class="service-icon">${s.icon}</div>
+                        <h3>${s.name}</h3>
+                        <div class="service-price">${formatKES(fees[s.key] || 0)}</div>
+                        <p>${s.desc}</p>
+                    </div>
+                `).join('');
+
+                document.querySelectorAll('.service-card').forEach(card => {
+                    card.onclick = () => {
+                        document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+                        card.classList.add('selected');
+                        selectedService = card.dataset.service;
+                        selectedPurpose = null;
+                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                        updateSummary();
+                        document.getElementById('selectedServiceMsg').innerHTML = 
+                            `✅ Selected: ${getServiceName(selectedService)} - ${formatKES(getServicePrice(selectedService))}`;
+                        populatePurposes();
+                    };
+                });
+            }
+
+            // ─── Populate Purposes ────────────────────────────────────
+            function populatePurposes() {
+                if (!selectedService || !servicePurposes[selectedService]) {
+                    purposeList.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Please select a service first</div>';
+                    return;
+                }
+
+                const serviceData = servicePurposes[selectedService];
+                purposeList.innerHTML = `
+                    <div style="grid-column:1/-1;text-align:center;color:#eab308;font-weight:600;margin-bottom:5px;">
+                        ${serviceData.title}
+                    </div>
+                    ${serviceData.purposes.map(p => 
+                        `<div class="purpose-item" data-purpose="${p}">${p}</div>`
+                    ).join('')}
+                `;
+                
+                document.querySelectorAll('.purpose-item').forEach(item => {
+                    item.onclick = () => {
+                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        selectedPurpose = item.dataset.purpose;
+                    };
+                });
+            }
+
+            // ─── Populate Years ──────────────────────────────────────
+            function populateYears() {
+                const yearSelect = document.getElementById('vehicleYear');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= 1950; y--) {
+                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+                }
+            }
+
+            // ─── Auth Functions ──────────────────────────────────────
+            async function checkFirstTimeUser(userId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('first_login, has_vehicle, login_count')
+                        .eq('id', userId)
+                        .maybeSingle();
+                    if (error || !data) return true;
+                    if (data.first_login === true || data.has_vehicle === false || data.login_count < 2) return true;
+                    return false;
+                } catch (err) { return true; }
+            }
+
+            async function updateUserProfile(userId, email, name) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('id, login_count')
+                        .eq('id', userId)
+                        .maybeSingle();
+                    
+                    if (error || !data) {
+                        await supabase.from('user_profiles').insert({
+                            id: userId,
+                            email: email,
+                            full_name: name || email.split('@')[0],
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 1,
+                            client_type: clientType,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
                         });
-                        
-                        renderServices();
-                        console.log('✅ Fees loaded:', fees);
-                    } catch (err) {
-                        console.warn('Could not load fees, using defaults:', err);
-                        renderServices();
-                    }
-                }
-
-                // ─── Render Services ────────────────────────────────────
-                function renderServices() {
-                    serviceCardsContainer.innerHTML = serviceDefinitions.map(s => `
-                        <div class="service-card" data-service="${s.id}">
-                            <div class="service-icon">${s.icon}</div>
-                            <h3>${s.name}</h3>
-                            <div class="service-price">${formatKES(fees[s.key] || 0)}</div>
-                            <p>${s.desc}</p>
-                        </div>
-                    `).join('');
-
-                    // Re-attach click events
-                    document.querySelectorAll('.service-card').forEach(card => {
-                        card.onclick = () => {
-                            document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
-                            card.classList.add('selected');
-                            selectedService = card.dataset.service;
-                            selectedPurpose = null;
-                            document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-                            updateSummary();
-                            document.getElementById('selectedServiceMsg').innerHTML = 
-                                `✅ Selected: ${serviceDefinitions.find(s => s.id === selectedService)?.name} - ${formatKES(getServicePrice(selectedService))}`;
-                            populatePurposes();
-                        };
-                    });
-                }
-
-                // ─── Get Service Price ─────────────────────────────────
-                function getServicePrice(serviceId) {
-                    const def = serviceDefinitions.find(s => s.id === serviceId);
-                    return def ? fees[def.key] || 0 : 0;
-                }
-
-                function getServiceName(serviceId) {
-                    const def = serviceDefinitions.find(s => s.id === serviceId);
-                    return def ? def.name : 'Service';
-                }
-
-                // ─── Populate Purposes ─────────────────────────────────
-                function populatePurposes() {
-                    if (!selectedService || !servicePurposes[selectedService]) {
-                        purposeList.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Please select a service first</div>';
-                        return;
-                    }
-
-                    const serviceData = servicePurposes[selectedService];
-                    purposeList.innerHTML = `
-                        <div style="grid-column:1/-1;text-align:center;color:#eab308;font-weight:600;margin-bottom:5px;">
-                            ${serviceData.title}
-                        </div>
-                        ${serviceData.purposes.map(p => 
-                            `<div class="purpose-item" data-purpose="${p}">${p}</div>`
-                        ).join('')}
-                    `;
-                    
-                    document.querySelectorAll('.purpose-item').forEach(item => {
-                        item.onclick = () => {
-                            document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-                            item.classList.add('selected');
-                            selectedPurpose = item.dataset.purpose;
-                        };
-                    });
-                }
-
-                // ─── Update Summary ────────────────────────────────────
-                function updateSummary() {
-                    summaryService.textContent = selectedService ? getServiceName(selectedService) : '-';
-                    summaryPurpose.textContent = selectedPurpose || 'Not selected';
-                    summaryAmount.textContent = selectedService ? formatKES(getServicePrice(selectedService)) : 'KES 0';
-                }
-
-                // ─── Show/Hide Steps ───────────────────────────────────
-                function showStep(step) {
-                    for (let i = 1; i <= 7; i++) {
-                        const el = document.getElementById(`step${i}`);
-                        if (el) el.classList.remove('active');
-                        const prog = document.getElementById(`step${i}Prog`);
-                        if (prog) {
-                            prog.classList.remove('active', 'completed');
-                            if (i < step) prog.classList.add('completed');
-                            if (i === step) prog.classList.add('active');
-                        }
-                    }
-                    document.getElementById(`step${step}`).classList.add('active');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-
-                // ─── Show Message ──────────────────────────────────────
-                function showMessage(msg, type = 'success') {
-                    const errorDiv = document.getElementById('errorMsg');
-                    const successDiv = document.getElementById('successMsg');
-                    errorDiv.style.display = 'none';
-                    successDiv.style.display = 'none';
-                    if (type === 'error') {
-                        errorDiv.textContent = msg;
-                        errorDiv.style.display = 'block';
-                        setTimeout(() => errorDiv.style.display = 'none', 5000);
+                        return true;
                     } else {
-                        successDiv.textContent = msg;
-                        successDiv.style.display = 'block';
-                        setTimeout(() => successDiv.style.display = 'none', 3000);
-                    }
-                }
-
-                function setPaymentStatus(status, message = '') {
-                    const el = document.getElementById('paymentStatus');
-                    el.className = 'payment-status ' + status;
-                    el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
-                    el.style.display = 'block';
-                    document.getElementById('paymentRetry').style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
-                    
-                    // Show manual check button when processing
-                    if (status === 'processing' || status === 'pending') {
-                        manualCheckBtn.style.display = 'block';
-                    } else {
-                        manualCheckBtn.style.display = 'none';
-                    }
-                }
-
-                // ─── Auth Functions ──────────────────────────────────────
-                async function checkFirstTimeUser(userId) {
-                    try {
-                        const { data, error } = await supabase
+                        await supabase
                             .from('user_profiles')
-                            .select('first_login, has_vehicle, login_count')
-                            .eq('id', userId)
-                            .maybeSingle();
-                        if (error || !data) return true;
-                        if (data.first_login === true || data.has_vehicle === false || data.login_count < 2) return true;
-                        return false;
-                    } catch (err) { return true; }
-                }
-
-                async function updateUserProfile(userId, email, name) {
-                    try {
-                        const { data, error } = await supabase
-                            .from('user_profiles')
-                            .select('id, login_count')
-                            .eq('id', userId)
-                            .maybeSingle();
-                        
-                        if (error || !data) {
-                            await supabase.from('user_profiles').insert({
-                                id: userId,
-                                email: email,
-                                full_name: name || email.split('@')[0],
-                                first_login: true,
-                                has_vehicle: false,
-                                login_count: 1,
+                            .update({
+                                login_count: (data.login_count || 0) + 1,
                                 client_type: clientType,
-                                created_at: new Date().toISOString(),
-                                updated_at: new Date().toISOString()
-                            });
-                            return true;
-                        } else {
-                            await supabase
-                                .from('user_profiles')
-                                .update({
-                                    login_count: (data.login_count || 0) + 1,
-                                    client_type: clientType,
-                                    last_login: new Date().toISOString()
-                                })
-                                .eq('id', userId);
-                            return false;
-                        }
-                    } catch (err) {
-                        console.error('Error updating profile:', err);
+                                last_login: new Date().toISOString()
+                            })
+                            .eq('id', userId);
                         return false;
                     }
+                } catch (err) {
+                    console.error('Error updating profile:', err);
+                    return false;
                 }
+            }
 
-                // ─── Login/Signup ──────────────────────────────────────
-                async function handleLogin(e) {
-                    e.preventDefault();
-                    const email = document.getElementById('loginEmail').value;
-                    const password = document.getElementById('loginPassword').value;
-                    
-                    if (!email || !password) {
-                        showMessage('Please enter email and password', 'error');
-                        return;
-                    }
-                    
-                    const loginBtn = document.querySelector('#loginForm button[type="submit"]');
-                    const originalText = loginBtn.innerHTML;
-                    loginBtn.disabled = true;
-                    loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
-                    
-                    try {
-                        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-                        if (error) { 
-                            showMessage(error.message, 'error'); 
-                            loginBtn.disabled = false;
-                            loginBtn.innerHTML = originalText;
-                            return; 
-                        }
-                        
-                        currentUser = data.user;
-                        const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
-                        
-                        localStorage.setItem('autoV_user', JSON.stringify({ 
-                            id: currentUser.id, 
-                            email: currentUser.email,
-                            name: userName
-                        }));
-                        
-                        const isNew = await updateUserProfile(currentUser.id, currentUser.email, userName);
-                        isFirstTimeUser = await checkFirstTimeUser(currentUser.id);
-                        
-                        if (isFirstTimeUser || isNew) {
-                            document.getElementById('welcomeBanner').style.display = 'block';
-                            showMessage('👋 Welcome! Let\'s get you started.', 'success');
-                            document.getElementById('custEmail').value = currentUser.email;
-                            if (currentUser.user_metadata?.full_name) {
-                                document.getElementById('custName').value = currentUser.user_metadata.full_name;
-                            }
-                            showStep(2);
-                        } else {
-                            showMessage('✅ Welcome back!', 'success');
-                            showStep(3);
-                        }
-                    } catch (err) {
-                        showMessage('Network error. Please try again.', 'error');
-                    } finally {
+            // ─── Login/Signup Handlers ──────────────────────────────
+            async function handleLogin(e) {
+                e.preventDefault();
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                
+                if (!email || !password) {
+                    showMessage('Please enter email and password', 'error');
+                    return;
+                }
+                
+                const loginBtn = document.querySelector('#loginForm button[type="submit"]');
+                const originalText = loginBtn.innerHTML;
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
+                
+                try {
+                    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                    if (error) { 
+                        showMessage(error.message, 'error'); 
                         loginBtn.disabled = false;
                         loginBtn.innerHTML = originalText;
-                    }
-                }
-
-                async function handleSignup(e) {
-                    e.preventDefault();
-                    const email = document.getElementById('signupEmail').value;
-                    const password = document.getElementById('signupPassword').value;
-                    const name = document.getElementById('signupName').value;
-                    const phone = document.getElementById('signupPhone').value;
-                    
-                    if (!email || !password) {
-                        showMessage('Please enter email and password', 'error');
-                        return;
-                    }
-                    
-                    if (password.length < 6) {
-                        showMessage('Password must be at least 6 characters', 'error');
-                        return;
-                    }
-                    
-                    const signupBtn = document.querySelector('#signupForm button[type="submit"]');
-                    const originalText = signupBtn.innerHTML;
-                    signupBtn.disabled = true;
-                    signupBtn.innerHTML = '<span class="spinner"></span> Creating account...';
-                    
-                    try {
-                        const { data, error } = await supabase.auth.signUp({ 
-                            email, 
-                            password,
-                            options: { data: { full_name: name, phone: phone } }
-                        });
-                        
-                        if (error) { 
-                            showMessage(error.message, 'error');
-                            signupBtn.disabled = false;
-                            signupBtn.innerHTML = originalText;
-                            return; 
-                        }
-                        
-                        if (data.user) {
-                            await supabase.from('user_profiles').insert({
-                                id: data.user.id,
-                                email: email,
-                                full_name: name || email.split('@')[0],
-                                phone: phone || '',
-                                first_login: true,
-                                has_vehicle: false,
-                                login_count: 1,
-                                client_type: 'individual',
-                                created_at: new Date().toISOString()
-                            });
-                            
-                            const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
-                            if (!loginError && loginData.user) {
-                                currentUser = loginData.user;
-                                localStorage.setItem('autoV_user', JSON.stringify({ 
-                                    id: currentUser.id, 
-                                    email: currentUser.email,
-                                    name: name || email.split('@')[0]
-                                }));
-                                document.getElementById('custEmail').value = email;
-                                if (name) document.getElementById('custName').value = name;
-                                document.getElementById('welcomeBanner').style.display = 'block';
-                                showMessage('✅ Account created!', 'success');
-                                showStep(2);
-                            }
-                        }
-                    } catch (err) {
-                        showMessage('Network error. Please try again.', 'error');
-                    } finally {
-                        signupBtn.disabled = false;
-                        signupBtn.innerHTML = originalText;
-                    }
-                }
-
-                // ─── Client Type Selector ─────────────────────────────
-                document.querySelectorAll('.client-type-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        document.querySelectorAll('.client-type-btn').forEach(b => b.classList.remove('active'));
-                        this.classList.add('active');
-                        clientType = this.dataset.type;
-                        
-                        if (clientType === 'corporate') {
-                            document.getElementById('corporateFields').classList.add('show');
-                            document.getElementById('individualFields').style.display = 'none';
-                        } else {
-                            document.getElementById('corporateFields').classList.remove('show');
-                            document.getElementById('individualFields').style.display = 'block';
-                        }
-                    });
-                });
-
-                // ─── Populate Years ────────────────────────────────────
-                function populateYears() {
-                    const yearSelect = document.getElementById('vehicleYear');
-                    const currentYear = new Date().getFullYear();
-                    yearSelect.innerHTML = '';
-                    for (let y = currentYear; y >= 1950; y--) {
-                        yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
-                    }
-                }
-
-                // ─── Manual Check Payment Status ──────────────────────
-                async function manualCheckPayment() {
-                    if (!paymentId) {
-                        showMessage('No payment in progress', 'error');
-                        return;
-                    }
-                    
-                    manualCheckBtn.disabled = true;
-                    manualCheckBtn.innerHTML = '<span class="spinner"></span> Checking...';
-                    manualCheckAttempt++;
-                    
-                    try {
-                        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-                        if (sessionError || !sessionData?.session?.access_token) {
-                            showMessage('Please login again', 'error');
-                            return;
-                        }
-                        
-                        const token = sessionData.session.access_token;
-                        const API_BASE = 'https://auto-v.onrender.com/api';
-                        
-                        // ─── Use fetch with timeout ──────────────────────
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 30000);
-                        
-                        const response = await fetch(`${API_BASE}/mpesa/status/${paymentId}`, {
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            },
-                            signal: controller.signal
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        if (response.status === 404) {
-                            showMessage('Payment not found. Please try again later.', 'warning');
-                            return;
-                        }
-                        
-                        if (response.status === 429) {
-                            showMessage('Rate limited. Please wait a moment and try again.', 'warning');
-                            return;
-                        }
-                        
-                        if (!response.ok) {
-                            showMessage(`Status check failed: ${response.status}`, 'error');
-                            return;
-                        }
-                        
-                        const data = await response.json();
-                        console.log('Manual check result:', data);
-                        
-                        const status = data.status || data.payment_status;
-                        
-                        if (status === 'completed' || data.result_code === '0') {
-                            setPaymentStatus('completed', '✅ Payment confirmed!');
-                            showMessage('Payment successful!', 'success');
-                            const serviceType = getServiceName(selectedService);
-                            document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
-                            showStep(6);
-                            if (pollInterval) clearInterval(pollInterval);
-                            paymentInProgress = false;
-                            manualCheckBtn.style.display = 'none';
-                        } else if (status === 'failed') {
-                            setPaymentStatus('failed', '❌ Payment failed.');
-                            showMessage('Payment failed. Please retry.', 'error');
-                            if (pollInterval) clearInterval(pollInterval);
-                            paymentInProgress = false;
-                        } else {
-                            showMessage(`Payment status: ${status || 'pending'} (Attempt ${manualCheckAttempt})`, 'info');
-                        }
-                    } catch (err) {
-                        if (err.name === 'AbortError') {
-                            showMessage('Request timed out. Please try again.', 'error');
-                        } else {
-                            console.error('Manual check error:', err);
-                            showMessage('Error checking status. Please try again.', 'error');
-                        }
-                    } finally {
-                        manualCheckBtn.disabled = false;
-                        manualCheckBtn.innerHTML = '🔄 Check Payment Status';
-                    }
-                }
-
-                // ─── PAYMENT HANDLER ────────────────────────────────────
-                async function processPayment(e) {
-                    e.preventDefault();
-                    
-                    if (paymentInProgress) return;
-                    paymentInProgress = true;
-                    manualCheckAttempt = 0;
-                    
-                    const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
-                    // ─── Format phone number ────────────────────────────
-                    let formattedPhone = mpesaPhone.replace(/[\s\-+]/g, '');
-                    if (formattedPhone.startsWith('0')) {
-                        formattedPhone = '254' + formattedPhone.substring(1);
-                    } else if (formattedPhone.startsWith('7') && formattedPhone.length === 9) {
-                        formattedPhone = '254' + formattedPhone;
-                    } else if (formattedPhone.startsWith('1') && formattedPhone.length === 9) {
-                        formattedPhone = '254' + formattedPhone;
-                    }
-                    
-                    if (!formattedPhone || formattedPhone.length < 10) {
-                        showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678 or 254712345678)', 'error');
-                        paymentInProgress = false;
-                        return;
-                    }
-                    if (!selectedService) {
-                        showMessage('Select a service first', 'error');
-                        paymentInProgress = false;
-                        return;
-                    }
-                    if (!selectedPurpose) {
-                        showMessage('Select a purpose first', 'error');
-                        paymentInProgress = false;
-                        return;
-                    }
-                    
-                    const payBtn = document.getElementById('payBtn');
-                    const originalText = payBtn.innerHTML;
-                    payBtn.disabled = true;
-                    payBtn.innerHTML = '<span class="spinner"></span> Initiating Payment...';
-                    setPaymentStatus('pending', '⏳ Initiating payment...');
-                    document.getElementById('paymentRetry').style.display = 'none';
-                    
-                    try {
-                        const { data: { user } } = await supabase.auth.getUser();
-                        if (!user) {
-                            showMessage('Please login again', 'error');
-                            window.location.href = "login.html";
-                            return;
-                        }
-                        
-                        const price = getServicePrice(selectedService);
-                        
-                        const { data: sessionData } = await supabase.auth.getSession();
-                        const token = sessionData?.session?.access_token;
-                        if (!token) {
-                            throw new Error('No authentication token available');
-                        }
-                        
-                        // ─── Use /mpesa/initiate endpoint ──────────────
-                        const API_BASE = 'https://auto-v.onrender.com/api';
-                        
-                        // ─── Use fetch with timeout ──────────────────────
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 30000);
-                        
-                        const response = await fetch(`${API_BASE}/mpesa/initiate`, {
-                            method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`
-                            },
-                            body: JSON.stringify({
-                                phone: formattedPhone,
-                                amount: price,
-                                service: selectedService,
-                                purpose: selectedPurpose,
-                                client_type: clientType
-                            }),
-                            signal: controller.signal
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        const contentType = response.headers.get('content-type');
-                        if (!contentType || !contentType.includes('application/json')) {
-                            const text = await response.text();
-                            console.error('Non-JSON response:', text);
-                            throw new Error('Server returned non-JSON response. Please check server logs.');
-                        }
-                        
-                        if (!response.ok) {
-                            const err = await response.json();
-                            throw new Error(err.error || err.details || 'STK Push initiation failed');
-                        }
-                        
-                        const result = await response.json();
-                        console.log('✅ Payment initiated:', result);
-                        
-                        paymentId = result.payment_id || result.id;
-                        if (!paymentId) {
-                            throw new Error('No payment ID returned from server');
-                        }
-                        
-                        setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
-                        payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
-                        
-                        if (pollInterval) clearInterval(pollInterval);
-                        
-                        let attempts = 0;
-                        const maxAttempts = 30; // Reduced to 30 for better UX
-                        let pollDelay = 5000; // Start at 5 seconds
-                        
-                        // ─── Improved Polling with Exponential Backoff ──
-                        async function pollWithBackoff() {
-                            attempts++;
-                            console.log(`⏳ Polling attempt ${attempts}/${maxAttempts} for payment ${paymentId}`);
-                            
-                            try {
-                                const { data: sessionData } = await supabase.auth.getSession();
-                                const token = sessionData?.session?.access_token;
-                                if (!token) {
-                                    console.error('❌ No auth token for status check');
-                                    setTimeout(pollWithBackoff, pollDelay);
-                                    return;
-                                }
-                                
-                                const statusResp = await fetch(`${API_BASE}/mpesa/status/${paymentId}`, {
-                                    headers: {
-                                        'Authorization': `Bearer ${token}`,
-                                        'Content-Type': 'application/json'
-                                    }
-                                });
-                                
-                                console.log(`📡 Status response: ${statusResp.status}`);
-                                
-                                // ─── Handle 404 - Payment not found yet ──
-                                if (statusResp.status === 404) {
-                                    console.log(`⏳ Payment not found (${attempts}/${maxAttempts})`);
-                                    if (attempts >= maxAttempts) {
-                                        clearInterval(pollInterval);
-                                        setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
-                                        showMessage('Payment took too long. Please try again.', 'error');
-                                        payBtn.disabled = false;
-                                        payBtn.innerHTML = originalText;
-                                        paymentInProgress = false;
-                                        document.getElementById('paymentRetry').style.display = 'block';
-                                        manualCheckBtn.style.display = 'block';
-                                        return;
-                                    }
-                                    setTimeout(pollWithBackoff, pollDelay);
-                                    return;
-                                }
-                                
-                                // ─── Handle 429 Rate Limiting ────────────
-                                if (statusResp.status === 429) {
-                                    console.log(`⏳ Rate limited, increasing delay...`);
-                                    pollDelay = Math.min(pollDelay * 1.5, 15000);
-                                    setTimeout(pollWithBackoff, pollDelay);
-                                    return;
-                                }
-                                
-                                // ─── Handle 401 Unauthorized ────────────
-                                if (statusResp.status === 401) {
-                                    console.error('❌ Unauthorized - token invalid');
-                                    showMessage('Session expired. Please login again.', 'error');
-                                    clearInterval(pollInterval);
-                                    payBtn.disabled = false;
-                                    payBtn.innerHTML = originalText;
-                                    paymentInProgress = false;
-                                    await supabase.auth.signOut();
-                                    window.location.href = "login.html";
-                                    return;
-                                }
-                                
-                                // ─── Handle other errors ────────────────
-                                if (!statusResp.ok) {
-                                    console.error('❌ Status check failed:', statusResp.status);
-                                    setTimeout(pollWithBackoff, pollDelay);
-                                    return;
-                                }
-                                
-                                const statusData = await statusResp.json();
-                                console.log('📊 Status data:', statusData);
-                                
-                                const status = statusData.status || statusData.payment_status;
-                                
-                                // ─── Check if completed (by status or result_code) ──
-                                if (status === 'completed' || statusData.result_code === '0') {
-                                    console.log('✅ Payment confirmed!');
-                                    clearInterval(pollInterval);
-                                    setPaymentStatus('completed', '✅ Payment confirmed!');
-                                    payBtn.innerHTML = '✅ Payment Complete';
-                                    showMessage('Payment successful! Proceed to vehicle data entry.', 'success');
-                                    
-                                    const serviceType = getServiceName(selectedService);
-                                    document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
-                                    showStep(6);
-                                    payBtn.disabled = false;
-                                    paymentInProgress = false;
-                                    manualCheckBtn.style.display = 'none';
-                                    return;
-                                }
-                                
-                                if (status === 'failed') {
-                                    console.log('❌ Payment failed');
-                                    clearInterval(pollInterval);
-                                    setPaymentStatus('failed', '❌ Payment failed. Please try again.');
-                                    showMessage('Payment failed. Please try again.', 'error');
-                                    payBtn.disabled = false;
-                                    payBtn.innerHTML = originalText;
-                                    paymentInProgress = false;
-                                    document.getElementById('paymentRetry').style.display = 'block';
-                                    manualCheckBtn.style.display = 'block';
-                                    return;
-                                }
-                                
-                                if (attempts >= maxAttempts) {
-                                    console.log('⏰ Max attempts reached');
-                                    clearInterval(pollInterval);
-                                    setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
-                                    showMessage('Payment timed out. Check your M-Pesa messages.', 'error');
-                                    payBtn.disabled = false;
-                                    payBtn.innerHTML = originalText;
-                                    paymentInProgress = false;
-                                    document.getElementById('paymentRetry').style.display = 'block';
-                                    manualCheckBtn.style.display = 'block';
-                                    return;
-                                }
-                                
-                                // ─── Increase delay for next attempt ──────
-                                pollDelay = Math.min(pollDelay * 1.2, 10000);
-                                setTimeout(pollWithBackoff, pollDelay);
-                                
-                            } catch (err) {
-                                console.error('❌ Polling error:', err);
-                                if (attempts < maxAttempts) {
-                                    pollDelay = Math.min(pollDelay * 1.5, 15000);
-                                    setTimeout(pollWithBackoff, pollDelay);
-                                }
-                            }
-                        }
-                        
-                        // Start polling
-                        setTimeout(pollWithBackoff, 3000);
-                        
-                    } catch (err) {
-                        console.error('❌ Payment error:', err);
-                        if (err.name === 'AbortError') {
-                            setPaymentStatus('failed', '❌ Request timed out. Please try again.');
-                            showMessage('Request timed out. Please try again.', 'error');
-                        } else {
-                            setPaymentStatus('failed', '❌ ' + err.message);
-                            showMessage('Payment failed: ' + err.message, 'error');
-                        }
-                        payBtn.disabled = false;
-                        payBtn.innerHTML = originalText;
-                        paymentInProgress = false;
-                        document.getElementById('paymentRetry').style.display = 'block';
-                        manualCheckBtn.style.display = 'block';
-                    }
-                }
-
-                // ─── Retry Payment ──────────────────────────────────────
-                document.getElementById('retryPaymentBtn')?.addEventListener('click', function() {
-                    document.getElementById('paymentStatus').style.display = 'none';
-                    document.getElementById('paymentRetry').style.display = 'none';
-                    manualCheckBtn.style.display = 'none';
-                    if (pollInterval) clearInterval(pollInterval);
-                    paymentInProgress = false;
-                    processPayment(new Event('submit'));
-                });
-
-                // ─── Manual Check Button ──────────────────────────────
-                manualCheckBtn?.addEventListener('click', manualCheckPayment);
-
-                // ─── Calculate Service ──────────────────────────────────
-                async function calculateService(e) {
-                    e.preventDefault();
-                    const reg = document.getElementById('vehicleReg').value.toUpperCase();
-                    const make = document.getElementById('vehicleMake').value;
-                    const model = document.getElementById('vehicleModel').value;
-                    const year = parseInt(document.getElementById('vehicleYear').value);
-                    const odometer = parseInt(document.getElementById('vehicleOdometer').value);
-                    const condition = document.getElementById('vehicleCondition').value;
-                    const accident = document.getElementById('vehicleAccident').value;
-                    
-                    if (!reg || !make || !model || !year) { 
-                        showMessage('Fill all required vehicle details', 'error'); 
                         return; 
                     }
                     
-                    const submitBtn = document.querySelector('#vehicleForm button[type="submit"]');
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                    currentUser = data.user;
+                    const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
                     
-                    try {
-                        const { data: { user } } = await supabase.auth.getUser();
-                        if (!user) {
-                            showMessage('Please login again', 'error');
-                            window.location.href = "login.html";
-                            return;
+                    localStorage.setItem('autoV_user', JSON.stringify({ 
+                        id: currentUser.id, 
+                        email: currentUser.email,
+                        name: userName
+                    }));
+                    
+                    const isNew = await updateUserProfile(currentUser.id, currentUser.email, userName);
+                    isFirstTimeUser = await checkFirstTimeUser(currentUser.id);
+                    
+                    if (isFirstTimeUser || isNew) {
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        showMessage('👋 Welcome! Let\'s get you started.', 'success');
+                        document.getElementById('custEmail').value = currentUser.email;
+                        if (currentUser.user_metadata?.full_name) {
+                            document.getElementById('custName').value = currentUser.user_metadata.full_name;
                         }
-                        
-                        // Calculate valuation
-                        const age = new Date().getFullYear() - year;
-                        let baseValue = 2000000;
-                        const makeLower = make.toLowerCase();
-                        if (makeLower === 'toyota') baseValue = 2800000;
-                        else if (makeLower === 'mercedes') baseValue = 5000000;
-                        else if (makeLower === 'bmw') baseValue = 4500000;
-                        else if (makeLower === 'nissan') baseValue = 2200000;
-                        else if (makeLower === 'honda') baseValue = 2400000;
-                        else if (makeLower === 'volkswagen') baseValue = 2600000;
-                        
-                        const conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Good' ? 1.0 : condition === 'Fair' ? 0.85 : 0.7;
-                        const accidentFactor = accident === 'None' ? 1.0 : accident === 'Minor' ? 0.85 : accident === 'Moderate' ? 0.65 : 0.4;
-                        const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
-                        const ageFactor = Math.max(0.35, 1 - (age * 0.08));
-                        
-                        let marketValue = Math.round(baseValue * ageFactor * mileageFactor * conditionFactor * accidentFactor);
-                        marketValue = Math.max(150000, marketValue);
-                        
-                        const result = {
-                            market_value: marketValue,
-                            insurance_value: Math.round(marketValue * 1.1),
-                            trade_in_value: Math.round(marketValue * 0.8),
-                            forced_sale_value: Math.round(marketValue * 0.7),
-                            certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-                        };
-                        
-                        // Save to Supabase
-                        await supabase.from('service_requests').insert({
-                            user_id: user.id,
-                            service_type: selectedService,
-                            client_type: clientType,
-                            customer_name: document.getElementById('custName').value || document.getElementById('companyName').value,
-                            customer_phone: document.getElementById('custPhone').value,
-                            customer_email: document.getElementById('custEmail').value,
-                            company_name: document.getElementById('companyName').value || null,
-                            company_reg: document.getElementById('companyReg').value || null,
-                            contact_person: document.getElementById('contactPerson').value || null,
-                            registration_number: reg,
-                            make: make,
-                            model: model,
-                            year: year,
-                            odometer: odometer,
-                            condition: condition,
-                            accident_history: accident,
-                            service_purpose: selectedPurpose,
-                            amount: getServicePrice(selectedService),
-                            payment_status: 'paid',
-                            status: 'completed',
-                            result: result,
+                        showStep(2);
+                    } else {
+                        showMessage('✅ Welcome back!', 'success');
+                        showStep(3);
+                    }
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = originalText;
+                }
+            }
+
+            async function handleSignup(e) {
+                e.preventDefault();
+                const email = document.getElementById('signupEmail').value;
+                const password = document.getElementById('signupPassword').value;
+                const name = document.getElementById('signupName').value;
+                const phone = document.getElementById('signupPhone').value;
+                
+                if (!email || !password) {
+                    showMessage('Please enter email and password', 'error');
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    showMessage('Password must be at least 6 characters', 'error');
+                    return;
+                }
+                
+                const signupBtn = document.querySelector('#signupForm button[type="submit"]');
+                const originalText = signupBtn.innerHTML;
+                signupBtn.disabled = true;
+                signupBtn.innerHTML = '<span class="spinner"></span> Creating account...';
+                
+                try {
+                    const { data, error } = await supabase.auth.signUp({ 
+                        email, 
+                        password,
+                        options: { data: { full_name: name, phone: phone } }
+                    });
+                    
+                    if (error) { 
+                        showMessage(error.message, 'error');
+                        signupBtn.disabled = false;
+                        signupBtn.innerHTML = originalText;
+                        return; 
+                    }
+                    
+                    if (data.user) {
+                        await supabase.from('user_profiles').insert({
+                            id: data.user.id,
+                            email: email,
+                            full_name: name || email.split('@')[0],
+                            phone: phone || '',
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 1,
+                            client_type: 'individual',
                             created_at: new Date().toISOString()
                         });
                         
-                        // Update user profile
-                        await supabase
-                            .from('user_profiles')
-                            .update({ 
-                                has_vehicle: true, 
-                                first_login: false,
-                                client_type: clientType,
-                                updated_at: new Date().toISOString()
-                            })
-                            .eq('id', user.id);
-                        
-                        // Show results
-                        const serviceName = getServiceName(selectedService);
-                        document.getElementById('resultsContainer').innerHTML = `
-                            <div style="margin-bottom:20px;">
-                                <span class="badge" style="background:#22c55e; color:#000; padding:4px 16px; border-radius:30px; font-weight:600;">✅ ${serviceName} Complete</span>
-                            </div>
-                            <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
-                            <p style="color:#eab308; font-weight:600;">Estimated Value</p>
-                            <div class="result-detail">
-                                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
-                                    <span style="color:#94a3b8;">Insurance Value</span>
-                                    <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
-                                </div>
-                                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
-                                    <span style="color:#94a3b8;">Trade-In Value</span>
-                                    <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
-                                </div>
-                                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
-                                    <span style="color:#94a3b8;">Forced Sale Value</span>
-                                    <strong style="color:#ef4444;">KES ${result.forced_sale_value.toLocaleString()}</strong>
-                                </div>
-                                <div style="display:flex; justify-content:space-between; padding:10px 0;">
-                                    <span style="color:#94a3b8;">Certificate Number</span>
-                                    <strong style="color:#eab308; font-size:12px;">${result.certificate_number}</strong>
-                                </div>
-                                ${clientType === 'corporate' ? `
-                                <div style="display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid #2d3a4e; margin-top:10px;">
-                                    <span style="color:#94a3b8;">Company</span>
-                                    <strong style="color:#eab308;">${document.getElementById('companyName').value}</strong>
-                                </div>
-                                ` : ''}
-                            </div>
-                            <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
-                                <p style="color:#22c55e; font-weight:600;">✅ ${serviceName} Complete!</p>
-                                <p style="color:#bbf7d0; font-size:13px; margin-top:5px;">
-                                    Vehicle ${reg} has been successfully processed.
-                                    ${isFirstTimeUser ? 'Your account is now fully set up!' : ''}
-                                </p>
-                            </div>
-                        `;
-                        showStep(7);
-                    } catch (err) {
-                        console.error('Error:', err);
-                        showMessage('Error processing request. Please try again.', 'error');
-                    } finally {
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = '🚀 Calculate & Complete';
-                    }
-                }
-
-                // ─── Real-time Listener ──────────────────────────────────
-                function setupRealtime() {
-                    // Listen for fee changes from admin
-                    autoV.addListener(function(data) {
-                        console.log('🔄 Real-time update received in Customer Portal');
-                        if (data.fees) {
-                            const feeMap = {
-                                'instant': 'instant',
-                                'valuation': 'valuation',
-                                'inspection': 'inspection',
-                                'assessment': 'assessment',
-                                'mileage': 'mileage',
-                                'fleet': 'fleet',
-                                'verification': 'verification'
-                            };
-                            
-                            for (const [key, value] of Object.entries(data.fees)) {
-                                if (feeMap[key]) {
-                                    fees[key] = value;
-                                }
-                            }
-                            
-                            renderServices();
-                            if (selectedService) {
-                                updateSummary();
-                                document.getElementById('selectedServiceMsg').innerHTML = 
-                                    `✅ Selected: ${getServiceName(selectedService)} - ${formatKES(getServicePrice(selectedService))}`;
-                            }
+                        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+                        if (!loginError && loginData.user) {
+                            currentUser = loginData.user;
+                            localStorage.setItem('autoV_user', JSON.stringify({ 
+                                id: currentUser.id, 
+                                email: currentUser.email,
+                                name: name || email.split('@')[0]
+                            }));
+                            document.getElementById('custEmail').value = email;
+                            if (name) document.getElementById('custName').value = name;
+                            document.getElementById('welcomeBanner').style.display = 'block';
+                            showMessage('✅ Account created!', 'success');
+                            showStep(2);
                         }
+                    }
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    signupBtn.disabled = false;
+                    signupBtn.innerHTML = originalText;
+                }
+            }
+
+            // ─── Payment Handler ──────────────────────────────────────
+            async function processPayment(e) {
+                e.preventDefault();
+                
+                if (paymentInProgress) return;
+                paymentInProgress = true;
+                manualCheckAttempt = 0;
+                
+                const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
+                let formattedPhone = mpesaPhone.replace(/[\s\-+]/g, '');
+                if (formattedPhone.startsWith('0')) {
+                    formattedPhone = '254' + formattedPhone.substring(1);
+                } else if (formattedPhone.startsWith('7') && formattedPhone.length === 9) {
+                    formattedPhone = '254' + formattedPhone;
+                }
+                
+                if (!formattedPhone || formattedPhone.length < 10) {
+                    showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678)', 'error');
+                    paymentInProgress = false;
+                    return;
+                }
+                if (!selectedService) {
+                    showMessage('Select a service first', 'error');
+                    paymentInProgress = false;
+                    return;
+                }
+                if (!selectedPurpose) {
+                    showMessage('Select a purpose first', 'error');
+                    paymentInProgress = false;
+                    return;
+                }
+                
+                const payBtn = document.getElementById('payBtn');
+                const originalText = payBtn.innerHTML;
+                payBtn.disabled = true;
+                payBtn.innerHTML = '<span class="spinner"></span> Initiating Payment...';
+                setPaymentStatus('pending', '⏳ Initiating payment...');
+                document.getElementById('paymentRetry').style.display = 'none';
+                
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        showMessage('Please login again', 'error');
+                        window.location.href = "login.html";
+                        return;
+                    }
+                    
+                    const price = getServicePrice(selectedService);
+                    
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) {
+                        throw new Error('No authentication token available');
+                    }
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000);
+                    
+                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/initiate`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            phone: formattedPhone,
+                            amount: price,
+                            service: selectedService,
+                            purpose: selectedPurpose,
+                            client_type: clientType
+                        }),
+                        signal: controller.signal
                     });
                     
-                    autoV.subscribeToChanges();
-                }
-
-                // ─── Check Session ──────────────────────────────────────
-                async function checkExistingSession() {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (user) {
-                        const isFirst = await checkFirstTimeUser(user.id);
-                        if (isFirst) {
-                            document.getElementById('welcomeBanner').style.display = 'block';
-                            document.getElementById('custEmail').value = user.email;
-                            if (user.user_metadata?.full_name) {
-                                document.getElementById('custName').value = user.user_metadata.full_name;
+                    clearTimeout(timeoutId);
+                    
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        console.error('Non-JSON response:', text);
+                        throw new Error('Server returned non-JSON response');
+                    }
+                    
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || err.details || 'STK Push initiation failed');
+                    }
+                    
+                    const result = await response.json();
+                    console.log('✅ Payment initiated:', result);
+                    
+                    paymentId = result.payment_id || result.id;
+                    if (!paymentId) {
+                        throw new Error('No payment ID returned from server');
+                    }
+                    
+                    setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
+                    payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
+                    
+                    if (pollInterval) clearInterval(pollInterval);
+                    
+                    let attempts = 0;
+                    const maxAttempts = 30;
+                    let pollDelay = 5000;
+                    
+                    async function pollWithBackoff() {
+                        attempts++;
+                        console.log(`⏳ Polling attempt ${attempts}/${maxAttempts}`);
+                        
+                        try {
+                            const { data: sessionData } = await supabase.auth.getSession();
+                            const token = sessionData?.session?.access_token;
+                            if (!token) {
+                                setTimeout(pollWithBackoff, pollDelay);
+                                return;
                             }
-                            showStep(2);
-                        } else {
-                            showStep(3);
+                            
+                            const statusResp = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
+                                }
+                            });
+                            
+                            if (statusResp.status === 404) {
+                                if (attempts >= maxAttempts) {
+                                    clearInterval(pollInterval);
+                                    setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
+                                    showMessage('Payment took too long. Please try again.', 'error');
+                                    payBtn.disabled = false;
+                                    payBtn.innerHTML = originalText;
+                                    paymentInProgress = false;
+                                    document.getElementById('paymentRetry').style.display = 'block';
+                                    manualCheckBtn.style.display = 'block';
+                                    return;
+                                }
+                                setTimeout(pollWithBackoff, pollDelay);
+                                return;
+                            }
+                            
+                            if (statusResp.status === 429) {
+                                pollDelay = Math.min(pollDelay * 1.5, 15000);
+                                setTimeout(pollWithBackoff, pollDelay);
+                                return;
+                            }
+                            
+                            if (!statusResp.ok) {
+                                setTimeout(pollWithBackoff, pollDelay);
+                                return;
+                            }
+                            
+                            const statusData = await statusResp.json();
+                            const status = statusData.status || statusData.payment_status;
+                            
+                            if (status === 'completed' || statusData.result_code === '0') {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('completed', '✅ Payment confirmed!');
+                                payBtn.innerHTML = '✅ Payment Complete';
+                                showMessage('Payment successful! Proceed to vehicle data entry.', 'success');
+                                
+                                const serviceType = getServiceName(selectedService);
+                                document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                                showStep(6);
+                                payBtn.disabled = false;
+                                paymentInProgress = false;
+                                manualCheckBtn.style.display = 'none';
+                                return;
+                            }
+                            
+                            if (status === 'failed') {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('failed', '❌ Payment failed. Please try again.');
+                                showMessage('Payment failed. Please try again.', 'error');
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
+                                document.getElementById('paymentRetry').style.display = 'block';
+                                manualCheckBtn.style.display = 'block';
+                                return;
+                            }
+                            
+                            if (attempts >= maxAttempts) {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
+                                showMessage('Payment timed out. Check your M-Pesa messages.', 'error');
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
+                                document.getElementById('paymentRetry').style.display = 'block';
+                                manualCheckBtn.style.display = 'block';
+                                return;
+                            }
+                            
+                            pollDelay = Math.min(pollDelay * 1.2, 10000);
+                            setTimeout(pollWithBackoff, pollDelay);
+                            
+                        } catch (err) {
+                            console.error('Polling error:', err);
+                            if (attempts < maxAttempts) {
+                                pollDelay = Math.min(pollDelay * 1.5, 15000);
+                                setTimeout(pollWithBackoff, pollDelay);
+                            }
                         }
                     }
-                }
-
-                // ─── Logout ──────────────────────────────────────────────
-                document.getElementById('logoutBtn').addEventListener('click', async () => { 
-                    await supabase.auth.signOut(); 
-                    localStorage.removeItem('autoV_user');
-                    window.location.href = "login.html"; 
-                });
-
-                // ─── Navigation Buttons ──────────────────────────────────
-                document.getElementById('backToLogin')?.addEventListener('click', () => showStep(1));
-                document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
-                document.getElementById('backToService')?.addEventListener('click', () => showStep(3));
-                document.getElementById('backToPurpose')?.addEventListener('click', () => showStep(4));
-                document.getElementById('backToPay')?.addEventListener('click', () => showStep(5));
-                
-                document.getElementById('nextStep3Btn')?.addEventListener('click', () => { 
-                    if(selectedService) {
-                        populatePurposes();
-                        showStep(4); 
-                    } else showMessage('Select a service', 'error'); 
-                });
-                document.getElementById('nextStep4Btn')?.addEventListener('click', () => { 
-                    if(selectedPurpose) {
-                        updateSummary();
-                        showStep(5); 
-                    } else showMessage('Select a purpose', 'error'); 
-                });
-                
-                document.getElementById('newRequestBtn')?.addEventListener('click', () => window.location.reload());
-                document.getElementById('goToDashboardBtn')?.addEventListener('click', () => window.location.href = 'dashboard.html');
-                
-                document.getElementById('showSignup')?.addEventListener('click', () => {
-                    document.getElementById('signupSection').style.display = 'block';
-                });
-                document.getElementById('hideSignup')?.addEventListener('click', () => {
-                    document.getElementById('signupSection').style.display = 'none';
-                });
-
-                // ─── Event Listeners ─────────────────────────────────────
-                document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
-                document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
-                document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
-                document.getElementById('paymentForm')?.addEventListener('submit', processPayment);
-                document.getElementById('vehicleForm')?.addEventListener('submit', calculateService);
-
-                // ─── Init ────────────────────────────────────────────────
-                async function init() {
-                    console.log('🚀 Initializing AUTO-V Customer Portal...');
-                    populateYears();
-                    await loadFees();
-                    await checkExistingSession();
-                    setupRealtime();
-                    if (!document.querySelector('.step.active')) {
-                        showStep(1);
+                    
+                    setTimeout(pollWithBackoff, 3000);
+                    
+                } catch (err) {
+                    console.error('Payment error:', err);
+                    if (err.name === 'AbortError') {
+                        setPaymentStatus('failed', '❌ Request timed out. Please try again.');
+                        showMessage('Request timed out. Please try again.', 'error');
+                    } else {
+                        setPaymentStatus('failed', '❌ ' + err.message);
+                        showMessage('Payment failed: ' + err.message, 'error');
                     }
-                    console.log('✅ Customer Portal initialized with real-time sync');
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = originalText;
+                    paymentInProgress = false;
+                    document.getElementById('paymentRetry').style.display = 'block';
+                    manualCheckBtn.style.display = 'block';
+                }
+            }
+
+            // ─── Manual Check Payment ──────────────────────────────
+            async function manualCheckPayment() {
+                if (!paymentId) {
+                    showMessage('No payment in progress', 'error');
+                    return;
                 }
                 
-                init();
+                manualCheckBtn.disabled = true;
+                manualCheckBtn.innerHTML = '<span class="spinner"></span> Checking...';
+                manualCheckAttempt++;
+                
+                try {
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) {
+                        showMessage('Please login again', 'error');
+                        return;
+                    }
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000);
+                    
+                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.status === 404) {
+                        showMessage('Payment not found. Please try again later.', 'warning');
+                        return;
+                    }
+                    
+                    if (!response.ok) {
+                        showMessage(`Status check failed: ${response.status}`, 'error');
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    const status = data.status || data.payment_status;
+                    
+                    if (status === 'completed' || data.result_code === '0') {
+                        setPaymentStatus('completed', '✅ Payment confirmed!');
+                        showMessage('Payment successful!', 'success');
+                        const serviceType = getServiceName(selectedService);
+                        document.querySelector('#step6 h2').textContent = `🚗 ${serviceType} Data Entry`;
+                        showStep(6);
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                        manualCheckBtn.style.display = 'none';
+                    } else if (status === 'failed') {
+                        setPaymentStatus('failed', '❌ Payment failed.');
+                        showMessage('Payment failed. Please retry.', 'error');
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                    } else {
+                        showMessage(`Payment status: ${status || 'pending'} (Attempt ${manualCheckAttempt})`, 'info');
+                    }
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        showMessage('Request timed out. Please try again.', 'error');
+                    } else {
+                        console.error('Manual check error:', err);
+                        showMessage('Error checking status. Please try again.', 'error');
+                    }
+                } finally {
+                    manualCheckBtn.disabled = false;
+                    manualCheckBtn.innerHTML = '🔄 Check Payment Status';
+                }
+            }
+
+            // ─── Calculate Service ──────────────────────────────────
+            async function calculateService(e) {
+                e.preventDefault();
+                const reg = document.getElementById('vehicleReg').value.toUpperCase();
+                const make = document.getElementById('vehicleMake').value;
+                const model = document.getElementById('vehicleModel').value;
+                const year = parseInt(document.getElementById('vehicleYear').value);
+                const odometer = parseInt(document.getElementById('vehicleOdometer').value);
+                const condition = document.getElementById('vehicleCondition').value;
+                const accident = document.getElementById('vehicleAccident').value;
+                
+                if (!reg || !make || !model || !year) { 
+                    showMessage('Fill all required vehicle details', 'error'); 
+                    return; 
+                }
+                
+                const submitBtn = document.querySelector('#vehicleForm button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        showMessage('Please login again', 'error');
+                        window.location.href = "login.html";
+                        return;
+                    }
+                    
+                    // Calculate valuation
+                    const age = new Date().getFullYear() - year;
+                    let baseValue = 2000000;
+                    const makeLower = make.toLowerCase();
+                    if (makeLower === 'toyota') baseValue = 2800000;
+                    else if (makeLower === 'mercedes') baseValue = 5000000;
+                    else if (makeLower === 'bmw') baseValue = 4500000;
+                    else if (makeLower === 'nissan') baseValue = 2200000;
+                    else if (makeLower === 'honda') baseValue = 2400000;
+                    else if (makeLower === 'volkswagen') baseValue = 2600000;
+                    
+                    const conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Good' ? 1.0 : condition === 'Fair' ? 0.85 : 0.7;
+                    const accidentFactor = accident === 'None' ? 1.0 : accident === 'Minor' ? 0.85 : accident === 'Moderate' ? 0.65 : 0.4;
+                    const mileageFactor = Math.max(0.45, 1 - (odometer / 300000));
+                    const ageFactor = Math.max(0.35, 1 - (age * 0.08));
+                    
+                    let marketValue = Math.round(baseValue * ageFactor * mileageFactor * conditionFactor * accidentFactor);
+                    marketValue = Math.max(150000, marketValue);
+                    
+                    const result = {
+                        market_value: marketValue,
+                        insurance_value: Math.round(marketValue * 1.1),
+                        trade_in_value: Math.round(marketValue * 0.8),
+                        forced_sale_value: Math.round(marketValue * 0.7),
+                        certificate_number: `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+                    };
+                    
+                    // Save to Supabase
+                    await supabase.from('service_requests').insert({
+                        user_id: user.id,
+                        service_type: selectedService,
+                        client_type: clientType,
+                        customer_name: document.getElementById('custName').value || document.getElementById('companyName').value,
+                        customer_phone: document.getElementById('custPhone').value,
+                        customer_email: document.getElementById('custEmail').value,
+                        company_name: document.getElementById('companyName').value || null,
+                        company_reg: document.getElementById('companyReg').value || null,
+                        contact_person: document.getElementById('contactPerson').value || null,
+                        registration_number: reg,
+                        make: make,
+                        model: model,
+                        year: year,
+                        odometer: odometer,
+                        condition: condition,
+                        accident_history: accident,
+                        service_purpose: selectedPurpose,
+                        amount: getServicePrice(selectedService),
+                        payment_status: 'paid',
+                        status: 'completed',
+                        result: result,
+                        created_at: new Date().toISOString()
+                    });
+                    
+                    // Update user profile
+                    await supabase
+                        .from('user_profiles')
+                        .update({ 
+                            has_vehicle: true, 
+                            first_login: false,
+                            client_type: clientType,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', user.id);
+                    
+                    // Show results
+                    const serviceName = getServiceName(selectedService);
+                    document.getElementById('resultsContainer').innerHTML = `
+                        <div style="margin-bottom:20px;">
+                            <span style="background:#22c55e; color:#000; padding:4px 16px; border-radius:30px; font-weight:600;">✅ ${serviceName} Complete</span>
+                        </div>
+                        <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
+                        <p style="color:#eab308; font-weight:600;">Estimated Value</p>
+                        <div class="result-detail">
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Insurance Value</span>
+                                <strong style="color:#22c55e;">KES ${result.insurance_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Trade-In Value</span>
+                                <strong style="color:#f59e0b;">KES ${result.trade_in_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e;">
+                                <span style="color:#94a3b8;">Forced Sale Value</span>
+                                <strong style="color:#ef4444;">KES ${result.forced_sale_value.toLocaleString()}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; padding:10px 0;">
+                                <span style="color:#94a3b8;">Certificate Number</span>
+                                <strong style="color:#eab308; font-size:12px;">${result.certificate_number}</strong>
+                            </div>
+                            ${clientType === 'corporate' ? `
+                            <div style="display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid #2d3a4e; margin-top:10px;">
+                                <span style="color:#94a3b8;">Company</span>
+                                <strong style="color:#eab308;">${document.getElementById('companyName').value}</strong>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
+                            <p style="color:#22c55e; font-weight:600;">✅ ${serviceName} Complete!</p>
+                            <p style="color:#bbf7d0; font-size:13px; margin-top:5px;">
+                                Vehicle ${reg} has been successfully processed.
+                                ${isFirstTimeUser ? 'Your account is now fully set up!' : ''}
+                            </p>
+                        </div>
+                    `;
+                    showStep(7);
+                } catch (err) {
+                    console.error('Error:', err);
+                    showMessage('Error processing request. Please try again.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '🚀 Calculate & Complete';
+                }
+            }
+
+            // ─── Check Session ──────────────────────────────────────
+            async function checkExistingSession() {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    currentUser = user;
+                    const isFirst = await checkFirstTimeUser(user.id);
+                    if (isFirst) {
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = user.email;
+                        if (user.user_metadata?.full_name) {
+                            document.getElementById('custName').value = user.user_metadata.full_name;
+                        }
+                        showStep(2);
+                    } else {
+                        showStep(3);
+                    }
+                }
+            }
+
+            // ─── Event Listeners ─────────────────────────────────────
+            document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
+            document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
+            document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
+            document.getElementById('paymentForm')?.addEventListener('submit', processPayment);
+            document.getElementById('vehicleForm')?.addEventListener('submit', calculateService);
+            
+            document.getElementById('backToLogin')?.addEventListener('click', () => showStep(1));
+            document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
+            document.getElementById('backToService')?.addEventListener('click', () => showStep(3));
+            document.getElementById('backToPurpose')?.addEventListener('click', () => showStep(4));
+            document.getElementById('backToPay')?.addEventListener('click', () => showStep(5));
+            
+            document.getElementById('nextStep3Btn')?.addEventListener('click', () => { 
+                if(selectedService) {
+                    populatePurposes();
+                    showStep(4); 
+                } else showMessage('Select a service', 'error'); 
             });
+            document.getElementById('nextStep4Btn')?.addEventListener('click', () => { 
+                if(selectedPurpose) {
+                    updateSummary();
+                    showStep(5); 
+                } else showMessage('Select a purpose', 'error'); 
+            });
+            
+            document.getElementById('newRequestBtn')?.addEventListener('click', () => window.location.reload());
+            document.getElementById('goToDashboardBtn')?.addEventListener('click', () => window.location.href = 'dashboard.html');
+            document.getElementById('logoutBtn')?.addEventListener('click', async () => { 
+                await supabase.auth.signOut(); 
+                localStorage.removeItem('autoV_user');
+                window.location.href = "login.html"; 
+            });
+            
+            document.getElementById('showSignup')?.addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'block';
+            });
+            document.getElementById('hideSignup')?.addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'none';
+            });
+            
+            document.getElementById('retryPaymentBtn')?.addEventListener('click', function() {
+                document.getElementById('paymentStatus').style.display = 'none';
+                document.getElementById('paymentRetry').style.display = 'none';
+                manualCheckBtn.style.display = 'none';
+                if (pollInterval) clearInterval(pollInterval);
+                paymentInProgress = false;
+                processPayment(new Event('submit'));
+            });
+
+            manualCheckBtn?.addEventListener('click', manualCheckPayment);
+
+            // ─── Client Type Selector ──────────────────────────────
+            document.querySelectorAll('.client-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.client-type-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    clientType = this.dataset.type;
+                    
+                    if (clientType === 'corporate') {
+                        document.getElementById('corporateFields').classList.add('show');
+                        document.getElementById('individualFields').style.display = 'none';
+                    } else {
+                        document.getElementById('corporateFields').classList.remove('show');
+                        document.getElementById('individualFields').style.display = 'block';
+                    }
+                });
+            });
+
+            // ─── Init ──────────────────────────────────────────────────
+            async function init() {
+                console.log('🚀 Initializing AUTO-V Customer Portal (Production)...');
+                populateYears();
+                await loadFees();
+                await checkExistingSession();
+                if (!document.querySelector('.step.active')) {
+                    showStep(1);
+                }
+                console.log('✅ Customer Portal ready');
+                console.log(`📡 Connected to: ${CONFIG.API_BASE}`);
+                console.log(`🔑 M-Pesa Shortcode: ${CONFIG.MPESA_SHORTCODE}`);
+            }
+            
+            init();
         })();
     </script>
 </body>
