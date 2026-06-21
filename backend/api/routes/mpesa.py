@@ -127,7 +127,6 @@ def initiate_mpesa():
         return response
     
     try:
-        # Get request data
         data = request.get_json()
         
         if not data:
@@ -136,7 +135,6 @@ def initiate_mpesa():
                 'error': 'No data provided'
             }), 400
         
-        # ─── LOG INCOMING PAYLOAD ──────────────────────────────────
         logger.info(f"📦 PAYLOAD RECEIVED: {data}")
         
         # ─── GET REFERENCE ──────────────────────────────────────────
@@ -197,7 +195,6 @@ def initiate_mpesa():
                 'error': result.get('error', 'Payment initiation failed')
             }), 500
         
-        # ─── GET CHECKOUT REQUEST ID ────────────────────────────────
         checkout_id = result.get('checkout_request_id')
         
         # ─── SAVE TO DATABASE ────────────────────────────────────────
@@ -205,7 +202,6 @@ def initiate_mpesa():
             from services.supabase_client import get_supabase_client
             supabase = get_supabase_client()
             
-            # Try to save transaction
             transaction_data = {
                 'payment_id': local_payment_id,
                 'checkout_request_id': checkout_id,
@@ -224,7 +220,6 @@ def initiate_mpesa():
                 logger.info(f"✅ Transaction saved to database")
             except Exception as db_error:
                 logger.warning(f"Could not save transaction: {db_error}")
-                # Try with minimal fields
                 try:
                     supabase.table('transactions').insert({
                         'checkout_request_id': checkout_id or local_payment_id,
@@ -240,7 +235,6 @@ def initiate_mpesa():
         except Exception as e:
             logger.warning(f"Database error: {e}")
         
-        # ─── RETURN SUCCESS WITH PAYMENT ID ─────────────────────────
         return jsonify({
             'success': True,
             'data': {
@@ -294,7 +288,6 @@ def mpesa_callback():
             
             logger.info(f"✅ Payment successful: {payment_data}")
             
-            # Update database
             try:
                 from services.supabase_client import get_supabase_client
                 supabase = get_supabase_client()
@@ -317,11 +310,9 @@ def mpesa_callback():
 def get_transaction_status(payment_id):
     """Get transaction status"""
     try:
-        # Check database
         from services.supabase_client import get_supabase_client
         supabase = get_supabase_client()
         
-        # Try to find by payment_id or checkout_request_id
         response = supabase.table('transactions').select('*')\
             .or_(f'payment_id.eq.{payment_id},checkout_request_id.eq.{payment_id}')\
             .execute()
@@ -337,7 +328,6 @@ def get_transaction_status(payment_id):
                 'reference': transaction.get('reference')
             }), 200
         
-        # Check if payment exists in M-Pesa (simulated)
         return jsonify({
             'success': True,
             'payment_id': payment_id,
@@ -368,7 +358,6 @@ def force_complete_payment(payment_id):
         
         logger.info(f"📝 Force completing payment: {payment_id} with transaction: {transaction_id}")
         
-        # Update database
         from services.supabase_client import get_supabase_client
         supabase = get_supabase_client()
         
@@ -385,7 +374,6 @@ def force_complete_payment(payment_id):
                 'message': 'Payment confirmed successfully'
             }), 200
         else:
-            # If no transaction found, create one
             try:
                 supabase.table('transactions').insert({
                     'payment_id': payment_id,
