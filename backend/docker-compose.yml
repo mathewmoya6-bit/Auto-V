@@ -1,0 +1,58 @@
+# backend/docker-compose.yml
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: auto-v-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - CARAPI_KEY=${CARAPI_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_VISION_API_KEY=${GOOGLE_VISION_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - auto-v-network
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:alpine
+    container_name: auto-v-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - auto-v-network
+
+  # Optional: Celery worker for background tasks
+  # celery:
+  #   build: .
+  #   container_name: auto-v-celery
+  #   command: celery -A tasks worker --loglevel=info
+  #   environment:
+  #     - REDIS_URL=redis://redis:6379
+  #   depends_on:
+  #     - redis
+  #   volumes:
+  #     - ./uploads:/app/uploads
+  #   restart: unless-stopped
+  #   networks:
+  #     - auto-v-network
+
+networks:
+  auto-v-network:
+    driver: bridge
+
+volumes:
+  redis-data:
