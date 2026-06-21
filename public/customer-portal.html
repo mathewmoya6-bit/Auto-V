@@ -189,7 +189,6 @@
                     <input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel">
                     <small style="color:#64748b;font-size:11px;">Enter the phone number registered with M-Pesa</small>
                 </div>
-                <!-- Hidden reference field - auto-generated -->
                 <input type="hidden" id="reference" name="reference">
                 <div class="payment-summary">
                     <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
@@ -415,7 +414,6 @@
                     return;
                 }
                 
-                // Store data in sessionStorage for the service page
                 const serviceData = {
                     service: selectedService,
                     purpose: selectedPurpose,
@@ -430,7 +428,6 @@
                 console.log('📤 Redirecting to:', page);
                 console.log('📤 Service Data:', serviceData);
                 
-                // Redirect to service page
                 window.location.href = page;
             }
 
@@ -760,6 +757,19 @@
                         throw new Error('No authentication token available');
                     }
                     
+                    // ─── BUILD PAYLOAD ──────────────────────────────────────
+                    const payload = {
+                        phone: formattedPhone,
+                        amount: price,
+                        service: selectedService,
+                        purpose: selectedPurpose,
+                        client_type: clientType,
+                        reference: reference,      // ✅ Sending as 'reference'
+                        payment_reference: reference  // ✅ Also sending as 'payment_reference' for backward compatibility
+                    };
+                    
+                    console.log('📦 PAYLOAD:', payload);
+                    
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 30000);
                     
@@ -769,14 +779,7 @@
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${token}`
                         },
-                        body: JSON.stringify({
-                            phone: formattedPhone,
-                            amount: price,
-                            service: selectedService,
-                            purpose: selectedPurpose,
-                            client_type: clientType,
-                            reference: reference
-                        }),
+                        body: JSON.stringify(payload),
                         signal: controller.signal
                     });
                     
@@ -797,7 +800,7 @@
                     const result = await response.json();
                     console.log('✅ Payment initiated:', result);
                     
-                    paymentId = result.payment_id || result.id;
+                    paymentId = result.payment_id || result.id || result.checkout_request_id;
                     if (!paymentId) {
                         throw new Error('No payment ID returned from server');
                     }
