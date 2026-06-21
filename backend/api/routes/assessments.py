@@ -1,207 +1,422 @@
-# api/routes/assessments.py - Assessment Flask Routes
-
-import logging
-import sys
-import os
-from datetime import datetime
+# api/routes/assessments.py - Vehicle Damage Assessment Routes
 from flask import Blueprint, request, jsonify
+from datetime import datetime
+import logging
+import json
+
 from services.supabase_client import get_supabase
-from api.auth_middleware import require_auth
-
-# ─── Fix Import Path ──────────────────────────────────────────
-# Get the absolute path to the backend directory
-backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Add it to Python path if not already there
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
-
-# Now try to import from assessment engine
-try:
-    from assessment import assess, ASSESSMENT_TYPES
-    logger = logging.getLogger(__name__)
-    logger.info("✅ Successfully imported assessment engine")
-except ImportError as e:
-    # If import fails, use fallback
-    logger = logging.getLogger(__name__)
-    logger.error(f"Failed to import assessment: {e}")
-    # Create fallback functions if assessment.py is missing
-    ASSESSMENT_TYPES = ["accident", "insurance_claim", "repair_cost", "total_loss", "salvage", "theft_recovery"]
-    def assess(assessment_type, **kwargs):
-        return {
-            "error": "Assessment engine not available",
-            "assessment_type": assessment_type,
-            "message": "Please ensure assessment.py is in the backend directory"
-        }
+from services.vin_validation_service import comprehensive_fraud_check
+from services.vin_validator import vin_validator
+from utils.decorators import rate_limit, require_auth, log_request
 
 logger = logging.getLogger(__name__)
 
-# ─── Blueprint ────────────────────────────────────────────────
+# Create blueprint
 assessments_bp = Blueprint('assessments', __name__)
 
+# ─── ASSESSMENT MODELS ─────────────────────────────────────────
 
-@assessments_bp.route('/', methods=['GET'])
+class DamageAssessment:
+    """Damage assessment model"""
+    def __init__(self, data):
+        self.vin = data.get('vin')
+        self.user_id = data.get('user_id')
+        self.vehicle_make = data.get('make')
+        self.vehicle_model = data.get('model')
+        self.vehicle_year = data.get('year')
+        self.damage_type = data.get('damage_type')  # scratch, dent, crack, etc.
+        self.severity = data.get('severity')  # minor, moderate, severe
+        self.location = data.get('location')  # front, rear, side, etc.
+        self.estimated_cost = data.get('estimated_cost')
+        self.image_urls = data.get('image_urls', [])
+        self.notes = data.get('notes')
+        self.inspector_id = data.get('inspector_id')
+        self.created_at = datetime.now().isoformat()
+        self.updated_at = datetime.now().isoformat()
+
+# ─── ROUTES ──────────────────────────────────────────────────
+
+@assessments_bp.route('/create', methods=['POST'])
+@rate_limit(limit=20, per=60)
 @require_auth
-def get_assessments(user):
-    """Get all assessments for the current user."""
-    try:
-        supabase = get_supabase()
-        response = supabase.table('assessments')\
-            .select('*')\
-            .eq('user_id', user.id)\
-            .order('created_at', desc=True)\
-            .execute()
-        return jsonify(response.data), 200
-    except Exception as e:
-        logger.error(f"Error fetching assessments: {e}")
-        return jsonify({'error': 'Failed to fetch assessments'}), 500
-
-
-@assessments_bp.route('/<assessment_id>', methods=['GET'])
-@require_auth
-def get_assessment(user, assessment_id):
-    """Get a specific assessment by ID."""
-    try:
-        supabase = get_supabase()
-        response = supabase.table('assessments')\
-            .select('*')\
-            .eq('id', assessment_id)\
-            .eq('user_id', user.id)\
-            .execute()
-        
-        if not response.data:
-            return jsonify({'error': 'Assessment not found'}), 404
-        
-        return jsonify(response.data[0]), 200
-    except Exception as e:
-        logger.error(f"Error fetching assessment: {e}")
-        return jsonify({'error': 'Failed to fetch assessment'}), 500
-
-
-@assessments_bp.route('/types', methods=['GET'])
-@require_auth
-def get_assessment_types(user):
-    """Get all available assessment types."""
-    return jsonify({
-        'types': ASSESSMENT_TYPES,
-        'description': 'Available assessment types for the AUTO-V AI engine'
-    }), 200
-
-
-@assessments_bp.route('/run', methods=['POST'])
-@require_auth
-def run_assessment(user):
+@log_request
+def create_assessment():
     """
-    Run an assessment using the AUTO-V AI engine.
-    
-    Expected payload:
-    {
-        "assessment_type": "accident|insurance_claim|repair_cost|total_loss|salvage|theft_recovery",
-        ... assessment-specific parameters
-    }
+    Create a new damage assessment
     """
     try:
         data = request.get_json()
         
-        # Validate assessment type
-        assessment_type = data.get('assessment_type')
-        if not assessment_type:
-            return jsonify({'error': 'assessment_type is required'}), 400
-        
-        if assessment_type not in ASSESSMENT_TYPES:
+        if not data:
             return jsonify({
-                'error': f'Invalid assessment_type. Must be one of: {", ".join(ASSESSMENT_TYPES)}'
+                'success': False,
+                'error': 'No data provided'
             }), 400
         
-        # Remove assessment_type from kwargs
-        kwargs = {k: v for k, v in data.items() if k != 'assessment_type'}
+        # Validate required fields
+        required_fields = ['vin', 'damage_type', 'severity', 'location']
+        missing = [f for f in required_fields if not data.get(f)]
         
-        # Run the assessment
-        result = assess(assessment_type, **kwargs)
+        if missing:
+            return jsonify({
+                'success': False,
+                'error': f'Missing required fields: {", ".join(missing)}'
+            }), 400
         
-        # Store assessment in Supabase
+        # Validate VIN
+        vin = data['vin'].upper().strip()
+        if not vin_validator.is_valid(vin):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid VIN format'
+            }), 400
+        
+        # Create assessment object
+        assessment = DamageAssessment(data)
+        
+        # Save to Supabase
         supabase = get_supabase()
-        storage_data = {
-            'user_id': user.id,
-            'assessment_type': assessment_type,
-            'result': result,
-            'input_data': data,
-            'created_at': datetime.now().isoformat()
-        }
+        result = supabase.save_assessment({
+            'vin': assessment.vin,
+            'user_id': assessment.user_id,
+            'make': assessment.vehicle_make,
+            'model': assessment.vehicle_model,
+            'year': assessment.vehicle_year,
+            'damage_type': assessment.damage_type,
+            'severity': assessment.severity,
+            'location': assessment.location,
+            'estimated_cost': assessment.estimated_cost,
+            'image_urls': assessment.image_urls,
+            'notes': assessment.notes,
+            'inspector_id': assessment.inspector_id,
+            'created_at': assessment.created_at,
+            'updated_at': assessment.updated_at,
+            'status': 'pending'
+        })
         
-        response = supabase.table('assessments').insert(storage_data).execute()
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to save assessment')
+            }), 500
         
-        if response.data:
-            result['saved'] = True
-            result['assessment_id'] = response.data[0]['id']
-        
-        return jsonify(result), 200
+        return jsonify({
+            'success': True,
+            'data': {
+                'assessment_id': result.get('data', {}).get('id'),
+                'vin': assessment.vin,
+                'damage_type': assessment.damage_type,
+                'severity': assessment.severity,
+                'estimated_cost': assessment.estimated_cost,
+                'status': 'pending',
+                'created_at': assessment.created_at
+            },
+            'message': 'Assessment created successfully'
+        }), 201
         
     except Exception as e:
-        logger.error(f"Assessment error: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Create assessment error: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-
-@assessments_bp.route('/', methods=['POST'])
+@assessments_bp.route('/<assessment_id>', methods=['GET'])
+@rate_limit(limit=50, per=60)
 @require_auth
-def create_assessment(user):
-    """Create a new assessment record (legacy endpoint)."""
+@log_request
+def get_assessment(assessment_id):
+    """
+    Get assessment by ID
+    """
+    try:
+        supabase = get_supabase()
+        result = supabase.get_assessment(assessment_id)
+        
+        if not result:
+            return jsonify({
+                'success': False,
+                'error': 'Assessment not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get assessment error: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@assessments_bp.route('/vehicle/<vin>', methods=['GET'])
+@rate_limit(limit=50, per=60)
+@require_auth
+@log_request
+def get_assessments_by_vin(vin):
+    """
+    Get all assessments for a vehicle
+    """
+    try:
+        vin = vin.upper().strip()
+        
+        supabase = get_supabase()
+        results = supabase.get_assessments_by_vin(vin)
+        
+        return jsonify({
+            'success': True,
+            'data': results,
+            'count': len(results)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get assessments by VIN error: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@assessments_bp.route('/<assessment_id>/status', methods=['PUT'])
+@rate_limit(limit=20, per=60)
+@require_auth
+@log_request
+def update_assessment_status(assessment_id):
+    """
+    Update assessment status
+    """
     try:
         data = request.get_json()
-        data['user_id'] = user.id
-        data['created_at'] = datetime.now().isoformat()
+        
+        if not data or 'status' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Status is required'
+            }), 400
+        
+        valid_statuses = ['pending', 'reviewed', 'approved', 'rejected', 'completed']
+        status = data['status']
+        
+        if status not in valid_statuses:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'
+            }), 400
         
         supabase = get_supabase()
-        response = supabase.table('assessments').insert(data).execute()
+        result = supabase.update_assessment_status(assessment_id, status)
         
-        if not response.data:
-            return jsonify({'error': 'Failed to create assessment'}), 500
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to update status')
+            }), 500
         
-        return jsonify(response.data[0]), 201
+        return jsonify({
+            'success': True,
+            'data': {
+                'assessment_id': assessment_id,
+                'status': status,
+                'updated_at': datetime.now().isoformat()
+            },
+            'message': f'Assessment status updated to {status}'
+        }), 200
+        
     except Exception as e:
-        logger.error(f"Error creating assessment: {e}")
-        return jsonify({'error': 'Failed to create assessment'}), 500
+        logger.error(f"Update assessment status error: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-
-@assessments_bp.route('/<assessment_id>', methods=['PUT'])
+@assessments_bp.route('/<assessment_id>/cost', methods=['PUT'])
+@rate_limit(limit=20, per=60)
 @require_auth
-def update_assessment(user, assessment_id):
-    """Update an assessment."""
+@log_request
+def update_assessment_cost(assessment_id):
+    """
+    Update estimated repair cost
+    """
     try:
         data = request.get_json()
-        data['updated_at'] = datetime.now().isoformat()
+        
+        if not data or 'estimated_cost' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'estimated_cost is required'
+            }), 400
+        
+        estimated_cost = data['estimated_cost']
+        
+        if not isinstance(estimated_cost, (int, float)) or estimated_cost < 0:
+            return jsonify({
+                'success': False,
+                'error': 'estimated_cost must be a positive number'
+            }), 400
         
         supabase = get_supabase()
-        response = supabase.table('assessments')\
-            .update(data)\
-            .eq('id', assessment_id)\
-            .eq('user_id', user.id)\
-            .execute()
+        result = supabase.update_assessment_cost(assessment_id, estimated_cost)
         
-        if not response.data:
-            return jsonify({'error': 'Assessment not found or not authorized'}), 404
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to update cost')
+            }), 500
         
-        return jsonify(response.data[0]), 200
+        return jsonify({
+            'success': True,
+            'data': {
+                'assessment_id': assessment_id,
+                'estimated_cost': estimated_cost,
+                'updated_at': datetime.now().isoformat()
+            },
+            'message': 'Estimated cost updated successfully'
+        }), 200
+        
     except Exception as e:
-        logger.error(f"Error updating assessment: {e}")
-        return jsonify({'error': 'Failed to update assessment'}), 500
+        logger.error(f"Update assessment cost error: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-
-@assessments_bp.route('/<assessment_id>', methods=['DELETE'])
+@assessments_bp.route('/batch', methods=['POST'])
+@rate_limit(limit=10, per=60)
 @require_auth
-def delete_assessment(user, assessment_id):
-    """Delete an assessment."""
+@log_request
+def batch_assessments():
+    """
+    Create multiple assessments in batch
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'assessments' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'assessments array is required'
+            }), 400
+        
+        assessments = data['assessments']
+        
+        if not isinstance(assessments, list):
+            return jsonify({
+                'success': False,
+                'error': 'assessments must be an array'
+            }), 400
+        
+        if len(assessments) > 50:
+            return jsonify({
+                'success': False,
+                'error': 'Maximum 50 assessments per batch'
+            }), 400
+        
+        results = []
+        errors = []
+        
+        supabase = get_supabase()
+        
+        for idx, assessment_data in enumerate(assessments):
+            try:
+                # Validate required fields
+                required_fields = ['vin', 'damage_type', 'severity', 'location']
+                missing = [f for f in required_fields if not assessment_data.get(f)]
+                
+                if missing:
+                    errors.append({
+                        'index': idx,
+                        'error': f'Missing fields: {", ".join(missing)}'
+                    })
+                    continue
+                
+                # Validate VIN
+                vin = assessment_data['vin'].upper().strip()
+                if not vin_validator.is_valid(vin):
+                    errors.append({
+                        'index': idx,
+                        'error': 'Invalid VIN format'
+                    })
+                    continue
+                
+                # Create assessment
+                assessment = DamageAssessment(assessment_data)
+                result = supabase.save_assessment({
+                    'vin': assessment.vin,
+                    'user_id': assessment.user_id,
+                    'make': assessment.vehicle_make,
+                    'model': assessment.vehicle_model,
+                    'year': assessment.vehicle_year,
+                    'damage_type': assessment.damage_type,
+                    'severity': assessment.severity,
+                    'location': assessment.location,
+                    'estimated_cost': assessment.estimated_cost,
+                    'image_urls': assessment.image_urls,
+                    'notes': assessment.notes,
+                    'inspector_id': assessment.inspector_id,
+                    'created_at': assessment.created_at,
+                    'updated_at': assessment.updated_at,
+                    'status': 'pending'
+                })
+                
+                if result.get('success'):
+                    results.append({
+                        'index': idx,
+                        'assessment_id': result.get('data', {}).get('id'),
+                        'vin': assessment.vin,
+                        'success': True
+                    })
+                else:
+                    errors.append({
+                        'index': idx,
+                        'error': result.get('error', 'Failed to save assessment')
+                    })
+                    
+            except Exception as e:
+                errors.append({
+                    'index': idx,
+                    'error': str(e)
+                })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'created': len(results),
+                'failed': len(errors),
+                'results': results,
+                'errors': errors
+            },
+            'message': f'Batch assessment completed: {len(results)} created, {len(errors)} failed'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Batch assessment error: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@assessments_bp.route('/stats', methods=['GET'])
+@rate_limit(limit=30, per=60)
+@require_auth
+@log_request
+def get_assessment_stats():
+    """
+    Get assessment statistics
+    """
     try:
         supabase = get_supabase()
-        response = supabase.table('assessments')\
-            .delete()\
-            .eq('id', assessment_id)\
-            .eq('user_id', user.id)\
-            .execute()
+        stats = supabase.get_assessment_stats()
         
-        if not response.data:
-            return jsonify({'error': 'Assessment not found or not authorized'}), 404
+        return jsonify({
+            'success': True,
+            'data': stats,
+            'timestamp': datetime.now().isoformat()
+        }), 200
         
-        return jsonify({'message': 'Assessment deleted successfully'}), 200
     except Exception as e:
-        logger.error(f"Error deleting assessment: {e}")
-        return jsonify({'error': 'Failed to delete assessment'}), 500
+        logger.error(f"Get assessment stats error: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
