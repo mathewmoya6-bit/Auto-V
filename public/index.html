@@ -17,6 +17,7 @@
     <meta property="og:description" content="AI-powered vehicle valuation, inspection, assessment, and fleet services trusted by thousands across Africa.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://auto-v.meipressgroup.com/">
+    <meta property="og:image" content="https://auto-v.meipressgroup.com/og-image.jpg">
     
     <!-- ─── Favicon ────────────────────────────────────────────────── -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
@@ -25,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         /* ============================================================
-           AUTO-V LANDING PAGE STYLES v2.0
+           AUTO-V LANDING PAGE STYLES v2.1
            ============================================================ */
         
         * {
@@ -1049,11 +1050,13 @@
     </footer>
     
     <script>
-        // ─── Landing Page with Real Data from Supabase ──────────────
+        // ============================================================
+        // AUTO-V LANDING PAGE - PRODUCTION READY
+        // ============================================================
         (function() {
             'use strict';
             
-            console.log('🚀 AUTO-V Landing Page v2.0 - Real Data');
+            console.log('🚀 AUTO-V Landing Page v2.1 - Production Ready');
             
             // ─── Supabase Configuration ──────────────────────────────
             const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
@@ -1061,7 +1064,7 @@
             
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
-            // ─── Default values (fallback if DB fetch fails) ────────
+            // ─── Default Values (Fallback) ───────────────────────────
             const DEFAULTS = {
                 vehicles_valued: 12500,
                 inspections: 5800,
@@ -1080,75 +1083,93 @@
             };
             
             let statsAnimated = false;
+            let dataLoaded = false;
             
-            // ─── Fetch real data from Supabase ──────────────────────
+            // ─── Fetch Real Data from Supabase ──────────────────────
             async function fetchRealData() {
                 try {
                     console.log('📊 Fetching real data from Supabase...');
                     
-                    // ─── 1. Get system settings (fees) ────────────────
-                    const { data: feesData, error: feesError } = await supabase
-                        .from('system_settings')
-                        .select('setting_key, setting_value');
-                    
-                    if (feesError) {
-                        console.warn('⚠️ Could not fetch fees:', feesError.message);
-                    }
-                    
-                    const fees = { ...DEFAULTS.fees };
-                    if (feesData && feesData.length > 0) {
-                        feesData.forEach(row => {
-                            const key = row.setting_key;
-                            const val = parseInt(row.setting_value);
-                            if (!isNaN(val)) {
-                                switch(key) {
-                                    case 'instant_fee': fees.instant = val; break;
-                                    case 'valuation_fee': fees.valuation = val; break;
-                                    case 'inspection_fee': fees.inspection = val; break;
-                                    case 'assessment_fee': fees.assessment = val; break;
-                                    case 'mileage_fee': fees.mileage = val; break;
-                                    case 'fleet_fee': fees.fleet = val; break;
-                                    case 'verification_fee': fees.verification = val; break;
-                                    case 'professional_fee': fees.professional = val; break;
-                                }
-                            }
-                        });
-                        console.log('✅ Fees loaded:', fees);
-                    }
-                    
-                    // ─── 2. Get service requests count ─────────────────
                     let vehiclesValued = DEFAULTS.vehicles_valued;
                     let inspections = DEFAULTS.inspections;
-                    
-                    const { count: valuationCount, error: vError } = await supabase
-                        .from('service_requests')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('service_type', 'valuation');
-                    
-                    if (!vError && valuationCount !== null) {
-                        vehiclesValued = DEFAULTS.vehicles_valued + valuationCount;
-                    }
-                    
-                    const { count: inspectionCount, error: iError } = await supabase
-                        .from('service_requests')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('service_type', 'inspection');
-                    
-                    if (!iError && inspectionCount !== null) {
-                        inspections = DEFAULTS.inspections + inspectionCount;
-                    }
-                    
-                    // ─── 3. Get user count (corporate clients) ─────────
                     let corporateClients = DEFAULTS.corporate_clients;
-                    const { count: userCount, error: uError } = await supabase
-                        .from('user_profiles')
-                        .select('*', { count: 'exact', head: true });
+                    const fees = { ...DEFAULTS.fees };
                     
-                    if (!uError && userCount !== null) {
-                        corporateClients = Math.max(DEFAULTS.corporate_clients, userCount);
+                    // ─── 1. Get Service Requests Count ────────────────
+                    try {
+                        const { count: valuationCount } = await supabase
+                            .from('service_requests')
+                            .select('*', { count: 'exact', head: true })
+                            .eq('service_type', 'valuation')
+                            .eq('status', 'completed');
+                        
+                        if (valuationCount !== null && valuationCount > 0) {
+                            vehiclesValued = DEFAULTS.vehicles_valued + valuationCount;
+                        }
+                        
+                        const { count: inspectionCount } = await supabase
+                            .from('service_requests')
+                            .select('*', { count: 'exact', head: true })
+                            .eq('service_type', 'inspection')
+                            .eq('status', 'completed');
+                        
+                        if (inspectionCount !== null && inspectionCount > 0) {
+                            inspections = DEFAULTS.inspections + inspectionCount;
+                        }
+                    } catch (e) {
+                        console.warn('Could not count service requests:', e);
                     }
                     
-                    // ─── 4. Update UI with real data ──────────────────
+                    // ─── 2. Get User Count ─────────────────────────────
+                    try {
+                        const { count: userCount } = await supabase
+                            .from('user_profiles')
+                            .select('*', { count: 'exact', head: true });
+                        
+                        if (userCount !== null && userCount > 0) {
+                            corporateClients = Math.max(DEFAULTS.corporate_clients, userCount);
+                        }
+                    } catch (e) {
+                        console.warn('Could not count users:', e);
+                    }
+                    
+                    // ─── 3. Get Fees from System Settings ──────────────
+                    try {
+                        const { data: feesData } = await supabase
+                            .from('system_settings')
+                            .select('setting_key, setting_value')
+                            .in('setting_key', [
+                                'instant_fee', 'valuation_fee', 'inspection_fee',
+                                'assessment_fee', 'mileage_fee', 'fleet_fee',
+                                'verification_fee', 'professional_fee'
+                            ]);
+                        
+                        if (feesData && feesData.length > 0) {
+                            const feeMap = {
+                                'instant_fee': 'instant',
+                                'valuation_fee': 'valuation',
+                                'inspection_fee': 'inspection',
+                                'assessment_fee': 'assessment',
+                                'mileage_fee': 'mileage',
+                                'fleet_fee': 'fleet',
+                                'verification_fee': 'verification',
+                                'professional_fee': 'professional'
+                            };
+                            
+                            feesData.forEach(row => {
+                                const key = row.setting_key;
+                                const val = parseInt(row.setting_value);
+                                if (!isNaN(val) && feeMap[key]) {
+                                    fees[feeMap[key]] = val;
+                                }
+                            });
+                            console.log('✅ Fees loaded:', fees);
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch fees:', e);
+                    }
+                    
+                    // ─── 4. Update UI ──────────────────────────────────
                     updateUI({
                         vehicles: vehiclesValued,
                         inspections: inspections,
@@ -1157,11 +1178,11 @@
                         fees: fees
                     });
                     
+                    dataLoaded = true;
                     return true;
                     
                 } catch (err) {
                     console.error('❌ Error fetching real data:', err);
-                    // Use defaults
                     updateUI({
                         vehicles: DEFAULTS.vehicles_valued,
                         inspections: DEFAULTS.inspections,
@@ -1173,16 +1194,18 @@
                 }
             }
             
-            // ─── Update UI with data ──────────────────────────────────
+            // ─── Update UI ────────────────────────────────────────────
             function updateUI(data) {
                 // Stats
-                document.getElementById('statVehicles').textContent = 
-                    data.vehicles.toLocaleString() + '+';
-                document.getElementById('statInspections').textContent = 
-                    data.inspections.toLocaleString() + '+';
-                document.getElementById('statSatisfaction').textContent = 
-                    data.satisfaction + '%';
-                document.getElementById('statSupport').textContent = '24/7';
+                const vehiclesEl = document.getElementById('statVehicles');
+                const inspectionsEl = document.getElementById('statInspections');
+                const satisfactionEl = document.getElementById('statSatisfaction');
+                const supportEl = document.getElementById('statSupport');
+                
+                if (vehiclesEl) vehiclesEl.textContent = data.vehicles.toLocaleString() + '+';
+                if (inspectionsEl) inspectionsEl.textContent = data.inspections.toLocaleString() + '+';
+                if (satisfactionEl) satisfactionEl.textContent = data.satisfaction + '%';
+                if (supportEl) supportEl.textContent = '24/7';
                 
                 // Corporate count
                 const corpEl = document.getElementById('corporateCount');
@@ -1220,12 +1243,11 @@
                 console.log('✅ UI updated with real data');
             }
             
-            // ─── Animate stats on scroll ──────────────────────────────
+            // ─── Animate Stats ────────────────────────────────────────
             function animateStats() {
                 if (statsAnimated) return;
                 
                 const stats = document.querySelectorAll('.stat-item h2');
-                let allDone = true;
                 
                 stats.forEach(stat => {
                     const finalText = stat.textContent.trim();
@@ -1252,12 +1274,12 @@
                 statsAnimated = true;
             }
             
-            // ─── Intersection Observer for stats ──────────────────────
+            // ─── Intersection Observer ───────────────────────────────
             const statsGrid = document.getElementById('statsGrid');
             if (statsGrid) {
                 const observer = new IntersectionObserver(function(entries) {
                     entries.forEach(function(entry) {
-                        if (entry.isIntersecting) {
+                        if (entry.isIntersecting && dataLoaded) {
                             animateStats();
                             observer.disconnect();
                         }
@@ -1266,7 +1288,7 @@
                 observer.observe(statsGrid);
             }
             
-            // ─── Header scroll effect ──────────────────────────────────
+            // ─── Header Scroll Effect ────────────────────────────────
             const header = document.getElementById('header');
             window.addEventListener('scroll', function() {
                 if (window.pageYOffset > 50) {
@@ -1276,7 +1298,7 @@
                 }
             }, { passive: true });
             
-            // ─── Smooth scroll for anchor links ──────────────────────
+            // ─── Smooth Scroll ────────────────────────────────────────
             document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
                 anchor.addEventListener('click', function(e) {
                     const href = this.getAttribute('href');
@@ -1292,16 +1314,6 @@
                 });
             });
             
-            // ─── Feature card hover ──────────────────────────────────
-            document.querySelectorAll('.feature-card').forEach(function(card) {
-                card.addEventListener('mouseenter', function() {
-                    this.style.borderColor = 'var(--border-glow)';
-                });
-                card.addEventListener('mouseleave', function() {
-                    this.style.borderColor = '';
-                });
-            });
-            
             // ─── Init ──────────────────────────────────────────────────
             async function init() {
                 // Show loading state
@@ -1314,14 +1326,19 @@
                 
                 // If stats are already visible, animate them
                 const rect = statsGrid.getBoundingClientRect();
-                if (rect.top < window.innerHeight && rect.bottom > 0) {
+                if (rect.top < window.innerHeight && rect.bottom > 0 && dataLoaded) {
                     setTimeout(animateStats, 500);
                 }
                 
                 console.log('✅ Landing page ready with real data');
             }
             
-            init();
+            // ─── Handle DOM Ready ─────────────────────────────────────
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
         })();
     </script>
 </body>
