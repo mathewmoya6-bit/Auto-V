@@ -1,4 +1,4 @@
-# services/supabase_client.py - Fixed Supabase Client
+# services/supabase_client.py - Complete Fix
 import os
 import logging
 from typing import Dict, Any, Optional, List
@@ -7,57 +7,60 @@ from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
-# ─── SUPABASE CLIENT ──────────────────────────────────────────
-
-class SupabaseClient:
-    """Fixed Supabase client without proxy argument"""
-    
-    def __init__(self):
-        self.url = os.getenv("SUPABASE_URL")
-        self.anon_key = os.getenv("SUPABASE_ANON_KEY")
-        self.service_role = os.getenv("SUPABASE_SERVICE_ROLE")
-        
-        if not self.url:
-            raise ValueError("SUPABASE_URL environment variable is not set")
-        if not self.anon_key:
-            raise ValueError("SUPABASE_ANON_KEY environment variable is not set")
-        
-        # Initialize client without proxy
-        self.client: Client = create_client(self.url, self.anon_key)
-        self.admin_client: Optional[Client] = None
-        
-        if self.service_role:
-            self.admin_client = create_client(self.url, self.service_role)
-            logger.info("✅ Admin client initialized")
-        
-        logger.info(f"✅ Supabase client initialized for: {self.url}")
-
-    def get_client(self) -> Client:
-        """Get the Supabase client"""
-        return self.client
-
-    def get_table(self, table_name: str):
-        """Get a table reference"""
-        return self.client.table(table_name)
-
-    def get_storage(self, bucket_name: str):
-        """Get a storage bucket reference"""
-        return self.client.storage.from_(bucket_name)
-
-# ─── SINGLETON INSTANCE ──────────────────────────────────────
+# ─── SIMPLE CLIENT - NO PROXY ──────────────────────────────────
 
 _supabase_client = None
-
-def get_supabase() -> SupabaseClient:
-    """Get Supabase client instance (singleton)"""
-    global _supabase_client
-    if _supabase_client is None:
-        _supabase_client = SupabaseClient()
-    return _supabase_client
+_supabase_admin_client = None
 
 def get_supabase_client() -> Client:
-    """Get the raw Supabase client"""
-    return get_supabase().get_client()
+    """
+    Get Supabase client - SIMPLE VERSION without proxy
+    
+    Returns:
+        Client: Supabase client instance
+    
+    Raises:
+        ValueError: If credentials are not set
+    """
+    global _supabase_client
+    
+    if _supabase_client is None:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_ANON_KEY")
+        
+        if not supabase_url:
+            logger.error("❌ SUPABASE_URL is not set")
+            raise ValueError("SUPABASE_URL is not set")
+        
+        if not supabase_key:
+            logger.error("❌ SUPABASE_ANON_KEY is not set")
+            raise ValueError("SUPABASE_ANON_KEY is not set")
+        
+        # SIMPLE: Just create client without any extra arguments
+        _supabase_client = create_client(supabase_url, supabase_key)
+        logger.info(f"✅ Supabase client initialized for: {supabase_url}")
+    
+    return _supabase_client
+
+def get_supabase_admin() -> Optional[Client]:
+    """Get admin client with service role"""
+    global _supabase_admin_client
+    
+    if _supabase_admin_client is None:
+        supabase_url = os.getenv("SUPABASE_URL")
+        service_role = os.getenv("SUPABASE_SERVICE_ROLE")
+        
+        if service_role:
+            _supabase_admin_client = create_client(supabase_url, service_role)
+            logger.info("✅ Supabase admin client initialized")
+        else:
+            logger.warning("⚠️ SUPABASE_SERVICE_ROLE not set")
+    
+    return _supabase_admin_client
+
+def get_supabase():
+    """Alias for get_supabase_client()"""
+    return get_supabase_client()
 
 def check_supabase_health() -> Dict[str, Any]:
     """Check Supabase connection health"""
@@ -102,16 +105,38 @@ def save_vin_scan(user_id: str, vin: str, image_url: str, status: str = 'pending
             'created_at': datetime.now().isoformat()
         }
         response = client.table('vin_scans').insert(data).execute()
-        return {'success': True, 'data': response.data[0]} if response.data else {'success': False, 'error': 'Failed to save scan'}
+        if response.data:
+            return {'success': True, 'data': response.data[0]}
+        return {'success': False, 'error': 'Failed to save scan'}
     except Exception as e:
         logger.error(f"Save VIN scan error: {str(e)}")
         return {'success': False, 'error': str(e)}
+
+def get_stats() -> Dict[str, Any]:
+    """Get database statistics"""
+    try:
+        client = get_supabase_client()
+        vehicles = client.table('vehicles').select('count', count='exact').execute()
+        valuations = client.table('service_requests').select('count', count='exact').eq('service_type', 'valuation').execute()
+        inspections = client.table('service_requests').select('count', count='exact').eq('service_type', 'inspection').execute()
+        
+        return {
+            'vehicles': vehicles.count if hasattr(vehicles, 'count') else 0,
+            'valuations': valuations.count if hasattr(valuations, 'count') else 0,
+            'inspections': inspections.count if hasattr(inspections, 'count') else 0,
+            'timestamp': datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Get stats error: {str(e)}")
+        return {'error': str(e)}
 
 # ─── QUICK TEST ──────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("🔍 Testing Supabase Client...")
     try:
+        client = get_supabase_client()
+        print("✅ Client created successfully")
         health = check_supabase_health()
         print(f"Health: {health}")
     except Exception as e:
