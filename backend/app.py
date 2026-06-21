@@ -66,15 +66,15 @@ app = Flask(__name__)
 
 # ─── Configuration ────────────────────────────────────────────
 class Config:
-    SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://tsvejnzxrxrrecgquxbq.supabase.co')
-    SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ')
+    SUPABASE_URL = os.getenv('SUPABASE_URL')
+    SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
     SUPABASE_SERVICE_ROLE = os.getenv('SUPABASE_SERVICE_ROLE', '')
     
-    MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', 'LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv')
-    MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', 'aGGo8AuPJVpsZLcs')
-    MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '7eb17a031bdfd5b4251863a1ddb72c5b9cd14f3385aa6a258c1442a0116e8277')
+    MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', '')
+    MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
+    MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
     MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
-    MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://auto-v-backend.onrender.com/api/mpesa/callback')
+    MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')
     MPESA_ENV = os.getenv('MPESA_ENV', 'production')
     
     SECRET_KEY = os.getenv('SECRET_KEY', os.urandom(24).hex())
@@ -82,7 +82,7 @@ class Config:
     DEBUG = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     PORT = int(os.getenv('PORT', 10000))
     
-    ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'https://auto-v.meipressgroup.com,https://auto-v.onrender.com,https://auto-v-backend.onrender.com,http://localhost:3000,http://localhost:5000').split(',')
+    ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'https://auto-v.meipressgroup.com,https://auto-v.onrender.com,http://localhost:3000,http://localhost:5000').split(',')
 
 app.config.from_object(Config)
 
@@ -116,11 +116,11 @@ limiter.init_app(app)
 def init_supabase():
     try:
         from services.supabase_client import get_supabase_client
-        client = get_supabase_client()
+        get_supabase_client()
         logger.info("✅ Supabase client initialized")
         return True
     except Exception as e:
-        logger.error(f"❌ Supabase init error: {e}")
+        logger.warning(f"⚠️ Supabase init warning: {e}")
         return False
 
 # ─── Request Middleware ──────────────────────────────────────
@@ -160,7 +160,7 @@ def register_blueprints():
         from api import register_blueprints as register
         return register(app)
     except ImportError as e:
-        logger.error(f"❌ Failed to register blueprints: {e}")
+        logger.warning(f"⚠️ Route registration warning: {e}")
         return 0
 
 # ─── Health Routes ────────────────────────────────────────────
@@ -187,10 +187,6 @@ def root():
             'health': '/api/health',
             'ping': '/api/ping',
             'mpesa': '/api/mpesa',
-            'auth': '/api/auth',
-            'vehicles': '/api/vehicles',
-            'valuations': '/api/valuations',
-            'inspections': '/api/inspections',
             'mileage': '/api/mileage'
         }
     }), 200
@@ -210,7 +206,6 @@ signal.signal(signal.SIGINT, graceful_shutdown)
 
 # ─── Application Factory ─────────────────────────────────────
 def create_app():
-    Config.validate()
     init_supabase()
     registered = register_blueprints()
     
