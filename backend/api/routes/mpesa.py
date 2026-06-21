@@ -1,436 +1,313 @@
-# api/routes/mpesa.py - M-Pesa Routes (Production Ready)
+# api/routes/mpesa.py - FIXED VERSION
+
 import os
-import time
 import logging
 import uuid
-import base64
-import requests
+import json
 from datetime import datetime
-from flask import Blueprint, request, jsonify, make_response
+from flask import Blueprint, request, jsonify
+
+from services.supabase_client import get_supabase
+from services.mpesa import (
+    initiate_stk_push,
+    query_payment_status,
+    is_mpesa_configured,
+    get_mpesa_token,
+    handle_mpesa_callback,
+    sanitize_log_data,
+    verify_safaricom_ip
+)
 
 logger = logging.getLogger(__name__)
-
-# ─── Create Blueprint ──────────────────────────────────────────
 mpesa_bp = Blueprint('mpesa', __name__)
 
-# ─── M-Pesa Configuration ──────────────────────────────────────
-MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', 'LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv')
-MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', 'aGGo8AuPJVpsZLcs')
-MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '7eb17a031bdfd5b4251863a1ddb72c5b9cd14f3385aa6a258c1442a0116e8277')
-MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
-MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://auto-v-backend.onrender.com/api/mpesa/callback')
-MPESA_ENV = os.getenv('MPESA_ENV', 'production')
-
-# API URLs
-if MPESA_ENV == 'production':
-    MPESA_API_URL = 'https://api.safaricom.co.ke'
-else:
-    MPESA_API_URL = 'https://sandbox.safaricom.co.ke'
-
-logger.info(f"🔑 M-Pesa Environment: {MPESA_ENV}")
-logger.info(f"📱 M-Pesa Shortcode: {MPESA_SHORTCODE}")
-
-# ─── Helper Functions ──────────────────────────────────────────
-
-def get_mpesa_token():
-    """Get M-Pesa OAuth token"""
-    try:
-        credentials = f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}"
-        encoded = base64.b64encode(credentials.encode()).decode()
-        
-        url = f"{MPESA_API_URL}/oauth/v1/generate?grant_type=client_credentials"
-        headers = {'Authorization': f'Basic {encoded}'}
-        
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        token = data.get('access_token')
-        logger.info("✅ M-Pesa token obtained successfully")
-        return token
-    except Exception as e:
-        logger.error(f"❌ M-Pesa token error: {str(e)}")
-        return None
-
-def stk_push(phone_number, amount, account_reference, transaction_desc):
-    """Send STK Push to customer"""
-    try:
-        token = get_mpesa_token()
-        if not token:
-            return {'success': False, 'error': 'Failed to get M-Pesa token'}
-        
-        # Format phone number
-        if phone_number.startswith('0'):
-            phone_number = '254' + phone_number[1:]
-        elif phone_number.startswith('+254'):
-            phone_number = phone_number[1:]
-        elif phone_number.startswith('+'):
-            phone_number = phone_number[1:]
-        
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
-        password = base64.b64encode(password_str.encode()).decode()
-        
-        url = f"{MPESA_API_URL}/mpesa/stkpush/v1/processrequest"
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
-        }
-        
-        payload = {
-            'BusinessShortCode': MPESA_SHORTCODE,
-            'Password': password,
-            'Timestamp': timestamp,
-            'TransactionType': 'CustomerPayBillOnline',
-            'Amount': int(amount),
-            'PartyA': phone_number,
-            'PartyB': MPESA_SHORTCODE,
-            'PhoneNumber': phone_number,
-            'CallBackURL': MPESA_CALLBACK_URL,
-            'AccountReference': account_reference[:20],
-            'TransactionDesc': transaction_desc[:20] if transaction_desc else 'AUTO-V Payment'
-        }
-        
-        logger.info(f"📤 Sending STK Push to {phone_number} for KES {amount}")
-        logger.info(f"📝 Account Reference: {account_reference}")
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        logger.info(f"✅ STK Push response: {data}")
-        
-        return {
-            'success': True,
-            'data': data,
-            'checkout_request_id': data.get('CheckoutRequestID')
-        }
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ STK Push request error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-    except Exception as e:
-        logger.error(f"❌ STK Push error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-# ─── Routes ──────────────────────────────────────────────────────
-
-@mpesa_bp.route('/initiate', methods=['OPTIONS', 'POST'])
-def initiate_mpesa():
-    """Initiate M-Pesa STK Push payment"""
-    # Handle CORS preflight
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-        response.headers.add('Access-Control-Max-Age', '3600')
-        return response
-    
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': 'No data provided'
-            }), 400
-        
-        logger.info(f"📦 PAYLOAD RECEIVED: {data}")
-        
-        # ─── GET REFERENCE ──────────────────────────────────────────
-        reference = data.get('reference') or data.get('payment_reference')
-        
-        if not reference:
-            logger.error("❌ Missing reference in payload")
-            return jsonify({
-                'success': False,
-                'error': 'Missing required fields: reference'
-            }), 400
-        
-        # Validate required fields
-        required = ['phone', 'amount']
-        missing = [f for f in required if not data.get(f)]
-        
-        if missing:
-            return jsonify({
-                'success': False,
-                'error': f'Missing required fields: {", ".join(missing)}'
-            }), 400
-        
-        # Validate phone number
-        phone = data['phone']
-        if not phone or len(phone) < 10:
-            return jsonify({
-                'success': False,
-                'error': 'Invalid phone number'
-            }), 400
-        
-        # Validate amount
-        amount = data['amount']
-        try:
-            amount = float(amount)
-            if amount <= 0:
-                raise ValueError
-        except:
-            return jsonify({
-                'success': False,
-                'error': 'Amount must be a positive number'
-            }), 400
-        
-        # ─── GENERATE LOCAL PAYMENT ID ─────────────────────────────
-        local_payment_id = f"PAY-{uuid.uuid4().hex[:8].upper()}"
-        logger.info(f"📝 Generated Payment ID: {local_payment_id}")
-        
-        # Process payment with M-Pesa
-        result = stk_push(
-            phone_number=phone,
-            amount=amount,
-            account_reference=reference[:20],
-            transaction_desc=data.get('description', f"AUTO-V {data.get('service', 'Payment')}")
-        )
-        
-        if not result.get('success'):
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Payment initiation failed')
-            }), 500
-        
-        checkout_id = result.get('checkout_request_id')
-        
-        # ─── SAVE TO DATABASE ────────────────────────────────────────
-        try:
-            from services.supabase_client import get_supabase_client
-            supabase = get_supabase_client()
-            
-            transaction_data = {
-                'payment_id': local_payment_id,
-                'checkout_request_id': checkout_id,
-                'phone': phone,
-                'amount': amount,
-                'reference': reference,
-                'service': data.get('service', 'unknown'),
-                'purpose': data.get('purpose', 'unknown'),
-                'client_type': data.get('client_type', 'individual'),
-                'status': 'pending',
-                'created_at': datetime.now().isoformat()
-            }
-            
-            try:
-                supabase.table('transactions').insert(transaction_data).execute()
-                logger.info(f"✅ Transaction saved to database")
-            except Exception as db_error:
-                logger.warning(f"Could not save transaction: {db_error}")
-                try:
-                    supabase.table('transactions').insert({
-                        'checkout_request_id': checkout_id or local_payment_id,
-                        'payment_id': local_payment_id,
-                        'phone': phone,
-                        'amount': amount,
-                        'reference': reference,
-                        'status': 'pending',
-                        'created_at': datetime.now().isoformat()
-                    }).execute()
-                except:
-                    pass
-        except Exception as e:
-            logger.warning(f"Database error: {e}")
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'payment_id': local_payment_id,
-                'checkout_request_id': checkout_id,
-                'id': local_payment_id,
-                'reference': reference,
-                'message': 'STK Push sent successfully'
-            }
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"❌ M-Pesa initiate error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
 @mpesa_bp.route('/callback', methods=['POST'])
 def mpesa_callback():
-    """M-Pesa callback endpoint"""
+    """Handle M-Pesa callback - single source of truth."""
+    logger.info("📥 M-PESA CALLBACK RECEIVED")
+    
     try:
         data = request.get_json()
-        logger.info(f"📞 M-Pesa callback received: {data}")
-        
-        body = data.get('Body', {})
-        stk_callback = body.get('stkCallback', {})
-        
-        result_code = stk_callback.get('ResultCode')
-        result_desc = stk_callback.get('ResultDesc')
-        checkout_request_id = stk_callback.get('CheckoutRequestID')
-        
-        logger.info(f"📊 Callback: {checkout_request_id} - {result_code} - {result_desc}")
-        
-        if result_code == 0:
-            metadata = stk_callback.get('CallbackMetadata', {})
-            items = metadata.get('Item', [])
-            
-            payment_data = {}
-            for item in items:
-                name = item.get('Name')
-                value = item.get('Value')
-                if name == 'Amount':
-                    payment_data['amount'] = value
-                elif name == 'MpesaReceiptNumber':
-                    payment_data['receipt'] = value
-                elif name == 'TransactionDate':
-                    payment_data['transaction_date'] = value
-                elif name == 'PhoneNumber':
-                    payment_data['phone'] = value
-            
-            logger.info(f"✅ Payment successful: {payment_data}")
-            
-            try:
-                from services.supabase_client import get_supabase_client
-                supabase = get_supabase_client()
-                supabase.table('transactions').update({
-                    'status': 'completed',
-                    'payment_data': payment_data,
-                    'updated_at': datetime.now().isoformat()
-                }).eq('checkout_request_id', checkout_request_id).execute()
-                logger.info(f"✅ Transaction {checkout_request_id} updated to completed")
-            except Exception as e:
-                logger.warning(f"Could not update transaction: {e}")
-        
-        return jsonify({'ResultCode': 0, 'ResultDesc': 'Success'}), 200
-        
-    except Exception as e:
-        logger.error(f"❌ M-Pesa callback error: {str(e)}")
-        return jsonify({'ResultCode': 1, 'ResultDesc': 'Failed'}), 500
+        if not data:
+            logger.error("❌ No JSON data")
+            return jsonify({'ResultCode': 1, 'ResultDesc': 'No data'}), 400
 
-@mpesa_bp.route('/status/<payment_id>', methods=['GET'])
-def get_transaction_status(payment_id):
-    """Get transaction status"""
-    try:
-        from services.supabase_client import get_supabase_client
-        supabase = get_supabase_client()
-        
-        response = supabase.table('transactions').select('*')\
-            .or_(f'payment_id.eq.{payment_id},checkout_request_id.eq.{payment_id}')\
-            .execute()
-        
-        if response.data:
-            transaction = response.data[0]
-            return jsonify({
-                'success': True,
-                'payment_id': payment_id,
-                'checkout_request_id': transaction.get('checkout_request_id'),
-                'status': transaction.get('status', 'pending'),
-                'payment_data': transaction.get('payment_data'),
-                'reference': transaction.get('reference')
-            }), 200
-        
+        result = handle_mpesa_callback(
+            callback_data=data,
+            client_ip=request.remote_addr
+        )
+
         return jsonify({
-            'success': True,
-            'payment_id': payment_id,
-            'checkout_request_id': payment_id,
-            'status': 'pending',
-            'message': 'Transaction pending'
+            'ResultCode': result.get('ResultCode', 0),
+            'ResultDesc': result.get('ResultDesc', 'Success')
         }), 200
-        
-    except Exception as e:
-        logger.error(f"❌ Status check error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
-@mpesa_bp.route('/force-complete/<payment_id>', methods=['POST'])
-def force_complete_payment(payment_id):
-    """Force complete a payment (manual confirmation)"""
-    try:
-        data = request.get_json()
-        transaction_id = data.get('transaction_id') if data else None
-        
-        if not transaction_id:
-            return jsonify({
-                'success': False,
-                'error': 'Transaction ID is required'
-            }), 400
-        
-        logger.info(f"📝 Force completing payment: {payment_id} with transaction: {transaction_id}")
-        
-        from services.supabase_client import get_supabase_client
-        supabase = get_supabase_client()
-        
-        result = supabase.table('transactions').update({
-            'status': 'completed',
-            'payment_data': {'transaction_id': transaction_id, 'manual_confirm': True},
-            'updated_at': datetime.now().isoformat()
-        }).or_(f'payment_id.eq.{payment_id},checkout_request_id.eq.{payment_id}').execute()
-        
-        if result.data:
-            logger.info(f"✅ Transaction {payment_id} force completed")
-            return jsonify({
-                'success': True,
-                'message': 'Payment confirmed successfully'
-            }), 200
-        else:
-            try:
-                supabase.table('transactions').insert({
-                    'payment_id': payment_id,
-                    'checkout_request_id': payment_id,
-                    'status': 'completed',
-                    'payment_data': {'transaction_id': transaction_id, 'manual_confirm': True},
-                    'created_at': datetime.now().isoformat(),
-                    'updated_at': datetime.now().isoformat()
-                }).execute()
-                
-                return jsonify({
-                    'success': True,
-                    'message': 'Payment confirmed successfully (new record)'
-                }), 200
-            except:
-                return jsonify({
-                    'success': True,
-                    'message': 'Payment confirmed (fallback)'
-                }), 200
-        
     except Exception as e:
-        logger.error(f"❌ Force complete error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Callback error: {e}", exc_info=True)
+        return jsonify({'ResultCode': 1, 'ResultDesc': str(e)}), 200
+
 
 @mpesa_bp.route('/test', methods=['GET'])
-def test_mpesa():
-    """Test endpoint"""
+def test_route():
     return jsonify({
-        'success': True,
-        'message': 'M-Pesa routes are working!',
-        'shortcode': MPESA_SHORTCODE,
-        'environment': MPESA_ENV,
+        'status': 'ok',
+        'message': 'M-Pesa blueprint is loaded!',
         'timestamp': datetime.now().isoformat()
     }), 200
 
-@mpesa_bp.route('/health', methods=['GET'])
-def mpesa_health():
-    """Health check"""
-    status = {
-        'service': 'mpesa',
-        'status': 'healthy',
-        'environment': MPESA_ENV,
-        'shortcode': MPESA_SHORTCODE,
-        'configured': bool(MPESA_CONSUMER_KEY and MPESA_CONSUMER_SECRET and MPESA_PASSKEY)
-    }
-    
+
+@mpesa_bp.route('/config-status', methods=['GET'])
+def config_status():
+    """Check M-Pesa configuration status."""
     try:
-        token = get_mpesa_token()
-        status['token_available'] = bool(token)
-        if not token:
-            status['status'] = 'degraded'
+        result = {
+            'is_configured': is_mpesa_configured(),
+            'environment': os.getenv('MPESA_ENV', 'not_set'),
+            'shortcode': os.getenv('MPESA_SHORTCODE', 'not_set'),
+            'callback_url': os.getenv('MPESA_CALLBACK_URL', 'not_set'),
+            'variables': {
+                'MPESA_CONSUMER_KEY': '✅' if os.getenv('MPESA_CONSUMER_KEY') else '❌',
+                'MPESA_CONSUMER_SECRET': '✅' if os.getenv('MPESA_CONSUMER_SECRET') else '❌',
+                'MPESA_PASSKEY': '✅' if os.getenv('MPESA_PASSKEY') else '❌',
+                'MPESA_SHORTCODE': '✅' if os.getenv('MPESA_SHORTCODE') else '❌',
+                'MPESA_CALLBACK_URL': '✅' if os.getenv('MPESA_CALLBACK_URL') else '❌',
+            }
+        }
+
+        if result['is_configured']:
+            try:
+                token = get_mpesa_token()
+                result['token_test'] = '✅ Success'
+                result['token_preview'] = token[:20] + '...' if token else None
+            except Exception as e:
+                result['token_test'] = f'❌ Failed: {str(e)}'
+
+        return jsonify(result), 200
+
     except Exception as e:
-        status['token_available'] = False
-        status['error'] = str(e)
-        status['status'] = 'degraded'
-    
-    return jsonify(status), 200
+        logger.error(f"Config status error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@mpesa_bp.route('/initiate', methods=['POST', 'OPTIONS'])
+def initiate_payment():
+    """Initiate M-Pesa STK Push payment."""
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
+    try:
+        data = request.get_json()
+        logger.info(f"📥 Payment initiation request received")
+
+        # ─── Validate required fields ──────────────────────────
+        required = ['phone', 'amount', 'service', 'purpose']
+        for field in required:
+            if not data.get(field):
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+
+        phone = data.get('phone')
+        amount = float(data.get('amount'))
+        service = data.get('service')
+        purpose = data.get('purpose')
+        client_type = data.get('client_type', 'individual')
+
+        if amount <= 0:
+            return jsonify({'error': 'Amount must be greater than 0'}), 400
+
+        amount_int = int(round(amount))
+        if amount_int < 1:
+            return jsonify({'error': 'Amount must be at least 1 KES'}), 400
+
+        if not is_mpesa_configured():
+            logger.error("❌ M-Pesa not configured")
+            return jsonify({
+                'error': 'M-Pesa is not configured. Please contact support.',
+                'code': 'MPESA_NOT_CONFIGURED'
+            }), 503
+
+        supabase = get_supabase()
+
+        # ─── Create payment record ──────────────────────────────
+        payment_data = {
+            'user_id': data.get('user_id', 'test-user-id'),
+            'service_type': service,
+            'purpose': purpose,
+            'amount': amount_int,
+            'phone': phone,
+            'client_type': client_type,
+            'status': 'pending',
+            'reference': f'AUTO-{uuid.uuid4().hex[:8].upper()}',
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+
+        payment_response = supabase.table('payments').insert(payment_data).execute()
+
+        if not payment_response.data:
+            logger.error(f"❌ Failed to create payment record")
+            return jsonify({'error': 'Failed to create payment record'}), 500
+
+        payment = payment_response.data[0]
+        payment_id = payment['id']
+        logger.info(f"✅ Created payment: {payment_id[:8]}")
+
+        # ─── Initiate STK Push ──────────────────────────────────
+        try:
+            mpesa_response = initiate_stk_push(
+                phone=phone,
+                amount=float(amount_int),
+                payment_id=payment_id,
+                service=service
+            )
+
+            checkout_id = mpesa_response.get('CheckoutRequestID')
+            merchant_request_id = mpesa_response.get('MerchantRequestID')
+
+            if not checkout_id:
+                logger.error(f"❌ No CheckoutRequestID for payment {payment_id[:8]}")
+                supabase.table('payments').update({
+                    'status': 'failed',
+                    'mpesa_result_desc': 'No CheckoutRequestID from M-Pesa'
+                }).eq('id', payment_id).execute()
+                return jsonify({
+                    'error': 'Failed to initiate STK Push. Please try again.',
+                    'payment_id': payment_id
+                }), 400
+
+            # ─── SINGLE UPDATE: Update payment with checkout ID ──
+            update_result = supabase.table('payments').update({
+                'checkout_request_id': checkout_id,
+                'merchant_request_id': merchant_request_id,
+                'status': 'processing',
+                'updated_at': datetime.now().isoformat()
+            }).eq('id', payment_id).execute()
+
+            if hasattr(update_result, 'error') and update_result.error:
+                logger.error(f"❌ Update error: {update_result.error}")
+
+            logger.info(f"✅ STK Push sent for payment {payment_id[:8]}, CheckoutID: {checkout_id[:8]}")
+
+            return jsonify({
+                'payment_id': payment_id,
+                'checkout_id': checkout_id,
+                'merchant_request_id': merchant_request_id,
+                'status': 'pending',
+                'message': 'STK Push sent to your phone. Please confirm the transaction.'
+            }), 200
+
+        except Exception as e:
+            supabase.table('payments').update({
+                'status': 'failed',
+                'mpesa_result_desc': str(e)
+            }).eq('id', payment_id).execute()
+
+            logger.error(f"❌ STK Push failed for payment {payment_id[:8]}: {e}")
+            return jsonify({
+                'error': str(e),
+                'payment_id': payment_id
+            }), 400
+
+    except Exception as e:
+        logger.error(f"❌ Payment initiation error: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@mpesa_bp.route('/status/<payment_id>', methods=['GET', 'OPTIONS'])
+def get_payment_status(payment_id):
+    """Get payment status."""
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
+    try:
+        supabase = get_supabase()
+
+        response = supabase.table('payments')\
+            .select('*')\
+            .eq('id', payment_id)\
+            .execute()
+
+        if not response.data:
+            return jsonify({'error': 'Payment not found'}), 404
+
+        payment = response.data[0]
+        status = payment.get('status')
+        logger.info(f"📊 Payment {payment_id[:8]} status: {status}")
+
+        # ─── If pending and has checkout_id, query M-Pesa ──────
+        if status in ['pending', 'processing'] and payment.get('checkout_request_id'):
+            try:
+                checkout_id = payment['checkout_request_id']
+                logger.info(f"🔍 Querying M-Pesa for: {checkout_id[:8]}")
+
+                mpesa_status = query_payment_status(checkout_id)
+                result_code = mpesa_status.get('ResultCode')
+                result_desc = mpesa_status.get('ResultDesc')
+                transaction_id = mpesa_status.get('TransactionID')
+
+                logger.info(f"📥 M-Pesa query result: {result_code}")
+
+                if str(result_code) == '0':
+                    update_data = {
+                        'status': 'completed',
+                        'transaction_id': transaction_id,
+                        'mpesa_result_code': str(result_code),
+                        'mpesa_result_desc': result_desc or 'Transaction completed',
+                        'completed_at': datetime.now().isoformat()
+                    }
+                    supabase.table('payments').update(update_data).eq('id', payment_id).execute()
+                    status = 'completed'
+                    logger.info(f"✅ Payment {payment_id[:8]} completed!")
+
+                elif str(result_code) in ['1037', '1032']:
+                    update_data = {
+                        'status': 'failed',
+                        'mpesa_result_code': str(result_code),
+                        'mpesa_result_desc': result_desc or 'Transaction cancelled'
+                    }
+                    supabase.table('payments').update(update_data).eq('id', payment_id).execute()
+                    status = 'failed'
+                    logger.warning(f"⚠️ Payment {payment_id[:8]} cancelled")
+
+                elif str(result_code) == '2001':
+                    logger.info(f"⏳ Payment {payment_id[:8]} still pending")
+                    return jsonify({
+                        'payment_id': payment_id,
+                        'status': 'pending',
+                        'amount': payment.get('amount'),
+                        'service_type': payment.get('service_type'),
+                        'phone': payment.get('phone'),
+                        'checkout_request_id': checkout_id,
+                        'message': 'Transaction still processing'
+                    }), 200
+
+                else:
+                    update_data = {
+                        'status': 'failed',
+                        'mpesa_result_code': str(result_code),
+                        'mpesa_result_desc': result_desc or 'Transaction failed'
+                    }
+                    supabase.table('payments').update(update_data).eq('id', payment_id).execute()
+                    status = 'failed'
+                    logger.warning(f"❌ Payment {payment_id[:8]} failed")
+
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to query M-Pesa status: {e}")
+
+        return jsonify({
+            'payment_id': payment_id,
+            'status': status,
+            'amount': payment.get('amount'),
+            'service_type': payment.get('service_type'),
+            'phone': payment.get('phone'),
+            'transaction_id': payment.get('transaction_id'),
+            'mpesa_receipt': payment.get('mpesa_receipt_number'),
+            'result_code': payment.get('mpesa_result_code'),
+            'result_desc': payment.get('mpesa_result_desc'),
+            'checkout_request_id': payment.get('checkout_request_id'),
+            'completed_at': payment.get('completed_at')
+        }), 200
+
+    except Exception as e:
+        logger.error(f"❌ Error getting payment status: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
