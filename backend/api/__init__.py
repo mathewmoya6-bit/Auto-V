@@ -1,33 +1,32 @@
-# api/__init__.py - AUTO-V API Package
+# api/__init__.py - API Package
 
 import logging
-from flask import Blueprint
 
 logger = logging.getLogger(__name__)
 
-# ─── Import blueprints from routes ──────────────────────────
+# ─── Import from routes package ──────────────────────────────
 try:
-    from .routes import mpesa_bp
+    from .routes.mpesa import mpesa_bp
     logger.info("✅ M-Pesa routes loaded")
 except ImportError as e:
     logger.warning(f"⚠️ M-Pesa routes not available: {e}")
     mpesa_bp = None
 
 try:
-    from .routes import auth_bp
+    from .routes.auth import auth_bp
     logger.info("✅ Auth routes loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Auth routes not available: {e}")
     auth_bp = None
 
 try:
-    from .routes import admin_bp
+    from .routes.admin import admin_bp
     logger.info("✅ Admin routes loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Admin routes not available: {e}")
     admin_bp = None
 
-# ─── Register Blueprints Helper ────────────────────────────
+# ─── Register Blueprints Helper ────────────────────────────────
 
 def register_blueprints(app):
     """Register all blueprints to the Flask app."""
@@ -52,6 +51,6 @@ def register_blueprints(app):
     logger.info(f"📋 Registered {registered_count}/{len(blueprints)} blueprints")
     return registered_count
 
-# ─── Export ──────────────────────────────────────────────────
+# ─── Export ──────────────────────────────────────────────────────
 
 __all__ = ['mpesa_bp', 'auth_bp', 'admin_bp', 'register_blueprints']
