@@ -99,11 +99,23 @@
         .badge-methodology { background: #1e293b; padding: 8px 12px; border-radius: 8px; font-size: 12px; color: #94a3b8; display: inline-block; margin: 5px; }
         .confidence-ring { width: 80px; height: 80px; border-radius: 50%; border: 6px solid #eab308; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; margin: 10px auto; }
         .inspector-signature { border: 1px dashed #64748b; padding: 20px; border-radius: 12px; min-height: 60px; margin-top: 10px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-style: italic; }
+        .purpose-item {
+            padding: 12px 18px; margin: 8px 0; background: #1e293b; border-radius: 10px; cursor: pointer; transition: all .3s; border: 2px solid transparent; color: #94a3b8; font-weight: 500;
+        }
+        .purpose-item:hover { background: #2a3a4a; border-color: #eab308; color: #fff; }
+        .purpose-item.selected { background: #eab308; color: #0a0c15; border-color: #eab308; font-weight: 600; }
+        .purpose-item.selected:hover { background: #facc15; }
         @media (max-width: 768px) { .row { grid-template-columns: 1fr; } .upload-grid { grid-template-columns: 1fr 1fr; } .document-grid { grid-template-columns: 1fr; } .inspection-tabs { border-radius: 16px; } .inspection-tab { font-size: 11px; padding: 6px 12px; } .nav-buttons { flex-direction: column; } .nav-buttons button { width: 100%; } .inspection-report-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
-    <header><div class="logo">🔍 AUTO-V <span>| Professional Inspection</span></div><button class="btn btn-secondary" id="logoutBtn" style="padding: 8px 16px; font-size: 12px;">Logout</button></header>
+    <header>
+        <div class="logo">🔍 AUTO-V <span>| Professional Inspection</span></div>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <span id="userEmail" style="font-size:12px;color:#94a3b8;">Loading...</span>
+            <button class="btn btn-secondary" id="logoutBtn" style="padding: 8px 16px; font-size: 12px;">Logout</button>
+        </div>
+    </header>
     <div class="container">
         <div id="errorMsg" class="error"></div>
         <div id="successMsg" class="success"></div>
@@ -114,7 +126,9 @@
                 <span style="color:#94a3b8; font-size:14px; margin-left:10px;" id="priceDisplay">KES 3,500</span>
             </div>
             <h2>🔍 Professional Vehicle Inspection</h2>
-            <p style="color:#94a3b8; font-size:13px; margin-bottom:20px;">Complete the inspection checklist and upload required images &amp; documents. All fields marked with <span style="color:#ef4444;">*</span> are mandatory.</p>
+            <p style="color:#94a3b8; font-size:13px; margin-bottom:20px;">
+                Complete the inspection checklist and upload required images &amp; documents. All fields marked with <span style="color:#ef4444;">*</span> are mandatory.
+            </p>
 
             <div class="validation-summary" id="validationSummary">
                 <div style="display:flex; justify-content:space-between; font-weight:600; color:#eab308; margin-bottom:10px;">
@@ -133,7 +147,7 @@
                 <button class="inspection-tab" data-tab="inspector">👤 Inspector</button>
             </div>
 
-            <form id="vehicleForm">
+            <form id="vehicleForm" onsubmit="return false;">
                 <!-- TAB 1: Vehicle Info -->
                 <div id="tab-basic" class="tab-content">
                     <div class="row">
@@ -232,6 +246,7 @@
                             <input type="number" id="vehicleOdometer" placeholder="50000" value="50000">
                         </div>
                     </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="autoFillBtn" style="margin-top:10px;">🔍 Auto-fill from VIN</button>
                 </div>
 
                 <!-- TAB 2: Images -->
@@ -278,7 +293,7 @@
                         <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:#94a3b8;">
                             <span id="docCount">0/5 documents uploaded</span>
                             <span id="docStatusText">Pending verification</span>
-                        </div></div>
+                        </div>
                     </div>
                 </div>
 
@@ -371,10 +386,10 @@
                 <!-- TAB 5: Inspector -->
                 <div id="tab-inspector" class="tab-content hidden">
                     <div class="row">
-                        <div class="form-group"><label class="required">Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name" value="John M. Valuer"></div>
-                        <div class="form-group"><label class="required">Inspector License/Credentials</label><input type="text" id="inspectorCredentials" placeholder="e.g. AVM-12345" value="AVM-45678"></div>
+                        <div class="form-group"><label class="required">Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name"></div>
+                        <div class="form-group"><label class="required">Inspector License/Credentials</label><input type="text" id="inspectorCredentials" placeholder="e.g. AVM-12345"></div>
                     </div>
-                    <div class="form-group"><label class="required">Digital Signature</label><input type="text" id="inspectorSignature" placeholder="Type full name as signature" value="John M. Valuer"></div>
+                    <div class="form-group"><label class="required">Digital Signature</label><input type="text" id="inspectorSignature" placeholder="Type full name as signature"></div>
                     <div style="background:#1e293b; border-radius:12px; padding:16px; margin-top:10px;">
                         <h4 style="color:#eab308;">📌 Inspector Declaration</h4>
                         <p style="color:#94a3b8; font-size:13px;">I confirm that the inspection was conducted personally and the findings reported are accurate and complete to the best of my knowledge.</p>
@@ -402,7 +417,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V PROFESSIONAL INSPECTION ENGINE – FULL IMPLEMENTATION
+        // AUTO-V PROFESSIONAL INSPECTION ENGINE – PRODUCTION READY
         // ============================================================
         (function() {
             if (window.autoVProfInspectionInitialized) return;
@@ -411,6 +426,10 @@
             const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
             const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            const API_BASE = window.location.hostname === 'localhost' 
+                ? 'http://localhost:10000/api' 
+                : 'https://auto-v-backend.onrender.com/api';
 
             // ─── VEHICLE MODELS ──────────────────────────────────────
             const vehicleModels = {
@@ -457,7 +476,7 @@
             const docStatus = {};
             let imageUrls = {};
             let docUrls = {};
-            let isUploading = false;
+            let currentUser = null;
 
             requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
             requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
@@ -497,6 +516,7 @@
                 for (let y = currentYear; y >= 1950; y--) {
                     yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
                 }
+                yearSelect.value = 2022;
             }
 
             function updateValidationSummary() {
@@ -544,7 +564,6 @@
                     imageUrls[slot] = publicUrl;
                     statusEl.className = 'file-status uploaded';
                     statusEl.textContent = '✅ Uploaded';
-                    // Show preview
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         let preview = item.querySelector('.preview');
@@ -608,6 +627,53 @@
             document.getElementById('docInsurance').addEventListener('change', function() { handleDocumentUpload(this, 'insurance'); });
             document.getElementById('docService').addEventListener('change', function() { handleDocumentUpload(this, 'service'); });
 
+            // ─── AUTO-FILL FROM VIN ──────────────────────────────────
+            document.getElementById('autoFillBtn').addEventListener('click', async function() {
+                const vin = document.getElementById('vehicleVin').value.trim();
+                if (!vin || vin === 'N/A') {
+                    showToast('Please enter a VIN number', 'warning');
+                    return;
+                }
+                if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+                    showToast('Invalid VIN format. Must be 17 characters.', 'error');
+                    return;
+                }
+                
+                showLoading(true);
+                try {
+                    const token = await getValidToken();
+                    const response = await fetch(`${API_BASE}/vehicles/decode-vin`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ vin })
+                    });
+                    
+                    if (!response.ok) throw new Error('VIN decode failed');
+                    const result = await response.json();
+                    
+                    if (result.success && result.data) {
+                        const data = result.data.vehicle || result.data;
+                        document.getElementById('vehicleMake').value = data.make || '';
+                        document.getElementById('vehicleMake').dispatchEvent(new Event('change'));
+                        setTimeout(() => {
+                            document.getElementById('vehicleModel').value = data.model || '';
+                        }, 100);
+                        document.getElementById('vehicleYear').value = data.year || '';
+                        document.getElementById('vehicleBody').value = data.body_type || 'Sedan';
+                        showToast(`✅ Vehicle found: ${data.make} ${data.model}`, 'success');
+                    } else {
+                        showToast('Vehicle not found', 'warning');
+                    }
+                } catch (error) {
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
+            });
+
             // ─── MAKE-MODEL SYNC ────────────────────────────────────
             document.getElementById('vehicleMake').addEventListener('change', function() {
                 const models = vehicleModels[this.value] || ['Other'];
@@ -631,6 +697,13 @@
                 const price = pricingMap[this.value] || 3500;
                 document.getElementById('priceDisplay').textContent = `KES ${price.toLocaleString()}`;
             });
+
+            // ─── TOKEN HELPERS ──────────────────────────────────────
+            async function getValidToken() {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error || !session) return null;
+                return session.access_token;
+            }
 
             // ─── GENERATE INSPECTION SCORES ──────────────────────
             function calculateConditionScores() {
@@ -673,11 +746,13 @@
             }
 
             // ─── MAIN SUBMIT ──────────────────────────────────────
-            async function handleSubmit() {
+            document.getElementById('submitBtn').addEventListener('click', async function() {
                 const reg = document.getElementById('vehicleReg').value.toUpperCase();
                 const make = document.getElementById('vehicleMake').value;
                 const model = document.getElementById('vehicleModel').value;
                 const year = parseInt(document.getElementById('vehicleYear').value);
+                const vin = document.getElementById('vehicleVin').value || 'N/A';
+                const odometer = parseInt(document.getElementById('vehicleOdometer').value) || 0;
 
                 if (!reg || !make || !model || !year) {
                     showMessage('Please fill in registration, make, model, and year', 'error');
@@ -720,94 +795,100 @@
 
                 try {
                     const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) throw new Error('Please login again');
+                    if (!user) { showToast('Please login again', 'error'); window.location.href = 'login.html'; return; }
+                    currentUser = user;
+                    document.getElementById('userEmail').textContent = user.email;
 
                     const purpose = document.getElementById('inspectionPurpose').value;
                     const price = pricingMap[purpose] || 3500;
-
                     const conditionData = calculateConditionScores();
                     const report = generateInspectionReport(conditionData);
 
-                    const inspectionData = {
-                        user_id: user.id,
-                        service_type: 'inspection',
-                        registration_number: reg,
-                        make: make,
-                        model: model,
-                        year: year,
-                        engine_cc: parseInt(document.getElementById('vehicleEngine').value),
-                        transmission: document.getElementById('vehicleTransmission').value,
-                        fuel_type: document.getElementById('vehicleFuel').value,
-                        odometer: parseInt(document.getElementById('vehicleOdometer').value) || 0,
-                        body_type: document.getElementById('vehicleBody').value,
-                        inspection_type: document.getElementById('inspectionType').value,
-                        inspection_date: document.getElementById('inspectionDate').value || new Date().toISOString().split('T')[0],
-                        inspection_location: document.getElementById('inspectionLocation').value,
-                        phone: document.getElementById('inspectionPhone').value || '',
-                        notes: document.getElementById('inspectionNotes').value || '',
-                        purpose: purpose,
-                        amount: price,
-                        payment_status: 'paid',
-                        status: 'completed',
-                        image_count: requiredImages.filter(slot => imageStatus[slot].uploaded).length,
-                        document_count: requiredDocs.filter(doc => docStatus[doc].uploaded).length,
-                        document_verification: 'Verified',
-                        image_urls: imageUrls,
-                        document_urls: docUrls,
-                        inspector: { name: inspectorName, credentials: inspectorCreds, signature: inspectorSig },
-                        condition: conditionData,
-                        result: {
-                            overall_score: report.scores.overall,
-                            exterior: report.scores.exterior,
-                            interior: report.scores.interior,
-                            mechanical: report.scores.mechanical,
-                            electrical: report.scores.electrical,
-                            safety: report.scores.safety,
-                            issues: report.issues,
-                            confidence_score: Math.min(100, 60 + (report.scores.overall * 4)),
-                            certificate_number: `INS-${Date.now().toString(36).toUpperCase()}`
+                    // Build payload for backend
+                    const payload = {
+                        vehicle_data: {
+                            registration_number: reg,
+                            vin: vin,
+                            make: make,
+                            model: model,
+                            year: year,
+                            body_type: document.getElementById('vehicleBody').value,
+                            engine_cc: parseInt(document.getElementById('vehicleEngine').value),
+                            transmission: document.getElementById('vehicleTransmission').value,
+                            fuel_type: document.getElementById('vehicleFuel').value,
+                            odometer: odometer,
+                            engine_rating: document.getElementById('inspEngine').value,
+                            transmission_rating: document.getElementById('inspTransmission').value,
+                            suspension_rating: document.getElementById('inspSuspension').value,
+                            brakes_rating: document.getElementById('inspBrakes').value,
+                            paint_rating: document.getElementById('inspPaint').value,
+                            chassis_rating: document.getElementById('inspChassis').value,
+                            interior_rating: document.getElementById('inspInterior').value,
+                            electronics_rating: document.getElementById('inspElectronics').value,
+                            tyre_depth_mm: parseFloat(document.getElementById('inspTyres').value) || 6,
+                            accident_history: document.getElementById('inspAccident').value.toLowerCase()
                         },
-                        created_at: new Date().toISOString()
+                        inspection_type: document.getElementById('inspectionType').value,
+                        purpose: purpose,
+                        region: document.getElementById('inspectionLocation').value,
+                        inspector: {
+                            name: inspectorName,
+                            credentials: inspectorCreds,
+                            signature: inspectorSig
+                        },
+                        image_urls: imageUrls,
+                        document_urls: docUrls
                     };
 
-                    const { data: request, error } = await supabase
-                        .from('service_requests')
-                        .insert(inspectionData)
-                        .select()
-                        .single();
+                    // Call backend API
+                    const token = await getValidToken();
+                    const response = await fetch(`${API_BASE}/inspections/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
 
-                    if (error) throw error;
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || err.message || 'Inspection failed');
+                    }
+
+                    const result = await response.json();
+                    const inspectionResult = result.inspection || result.data?.result || report;
 
                     // Show results
                     document.getElementById('dataEntryCard').classList.add('hidden');
                     document.getElementById('resultsCard').classList.remove('hidden');
 
                     const container = document.getElementById('resultsContainer');
-                    const certNumber = inspectionData.result.certificate_number;
-                    const confidence = inspectionData.result.confidence_score;
+                    const certNumber = inspectionResult.certificate_number || `INS-${Date.now().toString(36).toUpperCase()}`;
+                    const confidence = inspectionResult.confidence_score || 85;
                     const confidenceColor = confidence >= 80 ? '#22c55e' : confidence >= 60 ? '#eab308' : '#ef4444';
 
                     container.innerHTML = `
                         <div style="margin-bottom:20px; display:flex; justify-content:center; gap:15px; flex-wrap:wrap;">
-                            <span class="badge-methodology">🔍 ${inspectionData.inspection_type}</span>
-                            <span class="badge-methodology">📅 ${new Date(inspectionData.inspection_date).toLocaleDateString()}</span>
+                            <span class="badge-methodology">🔍 ${payload.inspection_type}</span>
+                            <span class="badge-methodology">📅 ${new Date().toLocaleDateString()}</span>
                             <span class="badge-methodology" style="background:${confidenceColor}; color:#000;">Confidence ${confidence}%</span>
                             <span class="badge-methodology" style="background:#eab308; color:#000;">${purpose}</span>
                         </div>
-                        <div class="result-value">${report.scores.overall.toFixed(1)} / 10</div>
+                        <div class="result-value">${(inspectionResult.overall_score || report.scores.overall).toFixed(1)} / 10</div>
                         <p style="color:#eab308; font-weight:600;">Overall Vehicle Health Score</p>
                         <div class="inspection-report-grid">
-                            <div class="card-item"><div class="score">${report.scores.exterior.toFixed(1)}</div><div class="label">Exterior</div></div>
-                            <div class="card-item"><div class="score">${report.scores.interior.toFixed(1)}</div><div class="label">Interior</div></div>
-                            <div class="card-item"><div class="score">${report.scores.mechanical.toFixed(1)}</div><div class="label">Mechanical</div></div>
-                            <div class="card-item"><div class="score">${report.scores.electrical.toFixed(1)}</div><div class="label">Electrical</div></div>
-                            <div class="card-item"><div class="score">${report.scores.safety.toFixed(1)}</div><div class="label">Safety</div></div>
+                            <div class="card-item"><div class="score">${(inspectionResult.exterior_score || report.scores.exterior).toFixed(1)}</div><div class="label">Exterior</div></div>
+                            <div class="card-item"><div class="score">${(inspectionResult.interior_score || report.scores.interior).toFixed(1)}</div><div class="label">Interior</div></div>
+                            <div class="card-item"><div class="score">${(inspectionResult.mechanical_score || report.scores.mechanical).toFixed(1)}</div><div class="label">Mechanical</div></div>
+                            <div class="card-item"><div class="score">${(inspectionResult.electrical_score || report.scores.electrical).toFixed(1)}</div><div class="label">Electrical</div></div>
+                            <div class="card-item"><div class="score">${(inspectionResult.safety_score || report.scores.safety).toFixed(1)}</div><div class="label">Safety</div></div>
                         </div>
-                        ${report.issues.length > 0 ? `
+                        ${(inspectionResult.issues || report.issues || []).length > 0 ? `
                             <div style="margin-top:20px; padding:15px; background:#7f1d1d; border-radius:12px; text-align:left;">
                                 <h4 style="color:#fecaca;">⚠️ Issues Found</h4>
                                 <ul style="color:#fecaca; margin-top:10px; padding-left:20px;">
-                                    ${report.issues.map(issue => `<li>${issue}</li>`).join('')}
+                                    ${(inspectionResult.issues || report.issues || []).map(issue => `<li>${issue}</li>`).join('')}
                                 </ul>
                             </div>
                         ` : `
@@ -819,13 +900,13 @@
                             <div class="item"><span class="label">Certificate Number</span><span class="value" style="font-family:monospace;font-size:12px;color:#eab308;">${certNumber}</span></div>
                             <div class="item"><span class="label">Inspector</span><span class="value">${inspectorName} (${inspectorCreds})</span></div>
                             <div class="item"><span class="label">Signature</span><span class="value">${inspectorSig}</span></div>
-                            <div class="item"><span class="label">Inspection Type</span><span class="value">${inspectionData.inspection_type}</span></div>
-                            <div class="item"><span class="label">Scheduled Date</span><span class="value">${new Date(inspectionData.inspection_date).toLocaleDateString()}</span></div>
-                            <div class="item"><span class="label">Location</span><span class="value">${inspectionData.inspection_location}</span></div>
+                            <div class="item"><span class="label">Inspection Type</span><span class="value">${payload.inspection_type}</span></div>
+                            <div class="item"><span class="label">Date</span><span class="value">${new Date().toLocaleDateString()}</span></div>
+                            <div class="item"><span class="label">Location</span><span class="value">${payload.region}</span></div>
                             <div class="item"><span class="label">Vehicle</span><span class="value">${make} ${model} (${year})</span></div>
-                            <div class="item"><span class="label">Odometer</span><span class="value">${inspectionData.odometer.toLocaleString()} km</span></div>
+                            <div class="item"><span class="label">Odometer</span><span class="value">${odometer.toLocaleString()} km</span></div>
                             <div class="item"><span class="label">Purpose</span><span class="value">${purpose}</span></div>
-                            <div class="item"><span class="label">Amount</span><span class="value green">${formatKES(price)}</span></div>
+                            <div class="item"><span class="label">Amount</span><span class="value green">KES ${price.toLocaleString()}</span></div>
                         </div>
                         <div class="qr-container">
                             <span style="color:#000; font-weight:600;">🔍 Verify with QR</span>
@@ -838,7 +919,6 @@
                         </div>
                     `;
 
-                    // Generate QR
                     const qrImg = document.createElement('img');
                     qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://auto-v.meipressgroup.com/verify-inspection.html?id=${certNumber}`)}`;
                     qrImg.alt = 'QR Code for verification';
@@ -846,7 +926,7 @@
                     qrImg.style.height = '120px';
                     document.getElementById('qrCode').appendChild(qrImg);
 
-                    window._currentInspectionResult = { ...inspectionData, report };
+                    window._currentInspectionResult = { ...inspectionResult, certNumber, inspectorName, inspectorCreds, inspectorSig };
                     showToast('✅ Inspection completed successfully!', 'success');
 
                 } catch (error) {
@@ -855,12 +935,7 @@
                 } finally {
                     showLoading(false);
                 }
-            }
-
-            // ─── FORMAT KES ─────────────────────────────────────────
-            function formatKES(amount) {
-                return new Intl.NumberFormat('en-KE', { style:'currency', currency:'KES', minimumFractionDigits:0 }).format(amount || 0);
-            }
+            });
 
             // ─── DOWNLOAD PDF REPORT ──────────────────────────────
             function downloadPDF() {
@@ -868,7 +943,7 @@
                 if (!result) { showToast('No inspection to download', 'error'); return; }
                 const content = document.getElementById('resultsContainer').cloneNode(true);
                 const qr = content.querySelector('.qr-container');
-                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Inspection ID: ${result.result.certificate_number}</span>`;
+                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Inspection ID: ${result.certNumber}</span>`;
                 const win = window.open('', '_blank');
                 win.document.write(`
                     <html><head><title>AUTO-V Inspection Report</title>
@@ -906,7 +981,7 @@
             function verifyReport() {
                 const result = window._currentInspectionResult;
                 if (!result) { showToast('No inspection to verify', 'error'); return; }
-                const verifyUrl = `https://auto-v.meipressgroup.com/verify-inspection.html?id=${result.result.certificate_number}`;
+                const verifyUrl = `https://auto-v.meipressgroup.com/verify-inspection.html?id=${result.certNumber}`;
                 window.open(verifyUrl, '_blank');
             }
 
@@ -930,13 +1005,16 @@
                 document.getElementById('vehicleModel').innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
 
                 document.getElementById('inspectionDate').valueAsDate = new Date();
-                // Set initial price
                 const purpose = document.getElementById('inspectionPurpose').value;
                 document.getElementById('priceDisplay').textContent = `KES ${(pricingMap[purpose] || 3500).toLocaleString()}`;
 
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) window.location.href = 'login.html';
+                currentUser = user;
+                document.getElementById('userEmail').textContent = user.email;
                 document.getElementById('inspectorName').value = user?.user_metadata?.full_name || user?.email || 'Inspector';
+                document.getElementById('inspectorSignature').value = user?.user_metadata?.full_name || user?.email || 'Inspector';
+                document.getElementById('inspectorCredentials').value = 'AUTO-V-System';
 
                 updateValidationSummary();
                 updateDocumentProgress();
