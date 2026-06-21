@@ -1,4 +1,4 @@
-# services/supabase_client.py - FINAL PRODUCTION READY (No proxy)
+# services/supabase_client.py - COMPLETE PRODUCTION READY
 
 import os
 import logging
@@ -115,16 +115,17 @@ def get_supabase():
     return get_supabase_client()
 
 
-# ─── RESET (for testing) ────────────────────────────────────────────
+# ─── RESET CLIENTS ──────────────────────────────────────────────────
 
-def reset_supabase_clients():
+def reset_supabase_client():
     """
-    Reset Supabase clients (useful for testing).
+    Reset Supabase client (for testing and reinitialization).
     """
     global _supabase_client, _supabase_admin_client
     _supabase_client = None
     _supabase_admin_client = None
-    logger.info("🔄 Supabase clients reset")
+    logger.info("🔄 Supabase client reset")
+    return True
 
 
 # ─── TEST CONNECTION ────────────────────────────────────────────────
@@ -151,7 +152,6 @@ if __name__ == "__main__":
         client = get_supabase_client()
         print("✅ Public client created successfully")
         
-        # Try to test connection
         if test_connection():
             print("✅ Connection test passed")
         else:
