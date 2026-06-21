@@ -108,7 +108,7 @@
             <p>Africa's leading vehicle intelligence platform. Let's get started.</p>
         </div>
 
-        <!-- Progress Bar - Only 5 steps now -->
+        <!-- Progress Bar -->
         <div class="progress-bar" id="progressBar">
             <div class="progress-step" id="step1Prog" data-step="1">1. Login</div>
             <div class="progress-step" id="step2Prog" data-step="2">2. Client Detail</div>
@@ -189,6 +189,8 @@
                     <input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel">
                     <small style="color:#64748b;font-size:11px;">Enter the phone number registered with M-Pesa</small>
                 </div>
+                <!-- Hidden reference field - auto-generated -->
+                <input type="hidden" id="reference" name="reference">
                 <div class="payment-summary">
                     <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
                     <div class="row"><span class="label">Purpose</span><span class="value" id="summaryPurpose">-</span></div>
@@ -392,6 +394,14 @@
                 summaryAmount.textContent = selectedService ? formatKES(getServicePrice(selectedService)) : 'KES 0';
             }
 
+            // ─── Generate Reference ─────────────────────────────────────
+            function generateReference() {
+                const timestamp = Date.now().toString(36).toUpperCase();
+                const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+                const serviceCode = selectedService ? selectedService.substring(0, 3).toUpperCase() : 'SRV';
+                return `${serviceCode}-${timestamp}-${random}`;
+            }
+
             // ─── REDIRECT TO SERVICE PAGE ──────────────────────────────
             function redirectToServicePage() {
                 if (!selectedService) {
@@ -412,7 +422,8 @@
                     clientType: clientType,
                     paymentId: paymentId,
                     userId: currentUser?.id,
-                    userEmail: currentUser?.email
+                    userEmail: currentUser?.email,
+                    reference: document.getElementById('reference').value || generateReference()
                 };
                 sessionStorage.setItem('autoV_service_data', JSON.stringify(serviceData));
                 
@@ -721,6 +732,11 @@
                     return;
                 }
                 
+                // ─── GENERATE REFERENCE ──────────────────────────────────
+                const reference = generateReference();
+                document.getElementById('reference').value = reference;
+                console.log('📝 Generated Reference:', reference);
+                
                 const payBtn = document.getElementById('payBtn');
                 const originalText = payBtn.innerHTML;
                 payBtn.disabled = true;
@@ -758,7 +774,8 @@
                             amount: price,
                             service: selectedService,
                             purpose: selectedPurpose,
-                            client_type: clientType
+                            client_type: clientType,
+                            reference: reference
                         }),
                         signal: controller.signal
                     });
@@ -850,7 +867,6 @@
                                 payBtn.innerHTML = '✅ Payment Complete';
                                 showMessage('Payment successful! Redirecting to service page...', 'success');
                                 
-                                // ─── REDIRECT TO SERVICE PAGE ──────────
                                 setTimeout(() => {
                                     redirectToServicePage();
                                 }, 1500);
