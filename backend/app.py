@@ -73,7 +73,7 @@ class Config:
     # ─── Supabase ──────────────────────────────────────────────────
     SUPABASE_URL = os.getenv('SUPABASE_URL')
     SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
-    SUPABASE_SERVICE_ROLE = os.getenv('SUPABASE_SERVICE_ROLE', '')
+    SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
     
     # ─── M-Pesa ──────────────────────────────────────────────────
     MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', 'LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv')
