@@ -76,11 +76,11 @@ class Config:
     SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
     
     # ─── M-Pesa ──────────────────────────────────────────────────
-    MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', 'LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv')
-    MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', 'aGGo8AuPJVpsZLcs')
-    MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '7eb17a031bdfd5b4251863a1ddb72c5b9cd14f3385aa6a258c1442a0116e8277')
+    MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', '')
+    MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
+    MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
     MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
-    MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://auto-v-backend.onrender.com/api/mpesa/callback')
+    MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://auto-v.meipressgroup.com/mpesa/callback')
     MPESA_ENV = os.getenv('MPESA_ENV', 'production')
     
     # ─── Security ─────────────────────────────────────────────────
@@ -154,8 +154,8 @@ limiter.init_app(app)
 def init_supabase():
     """Initialize Supabase client and verify connection."""
     try:
-        from services.supabase_client import get_supabase_client
-        client = get_supabase_client()
+        from services.supabase import get_supabase
+        client = get_supabase()
         logger.info("✅ Supabase client initialized")
         return True
     except ImportError as e:
@@ -193,7 +193,8 @@ def handle_rate_limit(e):
     """Handle rate limit exceeded."""
     return jsonify({
         'error': 'Too many requests. Please slow down.',
-        'code': 'RATE_LIMIT_EXCEEDED'
+        'code': 'RATE_LIMIT_EXCEEDED',
+        'retry_after': 60
     }), 429
 
 @app.errorhandler(404)
@@ -223,40 +224,29 @@ def handle_exception(e):
         'message': 'An unexpected error occurred'
     }), 500
 
-# ─── Register Routes ──────────────────────────────────────────
-def register_blueprints():
-    """Register all blueprints."""
-    registered = 0
-    
-    # ─── M-Pesa Routes ──────────────────────────────────────────
-    try:
-        from api.routes.mpesa import mpesa_bp
-        app.register_blueprint(mpesa_bp, url_prefix='/api/mpesa')
-        registered += 1
-        logger.info("✅ Registered: /api/mpesa")
-    except Exception as e:
-        logger.warning(f"⚠️ M-Pesa routes not available: {e}")
-    
-    # ─── Mileage Routes ─────────────────────────────────────────
-    try:
-        from api.routes.mileage import mileage_bp
-        app.register_blueprint(mileage_bp, url_prefix='/api/mileage')
-        registered += 1
-        logger.info("✅ Registered: /api/mileage")
-    except Exception as e:
-        logger.warning(f"⚠️ Mileage routes not available: {e}")
-    
-    return registered
-
-# ─── Health Routes ────────────────────────────────────────────
+# ─── HEALTH ROUTES ────────────────────────────────────────────
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Basic health check."""
+    try:
+        from services.mpesa import is_mpesa_configured
+        mpesa_status = is_mpesa_configured()
+    except:
+        mpesa_status = False
+    
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'version': '2.0.0',
-        'environment': app.config['ENV']
+        'environment': app.config['ENV'],
+        'services': {
+            'mpesa': {
+                'configured': mpesa_status,
+                'environment': app.config['MPESA_ENV'],
+                'shortcode': app.config['MPESA_SHORTCODE']
+            },
+            'supabase': 'connected' if init_supabase() else 'disconnected'
+        }
     }), 200
 
 @app.route('/api/ping', methods=['GET'])
@@ -278,12 +268,211 @@ def root():
         'endpoints': {
             'health': '/api/health',
             'ping': '/api/ping',
-            'mpesa': '/api/mpesa',
-            'mileage': '/api/mileage'
+            'mpesa_initiate': '/api/mpesa/initiate',
+            'mpesa_status': '/api/mpesa/status/<payment_id>',
+            'mpesa_auto_confirm': '/api/mpesa/auto-confirm/<payment_id>',
+            'mpesa_callback': '/mpesa/callback'
         }
     }), 200
 
-# ─── Graceful Shutdown ──────────────────────────────────────
+# ─── M-PESA ROUTES ────────────────────────────────────────────
+
+@app.route('/mpesa/callback', methods=['POST'])
+def mpesa_callback():
+    """Handle M-Pesa STK Push callback."""
+    from services.mpesa import handle_mpesa_callback, verify_safaricom_ip
+    
+    try:
+        client_ip = request.remote_addr or request.headers.get('X-Forwarded-For', '')
+        logger.info(f"📥 M-Pesa callback received from IP: {client_ip}")
+        
+        # Verify IP (optional - can be disabled for testing)
+        # if not verify_safaricom_ip(client_ip):
+        #     logger.warning(f"⚠️ Invalid IP: {client_ip}")
+        #     return jsonify({"ResultCode": 1, "ResultDesc": "Invalid IP"}), 403
+        
+        callback_data = request.get_json()
+        if not callback_data:
+            logger.error("❌ No JSON data in callback")
+            return jsonify({"ResultCode": 1, "ResultDesc": "No data"}), 400
+        
+        result = handle_mpesa_callback(callback_data, client_ip)
+        logger.info(f"✅ Callback processed: {result}")
+        return jsonify(result), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Callback endpoint error: {e}", exc_info=True)
+        return jsonify({"ResultCode": 1, "ResultDesc": str(e)}), 500
+
+
+@app.route('/api/mpesa/initiate', methods=['POST'])
+@limiter.limit("10 per minute", key_func=lambda: request.headers.get('Authorization', ''))
+def initiate_payment():
+    """Initiate M-Pesa STK Push payment."""
+    from services.mpesa import initiate_stk_push, get_supabase
+    
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required = ['phone', 'amount', 'payment_id']
+        for field in required:
+            if not data.get(field):
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+        
+        # Initiate STK Push
+        result = initiate_stk_push(
+            phone=data['phone'],
+            amount=data['amount'],
+            payment_id=data['payment_id'],
+            service=data.get('service', 'AUTO-V'),
+            reference=data.get('reference')
+        )
+        
+        # Save transaction to database
+        supabase = get_supabase()
+        try:
+            payment_data = {
+                'id': data['payment_id'],
+                'amount': data['amount'],
+                'phone': data['phone'],
+                'service': data.get('service', 'AUTO-V'),
+                'purpose': data.get('purpose'),
+                'client_type': data.get('client_type', 'individual'),
+                'reference': data.get('reference'),
+                'checkout_request_id': result.get('CheckoutRequestID'),
+                'merchant_request_id': result.get('MerchantRequestID'),
+                'status': 'pending',
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
+            }
+            
+            supabase.table('payments').insert(payment_data).execute()
+            logger.info(f"✅ Payment record saved: {data['payment_id']}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not save payment record: {e}")
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Payment initiation error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/mpesa/status/<payment_id>', methods=['GET'])
+@limiter.limit("15 per minute", key_func=lambda: request.headers.get('Authorization', ''))
+def payment_status(payment_id):
+    """Get payment status with auto-verification."""
+    from services.mpesa import get_payment_status
+    
+    try:
+        # Get auth token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        result = get_payment_status(payment_id)
+        
+        if result.get('status') == 'not_found':
+            return jsonify({'error': 'Payment not found'}), 404
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        logger.error(f"Status query error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/mpesa/auto-confirm/<payment_id>', methods=['POST'])
+@limiter.limit("5 per minute", key_func=lambda: request.headers.get('Authorization', ''))
+def auto_confirm_payment(payment_id):
+    """Auto-confirm payment by verifying with M-Pesa API."""
+    from services.mpesa import auto_confirm_payment
+    
+    try:
+        # Get auth token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        result = auto_confirm_payment(payment_id)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logger.error(f"Auto-confirm error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mpesa/query/<checkout_id>', methods=['GET'])
+@limiter.limit("10 per minute")
+def query_mpesa_status(checkout_id):
+    """Direct query to M-Pesa API for status."""
+    from services.mpesa import query_payment_status
+    
+    try:
+        result = query_payment_status(checkout_id)
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Query error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/mpesa/configured', methods=['GET'])
+def mpesa_configured():
+    """Check if M-Pesa is configured."""
+    from services.mpesa import is_mpesa_configured
+    
+    try:
+        configured = is_mpesa_configured()
+        return jsonify({
+            'configured': configured,
+            'environment': app.config['MPESA_ENV'],
+            'shortcode': app.config['MPESA_SHORTCODE']
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'configured': False,
+            'error': str(e)
+        }), 200
+
+# ─── REGISTER BLUEPRINTS ──────────────────────────────────────
+def register_blueprints():
+    """Register all blueprints."""
+    registered = 0
+    
+    # ─── Mileage Routes ─────────────────────────────────────────
+    try:
+        from api.routes.mileage import mileage_bp
+        app.register_blueprint(mileage_bp, url_prefix='/api/mileage')
+        registered += 1
+        logger.info("✅ Registered: /api/mileage")
+    except Exception as e:
+        logger.warning(f"⚠️ Mileage routes not available: {e}")
+    
+    return registered
+
+# ─── GRACEFUL SHUTDOWN ──────────────────────────────────────
 def graceful_shutdown(signum, frame):
     """Handle shutdown signals gracefully."""
     logger.info("Received shutdown signal, cleaning up...")
@@ -299,7 +488,7 @@ def graceful_shutdown(signum, frame):
 signal.signal(signal.SIGTERM, graceful_shutdown)
 signal.signal(signal.SIGINT, graceful_shutdown)
 
-# ─── Application Factory ─────────────────────────────────────
+# ─── APPLICATION FACTORY ─────────────────────────────────────
 def create_app():
     """Application factory for production."""
     # Validate configuration
@@ -324,10 +513,10 @@ def create_app():
     
     return app
 
-# ─── Initialize App ──────────────────────────────────────────
+# ─── INITIALIZE APP ──────────────────────────────────────────
 app = create_app()
 
-# ─── Main Entry Point ────────────────────────────────────────
+# ─── MAIN ENTRY POINT ────────────────────────────────────────
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     
