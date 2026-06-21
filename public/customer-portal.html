@@ -1,1 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Customer Portal</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ─── All existing styles ─── */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0a0c15; color: #fff; min-height: 100vh; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #111827; border-bottom: 2px solid #eab308; position: sticky; top: 0; z-index: 100; }
+        .logo { font-size: 24px; font-weight: 800; color: #eab308; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 12px; color: #94a3b8; }
+        .logout-btn { background: #dc2626; color: #fff; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; }
+        .logout-btn:hover { background: #b91c1c; }
+        .live-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #22c55e; background: rgba(34, 197, 94, 0.12); padding: 2px 12px; border-radius: 20px; }
+        .live-indicator .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+        .card { background: #0f172a; border-radius: 20px; padding: 30px; margin-bottom: 20px; border: 1px solid #1e293b; }
+        h2 { color: #eab308; margin-bottom: 20px; font-size: 22px; border-left: 4px solid #eab308; padding-left: 15px; }
+        .step { display: none; }
+        .step.active { display: block; }
+        .progress-bar { display: flex; justify-content: space-between; margin-bottom: 30px; background: #1e293b; border-radius: 40px; padding: 5px; flex-wrap: wrap; }
+        .progress-step { flex:1; text-align:center; padding:10px; border-radius:40px; color:#94a3b8; font-size:12px; font-weight:600; }
+        .progress-step.active { background:#eab308; color:#000; }
+        .progress-step.completed { background:#22c55e; color:#000; }
+        .form-group { margin-bottom:15px; }
+        label { display:block; margin-bottom:8px; color:#94a3b8; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+        label.required:after { content:" *"; color:#ef4444; }
+        input, select, textarea { width:100%; padding:12px 16px; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:12px; font-size:14px; transition:all 0.3s; }
+        input:focus, select:focus, textarea:focus { outline:none; border-color:#eab308; box-shadow:0 0 0 4px rgba(234,179,8,0.15); }
+        .btn { padding:12px 28px; border:none; border-radius:40px; font-weight:700; cursor:pointer; transition:all .3s; }
+        .btn-primary { background:#eab308; color:#0a0c10; }
+        .btn-primary:hover { background:#facc15; transform:translateY(-2px); }
+        .btn-secondary { background:#334155; color:#fff; }
+        .btn-secondary:hover { background:#475569; }
+        .btn-success { background:#22c55e; color:#fff; }
+        .btn-success:hover { background:#16a34a; transform:translateY(-2px); }
+        .btn-retry { background:#f59e0b; color:#000; }
+        .btn-retry:hover { background:#d97706; }
+        .btn-danger { background:#dc2626; color:#fff; }
+        .btn-danger:hover { background:#b91c1c; transform:translateY(-2px); }
+        .nav-buttons { display:flex; justify-content:space-between; margin-top:30px; gap:10px; }
+        .service-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:20px; margin-top:20px; }
+        .service-card { background:#1e293b; border-radius:16px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s; }
+        .service-card:hover { border-color:#eab308; transform:translateY(-5px); }
+        .service-card.selected { border-color:#eab308; background:#2d3a4e; }
+        .service-icon { font-size:40px; margin-bottom:8px; }
+        .service-card h3 { color:#eab308; font-size:15px; margin-bottom:6px; }
+        .service-price { font-size:18px; font-weight:700; color:#22c55e; margin:6px 0; }
+        .service-card p { font-size:11px; color:#94a3b8; }
+        .purpose-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; max-height:300px; overflow-y:auto; padding:10px; background:#1e293b; border-radius:12px; }
+        .purpose-item { padding:10px 15px; background:#0f172a; border-radius:8px; cursor:pointer; text-align:center; transition:all .2s; }
+        .purpose-item:hover { background:#334155; }
+        .purpose-item.selected { background:#eab308; color:#000; font-weight:600; }
+        .payment-summary { background:#1e293b; border-radius:16px; padding:20px; margin:20px 0; }
+        .payment-summary .row { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e; }
+        .payment-summary .row:last-child { border-bottom:none; }
+        .payment-summary .label { color:#94a3b8; }
+        .payment-summary .value { font-weight:700; color:#eab308; }
+        .payment-summary .amount { font-size:24px; color:#22c55e; }
+        .payment-status { background:#1e293b; border-radius:12px; padding:12px; text-align:center; font-weight:600; display:none; margin-bottom:15px; }
+        .payment-status.pending { display:block; background:#f59e0b; color:#000; }
+        .payment-status.processing { display:block; background:#3b82f6; color:#fff; }
+        .payment-status.completed { display:block; background:#22c55e; color:#000; }
+        .payment-status.failed { display:block; background:#ef4444; color:#fff; }
+        .payment-status.timeout { display:block; background:#f59e0b; color:#000; }
+        .row { display:grid; grid-template-columns:1fr 1fr; gap:15px; }
+        .client-type-selector { display: flex; gap: 10px; margin-bottom: 20px; }
+        .client-type-btn { padding: 10px 20px; border: 2px solid #334155; border-radius: 12px; background: transparent; color: #94a3b8; cursor: pointer; font-weight: 600; transition: all 0.3s; flex: 1; }
+        .client-type-btn.active { border-color: #eab308; background: rgba(234,179,8,0.15); color: #eab308; }
+        .client-type-btn:hover { border-color: #eab308; }
+        .corporate-fields { display: none; }
+        .corporate-fields.show { display: block; }
+        .spinner { display:inline-block; width:20px; height:20px; border:2px solid #fff; border-radius:50%; border-top-color:#eab308; animation:spin .6s linear infinite; margin-right:8px; vertical-align:middle; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .error, .success, .info { padding:12px 16px; border-radius:12px; margin-bottom:15px; display:none; }
+        .error { background:#7f1d1d; color:#fecaca; border-left:4px solid #ef4444; }
+        .success { background:#14532d; color:#bbf7d0; border-left:4px solid #22c55e; }
+        .info { background:#1e3a5f; color:#93c5fd; border-left:4px solid #3b82f6; }
+        .manual-check-btn { margin-top: 10px; width: 100%; padding: 10px; border-radius: 40px; background: #334155; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
+        .manual-check-btn:hover { background: #475569; }
+        .manual-check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .force-refresh-btn { margin-top: 5px; width: 100%; padding: 10px; border-radius: 40px; background: #3b82f6; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
+        .force-refresh-btn:hover { background: #2563eb; transform:translateY(-2px); }
+        .force-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .welcome-banner { background: linear-gradient(135deg, #1e293b, #2d3a4e); border: 2px solid #eab308; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px; text-align: center; display: none; }
+        .welcome-banner h3 { color: #eab308; font-size: 20px; margin-bottom: 8px; }
+        .welcome-banner p { color: #94a3b8; font-size: 14px; }
+        .rate-limit-warning { background: #7c3a1e; color: #fbbf24; padding: 8px 12px; border-radius: 8px; font-size: 12px; display: none; margin-top: 10px; }
+        .help-text { background: #1e293b; border-radius: 12px; padding: 15px; margin: 15px 0; border-left: 4px solid #eab308; }
+        .help-text h4 { color: #eab308; margin-bottom: 8px; font-size: 14px; }
+        .help-text p { color: #94a3b8; font-size: 13px; line-height: 1.6; }
+        @media (max-width:768px) { .service-cards { grid-template-columns:1fr 1fr; } .purpose-list { grid-template-columns:1fr; } .nav-buttons { flex-direction:column; gap:10px; } .nav-buttons button { width:100%; } .progress-step { font-size:10px; padding:8px; } .row { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">🚗 AUTO-V <span>| Customer Portal</span></div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <span class="live-indicator"><span class="dot"></span> Live</span>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+    </header>
+    <div class="container">
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+        <div id="infoMsg" class="info"></div>
 
+        <!-- Welcome Banner -->
+        <div id="welcomeBanner" class="welcome-banner">
+            <h3>👋 Welcome to AUTO-V!</h3>
+            <p>Africa's leading vehicle intelligence platform. Let's get started.</p>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-step" id="step1Prog" data-step="1">1. Login</div>
+            <div class="progress-step" id="step2Prog" data-step="2">2. Client Detail</div>
+            <div class="progress-step" id="step3Prog" data-step="3">3. Service</div>
+            <div class="progress-step" id="step4Prog" data-step="4">4. Purpose</div>
+            <div class="progress-step" id="step5Prog" data-step="5">5. Payment</div>
+        </div>
+
+        <!-- STEP 1: LOGIN -->
+        <div id="step1" class="card step active">
+            <h2>🔐 Login to Continue</h2>
+            <form id="loginForm">
+                <div class="form-group"><label class="required">Email</label><input type="email" id="loginEmail" placeholder="your@email.com" autocomplete="email"></div>
+                <div class="form-group"><label class="required">Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"></div>
+                <div class="nav-buttons"><div></div><button type="submit" class="btn btn-primary">Login →</button></div>
+            </form>
+            <div style="text-align:center;margin-top:15px;"><a href="#" id="showSignup" style="color:#eab308;">Don't have an account? Sign up</a></div>
+            <div id="signupSection" style="display:none;margin-top:20px;">
+                <form id="signupForm">
+                    <div class="form-group"><label>Email</label><input type="email" id="signupEmail" autocomplete="email"></div>
+                    <div class="form-group"><label>Password</label><input type="password" id="signupPassword" autocomplete="new-password"></div>
+                    <div class="form-group"><label>Full Name</label><input type="text" id="signupName" autocomplete="name"></div>
+                    <div class="form-group"><label>Phone</label><input type="tel" id="signupPhone" autocomplete="tel"></div>
+                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                    <button type="button" class="btn btn-secondary" id="hideSignup">Cancel</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- STEP 2: CLIENT DETAIL -->
+        <div id="step2" class="card step">
+            <h2>👤 Client Details</h2>
+            <div class="client-type-selector">
+                <button type="button" class="client-type-btn active" data-type="individual">👤 Individual</button>
+                <button type="button" class="client-type-btn" data-type="corporate">🏢 Corporate</button>
+            </div>
+            <form id="clientForm">
+                <div id="individualFields">
+                    <div class="form-group"><label class="required">Full Name</label><input type="text" id="custName" placeholder="John Doe" autocomplete="name"></div>
+                    <div class="form-group"><label class="required">ID / Passport</label><input type="text" id="custId" placeholder="ID number"></div>
+                </div>
+                <div id="corporateFields" class="corporate-fields">
+                    <div class="form-group"><label class="required">Company Name</label><input type="text" id="companyName" placeholder="ABC Motors Ltd"></div>
+                    <div class="form-group"><label class="required">Company Registration</label><input type="text" id="companyReg" placeholder="CP/2025/12345"></div>
+                    <div class="form-group"><label>Contact Person</label><input type="text" id="contactPerson" placeholder="Contact person name"></div>
+                </div>
+                <div class="form-group"><label class="required">Phone Number</label><input type="tel" id="custPhone" placeholder="0712345678" autocomplete="tel"></div>
+                <div class="form-group"><label class="required">Email Address</label><input type="email" id="custEmail" placeholder="john@example.com" autocomplete="email"></div>
+                <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToLogin">← Back</button><button type="submit" class="btn btn-primary">Next →</button></div>
+            </form>
+        </div>
+
+        <!-- STEP 3: CHOOSE SERVICE -->
+        <div id="step3" class="card step">
+            <h2>🔧 Choose Service</h2>
+            <div class="service-cards" id="serviceCards"></div>
+            <div id="selectedServiceMsg" style="margin-top:15px;text-align:center;color:#eab308;"></div>
+            <div class="nav-buttons"><button class="btn btn-secondary" id="backToClient">← Back</button><button class="btn btn-primary" id="nextStep3Btn">Next →</button></div>
+        </div>
+
+        <!-- STEP 4: PURPOSE -->
+        <div id="step4" class="card step">
+            <h2>🎯 Service Purpose</h2>
+            <p style="color:#94a3b8; margin-bottom:15px; font-size:14px;">Select the purpose for this service:</p>
+            <div class="purpose-list" id="purposeList"></div>
+            <div class="nav-buttons"><button class="btn btn-secondary" id="backToService">← Back</button><button class="btn btn-primary" id="nextStep4Btn">Next →</button></div>
+        </div>
+
+        <!-- STEP 5: PAYMENT -->
+        <div id="step5" class="card step">
+            <h2>💳 Payment</h2>
+            <div id="paymentStatus" class="payment-status"></div>
+            <div id="paymentRetry" style="display:none;text-align:center;margin-bottom:15px;">
+                <button class="btn btn-retry" id="retryPaymentBtn">🔄 Retry Payment</button>
+            </div>
+            <div id="rateLimitWarning" class="rate-limit-warning">⏳ Too many requests. Please wait a moment before trying again...</div>
+            
+            <!-- Help Text -->
+            <div class="help-text">
+                <h4>📌 How to complete your payment</h4>
+                <p>
+                    1. Enter your M-Pesa phone number below<br>
+                    2. Click <strong>"Pay Now"</strong> - you'll receive an STK Push on your phone<br>
+                    3. Enter your M-Pesa PIN on your phone to confirm<br>
+                    4. Wait for the confirmation - you'll be redirected automatically
+                </p>
+            </div>
+
+            <form id="paymentForm">
+                <div class="form-group"><label class="required">M-Pesa Phone Number</label>
+                    <input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel">
+                    <small style="color:#64748b;font-size:11px;">Enter the phone number registered with M-Pesa</small>
+                </div>
+                <div class="payment-summary">
+                    <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
+                    <div class="row"><span class="label">Purpose</span><span class="value" id="summaryPurpose">-</span></div>
+                    <div class="row"><span class="label">Amount</span><span class="amount" id="summaryAmount">KES 0</span></div>
+                </div>
+                <div style="background:#1e293b;border-radius:12px;padding:15px;margin-bottom:20px;">
+                    <p style="color:#94a3b8;font-size:12px;">💡 M-Pesa Paybill: <strong style="color:#eab308;">4095377</strong> | Account: <strong style="color:#eab308;">AUTO-V</strong></p>
+                    <p style="color:#64748b;font-size:11px;margin-top:8px;">You will receive an STK Push on your phone to confirm payment.</p>
+                </div>
+                <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPurpose">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
+            </form>
+            <button class="manual-check-btn" id="manualCheckBtn">🔄 Check Payment Status</button>
+            <button class="force-refresh-btn" id="forceRefreshBtn">🔄 Refresh Status</button>
+        </div>
+
+        <!-- Redirect Message -->
+        <div style="text-align:center;margin-top:20px;color:#94a3b8;font-size:14px;">
+            After successful payment, you will be redirected to your service page.
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // AUTO-V CUSTOMER PORTAL - PRODUCTION READY
+        // ============================================================
+        (function() {
+            'use strict';
+
+            // ─── PRODUCTION CONFIG ──────────────────────────────────────
+            const CONFIG = {
+                SUPABASE_URL: 'https://tsvejnzxrxrrecgquxbq.supabase.co',
+                SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ',
+                API_BASE: 'https://auto-v.onrender.com/api',
+                MPESA_SHORTCODE: '4095377',
+                ENV: 'production'
+            };
+
+            console.log('🚀 AUTO-V Customer Portal v2.0 (Production)');
+            console.log(`📡 API: ${CONFIG.API_BASE}`);
+            console.log(`🔑 Shortcode: ${CONFIG.MPESA_SHORTCODE}`);
+
+            // ─── Supabase ────────────────────────────────────────────────
+            const supabase = window.supabase.createClient(
+                CONFIG.SUPABASE_URL,
+                CONFIG.SUPABASE_ANON_KEY
+            );
+
+            // ─── STATE VARIABLES ────────────────────────────────────────
+            let currentUser = null;
+            let selectedService = null;
+            let selectedPurpose = null;
+            let clientType = 'individual';
+            let isFirstTimeUser = false;
+            let pollInterval = null;
+            let paymentId = null;
+            let paymentInProgress = false;
+            let manualCheckAttempt = 0;
+            let isPaymentConfirmed = false;
+            
+            // ─── RATE LIMITING STATE ────────────────────────────────────
+            let lastStatusCheck = 0;
+            const MIN_CHECK_INTERVAL = 3000; // 3 seconds minimum between checks
+            let consecutiveRateLimits = 0;
+
+            // ─── SERVICE PAGES ──────────────────────────────────────────
+            const SERVICE_PAGES = {
+                'valuation': 'valuation.html',
+                'instant-value-check': 'valuation.html',
+                'inspection': 'inspection.html',
+                'mileage-rate': 'mileage.html',
+                'assessment': 'assessment.html',
+                'fleet': 'fleet.html',
+                'report-verification': 'verify.html'
+            };
+
+            // ─── FEES ────────────────────────────────────────────────────
+            let fees = {
+                instant: 500,
+                valuation: 2500,
+                inspection: 3500,
+                assessment: 3000,
+                mileage: 1500,
+                fleet: 4000,
+                verification: 1000
+            };
+
+            // ─── SERVICE DEFINITIONS ────────────────────────────────────
+            const serviceDefinitions = [
+                { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', desc: 'Quick AI market estimate', key: 'instant' },
+                { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', desc: 'Formal certified valuation', key: 'valuation' },
+                { id: 'inspection', icon: '🔍', name: 'Vehicle Inspection', desc: '150+ point condition report', key: 'inspection' },
+                { id: 'assessment', icon: '⚠️', name: 'Vehicle Assessment', desc: 'Accident & repair evaluation', key: 'assessment' },
+                { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per kilometre analysis', key: 'mileage' },
+                { id: 'fleet', icon: '🚛', name: 'Fleet Services', desc: 'Full fleet management', key: 'fleet' },
+                { id: 'report-verification', icon: '✅', name: 'Report Verification', desc: 'QR code verification', key: 'verification' }
+            ];
+
+            const servicePurposes = {
+                'instant-value-check': {
+                    title: '💡 Instant Value Check Purposes',
+                    purposes: ["Quick Market Estimate", "Selling Price Guide", "Buying Price Check", "Trade-In Value", "Just Curious"]
+                },
+                'valuation': {
+                    title: '💰 Vehicle Valuation Purposes',
+                    purposes: ["Insurance Valuation", "Bank Loan / Security", "Legal Proceedings", "Estate / Probate", "Divorce Settlement", "Import Duty", "Tax Assessment", "Fleet Accounting", "Court Evidence", "Market Value Certificate"]
+                },
+                'inspection': {
+                    title: '🔍 Vehicle Inspection Purposes',
+                    purposes: ["Pre-Purchase Inspection", "Mechanical Check", "Roadworthiness Test", "Insurance Claim Assessment", "Fleet Condition Report", "Safety Compliance", "Accident Damage Report", "Maintenance Planning"]
+                },
+                'assessment': {
+                    title: '⚠️ Vehicle Assessment Purposes',
+                    purposes: ["Accident Damage Evaluation", "Insurance Claim Assessment", "Repair Cost Estimate", "Total Loss Determination", "Salvage Value Assessment", "Pre-Repair Inspection", "Post-Repair Verification"]
+                },
+                'mileage-rate': {
+                    title: '📏 Mileage Rate Report Purposes',
+                    purposes: ["Travel Reimbursement", "Running Cost Analysis", "Fleet Budgeting", "Tax Deduction", "Fuel Efficiency Audit", "Cost Per Kilometre", "Vehicle Operating Cost"]
+                },
+                'fleet': {
+                    title: '🚛 Fleet Services Purposes',
+                    purposes: ["Full Fleet Valuation", "Fleet Condition Audit", "Running Cost Management", "Fleet Performance Review", "Asset Management", "Fleet Insurance", "Disposal Planning", "Fleet Expansion"]
+                },
+                'report-verification': {
+                    title: '✅ Report Verification Purposes',
+                    purposes: ["Verify Valuation Certificate", "Inspection Report Check", "Assessment Document Confirmation", "QR Code Verification", "Document Authenticity", "Third-Party Verification"]
+                }
+            };
+
+            // ─── DOM ELEMENTS ───────────────────────────────────────────
+            const serviceCardsContainer = document.getElementById('serviceCards');
+            const purposeList = document.getElementById('purposeList');
+            const summaryService = document.getElementById('summaryService');
+            const summaryPurpose = document.getElementById('summaryPurpose');
+            const summaryAmount = document.getElementById('summaryAmount');
+            const manualCheckBtn = document.getElementById('manualCheckBtn');
+            const forceRefreshBtn = document.getElementById('forceRefreshBtn');
+            const rateLimitWarning = document.getElementById('rateLimitWarning');
+
+            // ─── HELPER FUNCTIONS ──────────────────────────────────────
+            function formatKES(amount) {
+                if (amount === undefined || amount === null) return 'KES 0';
+                return 'KES ' + Number(amount).toLocaleString('en-KE');
+            }
+
+            function showMessage(msg, type = 'success') {
+                const errorDiv = document.getElementById('errorMsg');
+                const successDiv = document.getElementById('successMsg');
+                const infoDiv = document.getElementById('infoMsg');
+                errorDiv.style.display = 'none';
+                successDiv.style.display = 'none';
+                infoDiv.style.display = 'none';
+                
+                if (type === 'error') {
+                    errorDiv.textContent = msg;
+                    errorDiv.style.display = 'block';
+                    setTimeout(() => errorDiv.style.display = 'none', 6000);
+                } else if (type === 'info') {
+                    infoDiv.textContent = msg;
+                    infoDiv.style.display = 'block';
+                    setTimeout(() => infoDiv.style.display = 'none', 4000);
+                } else {
+                    successDiv.textContent = msg;
+                    successDiv.style.display = 'block';
+                    setTimeout(() => successDiv.style.display = 'none', 4000);
+                }
+            }
+
+            function setPaymentStatus(status, message = '') {
+                const el = document.getElementById('paymentStatus');
+                if (!el) return;
+                el.className = 'payment-status ' + status;
+                el.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
+                el.style.display = 'block';
+                
+                const retryEl = document.getElementById('paymentRetry');
+                if (retryEl) {
+                    retryEl.style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
+                }
+                
+                if (manualCheckBtn) {
+                    manualCheckBtn.style.display = (status === 'processing' || status === 'pending') ? 'block' : 'none';
+                }
+                if (forceRefreshBtn) {
+                    forceRefreshBtn.style.display = (status === 'processing' || status === 'pending') ? 'block' : 'none';
+                }
+            }
+
+            function showStep(step) {
+                for (let i = 1; i <= 5; i++) {
+                    const el = document.getElementById(`step${i}`);
+                    if (el) el.classList.remove('active');
+                    const prog = document.getElementById(`step${i}Prog`);
+                    if (prog) {
+                        prog.classList.remove('active', 'completed');
+                        if (i < step) prog.classList.add('completed');
+                        if (i === step) prog.classList.add('active');
+                    }
+                }
+                document.getElementById(`step${step}`).classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            function getServicePrice(serviceId) {
+                const def = serviceDefinitions.find(s => s.id === serviceId);
+                return def ? fees[def.key] || 0 : 0;
+            }
+
+            function getServiceName(serviceId) {
+                const def = serviceDefinitions.find(s => s.id === serviceId);
+                return def ? def.name : 'Service';
+            }
+
+            function updateSummary() {
+                summaryService.textContent = selectedService ? getServiceName(selectedService) : '-';
+                summaryPurpose.textContent = selectedPurpose || 'Not selected';
+                summaryAmount.textContent = selectedService ? formatKES(getServicePrice(selectedService)) : 'KES 0';
+            }
+
+            function generateReference() {
+                const timestamp = Date.now().toString(36).toUpperCase();
+                const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+                const serviceCode = selectedService ? selectedService.substring(0, 3).toUpperCase() : 'SRV';
+                return `${serviceCode}-${timestamp}-${random}`;
+            }
+
+            function redirectToServicePage() {
+                if (!selectedService) {
+                    showMessage('No service selected', 'error');
+                    return;
+                }
+                
+                const page = SERVICE_PAGES[selectedService];
+                if (!page) {
+                    showMessage('Service page not found', 'error');
+                    return;
+                }
+                
+                const serviceData = {
+                    service: selectedService,
+                    purpose: selectedPurpose,
+                    clientType: clientType,
+                    paymentId: paymentId,
+                    userId: currentUser?.id,
+                    userEmail: currentUser?.email,
+                    reference: generateReference()
+                };
+                sessionStorage.setItem('autoV_service_data', JSON.stringify(serviceData));
+                
+                console.log('📤 Redirecting to:', page);
+                console.log('📤 Service Data:', serviceData);
+                
+                window.location.href = page;
+            }
+
+            // ─── LOAD FEES ──────────────────────────────────────────────
+            async function loadFees() {
+                try {
+                    const { data, error } = await supabase
+                        .from('system_settings')
+                        .select('setting_key, setting_value')
+                        .in('setting_key', ['instant_fee', 'valuation_fee', 'inspection_fee', 'assessment_fee', 'mileage_fee', 'fleet_fee', 'verification_fee']);
+                    
+                    if (error) throw error;
+                    
+                    const feeMap = {
+                        'instant_fee': 'instant',
+                        'valuation_fee': 'valuation',
+                        'inspection_fee': 'inspection',
+                        'assessment_fee': 'assessment',
+                        'mileage_fee': 'mileage',
+                        'fleet_fee': 'fleet',
+                        'verification_fee': 'verification'
+                    };
+                    
+                    data.forEach(row => {
+                        const key = feeMap[row.setting_key];
+                        if (key) fees[key] = parseInt(row.setting_value) || fees[key];
+                    });
+                    
+                    renderServices();
+                    console.log('✅ Fees loaded:', fees);
+                } catch (err) {
+                    console.warn('Could not load fees, using defaults:', err);
+                    renderServices();
+                }
+            }
+
+            // ─── RENDER SERVICES ───────────────────────────────────────
+            function renderServices() {
+                serviceCardsContainer.innerHTML = serviceDefinitions.map(s => `
+                    <div class="service-card" data-service="${s.id}">
+                        <div class="service-icon">${s.icon}</div>
+                        <h3>${s.name}</h3>
+                        <div class="service-price">${formatKES(fees[s.key] || 0)}</div>
+                        <p>${s.desc}</p>
+                    </div>
+                `).join('');
+
+                document.querySelectorAll('.service-card').forEach(card => {
+                    card.onclick = () => {
+                        document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+                        card.classList.add('selected');
+                        selectedService = card.dataset.service;
+                        selectedPurpose = null;
+                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                        updateSummary();
+                        document.getElementById('selectedServiceMsg').innerHTML = 
+                            `✅ Selected: ${getServiceName(selectedService)} - ${formatKES(getServicePrice(selectedService))}`;
+                        populatePurposes();
+                    };
+                });
+            }
+
+            // ─── POPULATE PURPOSES ─────────────────────────────────────
+            function populatePurposes() {
+                if (!selectedService || !servicePurposes[selectedService]) {
+                    purposeList.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Please select a service first</div>';
+                    return;
+                }
+
+                const serviceData = servicePurposes[selectedService];
+                purposeList.innerHTML = `
+                    <div style="grid-column:1/-1;text-align:center;color:#eab308;font-weight:600;margin-bottom:5px;">
+                        ${serviceData.title}
+                    </div>
+                    ${serviceData.purposes.map(p => 
+                        `<div class="purpose-item" data-purpose="${p}">${p}</div>`
+                    ).join('')}
+                `;
+                
+                document.querySelectorAll('.purpose-item').forEach(item => {
+                    item.onclick = () => {
+                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        selectedPurpose = item.dataset.purpose;
+                    };
+                });
+            }
+
+            // ─── AUTH FUNCTIONS ────────────────────────────────────────
+            async function checkFirstTimeUser(userId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('first_login, has_vehicle, login_count')
+                        .eq('id', userId)
+                        .maybeSingle();
+                    if (error || !data) return true;
+                    if (data.first_login === true || data.has_vehicle === false || data.login_count < 2) return true;
+                    return false;
+                } catch (err) { return true; }
+            }
+
+            async function updateUserProfile(userId, email, name) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_profiles')
+                        .select('id, login_count')
+                        .eq('id', userId)
+                        .maybeSingle();
+                    
+                    if (error || !data) {
+                        await supabase.from('user_profiles').insert({
+                            id: userId,
+                            email: email,
+                            full_name: name || email.split('@')[0],
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 1,
+                            client_type: clientType,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        });
+                        return true;
+                    } else {
+                        await supabase
+                            .from('user_profiles')
+                            .update({
+                                login_count: (data.login_count || 0) + 1,
+                                client_type: clientType,
+                                last_login: new Date().toISOString()
+                            })
+                            .eq('id', userId);
+                        return false;
+                    }
+                } catch (err) {
+                    console.error('Error updating profile:', err);
+                    return false;
+                }
+            }
+
+            // ─── LOGIN/SIGNUP ──────────────────────────────────────────
+            async function handleLogin(e) {
+                e.preventDefault();
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                
+                if (!email || !password) {
+                    showMessage('Please enter email and password', 'error');
+                    return;
+                }
+                
+                const loginBtn = document.querySelector('#loginForm button[type="submit"]');
+                const originalText = loginBtn.innerHTML;
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<span class="spinner"></span> Logging in...';
+                
+                try {
+                    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                    if (error) { 
+                        showMessage(error.message, 'error'); 
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = originalText;
+                        return; 
+                    }
+                    
+                    currentUser = data.user;
+                    const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+                    
+                    localStorage.setItem('autoV_user', JSON.stringify({ 
+                        id: currentUser.id, 
+                        email: currentUser.email,
+                        name: userName
+                    }));
+                    
+                    const isNew = await updateUserProfile(currentUser.id, currentUser.email, userName);
+                    isFirstTimeUser = await checkFirstTimeUser(currentUser.id);
+                    
+                    if (isFirstTimeUser || isNew) {
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        showMessage('👋 Welcome! Let\'s get you started.', 'success');
+                        document.getElementById('custEmail').value = currentUser.email;
+                        if (currentUser.user_metadata?.full_name) {
+                            document.getElementById('custName').value = currentUser.user_metadata.full_name;
+                        }
+                        showStep(2);
+                    } else {
+                        showMessage('✅ Welcome back!', 'success');
+                        showStep(3);
+                    }
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = originalText;
+                }
+            }
+
+            async function handleSignup(e) {
+                e.preventDefault();
+                const email = document.getElementById('signupEmail').value;
+                const password = document.getElementById('signupPassword').value;
+                const name = document.getElementById('signupName').value;
+                const phone = document.getElementById('signupPhone').value;
+                
+                if (!email || !password) {
+                    showMessage('Please enter email and password', 'error');
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    showMessage('Password must be at least 6 characters', 'error');
+                    return;
+                }
+                
+                const signupBtn = document.querySelector('#signupForm button[type="submit"]');
+                const originalText = signupBtn.innerHTML;
+                signupBtn.disabled = true;
+                signupBtn.innerHTML = '<span class="spinner"></span> Creating account...';
+                
+                try {
+                    const { data, error } = await supabase.auth.signUp({ 
+                        email, 
+                        password,
+                        options: { data: { full_name: name, phone: phone } }
+                    });
+                    
+                    if (error) { 
+                        showMessage(error.message, 'error');
+                        signupBtn.disabled = false;
+                        signupBtn.innerHTML = originalText;
+                        return; 
+                    }
+                    
+                    if (data.user) {
+                        await supabase.from('user_profiles').insert({
+                            id: data.user.id,
+                            email: email,
+                            full_name: name || email.split('@')[0],
+                            phone: phone || '',
+                            first_login: true,
+                            has_vehicle: false,
+                            login_count: 1,
+                            client_type: 'individual',
+                            created_at: new Date().toISOString()
+                        });
+                        
+                        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+                        if (!loginError && loginData.user) {
+                            currentUser = loginData.user;
+                            localStorage.setItem('autoV_user', JSON.stringify({ 
+                                id: currentUser.id, 
+                                email: currentUser.email,
+                                name: name || email.split('@')[0]
+                            }));
+                            document.getElementById('custEmail').value = email;
+                            if (name) document.getElementById('custName').value = name;
+                            document.getElementById('welcomeBanner').style.display = 'block';
+                            showMessage('✅ Account created!', 'success');
+                            showStep(2);
+                        }
+                    }
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                } finally {
+                    signupBtn.disabled = false;
+                    signupBtn.innerHTML = originalText;
+                }
+            }
+
+            // ─── CHECK PAYMENT STATUS (RATE LIMITED) ───────────────────
+            async function checkPaymentStatus() {
+                if (!paymentId) {
+                    return { status: 'unknown' };
+                }
+                
+                // ─── RATE LIMITING CHECK ──────────────────────────────────
+                const now = Date.now();
+                const timeSinceLastCheck = now - lastStatusCheck;
+                
+                if (timeSinceLastCheck < MIN_CHECK_INTERVAL) {
+                    console.log(`⏳ Rate limited: ${timeSinceLastCheck}ms since last check (min ${MIN_CHECK_INTERVAL}ms)`);
+                    consecutiveRateLimits++;
+                    if (consecutiveRateLimits > 3) {
+                        showRateLimitWarning(true);
+                    }
+                    return { status: 'rate_limited', retryAfter: MIN_CHECK_INTERVAL - timeSinceLastCheck };
+                }
+                
+                // Reset rate limit counter on successful check
+                consecutiveRateLimits = 0;
+                showRateLimitWarning(false);
+                lastStatusCheck = now;
+                
+                try {
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) {
+                        return { status: 'unknown', error: 'No token' };
+                    }
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 12000);
+                    
+                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    // ─── HANDLE 429 RATE LIMITING ──────────────────────────
+                    if (response.status === 429) {
+                        const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
+                        console.warn(`⚠️ Rate limited (429). Retry after ${retryAfter}s`);
+                        showRateLimitWarning(true);
+                        return { 
+                            status: 'rate_limited', 
+                            retryAfter: retryAfter * 1000,
+                            message: 'Too many requests. Please wait.'
+                        };
+                    }
+                    
+                    if (response.status === 404) {
+                        return { status: 'not_found' };
+                    }
+                    
+                    if (!response.ok) {
+                        return { status: 'error', code: response.status };
+                    }
+                    
+                    const data = await response.json();
+                    console.log('📊 Status check response:', data);
+                    
+                    const status = data.status || data.payment_status;
+                    const resultCode = data.result_code;
+                    
+                    // Check multiple completion indicators
+                    const isCompleted = 
+                        status === 'completed' || 
+                        resultCode === '0' ||
+                        data.result_code === '0' ||
+                        (data.payment_data && data.payment_data.receipt);
+                    
+                    if (isCompleted) {
+                        return { status: 'completed', data: data };
+                    }
+                    
+                    if (status === 'failed' || resultCode === '1' || resultCode === '1037') {
+                        return { status: 'failed', data: data };
+                    }
+                    
+                    return { status: status || 'pending', data: data };
+                    
+                } catch (err) {
+                    console.error('Status check error:', err);
+                    return { status: 'error', error: err.message };
+                }
+            }
+
+            function showRateLimitWarning(show) {
+                if (rateLimitWarning) {
+                    rateLimitWarning.style.display = show ? 'block' : 'none';
+                }
+                if (show) {
+                    setTimeout(() => {
+                        if (rateLimitWarning) {
+                            rateLimitWarning.style.display = 'none';
+                        }
+                    }, 5000);
+                }
+            }
+
+            // ─── PAYMENT HANDLER ───────────────────────────────────────
+            async function processPayment(e) {
+                e.preventDefault();
+                
+                if (paymentInProgress) return;
+                paymentInProgress = true;
+                manualCheckAttempt = 0;
+                isPaymentConfirmed = false;
+                
+                const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
+                let formattedPhone = mpesaPhone.replace(/[\s\-+]/g, '');
+                if (formattedPhone.startsWith('0')) {
+                    formattedPhone = '254' + formattedPhone.substring(1);
+                } else if (formattedPhone.startsWith('7') && formattedPhone.length === 9) {
+                    formattedPhone = '254' + formattedPhone;
+                }
+                
+                if (!formattedPhone || formattedPhone.length < 10) {
+                    showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678)', 'error');
+                    paymentInProgress = false;
+                    return;
+                }
+                if (!selectedService) {
+                    showMessage('Select a service first', 'error');
+                    paymentInProgress = false;
+                    return;
+                }
+                if (!selectedPurpose) {
+                    showMessage('Select a purpose first', 'error');
+                    paymentInProgress = false;
+                    return;
+                }
+                
+                const payBtn = document.getElementById('payBtn');
+                const originalText = payBtn.innerHTML;
+                payBtn.disabled = true;
+                payBtn.innerHTML = '<span class="spinner"></span> Initiating Payment...';
+                setPaymentStatus('pending', '⏳ Initiating payment...');
+                document.getElementById('paymentRetry').style.display = 'none';
+                
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        showMessage('Please login again', 'error');
+                        window.location.href = "login.html";
+                        return;
+                    }
+                    
+                    const price = getServicePrice(selectedService);
+                    
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) {
+                        throw new Error('No authentication token available');
+                    }
+                    
+                    const reference = generateReference();
+                    
+                    const payload = {
+                        phone: formattedPhone,
+                        amount: price,
+                        service: selectedService,
+                        purpose: selectedPurpose,
+                        client_type: clientType,
+                        reference: reference,
+                        payment_reference: reference
+                    };
+                    
+                    console.log('📦 PAYLOAD:', payload);
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000);
+                    
+                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/initiate`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const text = await response.text();
+                        console.error('Non-JSON response:', text);
+                        throw new Error('Server returned non-JSON response');
+                    }
+                    
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || err.details || 'STK Push initiation failed');
+                    }
+                    
+                    const result = await response.json();
+                    console.log('✅ Payment initiated:', result);
+                    
+                    paymentId = result.data?.payment_id || 
+                              result.data?.id || 
+                              result.data?.checkout_request_id ||
+                              result.payment_id || 
+                              result.id || 
+                              result.checkout_request_id;
+                    
+                    if (!paymentId) {
+                        console.error('❌ No payment ID found in response:', result);
+                        throw new Error('No payment ID returned from server');
+                    }
+                    
+                    window.paymentId = paymentId;
+                    console.log('✅ Payment ID:', paymentId);
+                    
+                    setPaymentStatus('processing', '📲 STK Push sent to your phone. Please confirm.');
+                    payBtn.innerHTML = '<span class="spinner"></span> Waiting for confirmation...';
+                    
+                    if (pollInterval) clearInterval(pollInterval);
+                    
+                    let attempts = 0;
+                    const maxAttempts = 20;
+                    let pollDelay = 4000;
+                    let backoffFactor = 1.3;
+                    let maxDelay = 15000;
+                    
+                    async function pollWithBackoff() {
+                        attempts++;
+                        console.log(`⏳ Polling attempt ${attempts}/${maxAttempts} (delay: ${pollDelay}ms)`);
+                        
+                        try {
+                            const statusResult = await checkPaymentStatus();
+                            console.log('📊 Status result:', statusResult);
+                            
+                            // ─── HANDLE RATE LIMITING ──────────────────────
+                            if (statusResult.status === 'rate_limited') {
+                                const retryMs = statusResult.retryAfter || 5000;
+                                console.log(`⏳ Rate limited. Waiting ${retryMs}ms before retry...`);
+                                showRateLimitWarning(true);
+                                
+                                if (attempts < maxAttempts) {
+                                    setTimeout(pollWithBackoff, Math.min(retryMs + 1000, maxDelay));
+                                }
+                                return;
+                            }
+                            
+                            if (statusResult.status === 'completed') {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('completed', '✅ Payment confirmed!');
+                                payBtn.innerHTML = '✅ Payment Complete';
+                                showMessage('Payment successful! Redirecting to service page...', 'success');
+                                isPaymentConfirmed = true;
+                                showRateLimitWarning(false);
+                                
+                                setTimeout(() => {
+                                    redirectToServicePage();
+                                }, 1500);
+                                
+                                payBtn.disabled = false;
+                                paymentInProgress = false;
+                                manualCheckBtn.style.display = 'none';
+                                forceRefreshBtn.style.display = 'none';
+                                return;
+                            }
+                            
+                            if (statusResult.status === 'failed') {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('failed', '❌ Payment failed. Please try again.');
+                                showMessage('Payment failed. Please try again.', 'error');
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
+                                document.getElementById('paymentRetry').style.display = 'block';
+                                manualCheckBtn.style.display = 'block';
+                                forceRefreshBtn.style.display = 'block';
+                                showRateLimitWarning(false);
+                                return;
+                            }
+                            
+                            if (attempts >= maxAttempts) {
+                                clearInterval(pollInterval);
+                                setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
+                                showMessage('Payment timed out. Check your M-Pesa messages.', 'error');
+                                payBtn.disabled = false;
+                                payBtn.innerHTML = originalText;
+                                paymentInProgress = false;
+                                document.getElementById('paymentRetry').style.display = 'block';
+                                manualCheckBtn.style.display = 'block';
+                                forceRefreshBtn.style.display = 'block';
+                                showRateLimitWarning(false);
+                                return;
+                            }
+                            
+                            // ─── EXPONENTIAL BACKOFF WITH JITTER ──────────
+                            pollDelay = Math.min(pollDelay * backoffFactor + (Math.random() * 1000), maxDelay);
+                            setTimeout(pollWithBackoff, pollDelay);
+                            
+                        } catch (err) {
+                            console.error('Polling error:', err);
+                            if (attempts < maxAttempts) {
+                                pollDelay = Math.min(pollDelay * 1.5 + 2000, maxDelay);
+                                setTimeout(pollWithBackoff, pollDelay);
+                            }
+                        }
+                    }
+                    
+                    setTimeout(pollWithBackoff, 2000);
+                    
+                } catch (err) {
+                    console.error('Payment error:', err);
+                    if (err.name === 'AbortError') {
+                        setPaymentStatus('failed', '❌ Request timed out. Please try again.');
+                        showMessage('Request timed out. Please try again.', 'error');
+                    } else {
+                        setPaymentStatus('failed', '❌ ' + err.message);
+                        showMessage('Payment failed: ' + err.message, 'error');
+                    }
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = originalText;
+                    paymentInProgress = false;
+                    document.getElementById('paymentRetry').style.display = 'block';
+                    manualCheckBtn.style.display = 'block';
+                    forceRefreshBtn.style.display = 'block';
+                }
+            }
+
+            // ─── MANUAL CHECK PAYMENT ──────────────────────────────────
+            async function manualCheckPayment() {
+                console.log('🔍 Manual check triggered for paymentId:', paymentId);
+                
+                if (!paymentId) {
+                    showMessage('No payment in progress', 'error');
+                    return;
+                }
+                
+                manualCheckBtn.disabled = true;
+                manualCheckBtn.innerHTML = '<span class="spinner"></span> Checking...';
+                manualCheckAttempt++;
+                
+                try {
+                    const statusResult = await checkPaymentStatus();
+                    console.log('📊 Manual check result:', statusResult);
+                    
+                    if (statusResult.status === 'rate_limited') {
+                        const waitTime = Math.ceil((statusResult.retryAfter || 3000) / 1000);
+                        showMessage(`⏳ Rate limited. Please wait ${waitTime} seconds.`, 'info');
+                        showRateLimitWarning(true);
+                        manualCheckBtn.disabled = false;
+                        manualCheckBtn.innerHTML = '🔄 Check Payment Status';
+                        return;
+                    }
+                    
+                    if (statusResult.status === 'completed') {
+                        setPaymentStatus('completed', '✅ Payment confirmed!');
+                        showMessage('Payment successful! Redirecting...', 'success');
+                        isPaymentConfirmed = true;
+                        setTimeout(() => {
+                            redirectToServicePage();
+                        }, 1500);
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                        manualCheckBtn.style.display = 'none';
+                        forceRefreshBtn.style.display = 'none';
+                        showRateLimitWarning(false);
+                    } else if (statusResult.status === 'failed') {
+                        setPaymentStatus('failed', '❌ Payment failed.');
+                        showMessage('Payment failed. Please retry.', 'error');
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                    } else if (statusResult.status === 'pending') {
+                        showMessage('⏳ Payment is still pending. Please wait or check your M-Pesa.', 'info');
+                    } else {
+                        showMessage(`Payment status: ${statusResult.status || 'unknown'}`, 'info');
+                    }
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        showMessage('Request timed out. Please try again.', 'error');
+                    } else {
+                        console.error('Manual check error:', err);
+                        showMessage('Error checking status. Please try again.', 'error');
+                    }
+                } finally {
+                    manualCheckBtn.disabled = false;
+                    manualCheckBtn.innerHTML = '🔄 Check Payment Status';
+                }
+            }
+
+            // ─── FORCE REFRESH ──────────────────────────────────────────
+            async function forceRefreshStatus() {
+                console.log('🔄 Force refresh triggered for paymentId:', paymentId);
+                
+                if (!paymentId) {
+                    showMessage('No payment in progress', 'error');
+                    return;
+                }
+                
+                forceRefreshBtn.disabled = true;
+                forceRefreshBtn.innerHTML = '<span class="spinner"></span> Refreshing...';
+                
+                try {
+                    const statusResult = await checkPaymentStatus();
+                    console.log('📊 Refresh result:', statusResult);
+                    
+                    if (statusResult.status === 'rate_limited') {
+                        const waitTime = Math.ceil((statusResult.retryAfter || 3000) / 1000);
+                        showMessage(`⏳ Rate limited. Please wait ${waitTime} seconds.`, 'info');
+                        showRateLimitWarning(true);
+                        forceRefreshBtn.disabled = false;
+                        forceRefreshBtn.innerHTML = '🔄 Refresh Status';
+                        return;
+                    }
+                    
+                    if (statusResult.status === 'completed') {
+                        setPaymentStatus('completed', '✅ Payment confirmed!');
+                        showMessage('Payment successful! Redirecting...', 'success');
+                        isPaymentConfirmed = true;
+                        setTimeout(() => {
+                            redirectToServicePage();
+                        }, 1500);
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                        manualCheckBtn.style.display = 'none';
+                        forceRefreshBtn.style.display = 'none';
+                        showRateLimitWarning(false);
+                    } else if (statusResult.status === 'failed') {
+                        setPaymentStatus('failed', '❌ Payment failed.');
+                        showMessage('Payment failed. Please retry.', 'error');
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                    } else {
+                        showMessage(`Payment status: ${statusResult.status || 'pending'}`, 'info');
+                        setPaymentStatus('processing', `⏳ ${statusResult.status || 'Pending...'}`);
+                    }
+                } catch (err) {
+                    console.error('Refresh error:', err);
+                    showMessage('Error refreshing status. Please try again.', 'error');
+                } finally {
+                    forceRefreshBtn.disabled = false;
+                    forceRefreshBtn.innerHTML = '🔄 Refresh Status';
+                }
+            }
+
+            // ─── CHECK SESSION ─────────────────────────────────────────
+            async function checkExistingSession() {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    currentUser = user;
+                    const isFirst = await checkFirstTimeUser(user.id);
+                    if (isFirst) {
+                        document.getElementById('welcomeBanner').style.display = 'block';
+                        document.getElementById('custEmail').value = user.email;
+                        if (user.user_metadata?.full_name) {
+                            document.getElementById('custName').value = user.user_metadata.full_name;
+                        }
+                        showStep(2);
+                    } else {
+                        showStep(3);
+                    }
+                }
+            }
+
+            // ─── INIT ────────────────────────────────────────────────────
+            async function init() {
+                console.log('🚀 Initializing AUTO-V Customer Portal (Production)...');
+                await loadFees();
+                await checkExistingSession();
+                if (!document.querySelector('.step.active')) {
+                    showStep(1);
+                }
+                console.log('✅ Customer Portal ready');
+                console.log(`📡 Connected to: ${CONFIG.API_BASE}`);
+                console.log(`🔑 M-Pesa Shortcode: ${CONFIG.MPESA_SHORTCODE}`);
+                console.log('📄 Service Pages: valuation.html, inspection.html, mileage.html, assessment.html, fleet.html, verify.html');
+                console.log('⏳ Rate limiting: Minimum ' + MIN_CHECK_INTERVAL + 'ms between status checks');
+            }
+
+            // ─── EVENT LISTENERS ────────────────────────────────────────
+            document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
+            document.getElementById('signupForm')?.addEventListener('submit', handleSignup);
+            document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
+            document.getElementById('paymentForm')?.addEventListener('submit', processPayment);
+            
+            document.getElementById('backToLogin')?.addEventListener('click', () => showStep(1));
+            document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
+            document.getElementById('backToService')?.addEventListener('click', () => showStep(3));
+            document.getElementById('backToPurpose')?.addEventListener('click', () => showStep(4));
+            
+            document.getElementById('nextStep3Btn')?.addEventListener('click', () => { 
+                if(selectedService) {
+                    populatePurposes();
+                    showStep(4); 
+                } else showMessage('Select a service', 'error'); 
+            });
+            document.getElementById('nextStep4Btn')?.addEventListener('click', () => { 
+                if(selectedPurpose) {
+                    updateSummary();
+                    showStep(5); 
+                } else showMessage('Select a purpose', 'error'); 
+            });
+            
+            document.getElementById('logoutBtn')?.addEventListener('click', async () => { 
+                await supabase.auth.signOut(); 
+                localStorage.removeItem('autoV_user');
+                window.location.href = "index.html"; 
+            });
+            
+            document.getElementById('showSignup')?.addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'block';
+            });
+            document.getElementById('hideSignup')?.addEventListener('click', () => {
+                document.getElementById('signupSection').style.display = 'none';
+            });
+            
+            document.getElementById('retryPaymentBtn')?.addEventListener('click', function() {
+                document.getElementById('paymentStatus').style.display = 'none';
+                document.getElementById('paymentRetry').style.display = 'none';
+                if (manualCheckBtn) manualCheckBtn.style.display = 'none';
+                if (forceRefreshBtn) forceRefreshBtn.style.display = 'none';
+                if (pollInterval) clearInterval(pollInterval);
+                paymentInProgress = false;
+                processPayment(new Event('submit'));
+            });
+
+            // ─── MANUAL CHECK BUTTON ────────────────────────────────────
+            if (manualCheckBtn) {
+                manualCheckBtn.addEventListener('click', manualCheckPayment);
+            }
+
+            // ─── FORCE REFRESH BUTTON ───────────────────────────────────
+            if (forceRefreshBtn) {
+                forceRefreshBtn.addEventListener('click', forceRefreshStatus);
+            }
+
+            // ─── CLIENT TYPE SELECTOR ───────────────────────────────────
+            document.querySelectorAll('.client-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.client-type-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    clientType = this.dataset.type;
+                    
+                    if (clientType === 'corporate') {
+                        document.getElementById('corporateFields').classList.add('show');
+                        document.getElementById('individualFields').style.display = 'none';
+                    } else {
+                        document.getElementById('corporateFields').classList.remove('show');
+                        document.getElementById('individualFields').style.display = 'block';
+                    }
+                });
+            });
+
+            // ─── START ───────────────────────────────────────────────────
+            init();
+
+        })();
+    </script>
+</body>
+</html>
