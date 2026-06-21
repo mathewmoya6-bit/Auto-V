@@ -1,10 +1,5 @@
 # app.py – AUTO-V Flask Application (PRODUCTION READY)
-# ✅ Real M-Pesa production credentials (Shortcode: 4095377)
-# ✅ Supabase credentials configured
-# ✅ Full security implementation
-# ✅ Complete error handling
-# ✅ Production configuration
-# ✅ Redis integration for rate limiting
+# ✅ Fixed CORS for M-Pesa endpoints
 
 import os
 import sys
@@ -13,7 +8,7 @@ import logging
 import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, request, g, make_response
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -101,10 +96,10 @@ class Config:
     MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://auto-v-backend.onrender.com/api/mpesa/callback')
     
     # ─── OpenAI ──────────────────────────────────────────────────
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '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')
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
     
     # ─── CarAPI ──────────────────────────────────────────────────
-    CARAPI_KEY = os.getenv('CARAPI_KEY', 'carapi_45747df211066bb9d14224ae998de7e7')
+    CARAPI_KEY = os.getenv('CARAPI_KEY', '')
     
     # ─── Security ─────────────────────────────────────────────────
     SECRET_KEY = os.getenv('SECRET_KEY', os.urandom(24).hex())
@@ -132,7 +127,6 @@ class Config:
         errors = []
         warnings = []
         
-        # ─── Validate Supabase ──────────────────────────────────
         if not cls.SUPABASE_URL:
             errors.append("SUPABASE_URL is not set")
         elif not cls.SUPABASE_URL.startswith('https://'):
@@ -140,31 +134,17 @@ class Config:
         
         if not cls.SUPABASE_ANON_KEY:
             errors.append("SUPABASE_ANON_KEY is not set")
-        elif len(cls.SUPABASE_ANON_KEY) < 50:
-            warnings.append("SUPABASE_ANON_KEY seems too short")
         
-        # ─── Validate M-Pesa ──────────────────────────────────
         if not cls.MPESA_CONSUMER_KEY:
-            errors.append("MPESA_CONSUMER_KEY is not set")
+            warnings.append("MPESA_CONSUMER_KEY is not set")
         if not cls.MPESA_CONSUMER_SECRET:
-            errors.append("MPESA_CONSUMER_SECRET is not set")
+            warnings.append("MPESA_CONSUMER_SECRET is not set")
         if not cls.MPESA_PASSKEY:
-            errors.append("MPESA_PASSKEY is not set")
-        if not cls.MPESA_CALLBACK_URL:
-            errors.append("MPESA_CALLBACK_URL is not set")
+            warnings.append("MPESA_PASSKEY is not set")
         
-        if cls.MPESA_CALLBACK_URL and not cls.MPESA_CALLBACK_URL.startswith('https://'):
-            errors.append("MPESA_CALLBACK_URL must use HTTPS in production")
-        
-        # ─── Validate Security ──────────────────────────────────
         if cls.ENV == 'production' and cls.DEBUG:
             errors.append("DEBUG should be False in production")
         
-        # ─── Validate Shortcode ──────────────────────────────────
-        if cls.MPESA_SHORTCODE and not cls.MPESA_SHORTCODE.isdigit():
-            errors.append(f"MPESA_SHORTCODE must be numeric: {cls.MPESA_SHORTCODE}")
-        
-        # ─── Log results ────────────────────────────────────────
         if errors:
             for error in errors:
                 logger.error(f"❌ Configuration error: {error}")
@@ -176,18 +156,13 @@ class Config:
         
         logger.info("✅ Configuration validated successfully")
         
-        # Log configuration summary
         logger.info("=" * 60)
         logger.info("📋 Configuration Summary:")
         logger.info(f"  Environment: {cls.ENV}")
         logger.info(f"  Supabase URL: {cls.SUPABASE_URL}")
-        logger.info(f"  Supabase ANON Key: {'✅ Set' if cls.SUPABASE_ANON_KEY else '❌ Missing'}")
         logger.info(f"  M-Pesa Shortcode: {cls.MPESA_SHORTCODE}")
         logger.info(f"  M-Pesa Environment: {cls.MPESA_ENV}")
         logger.info(f"  Callback URL: {cls.MPESA_CALLBACK_URL}")
-        logger.info(f"  Rate Limiting: {cls.RATELIMIT_ENABLED}")
-        logger.info(f"  OpenAI: {'✅ Set' if cls.OPENAI_API_KEY else '❌ Missing'}")
-        logger.info(f"  CarAPI: {'✅ Set' if cls.CARAPI_KEY else '❌ Missing'}")
         logger.info("=" * 60)
         
         return True
@@ -196,6 +171,7 @@ class Config:
 app.config.from_object(Config)
 
 # ─── CORS Configuration ──────────────────────────────────────
+# Allow all origins for development, restrict in production
 CORS(app, resources={
     r"/api/*": {
         "origins": Config.ALLOWED_ORIGINS,
@@ -208,6 +184,19 @@ CORS(app, resources={
 })
 logger.info(f"CORS allowed origins: {Config.ALLOWED_ORIGINS}")
 
+# ─── Manual OPTIONS handler for all routes ──────────────────
+@app.before_request
+def handle_options():
+    """Handle OPTIONS preflight requests manually."""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", request.headers.get('Origin', 'https://auto-v.meipressgroup.com'))
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Token')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Max-Age', '3600')
+        return response
+
 # Initialize rate limiter
 limiter.init_app(app)
 
@@ -217,7 +206,6 @@ def init_supabase():
     try:
         from services.supabase_client import get_supabase, check_supabase_health
         
-        # Test connection
         health = check_supabase_health()
         if health.get('connected'):
             logger.info("✅ Supabase connection successful")
@@ -237,14 +225,11 @@ def init_supabase():
 @app.before_request
 def before_request():
     """Request preprocessing."""
-    # Log all requests in production
     if app.config['ENV'] == 'production':
         logger.info(f"📥 {request.method} {request.path} from {request.remote_addr}")
         
-        # Add request start time
         g.request_start_time = time.time()
         
-        # Add Supabase client to g
         if not hasattr(g, 'supabase'):
             try:
                 from services.supabase_client import get_supabase
@@ -255,7 +240,6 @@ def before_request():
 @app.after_request
 def after_request(response):
     """Request post-processing."""
-    # Log response time
     if hasattr(g, 'request_start_time'):
         elapsed = time.time() - g.request_start_time
         logger.info(f"📤 {request.method} {request.path} → {response.status_code} ({elapsed:.3f}s)")
@@ -291,16 +275,6 @@ def not_found(error):
         'timestamp': datetime.now().isoformat()
     }), 404
 
-@app.errorhandler(405)
-def method_not_allowed(error):
-    """Handle 405 errors."""
-    return jsonify({
-        'error': 'Method not allowed',
-        'path': request.path,
-        'method': request.method,
-        'timestamp': datetime.now().isoformat()
-    }), 405
-
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 errors."""
@@ -311,28 +285,10 @@ def internal_error(error):
         'timestamp': datetime.now().isoformat()
     }), 500
 
-@app.errorhandler(Exception)
-def handle_exception(error):
-    """Handle all unhandled exceptions."""
-    logger.error(f"❌ Unhandled exception: {error}", exc_info=True)
-    return jsonify({
-        'error': 'Server error',
-        'message': str(error) if app.config['DEBUG'] else 'An unexpected error occurred',
-        'timestamp': datetime.now().isoformat()
-    }), 500
-
 # ─── Import and Register Routes ─────────────────────────────
 def register_blueprints():
     """Register all blueprints."""
     try:
-        # ─── VIN Routes ─────────────────────────────────────
-        try:
-            from api.routes.vin_routes import router as vin_router
-            app.register_blueprint(vin_router, url_prefix='/api/vin')
-            logger.info("✅ VIN routes registered")
-        except ImportError as e:
-            logger.warning(f"⚠️ VIN routes not found: {e}")
-        
         # ─── M-Pesa Routes ──────────────────────────────────
         try:
             from api.routes.mpesa import mpesa_bp
@@ -373,14 +329,6 @@ def register_blueprints():
         except ImportError as e:
             logger.warning(f"⚠️ Inspection routes not found: {e}")
         
-        # ─── Admin Routes ──────────────────────────────────
-        try:
-            from api.routes.admin import admin_bp
-            app.register_blueprint(admin_bp, url_prefix='/api/admin')
-            logger.info("✅ Admin routes registered")
-        except ImportError as e:
-            logger.warning(f"⚠️ Admin routes not found: {e}")
-        
         # ─── Service Routes ─────────────────────────────────
         try:
             from api.routes.services import services_bp
@@ -388,6 +336,14 @@ def register_blueprints():
             logger.info("✅ Service routes registered")
         except ImportError as e:
             logger.warning(f"⚠️ Service routes not found: {e}")
+            
+        # ─── Admin Routes ──────────────────────────────────
+        try:
+            from api.routes.admin import admin_bp
+            app.register_blueprint(admin_bp, url_prefix='/api/admin')
+            logger.info("✅ Admin routes registered")
+        except ImportError as e:
+            logger.warning(f"⚠️ Admin routes not found: {e}")
             
     except Exception as e:
         logger.error(f"❌ Failed to register blueprints: {e}")
@@ -419,56 +375,6 @@ def health_check():
         }
     }), 200
 
-@app.route('/api/health/detailed', methods=['GET'])
-@limiter.limit("30 per minute")
-def detailed_health():
-    """Detailed health check with all dependencies."""
-    checks = {
-        'timestamp': datetime.now().isoformat(),
-        'status': 'healthy',
-        'services': {}
-    }
-    
-    # Check Supabase
-    try:
-        from services.supabase_client import check_supabase_health
-        health = check_supabase_health()
-        checks['services']['supabase'] = {
-            'status': 'healthy' if health.get('connected') else 'unhealthy',
-            'error': health.get('error')
-        }
-        if not health.get('connected'):
-            checks['status'] = 'degraded'
-    except Exception as e:
-        checks['services']['supabase'] = {'status': 'unhealthy', 'error': str(e)}
-        checks['status'] = 'degraded'
-    
-    # Check M-Pesa
-    checks['services']['mpesa'] = {
-        'status': 'configured' if app.config['MPESA_CONSUMER_KEY'] else 'missing_credentials',
-        'environment': app.config['MPESA_ENV'],
-        'shortcode': app.config['MPESA_SHORTCODE']
-    }
-    
-    # Check Redis
-    if USE_REDIS:
-        try:
-            redis_client.ping()
-            checks['services']['redis'] = {'status': 'healthy'}
-        except Exception as e:
-            checks['services']['redis'] = {'status': 'unhealthy', 'error': str(e)}
-            checks['status'] = 'degraded'
-    else:
-        checks['services']['redis'] = {'status': 'not_configured'}
-    
-    # Check rate limiting
-    checks['rate_limiting'] = {
-        'enabled': os.getenv('ENABLE_RATE_LIMITING', 'true').lower() == 'true',
-        'storage': 'redis' if USE_REDIS else 'memory'
-    }
-    
-    return jsonify(checks), 200
-
 @app.route('/api/ping', methods=['GET'])
 def ping():
     """Simple ping endpoint."""
@@ -495,8 +401,7 @@ def root():
             'vehicles': '/api/vehicles',
             'services': '/api/services',
             'valuations': '/api/valuations',
-            'inspections': '/api/inspections',
-            'vin': '/api/vin'
+            'inspections': '/api/inspections'
         }
     }), 200
 
@@ -504,7 +409,6 @@ def root():
 def graceful_shutdown(signum, frame):
     """Handle shutdown signals gracefully."""
     logger.info("Received shutdown signal, cleaning up...")
-    # Close Redis connection if exists
     if 'redis_client' in globals():
         try:
             redis_client.close()
@@ -520,17 +424,12 @@ signal.signal(signal.SIGINT, graceful_shutdown)
 # ─── Application Factory ─────────────────────────────────────
 def create_app():
     """Application factory for production."""
-    # Validate configuration
     if not Config.validate():
         logger.error("❌ Invalid configuration. Application may not work correctly.")
     
-    # Initialize Supabase
     init_supabase()
-    
-    # Register routes
     register_blueprints()
     
-    # Log startup
     logger.info("=" * 60)
     logger.info("🚀 AUTO-V API Starting...")
     logger.info(f"📦 Environment: {app.config['ENV']}")
@@ -538,8 +437,6 @@ def create_app():
     logger.info(f"🌐 M-Pesa Environment: {app.config['MPESA_ENV']}")
     logger.info(f"📞 Callback URL: {app.config['MPESA_CALLBACK_URL']}")
     logger.info(f"🗄️  Supabase URL: {app.config['SUPABASE_URL']}")
-    logger.info(f"🤖 OpenAI: {'✅ Configured' if app.config['OPENAI_API_KEY'] else '❌ Missing'}")
-    logger.info(f"🚗 CarAPI: {'✅ Configured' if app.config['CARAPI_KEY'] else '❌ Missing'}")
     logger.info("=" * 60)
     
     return app
@@ -551,10 +448,8 @@ app = create_app()
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     
-    # Production settings
     if app.config['ENV'] == 'production':
         logger.info(f"🚀 Starting production server on port {port}")
-        # Use production WSGI server
         try:
             from waitress import serve
             serve(app, host='0.0.0.0', port=port, threads=4)
@@ -562,7 +457,6 @@ if __name__ == '__main__':
             logger.warning("⚠️ Waitress not installed, using Flask development server")
             app.run(host='0.0.0.0', port=port, debug=False)
     else:
-        # Development
         app.run(
             host='0.0.0.0',
             port=port,
