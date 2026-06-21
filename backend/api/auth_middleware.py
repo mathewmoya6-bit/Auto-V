@@ -1,4 +1,4 @@
-# api/auth_middleware.py – Enterprise Auth Layer v2 (PRODUCTION READY - NO AWAIT)
+# api/auth_middleware.py - FIXED
 
 import os
 import logging
@@ -9,8 +9,9 @@ from functools import wraps
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 from flask import request, jsonify, g, current_app
-from services.supabase_client import get_supabase
-from flask_limiter.util import get_remote_address
+
+# ─── FIXED: Import the correct Supabase client ──────────────────
+from services.supabase_client import get_supabase_client as get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ logger = logging.getLogger(__name__)
 SUPABASE_JWT_SECRET = os.getenv('SUPABASE_JWT_SECRET', '')
 SUPABASE_URL = os.getenv('SUPABASE_URL', '')
 SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY', '')
-AUTH_SESSION_TIMEOUT = int(os.getenv('AUTH_SESSION_TIMEOUT', '3600'))  # 1 hour
-AUTH_REFRESH_TIMEOUT = int(os.getenv('AUTH_REFRESH_TIMEOUT', '604800'))  # 7 days
+AUTH_SESSION_TIMEOUT = int(os.getenv('AUTH_SESSION_TIMEOUT', '3600'))
+AUTH_REFRESH_TIMEOUT = int(os.getenv('AUTH_REFRESH_TIMEOUT', '604800'))
 
 # ─── ROLE HIERARCHY ────────────────────────────────────────
 ROLES = {
@@ -69,6 +70,7 @@ class SessionManager:
     def create_session(user_id: str, device_info: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new session for a user."""
         try:
+            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             session_data = {
                 'user_id': user_id,
@@ -95,6 +97,7 @@ class SessionManager:
     def validate_session(session_token: str) -> Tuple[bool, Optional[Dict]]:
         """Validate a session token."""
         try:
+            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             result = supabase.table('user_sessions')\
                 .select('*')\
@@ -109,14 +112,12 @@ class SessionManager:
             expires_at = datetime.fromisoformat(session['expires_at'])
 
             if datetime.now() > expires_at:
-                # Session expired
                 supabase.table('user_sessions').update({
                     'is_active': False,
                     'expired_at': datetime.now().isoformat()
                 }).eq('id', session['id']).execute()
                 return False, None
 
-            # Update last activity
             supabase.table('user_sessions').update({
                 'last_activity': datetime.now().isoformat()
             }).eq('id', session['id']).execute()
@@ -130,6 +131,7 @@ class SessionManager:
     def revoke_session(session_token: str) -> bool:
         """Revoke a session."""
         try:
+            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             result = supabase.table('user_sessions')\
                 .update({
@@ -147,6 +149,7 @@ class SessionManager:
     def revoke_all_sessions(user_id: str) -> bool:
         """Revoke all sessions for a user."""
         try:
+            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             result = supabase.table('user_sessions')\
                 .update({
@@ -169,6 +172,7 @@ class AuditLogger:
     def log_event(user_id: Optional[str], action: str, details: Dict[str, Any], status: str = 'success'):
         """Log an audit event."""
         try:
+            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             audit_data = {
                 'user_id': user_id,
@@ -210,7 +214,6 @@ def validate_jwt(token: str) -> dict:
         raise ValueError("No token provided")
 
     try:
-        # Primary: Verify with Supabase JWT secret
         if SUPABASE_JWT_SECRET:
             try:
                 payload = jwt.decode(
@@ -237,9 +240,9 @@ def validate_jwt(token: str) -> dict:
                 raise ValueError("Invalid token issuer")
             except jwt.InvalidTokenError:
                 logger.warning("Invalid JWT token")
-                pass  # Try fallback
+                pass
 
-        # Fallback: Verify via Supabase Auth API
+        # ─── FIXED: Use the correct Supabase function ──────────
         supabase = get_supabase()
         response = supabase.auth.get_user(token)
         if response and response.user:
@@ -286,7 +289,7 @@ def get_user_from_token(token: str) -> dict:
             'user_metadata': payload.get('user_metadata', {})
         }
 
-        # Check if user exists in database
+        # ─── FIXED: Use the correct Supabase function ──────────
         try:
             supabase = get_supabase()
             response = supabase.table('user_profiles')\
@@ -349,7 +352,6 @@ def require_auth(f):
             if any(request.path.startswith(p) for p in PUBLIC_ENDPOINTS):
                 return f(None, *args, **kwargs)
 
-            # Skip auth for OPTIONS
             if request.method == 'OPTIONS':
                 return f(None, *args, **kwargs)
 
@@ -542,4 +544,4 @@ def get_user_rate_limit_key():
     except:
         pass
 
-    return f"ip:{get_remote_address()}"
+    return f"ip:{request.remote_addr}"
