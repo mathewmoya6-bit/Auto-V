@@ -1,106 +1,129 @@
-# backend/services/vin_ocr.py
+# services/vin_ocr.py
 import os
-import json
-import re
 import logging
-from typing import Optional, Dict, Any
-from openai import OpenAI
-from config import config
+import base64
+from typing import Dict, Any, Optional
+from services.carapi_service import get_carapi_service
+from services.vin_validator import vin_validator
 
 logger = logging.getLogger(__name__)
 
-class VinOCRService:
-    def __init__(self):
-        # Secure: Get from config, not hardcoded
-        self.api_key = config.OPENAI_API_KEY
-        
-        if not self.api_key:
-            logger.error("OPENAI_API_KEY not configured!")
-            raise ValueError("OPENAI_API_KEY is required")
-        
-        # Initialize client with secure key
-        self.client = OpenAI(api_key=self.api_key)
-        self.supported_models = ["gpt-4o", "gpt-4-vision-preview", "gpt-4-turbo"]
-        self.current_model = "gpt-4o"
-        self.cache = {}
-        self.cache_ttl = 3600
-        
-        logger.info("VIN OCR Service initialized securely")
+def extract_vin_from_image(image_url: str) -> Dict[str, Any]:
+    """
+    Extract VIN from image using CarAPI OCR
     
-    def extract_vin_from_image(self, image_url: str) -> Dict[str, Any]:
-        """Extract VIN from image using OpenAI Vision API"""
-        try:
-            # Securely call OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.current_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Extract the 17-character VIN number from this vehicle image."
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "What is the VIN number?"
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": image_url,
-                                    "detail": "high"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=50,
-                temperature=0.0
-            )
-            
-            # Parse response
-            content = response.choices[0].message.content.strip()
-            vin = self._extract_vin_from_text(content)
-            
+    Args:
+        image_url: URL of the vehicle image
+        
+    Returns:
+        Dict with extracted VIN and confidence
+    """
+    try:
+        carapi = get_carapi_service()
+        result = carapi.extract_vin_from_image(image_url)
+        
+        if "error" in result:
+            logger.error(f"CarAPI OCR error: {result['error']}")
             return {
-                "vin": vin,
-                "extracted": vin is not None,
-                "model_used": self.current_model,
-                "valid_vin": self._validate_vin(vin) if vin else False
-            }
-            
-        except Exception as e:
-            logger.error(f"VIN extraction error: {str(e)}")
-            return {
-                "vin": None,
                 "extracted": False,
-                "error": str(e)
+                "vin": None,
+                "error": result['error'],
+                "source": "CarAPI"
             }
-    
-    def _validate_vin(self, vin: str) -> bool:
-        """Validate VIN format"""
-        if not vin or len(vin) != 17:
-            return False
         
-        # Check for invalid characters (I, O, Q)
-        invalid_chars = ['I', 'O', 'Q']
-        if any(char in vin for char in invalid_chars):
-            return False
+        # Validate extracted VIN
+        vin = result.get('vin', '').upper().strip()
+        validation = vin_validator.validate(vin) if vin else {"valid": False}
         
-        return vin.isalnum()
-    
-    def _extract_vin_from_text(self, text: str) -> Optional[str]:
-        """Extract VIN using regex"""
-        import re
-        # Clean text
-        cleaned = re.sub(r'[^A-Za-z0-9]', '', text)
+        return {
+            "extracted": bool(vin),
+            "vin": vin if validation.get("valid") else None,
+            "confidence": result.get('confidence', 0.0),
+            "model_used": "CarAPI OCR",
+            "source": "CarAPI",
+            "validation": validation,
+            "raw_result": result
+        }
         
-        # Find 17-character pattern
-        pattern = r'[A-HJ-NPR-Z0-9]{17}'
-        matches = re.findall(pattern, cleaned.upper())
-        
-        return matches[0] if matches else None
+    except Exception as e:
+        logger.error(f"VIN OCR error: {str(e)}", exc_info=True)
+        return {
+            "extracted": False,
+            "vin": None,
+            "error": str(e),
+            "source": "CarAPI"
+        }
 
-# Initialize service
-vin_ocr = VinOCRService()
+# ─── FALLBACK: Basic OCR using pytesseract (if available) ──
+
+def extract_vin_from_image_fallback(image_data: bytes) -> Dict[str, Any]:
+    """
+    Fallback OCR using pytesseract (if installed)
+    
+    Args:
+        image_data: Raw image bytes
+        
+    Returns:
+        Dict with extracted VIN and confidence
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+        import io
+        
+        # Open image
+        image = Image.open(io.BytesIO(image_data))
+        
+        # Extract text
+        text = pytesseract.image_to_string(image)
+        
+        # Find VIN in text
+        import re
+        vin_pattern = r'[A-HJ-NPR-Z0-9]{17}'
+        matches = re.findall(vin_pattern, text.upper())
+        
+        vin = matches[0] if matches else None
+        
+        if vin:
+            validation = vin_validator.validate(vin)
+            if not validation.get("valid"):
+                vin = None
+        
+        return {
+            "extracted": bool(vin),
+            "vin": vin,
+            "confidence": 0.7 if vin else 0.0,
+            "model_used": "Tesseract OCR (Fallback)",
+            "source": "Fallback OCR"
+        }
+        
+    except ImportError:
+        return {
+            "extracted": False,
+            "vin": None,
+            "error": "Tesseract OCR not installed",
+            "source": "Fallback OCR"
+        }
+    except Exception as e:
+        logger.error(f"Fallback OCR error: {str(e)}")
+        return {
+            "extracted": False,
+            "vin": None,
+            "error": str(e),
+            "source": "Fallback OCR"
+        }
+
+# ─── QUICK TEST ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    print("🔍 Testing VIN OCR Service...")
+    
+    # Test with a sample image URL
+    test_url = "https://example.com/vehicle.jpg"
+    result = extract_vin_from_image(test_url)
+    
+    print(f"Extracted: {result.get('extracted')}")
+    print(f"VIN: {result.get('vin')}")
+    print(f"Source: {result.get('source')}")
+    
+    print("✅ VIN OCR Service test complete")
