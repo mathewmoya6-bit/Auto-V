@@ -1,269 +1,196 @@
-# api/__init__.py – AUTO-V Flask Application (PRODUCTION READY with Redis)
+# api/__init__.py - AUTO-V API Routes Package
+# This file imports and exports all route blueprints
 
-import os
 import logging
-import sys
-import signal
-from datetime import datetime
-from logging.handlers import RotatingFileHandler
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from flask_limiter.errors import RateLimitExceeded
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-# ─── Logging with Rotation ──────────────────────────────────
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
-LOG_FILE = os.getenv('LOG_FILE', 'auto-v.log')
-
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from flask import Blueprint
 
 logger = logging.getLogger(__name__)
 
-# Add file handler with rotation
-if LOG_FILE:
-    try:
-        handler = RotatingFileHandler(
-            LOG_FILE,
-            maxBytes=10485760,  # 10MB
-            backupCount=10
-        )
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(handler)
-    except Exception as e:
-        logger.warning(f"Could not set up log rotation: {e}")
+# ─── Import All Blueprints ──────────────────────────────────────
 
-# ─── Redis for Rate Limiting ──────────────────────────────────
-REDIS_URL = os.getenv('REDIS_URL')
-USE_REDIS = REDIS_URL is not None
+try:
+    from .routes.vin_routes import router as vin_router
+    logger.info("✅ VIN routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ VIN routes not available: {e}")
+    vin_router = None
 
-if USE_REDIS:
-    try:
-        # Test Redis connection
-        import redis
-        redis_client = redis.from_url(REDIS_URL)
-        redis_client.ping()
-        logger.info(f"✅ Redis connected at {REDIS_URL[:20]}...")
-        storage_uri = REDIS_URL
-        storage_options = {"socket_connect_timeout": 30}
-    except Exception as e:
-        logger.error(f"❌ Redis connection failed: {e}")
-        logger.warning("Falling back to memory storage for rate limiting")
-        storage_uri = "memory://"
-        storage_options = {}
-else:
-    logger.warning("⚠️ REDIS_URL not set. Using memory storage for rate limiting (not recommended for production)")
-    storage_uri = "memory://"
-    storage_options = {}
+try:
+    from .routes.mpesa import mpesa_bp
+    logger.info("✅ M-Pesa routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ M-Pesa routes not available: {e}")
+    mpesa_bp = None
 
-# ─── Rate Limiter ────────────────────────────────────────────
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri=storage_uri,
-    storage_options=storage_options,
-    default_limits=["200 per day", "50 per hour"],
-    strategy="fixed-window",
-    enabled=os.getenv('ENABLE_RATE_LIMITING', 'true').lower() == 'true'
-)
+try:
+    from .routes.auth import auth_bp
+    logger.info("✅ Auth routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Auth routes not available: {e}")
+    auth_bp = None
 
-# ─── App ────────────────────────────────────────────────────
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
-app.config['JSON_SORT_KEYS'] = False
+try:
+    from .routes.vehicles import vehicles_bp
+    logger.info("✅ Vehicle routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Vehicle routes not available: {e}")
+    vehicles_bp = None
 
-# ─── CORS ────────────────────────────────────────────────────
-ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '*').split(',')
-CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=True)
-logger.info(f"CORS allowed origins: {ALLOWED_ORIGINS}")
+try:
+    from .routes.valuations import valuations_bp
+    logger.info("✅ Valuation routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Valuation routes not available: {e}")
+    valuations_bp = None
 
-# Initialize rate limiter
-limiter.init_app(app)
+try:
+    from .routes.inspections import inspections_bp
+    logger.info("✅ Inspection routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Inspection routes not available: {e}")
+    inspections_bp = None
 
-# ─── Error Handlers ─────────────────────────────────────────
-@app.errorhandler(RateLimitExceeded)
-def handle_rate_limit_exceeded(e):
-    """Handle rate limit exceeded errors."""
-    logger.warning(f"Rate limit exceeded for {request.remote_addr}")
-    return jsonify({
-        'error': 'Too many requests. Please slow down.',
-        'code': 'RATE_LIMIT_EXCEEDED',
-        'retry_after': e.retry_after if hasattr(e, 'retry_after') else None
-    }), 429
+try:
+    from .routes.admin import admin_bp
+    logger.info("✅ Admin routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Admin routes not available: {e}")
+    admin_bp = None
 
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({
-        'error': 'Resource not found',
-        'code': 'NOT_FOUND',
-        'path': request.path
-    }), 404
+try:
+    from .routes.services import services_bp
+    logger.info("✅ Service routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Service routes not available: {e}")
+    services_bp = None
 
-@app.errorhandler(500)
-def internal_error(e):
-    logger.error(f"Internal server error: {e}")
-    return jsonify({
-        'error': 'Internal server error',
-        'code': 'INTERNAL_ERROR'
-    }), 500
+try:
+    from .routes.payments import payments_bp
+    logger.info("✅ Payment routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Payment routes not available: {e}")
+    payments_bp = None
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Global exception handler for unexpected errors."""
-    logger.error(f"Unhandled exception: {e}", exc_info=True)
-    return jsonify({
-        'error': 'An unexpected error occurred',
-        'code': 'UNEXPECTED_ERROR'
-    }), 500
+try:
+    from .routes.assessments import assessments_bp
+    logger.info("✅ Assessment routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Assessment routes not available: {e}")
+    assessments_bp = None
 
-# ─── Request Logging ────────────────────────────────────────
-@app.before_request
-def log_request():
-    """Log all incoming requests."""
-    logger.info(f"→ {request.method} {request.path} - {request.remote_addr}")
+try:
+    from .routes.mileage import mileage_bp
+    logger.info("✅ Mileage routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Mileage routes not available: {e}")
+    mileage_bp = None
 
-@app.after_request
-def log_response(response):
-    """Log all outgoing responses."""
-    logger.info(f"← {request.method} {request.path} - {response.status_code}")
-    return response
+try:
+    from .routes.intelligence import intelligence_bp
+    logger.info("✅ Intelligence routes loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Intelligence routes not available: {e}")
+    intelligence_bp = None
 
-# ─── Security Headers ──────────────────────────────────────
-@app.after_request
-def add_security_headers(response):
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Server'] = 'AUTO-V'
-    return response
+# ─── Export All Blueprints ──────────────────────────────────────
 
-# ─── Import Blueprints ──────────────────────────────────────
-from api.routes.auth import auth_bp
-from api.routes.mpesa import mpesa_bp
-from api.routes.payments import payments_bp
-from api.routes.valuations import valuations_bp
-from api.routes.inspections import inspections_bp
-from api.routes.assessments import assessments_bp
-from api.routes.mileage import mileage_bp
-from api.routes.intelligence import intelligence_bp
-from api.routes.admin import admin_bp
+__all__ = [
+    'vin_router',
+    'mpesa_bp',
+    'auth_bp',
+    'vehicles_bp',
+    'valuations_bp',
+    'inspections_bp',
+    'admin_bp',
+    'services_bp',
+    'payments_bp',
+    'assessments_bp',
+    'mileage_bp',
+    'intelligence_bp'
+]
 
-# ─── Register Blueprints ──────────────────────────────────
-app.register_blueprint(auth_bp, url_prefix='/api/auth')
-app.register_blueprint(mpesa_bp, url_prefix='/api/mpesa')
-app.register_blueprint(payments_bp, url_prefix='/api/payments')
-app.register_blueprint(valuations_bp, url_prefix='/api/valuations')
-app.register_blueprint(inspections_bp, url_prefix='/api/inspections')
-app.register_blueprint(assessments_bp, url_prefix='/api/assessments')
-app.register_blueprint(mileage_bp, url_prefix='/api/mileage')
-app.register_blueprint(intelligence_bp, url_prefix='/api/intelligence')
-app.register_blueprint(admin_bp, url_prefix='/api/admin')
+# ─── Register Blueprints Helper ────────────────────────────────
 
-# ─── Health Checks ──────────────────────────────────────────
-from services.mpesa import is_mpesa_configured
-from services.supabase_client import get_supabase
-
-@app.route('/api/health', methods=['GET'])
-@limiter.limit("60 per minute")
-def health_check():
-    """Basic health check."""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'version': '2.0.0',
-        'environment': os.getenv('FLASK_ENV', 'development')
-    }), 200
-
-@app.route('/api/health/detailed', methods=['GET'])
-@limiter.limit("30 per minute")
-def detailed_health():
-    """Detailed health check with all dependencies."""
-    checks = {
-        'timestamp': datetime.now().isoformat(),
-        'status': 'healthy',
-        'services': {}
-    }
+def register_blueprints(app):
+    """
+    Register all blueprints to the Flask app.
     
-    # Check Supabase
-    try:
-        supabase = get_supabase()
-        supabase.table('system_settings').select('count').limit(1).execute()
-        checks['services']['supabase'] = {'status': 'healthy'}
-    except Exception as e:
-        checks['services']['supabase'] = {'status': 'unhealthy', 'error': str(e)}
-        checks['status'] = 'degraded'
+    Args:
+        app: Flask application instance
+    """
+    blueprints = [
+        (vin_router, '/api/vin'),
+        (mpesa_bp, '/api/mpesa'),
+        (auth_bp, '/api/auth'),
+        (vehicles_bp, '/api/vehicles'),
+        (valuations_bp, '/api/valuations'),
+        (inspections_bp, '/api/inspections'),
+        (admin_bp, '/api/admin'),
+        (services_bp, '/api/services'),
+        (payments_bp, '/api/payments'),
+        (assessments_bp, '/api/assessments'),
+        (mileage_bp, '/api/mileage'),
+        (intelligence_bp, '/api/intelligence')
+    ]
     
-    # Check M-Pesa
-    checks['services']['mpesa'] = {
-        'status': 'configured' if is_mpesa_configured() else 'missing_credentials',
-        'environment': os.getenv('MPESA_ENV', 'not_set')
-    }
+    registered_count = 0
+    for blueprint, url_prefix in blueprints:
+        if blueprint is not None:
+            try:
+                app.register_blueprint(blueprint, url_prefix=url_prefix)
+                registered_count += 1
+                logger.info(f"✅ Registered blueprint: {blueprint.name} at {url_prefix}")
+            except Exception as e:
+                logger.error(f"❌ Failed to register {blueprint.name}: {e}")
     
-    # Check Redis
-    if USE_REDIS:
-        try:
-            redis_client.ping()
-            checks['services']['redis'] = {'status': 'healthy'}
-        except Exception as e:
-            checks['services']['redis'] = {'status': 'unhealthy', 'error': str(e)}
-            checks['status'] = 'degraded'
-    else:
-        checks['services']['redis'] = {'status': 'not_configured'}
+    logger.info(f"📋 Registered {registered_count}/{len(blueprints)} blueprints")
+    return registered_count
+
+# ─── Get All Routes Helper ─────────────────────────────────────
+
+def get_all_routes():
+    """
+    Get a list of all registered route URLs.
     
-    # Check rate limiting
-    checks['rate_limiting'] = {
-        'enabled': os.getenv('ENABLE_RATE_LIMITING', 'true').lower() == 'true',
-        'storage': 'redis' if USE_REDIS else 'memory'
-    }
+    Returns:
+        List of route URLs
+    """
+    routes = []
     
-    return jsonify(checks), 200
+    blueprint_routes = [
+        ('vin', vin_router),
+        ('mpesa', mpesa_bp),
+        ('auth', auth_bp),
+        ('vehicles', vehicles_bp),
+        ('valuations', valuations_bp),
+        ('inspections', inspections_bp),
+        ('admin', admin_bp),
+        ('services', services_bp),
+        ('payments', payments_bp),
+        ('assessments', assessments_bp),
+        ('mileage', mileage_bp),
+        ('intelligence', intelligence_bp)
+    ]
+    
+    for name, blueprint in blueprint_routes:
+        if blueprint is not None:
+            routes.append({
+                'name': name,
+                'url_prefix': f'/api/{name}',
+                'available': True
+            })
+        else:
+            routes.append({
+                'name': name,
+                'available': False
+            })
+    
+    return routes
 
-@app.route('/')
-def root():
-    return jsonify({
-        'service': 'AUTO-V Backend',
-        'version': '2.0.0',
-        'status': 'running',
-        'endpoints': {
-            'auth': '/api/auth',
-            'payments': '/api/payments',
-            'mpesa': '/api/mpesa',
-            'valuations': '/api/valuations',
-            'inspections': '/api/inspections',
-            'assessments': '/api/assessments',
-            'mileage': '/api/mileage',
-            'intelligence': '/api/intelligence',
-            'admin': '/api/admin',
-            'health': '/api/health'
-        }
-    })
+# ─── Module Info ──────────────────────────────────────────────
 
-# ─── Graceful Shutdown ──────────────────────────────────────
-def graceful_shutdown(signum, frame):
-    """Handle shutdown signals gracefully."""
-    logger.info("Received shutdown signal, cleaning up...")
-    # Close Redis connection if exists
-    if 'redis_client' in globals():
-        try:
-            redis_client.close()
-            logger.info("Redis connection closed")
-        except:
-            pass
-    logger.info("Shutdown complete")
-    sys.exit(0)
+__version__ = '1.0.0'
+__author__ = 'AUTO-V Team'
+__description__ = 'AUTO-V API Routes Package'
 
-signal.signal(signal.SIGTERM, graceful_shutdown)
-signal.signal(signal.SIGINT, graceful_shutdown)
-
-# ─── Run ────────────────────────────────────────────────────
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_ENV', 'production') == 'development'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+logger.info(f"📦 API Package v{__version__} initialized")
