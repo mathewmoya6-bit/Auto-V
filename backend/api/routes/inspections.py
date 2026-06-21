@@ -1,69 +1,305 @@
-import uuid
-import logging
+# api/routes/inspections.py - Inspection Routes
 from flask import Blueprint, request, jsonify
+from datetime import datetime
+import logging
+import json
+
 from services.supabase_client import get_supabase
-from api.auth_middleware import require_auth
+from services.vin_validator import vin_validator
+from utils.decorators import rate_limit, require_auth, log_request
 
 logger = logging.getLogger(__name__)
+
 inspections_bp = Blueprint('inspections', __name__)
 
-@inspections_bp.route('/', methods=['POST'])
+# ─── CREATE INSPECTION ─────────────────────────────────────────
+
+@inspections_bp.route('/create', methods=['POST'])
+@rate_limit(limit=20, per=60)
 @require_auth
-def create_inspection(user):
-    data = request.get_json()
-    vehicle_data = data.get('vehicle_data', {})
-    inspection_type = data.get('inspection_type', 'Standard')
+@log_request
+def create_inspection():
+    """Create a new vehicle inspection"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Validate required fields
+        required = ['vin', 'inspector_name', 'inspection_date']
+        missing = [f for f in required if not data.get(f)]
+        
+        if missing:
+            return jsonify({
+                'success': False,
+                'error': f'Missing fields: {", ".join(missing)}'
+            }), 400
+        
+        # Validate VIN
+        vin = data['vin'].upper().strip()
+        if not vin_validator.is_valid(vin):
+            return jsonify({'success': False, 'error': 'Invalid VIN format'}), 400
+        
+        # Prepare inspection data
+        inspection_data = {
+            'vin': vin,
+            'inspector_name': data['inspector_name'],
+            'inspector_license': data.get('inspector_license'),
+            'inspection_date': data['inspection_date'],
+            'location': data.get('location'),
+            'vehicle_condition': data.get('vehicle_condition', 'Good'),
+            'engine_score': data.get('engine_score', 8),
+            'transmission_score': data.get('transmission_score', 8),
+            'suspension_score': data.get('suspension_score', 8),
+            'brake_score': data.get('brake_score', 8),
+            'paint_score': data.get('paint_score', 8),
+            'interior_score': data.get('interior_score', 8),
+            'electronics_score': data.get('electronics_score', 8),
+            'chassis_score': data.get('chassis_score', 8),
+            'tyre_depth': data.get('tyre_depth'),
+            'accident_history': data.get('accident_history', 'None'),
+            'service_history': data.get('service_history', 'Full'),
+            'notes': data.get('notes'),
+            'image_urls': data.get('image_urls', []),
+            'status': data.get('status', 'pending'),
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        # Save to Supabase
+        supabase = get_supabase()
+        result = supabase.save_inspection(inspection_data)
+        
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to save inspection')
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'data': result.get('inspection'),
+            'message': 'Inspection created successfully'
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Create inspection error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-    required = ['make', 'model', 'year']
-    for field in required:
-        if not vehicle_data.get(field):
-            return jsonify({'error': f'Missing field: {field}'}), 400
+# ─── GET INSPECTION ────────────────────────────────────────────
 
-    # Mock scoring – can be replaced with real logic
-    inspection_result = {
-        'overall_score': 8.5,
-        'exterior': 8.0,
-        'interior': 7.5,
-        'mechanical': 9.0,
-        'electrical': 8.0,
-        'safety': 8.5,
-        'issues': ['Minor scratches on bumper'],
-        'certificate_number': f"INS-{uuid.uuid4().hex[:8].upper()}"
-    }
-
-    supabase = get_supabase()
-    request_data = {
-        'user_id': user.id,
-        'service_type': 'inspection',
-        'registration_number': vehicle_data.get('registration_number'),
-        'make': vehicle_data.get('make'),
-        'model': vehicle_data.get('model'),
-        'year': vehicle_data.get('year'),
-        'odometer': vehicle_data.get('odometer'),
-        'inspection_type': inspection_type,
-        'amount': 3500,
-        'payment_status': 'paid',
-        'status': 'completed',
-        'result': inspection_result,
-        'created_at': 'now()'
-    }
-    resp = supabase.table('service_requests').insert(request_data).execute()
-    if not resp.data:
-        logger.error("Failed to save inspection for user %s", user.id)
-        return jsonify({'error': 'Failed to save inspection'}), 500
-    return jsonify(resp.data[0]), 201
-
-@inspections_bp.route('/user/<user_id>', methods=['GET'])
+@inspections_bp.route('/<inspection_id>', methods=['GET'])
+@rate_limit(limit=50, per=60)
 @require_auth
-def get_user_inspections(user, user_id):
-    if user.id != user_id:
-        return jsonify({'error': 'Unauthorized'}), 403
+@log_request
+def get_inspection(inspection_id):
+    """Get inspection by ID"""
+    try:
+        supabase = get_supabase()
+        result = supabase.get_inspection(inspection_id)
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Inspection not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+    except Exception as e:
+        logger.error(f"Get inspection error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-    supabase = get_supabase()
-    resp = supabase.table('service_requests')\
-        .select('*')\
-        .eq('user_id', user_id)\
-        .eq('service_type', 'inspection')\
-        .order('created_at', desc=True)\
-        .execute()
-    return jsonify(resp.data), 200
+# ─── GET INSPECTIONS BY VIN ────────────────────────────────────
+
+@inspections_bp.route('/vehicle/<vin>', methods=['GET'])
+@rate_limit(limit=50, per=60)
+@require_auth
+@log_request
+def get_inspections_by_vin(vin):
+    """Get all inspections for a vehicle"""
+    try:
+        vin = vin.upper().strip()
+        
+        supabase = get_supabase()
+        results = supabase.get_inspections_by_vin(vin)
+        
+        return jsonify({
+            'success': True,
+            'data': results,
+            'count': len(results)
+        }), 200
+    except Exception as e:
+        logger.error(f"Get inspections by VIN error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ─── UPDATE INSPECTION ─────────────────────────────────────────
+
+@inspections_bp.route('/<inspection_id>', methods=['PUT'])
+@rate_limit(limit=20, per=60)
+@require_auth
+@log_request
+def update_inspection(inspection_id):
+    """Update inspection"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        data['updated_at'] = datetime.now().isoformat()
+        
+        supabase = get_supabase()
+        result = supabase.update_inspection(inspection_id, data)
+        
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to update inspection')
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'data': result.get('inspection'),
+            'message': 'Inspection updated successfully'
+        }), 200
+    except Exception as e:
+        logger.error(f"Update inspection error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ─── UPDATE INSPECTION STATUS ─────────────────────────────────
+
+@inspections_bp.route('/<inspection_id>/status', methods=['PUT'])
+@rate_limit(limit=20, per=60)
+@require_auth
+@log_request
+def update_inspection_status(inspection_id):
+    """Update inspection status"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'status' not in data:
+            return jsonify({'success': False, 'error': 'status is required'}), 400
+        
+        valid_statuses = ['pending', 'in_progress', 'completed', 'cancelled']
+        status = data['status']
+        
+        if status not in valid_statuses:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'
+            }), 400
+        
+        supabase = get_supabase()
+        result = supabase.update_inspection_status(inspection_id, status)
+        
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to update status')
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'inspection_id': inspection_id,
+                'status': status,
+                'updated_at': datetime.now().isoformat()
+            },
+            'message': f'Inspection status updated to {status}'
+        }), 200
+    except Exception as e:
+        logger.error(f"Update inspection status error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ─── BATCH INSPECTIONS ─────────────────────────────────────────
+
+@inspections_bp.route('/batch', methods=['POST'])
+@rate_limit(limit=10, per=60)
+@require_auth
+@log_request
+def batch_inspections():
+    """Create multiple inspections in batch"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'inspections' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'inspections array is required'
+            }), 400
+        
+        inspections = data['inspections']
+        
+        if not isinstance(inspections, list):
+            return jsonify({
+                'success': False,
+                'error': 'inspections must be an array'
+            }), 400
+        
+        if len(inspections) > 50:
+            return jsonify({
+                'success': False,
+                'error': 'Maximum 50 inspections per batch'
+            }), 400
+        
+        results = []
+        errors = []
+        supabase = get_supabase()
+        
+        for idx, inspection_data in enumerate(inspections):
+            try:
+                inspection_data['created_at'] = datetime.now().isoformat()
+                inspection_data['updated_at'] = datetime.now().isoformat()
+                
+                result = supabase.save_inspection(inspection_data)
+                
+                if result.get('success'):
+                    results.append({
+                        'index': idx,
+                        'inspection_id': result.get('inspection', {}).get('id'),
+                        'vin': inspection_data.get('vin'),
+                        'success': True
+                    })
+                else:
+                    errors.append({
+                        'index': idx,
+                        'error': result.get('error', 'Failed to save inspection')
+                    })
+            except Exception as e:
+                errors.append({'index': idx, 'error': str(e)})
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'created': len(results),
+                'failed': len(errors),
+                'results': results,
+                'errors': errors
+            },
+            'message': f'Batch completed: {len(results)} created, {len(errors)} failed'
+        }), 200
+    except Exception as e:
+        logger.error(f"Batch inspections error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ─── STATS ──────────────────────────────────────────────────────
+
+@inspections_bp.route('/stats', methods=['GET'])
+@rate_limit(limit=30, per=60)
+@require_auth
+@log_request
+def get_inspection_stats():
+    """Get inspection statistics"""
+    try:
+        supabase = get_supabase()
+        stats = supabase.get_inspection_stats()
+        
+        return jsonify({
+            'success': True,
+            'data': stats,
+            'timestamp': datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Get inspection stats error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
