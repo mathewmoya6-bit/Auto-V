@@ -1,28 +1,26 @@
-# api/auth_middleware.py - FIXED
-
+# api/auth_middleware.py - Production Ready Auth Middleware
 import os
 import logging
 import jwt
 import hashlib
-import ipaddress
 from functools import wraps
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 from flask import request, jsonify, g, current_app
 
-# ─── FIXED: Import the correct Supabase client ──────────────────
-from services.supabase_client import get_supabase_client as get_supabase
+# ─── Import Supabase Client ──────────────────────────────────────
+from services.supabase import get_client as get_supabase
 
 logger = logging.getLogger(__name__)
 
-# ─── CONFIG ────────────────────────────────────────────────
+# ─── Configuration ──────────────────────────────────────────────
 SUPABASE_JWT_SECRET = os.getenv('SUPABASE_JWT_SECRET', '')
 SUPABASE_URL = os.getenv('SUPABASE_URL', '')
 SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY', '')
 AUTH_SESSION_TIMEOUT = int(os.getenv('AUTH_SESSION_TIMEOUT', '3600'))
 AUTH_REFRESH_TIMEOUT = int(os.getenv('AUTH_REFRESH_TIMEOUT', '604800'))
 
-# ─── ROLE HIERARCHY ────────────────────────────────────────
+# ─── Role Hierarchy ─────────────────────────────────────────────
 ROLES = {
     'admin': 100,
     'manager': 80,
@@ -43,7 +41,7 @@ ROLE_PERMISSIONS = {
     'guest': []
 }
 
-# ─── PUBLIC ENDPOINTS ──────────────────────────────────────
+# ─── Public Endpoints ────────────────────────────────────────────
 PUBLIC_ENDPOINTS = [
     '/api/health',
     '/api/mpesa/callback',
@@ -57,20 +55,19 @@ PUBLIC_ENDPOINTS = [
     '/api/test'
 ]
 
-# ─── IP WHITELIST (OPTIONAL) ──────────────────────────────
+# ─── IP Whitelist/Blacklist ─────────────────────────────────────
 IP_WHITELIST = os.getenv('IP_WHITELIST', '').split(',') if os.getenv('IP_WHITELIST') else []
 IP_BLACKLIST = os.getenv('IP_BLACKLIST', '').split(',') if os.getenv('IP_BLACKLIST') else []
 
 
-# ─── SESSION MANAGEMENT ────────────────────────────────────
+# ─── Session Manager ────────────────────────────────────────────
 class SessionManager:
     """Manage user sessions with tracking and revocation."""
 
     @staticmethod
-    def create_session(user_id: str, device_info: Dict[str, Any]) -> Dict[str, Any]:
+    def create_session(user_id: str, device_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a new session for a user."""
         try:
-            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             session_data = {
                 'user_id': user_id,
@@ -86,9 +83,7 @@ class SessionManager:
             }
 
             result = supabase.table('user_sessions').insert(session_data).execute()
-            if result.data:
-                return result.data[0]
-            return None
+            return result.data[0] if result.data else None
         except Exception as e:
             logger.error(f"Session creation error: {e}")
             return None
@@ -97,7 +92,6 @@ class SessionManager:
     def validate_session(session_token: str) -> Tuple[bool, Optional[Dict]]:
         """Validate a session token."""
         try:
-            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             result = supabase.table('user_sessions')\
                 .select('*')\
@@ -131,7 +125,6 @@ class SessionManager:
     def revoke_session(session_token: str) -> bool:
         """Revoke a session."""
         try:
-            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             result = supabase.table('user_sessions')\
                 .update({
@@ -149,7 +142,6 @@ class SessionManager:
     def revoke_all_sessions(user_id: str) -> bool:
         """Revoke all sessions for a user."""
         try:
-            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             result = supabase.table('user_sessions')\
                 .update({
@@ -164,7 +156,7 @@ class SessionManager:
             return False
 
 
-# ─── AUDIT LOGGING ─────────────────────────────────────────
+# ─── Audit Logger ───────────────────────────────────────────────
 class AuditLogger:
     """Log all authentication and authorization events."""
 
@@ -172,7 +164,6 @@ class AuditLogger:
     def log_event(user_id: Optional[str], action: str, details: Dict[str, Any], status: str = 'success'):
         """Log an audit event."""
         try:
-            # ─── FIXED: Use the correct Supabase function ──────────
             supabase = get_supabase()
             audit_data = {
                 'user_id': user_id,
@@ -190,7 +181,7 @@ class AuditLogger:
             logger.error(f"Audit logging error: {e}")
 
 
-# ─── IP VALIDATION ─────────────────────────────────────────
+# ─── IP Validation ──────────────────────────────────────────────
 def validate_ip(ip: str) -> Tuple[bool, str]:
     """Validate IP against whitelist/blacklist."""
     if IP_BLACKLIST:
@@ -207,7 +198,7 @@ def validate_ip(ip: str) -> Tuple[bool, str]:
     return True, "IP allowed"
 
 
-# ─── JWT VALIDATION ────────────────────────────────────────
+# ─── JWT Validation ─────────────────────────────────────────────
 def validate_jwt(token: str) -> dict:
     """Validate JWT token with strict verification."""
     if not token:
@@ -242,7 +233,7 @@ def validate_jwt(token: str) -> dict:
                 logger.warning("Invalid JWT token")
                 pass
 
-        # ─── FIXED: Use the correct Supabase function ──────────
+        # Fallback to Supabase user validation
         supabase = get_supabase()
         response = supabase.auth.get_user(token)
         if response and response.user:
@@ -259,7 +250,7 @@ def validate_jwt(token: str) -> dict:
         raise ValueError(f"Token validation failed: {str(e)}")
 
 
-# ─── DEVICE FINGERPRINTING ────────────────────────────────
+# ─── Device Fingerprinting ──────────────────────────────────────
 def get_device_info() -> Dict[str, Any]:
     """Get device fingerprint from request."""
     user_agent = request.headers.get('User-Agent', 'unknown')
@@ -278,8 +269,8 @@ def get_device_info() -> Dict[str, Any]:
     }
 
 
-# ─── GET USER FROM TOKEN ────────────────────────────────────
-def get_user_from_token(token: str) -> dict:
+# ─── Get User from Token ────────────────────────────────────────
+def get_user_from_token(token: str) -> Optional[dict]:
     """Get user data from JWT token with session validation."""
     try:
         payload = validate_jwt(token)
@@ -289,7 +280,6 @@ def get_user_from_token(token: str) -> dict:
             'user_metadata': payload.get('user_metadata', {})
         }
 
-        # ─── FIXED: Use the correct Supabase function ──────────
         try:
             supabase = get_supabase()
             response = supabase.table('user_profiles')\
@@ -321,7 +311,7 @@ def get_user_from_token(token: str) -> dict:
         return None
 
 
-# ─── CHECK PERMISSION ──────────────────────────────────────
+# ─── Permission Check ───────────────────────────────────────────
 def has_permission(role: str, permission: str) -> bool:
     """Check if a role has a specific permission."""
     if role == 'admin':
@@ -342,7 +332,8 @@ def has_permission(role: str, permission: str) -> bool:
     return False
 
 
-# ─── AUTH DECORATOR ────────────────────────────────────────
+# ─── Auth Decorators ────────────────────────────────────────────
+
 def require_auth(f):
     """Decorator to require authentication."""
     @wraps(f)
@@ -438,7 +429,6 @@ def require_auth(f):
                 'path': request.path
             }, 'success')
 
-            # ─── Pass user to route ──────────────────────────────
             return f(user_data, *args, **kwargs)
 
         except Exception as e:
@@ -452,7 +442,6 @@ def require_auth(f):
     return decorated_function
 
 
-# ─── ADMIN REQUIRED DECORATOR ──────────────────────────────
 def require_admin(f):
     """Decorator to require admin role."""
     @wraps(f)
@@ -474,7 +463,6 @@ def require_admin(f):
     return decorated_function
 
 
-# ─── PERMISSION REQUIRED DECORATOR ─────────────────────────
 def require_permission(permission: str):
     """Decorator to require a specific permission."""
     def decorator(f):
@@ -501,7 +489,6 @@ def require_permission(permission: str):
     return decorator
 
 
-# ─── OPTIONAL AUTH DECORATOR ──────────────────────────────
 def optional_auth(f):
     """Decorator that tries auth but doesn't require it."""
     @wraps(f)
@@ -526,7 +513,6 @@ def optional_auth(f):
     return decorated_function
 
 
-# ─── RATE LIMIT KEY FUNCTION ──────────────────────────────
 def get_user_rate_limit_key():
     """Get rate limit key based on authenticated user."""
     user_id = getattr(g, 'user_id', None)
@@ -545,3 +531,25 @@ def get_user_rate_limit_key():
         pass
 
     return f"ip:{request.remote_addr}"
+
+
+def get_current_user():
+    """Get current authenticated user."""
+    return getattr(g, 'user', None)
+
+
+def get_current_user_id():
+    """Get current authenticated user ID."""
+    user = get_current_user()
+    return user.get('id') if user else None
+
+
+def is_authenticated():
+    """Check if current request is authenticated."""
+    return get_current_user() is not None
+
+
+def is_admin():
+    """Check if current user is admin."""
+    user = get_current_user()
+    return user and user.get('role') == 'admin'
