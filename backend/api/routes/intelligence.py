@@ -160,4 +160,31 @@ def chat():
             }
         }), 200
     except Exception as e:
-        logger.error(f"Chat error:
+        logger.error(f"Chat error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ─── RECOMMENDATIONS ──────────────────────────────────────────
+
+@intelligence_bp.route('/recommendations', methods=['POST'])
+@rate_limit(limit=20, per=60)
+@require_auth
+@log_request
+def get_recommendations():
+    """Get vehicle recommendations"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        preferences = data.get('preferences', {})
+        recommendations = openai_service.get_recommendations(preferences)
+        
+        return jsonify({
+            'success': True,
+            'data': recommendations,
+            'timestamp': datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Recommendations error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
