@@ -1,18 +1,16 @@
-# services/mpesa.py - FIXED VERSION (Production Ready)
+# services/mpesa.py - PRODUCTION READY (With Auto-Confirmation & M-Pesa Verification)
 
 import os
 import base64
 import logging
 import requests
 import time
-import re
-import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
-# ─── FIXED: Import the correct function ──────────────────────────
-from services.supabase_client import get_supabase_client as get_supabase
+# ─── IMPORT FROM supabase.py ──────────────────────────────
+from services.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -69,6 +67,7 @@ def verify_safaricom_ip(ip: str) -> bool:
             logger.error(f"❌ IP verification error: {e}")
             return False
     else:
+        # Sandbox: accept localhost and any IP
         if ip in ['127.0.0.1', 'localhost']:
             return True
         return True
@@ -103,7 +102,7 @@ def is_mpesa_configured() -> bool:
         logger.error("❌ Production callback must use HTTPS")
         return False
     
-    logger.info("✅ M-Pesa configuration validated")
+    logger.info(f"✅ M-Pesa configuration validated (Environment: {MPESA_ENV})")
     return True
 
 
@@ -113,14 +112,18 @@ def normalize_phone(phone: str) -> str:
     if not phone:
         raise ValueError("Phone number is required")
 
+    # Remove non-digit characters
     phone = ''.join(c for c in phone if c.isdigit())
 
+    # Remove leading 0
     if phone.startswith("0"):
         phone = "254" + phone[1:]
 
+    # Add 254 if starting with 7
     if phone.startswith("7") and len(phone) == 9:
         phone = "254" + phone
 
+    # Validate format
     if not phone.startswith("254") or len(phone) != 12:
         raise ValueError(f"Invalid phone format: {phone}")
 
@@ -347,6 +350,90 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
             raise
 
 
+# ─── VERIFY TRANSACTION WITH M-PESA ───────────────────────
+def verify_transaction_with_mpesa(checkout_request_id: str) -> Dict[str, Any]:
+    """
+    Verify transaction directly with M-Pesa API.
+    This actually checks if the payment was successful.
+    """
+    try:
+        # Get fresh token
+        token = get_mpesa_token(force=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        password = base64.b64encode(
+            f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()
+        ).decode()
+        
+        payload = {
+            "BusinessShortCode": MPESA_SHORTCODE,
+            "Password": password,
+            "Timestamp": timestamp,
+            "CheckoutRequestID": checkout_request_id
+        }
+        
+        response = requests.post(
+            f"{BASE_URL}/mpesa/stkpushquery/v1/query",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            return {"verified": False, "error": f"API error: {response.status_code}"}
+        
+        data = response.json()
+        logger.info(f"📥 Verification response: {data}")
+        
+        # Check M-Pesa's verification
+        result_code = data.get("ResultCode")
+        result_desc = data.get("ResultDesc")
+        
+        if result_code == "0":
+            # Payment was successful - extract receipt
+            metadata = data.get("CallbackMetadata", {})
+            items = metadata.get("Item", [])
+            
+            receipt = None
+            amount = None
+            phone = None
+            
+            for item in items:
+                name = item.get("Name")
+                value = item.get("Value")
+                
+                if name == "MpesaReceiptNumber":
+                    receipt = value
+                elif name == "Amount":
+                    amount = value
+                elif name == "PhoneNumber":
+                    phone = value
+            
+            return {
+                "verified": True,
+                "status": "completed",
+                "receipt": receipt,
+                "amount": amount,
+                "phone": phone,
+                "result_code": result_code,
+                "result_desc": result_desc
+            }
+        else:
+            return {
+                "verified": False,
+                "status": "failed",
+                "result_code": result_code,
+                "result_desc": result_desc
+            }
+            
+    except Exception as e:
+        logger.error(f"Transaction verification error: {e}")
+        return {"verified": False, "error": str(e)}
+
+
 # ─── CALLBACK HANDLER ──────────────────────────────────────
 def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) -> Dict[str, Any]:
     """Handle M-Pesa callback with proper transaction extraction."""
@@ -394,8 +481,8 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         else:
             logger.warning("⚠️ No CallbackMetadata found")
 
-        # ─── FIXED: Use the correct Supabase function ──────────────
-        supabase = get_supabase()  # Now works with alias
+        # ─── Use Supabase ──────────────────────────────────────────
+        supabase = get_supabase()
 
         payment = supabase.table("payments") \
             .select("*") \
@@ -422,7 +509,8 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
                 "amount_paid": amount,
                 "completed_at": datetime.now().isoformat(),
                 "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or "Transaction completed"
+                "mpesa_result_desc": result_desc or "Transaction completed",
+                "verified_by": "mpesa_callback"
             }
             logger.info(f"✅ Payment {payment_id} completed. Receipt: {transaction_id}")
             
@@ -456,6 +544,142 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         return {"ResultCode": 1, "ResultDesc": str(e)}
 
 
+# ─── AUTO-CONFIRM PAYMENT ──────────────────────────────────
+def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
+    """
+    Automatically confirm a payment by verifying with M-Pesa API.
+    This replaces the manual "I've Confirmed" button.
+    """
+    try:
+        logger.info(f"🔍 Auto-confirming payment: {payment_id}")
+        
+        # Get Supabase client
+        supabase = get_supabase()
+        
+        # Get payment from database
+        payment = supabase.table("payments") \
+            .select("*") \
+            .eq("id", payment_id) \
+            .execute()
+        
+        if not payment.data:
+            return {"success": False, "error": "Payment not found"}
+        
+        payment = payment.data[0]
+        checkout_id = payment.get("checkout_request_id")
+        
+        if not checkout_id:
+            return {"success": False, "error": "No checkout ID found"}
+        
+        # Check if already completed
+        if payment.get("status") == "completed":
+            return {
+                "success": True, 
+                "message": "Payment already completed",
+                "payment": payment,
+                "mpesa_verified": True
+            }
+        
+        # ─── VERIFY WITH M-PESA ──────────────────────────────────────────
+        verification = verify_transaction_with_mpesa(checkout_id)
+        
+        if verification.get("verified"):
+            # M-Pesa confirmed the payment
+            update_data = {
+                "status": "completed",
+                "transaction_id": verification.get("receipt"),
+                "mpesa_receipt_number": verification.get("receipt"),
+                "amount_paid": verification.get("amount"),
+                "completed_at": datetime.now().isoformat(),
+                "verified_by": "mpesa_api_auto",
+                "verification_timestamp": datetime.now().isoformat(),
+                "mpesa_result_code": verification.get("result_code"),
+                "mpesa_result_desc": verification.get("result_desc")
+            }
+            
+            result = supabase.table("payments") \
+                .update(update_data) \
+                .eq("id", payment_id) \
+                .execute()
+            
+            if result.data:
+                logger.info(f"✅ Payment {payment_id} auto-confirmed via M-Pesa API")
+                return {
+                    "success": True,
+                    "message": "Payment verified by M-Pesa",
+                    "payment": result.data[0],
+                    "mpesa_verified": True,
+                    "receipt": verification.get("receipt")
+                }
+            else:
+                return {"success": False, "error": "Database update failed"}
+        else:
+            # M-Pesa says payment failed or not found
+            return {
+                "success": False,
+                "error": "M-Pesa verification failed",
+                "details": verification.get("result_desc", "Payment not found in M-Pesa system"),
+                "result_code": verification.get("result_code"),
+                "mpesa_verified": False
+            }
+            
+    except Exception as e:
+        logger.error(f"Auto-confirm error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+# ─── GET PAYMENT STATUS ────────────────────────────────────
+def get_payment_status(payment_id: str) -> Dict[str, Any]:
+    """
+    Get payment status from database and optionally verify with M-Pesa.
+    """
+    try:
+        supabase = get_supabase()
+        
+        payment = supabase.table("payments") \
+            .select("*") \
+            .eq("id", payment_id) \
+            .execute()
+        
+        if not payment.data:
+            return {"status": "not_found", "error": "Payment not found"}
+        
+        payment = payment.data[0]
+        
+        # If payment is pending, try to auto-verify
+        if payment.get("status") in ["pending", "processing"]:
+            # Check if enough time has passed (30 seconds)
+            created_at = payment.get("created_at")
+            if created_at:
+                try:
+                    created_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    elapsed = (datetime.now() - created_time).total_seconds()
+                    
+                    # Only auto-verify after 30 seconds
+                    if elapsed > 30:
+                        logger.info(f"⏳ Payment {payment_id} pending for {elapsed}s, auto-verifying...")
+                        auto_result = auto_confirm_payment(payment_id)
+                        if auto_result.get("success"):
+                            return {
+                                "status": "completed",
+                                "payment": auto_result.get("payment"),
+                                "mpesa_verified": True,
+                                "receipt": auto_result.get("receipt")
+                            }
+                except Exception as e:
+                    logger.warning(f"Error checking payment age: {e}")
+        
+        return {
+            "status": payment.get("status", "unknown"),
+            "payment": payment,
+            "mpesa_verified": payment.get("verified_by") in ["mpesa_api_auto", "mpesa_callback"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Get payment status error: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 # ─── SANITIZE LOG DATA ─────────────────────────────────────
 def sanitize_log_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """Remove sensitive data from logs."""
@@ -476,3 +700,31 @@ def sanitize_log_data(data: Dict[str, Any]) -> Dict[str, Any]:
             sanitized[key] = value
     
     return sanitized
+
+
+# ─── TEST FUNCTION ──────────────────────────────────────────
+if __name__ == "__main__":
+    print("🔍 Testing M-Pesa Configuration...")
+    print(f"   Environment: {MPESA_ENV}")
+    print(f"   Base URL: {BASE_URL}")
+    print(f"   Shortcode: {MPESA_SHORTCODE}")
+    print(f"   Callback URL: {CALLBACK_URL}")
+    
+    # Check configuration
+    if is_mpesa_configured():
+        print("✅ M-Pesa is configured")
+        
+        # Test token
+        try:
+            token = get_mpesa_token(force=True)
+            print(f"✅ Token obtained: {token[:20]}...")
+        except Exception as e:
+            print(f"❌ Token error: {e}")
+    else:
+        print("❌ M-Pesa is NOT configured")
+        print("   Please set all required environment variables:")
+        print("   - MPESA_CONSUMER_KEY")
+        print("   - MPESA_CONSUMER_SECRET")
+        print("   - MPESA_PASSKEY")
+        print("   - MPESA_SHORTCODE")
+        print("   - MPESA_CALLBACK_URL")
