@@ -1,4 +1,4 @@
-# services/mpesa.py - FIXED VERSION
+# services/mpesa.py - FIXED VERSION (Production Ready)
 
 import os
 import base64
@@ -21,15 +21,16 @@ MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
 MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
 CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')
-MPESA_ENV = os.getenv('MPESA_ENV', 'sandbox').lower()
+MPESA_ENV = os.getenv('MPESA_ENV', 'production').lower()  # ← Default to production
 
+# ─── BASE URL ──────────────────────────────────────────────
 BASE_URL = (
     'https://sandbox.safaricom.co.ke'
     if MPESA_ENV == 'sandbox'
-    else 'https://api.safaricom.co.ke'
+    else 'https://api.safaricom.co.ke'  # Production
 )
 
-REQUEST_TIMEOUT = 15
+REQUEST_TIMEOUT = 30  # Increased for production
 MAX_RETRIES = 3
 _token_cache = {'token': None, 'expires_at': None}
 
@@ -40,49 +41,97 @@ SAFARICOM_IPS = [
     '196.201.215.0/24',
     '196.201.216.0/24',
     '196.201.217.0/24',
+    '196.201.218.0/24',
+    '196.201.219.0/24',
+    '196.201.220.0/24',
+    '196.201.221.0/24',
 ]
 
 def verify_safaricom_ip(ip: str) -> bool:
-    """Verify if IP belongs to Safaricom's ranges."""
+    """
+    Verify if IP belongs to Safaricom's production ranges.
+    Returns True if valid, False otherwise.
+    """
     if not ip:
+        logger.warning("⚠️ No IP provided for verification")
         return False
     
-    try:
-        import ipaddress
-        ip_addr = ipaddress.ip_address(ip)
-        for cidr in SAFARICOM_IPS:
-            if ip_addr in ipaddress.ip_network(cidr):
-                return True
-        return False
-    except Exception as e:
-        logger.warning(f"IP verification error: {e}")
-        return True  # Allow on error for debugging
+    # In production, strictly verify
+    if MPESA_ENV == 'production':
+        try:
+            import ipaddress
+            ip_addr = ipaddress.ip_address(ip)
+            for cidr in SAFARICOM_IPS:
+                if ip_addr in ipaddress.ip_network(cidr):
+                    logger.info(f"✅ IP {ip} verified as Safaricom")
+                    return True
+            logger.warning(f"❌ IP {ip} not in Safaricom ranges")
+            return False
+        except Exception as e:
+            logger.error(f"❌ IP verification error: {e}")
+            return False
+    else:
+        # In sandbox, allow localhost for testing
+        if ip in ['127.0.0.1', 'localhost']:
+            return True
+        return True  # Allow all in sandbox for testing
 
 
 # ─── SAFETY CHECK ──────────────────────────────────────────
 def is_mpesa_configured() -> bool:
-    return all([
+    """Check if all M-Pesa configuration is present."""
+    required = [
         MPESA_CONSUMER_KEY,
         MPESA_CONSUMER_SECRET,
         MPESA_PASSKEY,
         MPESA_SHORTCODE,
         CALLBACK_URL
-    ])
+    ]
+    
+    if not all(required):
+        missing = []
+        if not MPESA_CONSUMER_KEY: missing.append('MPESA_CONSUMER_KEY')
+        if not MPESA_CONSUMER_SECRET: missing.append('MPESA_CONSUMER_SECRET')
+        if not MPESA_PASSKEY: missing.append('MPESA_PASSKEY')
+        if not MPESA_SHORTCODE: missing.append('MPESA_SHORTCODE')
+        if not CALLBACK_URL: missing.append('MPESA_CALLBACK_URL')
+        logger.error(f"❌ Missing M-Pesa config: {', '.join(missing)}")
+        return False
+    
+    # Validate shortcode
+    if MPESA_ENV == 'production' and len(MPESA_SHORTCODE) != 7:
+        logger.error(f"❌ Production shortcode must be 7 digits: {MPESA_SHORTCODE}")
+        return False
+    
+    # Validate callback URL
+    if MPESA_ENV == 'production' and not CALLBACK_URL.startswith('https://'):
+        logger.error("❌ Production callback must use HTTPS")
+        return False
+    
+    logger.info("✅ M-Pesa configuration validated")
+    return True
 
 
 # ─── PHONE NORMALIZER ──────────────────────────────────────
 def normalize_phone(phone: str) -> str:
+    """
+    Normalize phone number to 254XXXXXXXXX format.
+    """
     if not phone:
-        raise ValueError("Phone number required")
+        raise ValueError("Phone number is required")
 
+    # Remove all non-digit characters
     phone = ''.join(c for c in phone if c.isdigit())
 
+    # Remove leading 0
     if phone.startswith("0"):
         phone = "254" + phone[1:]
 
+    # Add 254 if starting with 7
     if phone.startswith("7") and len(phone) == 9:
         phone = "254" + phone
 
+    # Validate final format
     if not phone.startswith("254") or len(phone) != 12:
         raise ValueError(f"Invalid phone format: {phone}")
 
@@ -91,15 +140,22 @@ def normalize_phone(phone: str) -> str:
 
 # ─── TOKEN ──────────────────────────────────────────────────
 def get_mpesa_token(force: bool = False) -> str:
+    """
+    Get M-Pesa access token with caching.
+    """
     global _token_cache
 
+    # Check cache
     if (
         not force
         and _token_cache["token"]
         and _token_cache["expires_at"]
         and datetime.now() < _token_cache["expires_at"]
     ):
+        logger.debug("✅ Using cached token")
         return _token_cache["token"]
+
+    logger.info("🔄 Acquiring new M-Pesa token")
 
     auth = base64.b64encode(
         f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}".encode()
@@ -109,38 +165,71 @@ def get_mpesa_token(force: bool = False) -> str:
 
     for attempt in range(MAX_RETRIES):
         try:
+            # ─── REMOVED proxy parameter ──────────────────────────
             res = requests.get(
                 url,
                 headers={"Authorization": f"Basic {auth}"},
                 timeout=REQUEST_TIMEOUT
             )
-            res.raise_for_status()
-            data = res.json()
+            
+            if res.status_code != 200:
+                logger.error(f"❌ Token request failed: {res.status_code}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise Exception(f"Token request failed: {res.status_code}")
 
-            token = data["access_token"]
+            data = res.json()
+            token = data.get("access_token")
+            
+            if not token:
+                logger.error(f"❌ No access_token in response: {data}")
+                raise Exception("Invalid token response")
 
             _token_cache = {
                 "token": token,
                 "expires_at": datetime.now() + timedelta(seconds=3500)
             }
 
+            logger.info("✅ M-Pesa token acquired")
             return token
 
+        except requests.exceptions.Timeout:
+            logger.error(f"❌ Token timeout (attempt {attempt+1})")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise Exception("Token request timeout")
+            
         except Exception as e:
-            logger.warning(f"Token attempt {attempt+1} failed: {e}")
-            time.sleep(2 ** attempt)
+            logger.error(f"❌ Token error: {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
 
-    raise Exception("Failed to get M-Pesa token")
 
-
-# ─── STK PUSH (RETURNS ONLY RESPONSE, NO DB UPDATE) ──────
-def initiate_stk_push(phone: str, amount: float, payment_id: str, service: str = "AUTO-V") -> Dict[str, Any]:
+# ─── STK PUSH ──────────────────────────────────────────────
+def initiate_stk_push(
+    phone: str, 
+    amount: float, 
+    payment_id: str, 
+    service: str = "AUTO-V",
+    reference: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Initiate STK Push to customer's phone.
-    Returns M-Pesa response without updating database.
+    Returns M-Pesa response.
     """
     if not is_mpesa_configured():
-        raise Exception("M-Pesa not configured")
+        raise Exception("M-Pesa is not configured")
+
+    # Validate amount
+    if amount <= 0:
+        raise ValueError("Amount must be greater than 0")
+    
+    if amount < 1:
+        raise ValueError("Minimum payment is 1 KES")
 
     token = get_mpesa_token()
     phone = normalize_phone(phone)
@@ -150,6 +239,7 @@ def initiate_stk_push(phone: str, amount: float, payment_id: str, service: str =
         f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()
     ).decode()
 
+    # ─── Build payload ──────────────────────────────────────────
     payload = {
         "BusinessShortCode": MPESA_SHORTCODE,
         "Password": password,
@@ -160,9 +250,12 @@ def initiate_stk_push(phone: str, amount: float, payment_id: str, service: str =
         "PartyB": MPESA_SHORTCODE,
         "PhoneNumber": phone,
         "CallBackURL": CALLBACK_URL,
-        "AccountReference": f"AUTO-{payment_id[:6]}",
-        "TransactionDesc": service
+        "AccountReference": reference or f"AUTO-{payment_id[:8].upper()}",
+        "TransactionDesc": service[:36]  # Max 36 characters
     }
+
+    logger.info(f"📤 Initiating STK Push for payment {payment_id}")
+    logger.info(f"📱 Phone: {phone}, Amount: {amount}, Shortcode: {MPESA_SHORTCODE}")
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -171,36 +264,66 @@ def initiate_stk_push(phone: str, amount: float, payment_id: str, service: str =
 
     url = f"{BASE_URL}/mpesa/stkpush/v1/processrequest"
 
-    try:
-        res = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
-        res.raise_for_status()
-        data = res.json()
+    for attempt in range(MAX_RETRIES):
+        try:
+            # ─── REMOVED proxy parameter ──────────────────────────
+            res = requests.post(
+                url, 
+                json=payload, 
+                headers=headers, 
+                timeout=REQUEST_TIMEOUT
+            )
+            
+            if res.status_code != 200:
+                logger.error(f"❌ STK Push failed (attempt {attempt+1}): {res.status_code}")
+                logger.error(f"Response: {res.text[:500]}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise Exception(f"STK Push failed: {res.status_code}")
 
-        logger.info(f"📥 STK Push response: {data}")
+            data = res.json()
+            logger.info(f"📥 STK Push response: {data}")
 
-        if data.get("ResponseCode") != "0":
-            raise Exception(data.get("ResponseDescription") or "STK Push failed")
+            # Check response code
+            if data.get("ResponseCode") != "0":
+                error_msg = data.get("ResponseDescription", "Unknown error")
+                raise Exception(f"M-Pesa error: {error_msg}")
 
-        checkout_id = data.get("CheckoutRequestID")
-        if not checkout_id:
-            raise Exception("No CheckoutRequestID returned")
+            checkout_id = data.get("CheckoutRequestID")
+            if not checkout_id:
+                raise Exception("No CheckoutRequestID returned")
 
-        # Return ONLY the M-Pesa response
-        return {
-            "CheckoutRequestID": checkout_id,
-            "MerchantRequestID": data.get("MerchantRequestID"),
-            "ResponseCode": data.get("ResponseCode"),
-            "ResponseDescription": data.get("ResponseDescription")
-        }
+            return {
+                "CheckoutRequestID": checkout_id,
+                "MerchantRequestID": data.get("MerchantRequestID"),
+                "ResponseCode": data.get("ResponseCode"),
+                "ResponseDescription": data.get("ResponseDescription")
+            }
 
-    except Exception as e:
-        logger.error(f"❌ STK Push error: {e}")
-        raise
+        except requests.exceptions.Timeout:
+            logger.error(f"❌ STK Push timeout (attempt {attempt+1})")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise Exception("STK Push timeout")
+            
+        except Exception as e:
+            logger.error(f"❌ STK Push error: {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
 
 
 # ─── STATUS QUERY ──────────────────────────────────────────
 def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
-    """Query M-Pesa payment status."""
+    """
+    Query M-Pesa payment status.
+    """
+    if not checkout_request_id:
+        raise ValueError("CheckoutRequestID is required")
+
     token = get_mpesa_token()
 
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -215,33 +338,47 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
         "CheckoutRequestID": checkout_request_id
     }
 
-    try:
-        res = requests.post(
-            f"{BASE_URL}/mpesa/stkpushquery/v1/query",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            },
-            timeout=REQUEST_TIMEOUT
-        )
-        res.raise_for_status()
-        data = res.json()
-        
-        logger.info(f"📥 Status query response: {data}")
-        return data
-        
-    except Exception as e:
-        logger.error(f"❌ Status query failed: {e}")
-        raise
+    logger.info(f"🔍 Querying payment status: {checkout_request_id}")
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            # ─── REMOVED proxy parameter ──────────────────────────
+            res = requests.post(
+                f"{BASE_URL}/mpesa/stkpushquery/v1/query",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                },
+                timeout=REQUEST_TIMEOUT
+            )
+            
+            if res.status_code != 200:
+                logger.error(f"❌ Status query failed (attempt {attempt+1}): {res.status_code}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise Exception(f"Status query failed: {res.status_code}")
+
+            data = res.json()
+            logger.info(f"📥 Status query response: {data}")
+            return data
+
+        except Exception as e:
+            logger.error(f"❌ Status query error: {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
 
 
 # ─── CALLBACK HANDLER ──────────────────────────────────────
 def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) -> Dict[str, Any]:
     """
-    Handle M-Pesa callback with proper transaction ID extraction.
+    Handle M-Pesa callback with proper transaction extraction.
     """
     try:
+        logger.info("=" * 60)
         logger.info("📥 Processing M-Pesa callback")
         
         if not callback_data:
@@ -264,7 +401,7 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             logger.error("❌ Missing CheckoutRequestID")
             return {"ResultCode": 1, "ResultDesc": "Missing CheckoutRequestID"}
 
-        # ─── Extract transaction ID from metadata ────────────────
+        # ─── Extract transaction ID ────────────────────────────────
         transaction_id = None
         amount = None
         phone = None
@@ -304,7 +441,7 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         logger.info(f"✅ Found payment: {payment_id}")
 
         # ─── Idempotency check ──────────────────────────────────
-        if payment["status"] == "completed":
+        if payment.get("status") == "completed":
             logger.info(f"ℹ️ Payment {payment_id} already completed")
             return {"ResultCode": 0, "ResultDesc": "Already processed"}
 
@@ -323,7 +460,7 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             
         elif result_code in ["1037", "1032"]:
             update = {
-                "status": "failed",
+                "status": "cancelled",
                 "mpesa_result_code": result_code,
                 "mpesa_result_desc": result_desc or "Transaction cancelled"
             }
@@ -333,7 +470,7 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             update = {
                 "status": "failed",
                 "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or f"Transaction failed"
+                "mpesa_result_desc": result_desc or "Transaction failed"
             }
             logger.warning(f"❌ Payment {payment_id} failed: {result_desc}")
 
@@ -357,7 +494,7 @@ def sanitize_log_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if not data:
         return {}
     
-    sensitive_keys = ['password', 'consumer_secret', 'api_key', 'token', 'pin']
+    sensitive_keys = ['password', 'consumer_secret', 'api_key', 'token', 'pin', 'passkey']
     sanitized = {}
     
     for key, value in data.items():
