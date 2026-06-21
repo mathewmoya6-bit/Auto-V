@@ -245,7 +245,7 @@ def initiate_mpesa():
         
         # ─── Save to Database ────────────────────────────────────────
         try:
-            # ✅ FIXED: Import from services.supabase
+            # ✅ FIXED: Correct import
             from services.supabase import get_supabase
             supabase = get_supabase()
             
@@ -303,7 +303,7 @@ def get_transaction_status(payment_id):
         Transaction status
     """
     try:
-        # ✅ FIXED: Import from services.supabase
+        # ✅ FIXED: Correct import
         from services.supabase import get_supabase
         supabase = get_supabase()
         
@@ -379,7 +379,7 @@ def mpesa_callback():
             
             # ─── Update Database ─────────────────────────────────────
             try:
-                # ✅ FIXED: Import from services.supabase
+                # ✅ FIXED: Correct import
                 from services.supabase import get_supabase
                 supabase = get_supabase()
                 
@@ -438,7 +438,6 @@ def mpesa_health():
     
     return jsonify(status), 200
 
-# ─── Force Complete Payment ──────────────────────────────────────
 @mpesa_bp.route('/force-complete/<payment_id>', methods=['POST'])
 def force_complete_payment(payment_id):
     """
@@ -464,7 +463,7 @@ def force_complete_payment(payment_id):
         
         logger.info(f"📝 Force completing payment: {payment_id} with transaction: {transaction_id}")
         
-        # ✅ FIXED: Import from services.supabase
+        # ✅ FIXED: Correct import
         from services.supabase import get_supabase
         supabase = get_supabase()
         
