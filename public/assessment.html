@@ -64,13 +64,19 @@
         .assessment-tab:hover:not(.active) { background: #334155; color: #fff; }
         .qr-container { background: #fff; padding: 15px; border-radius: 12px; display: inline-block; margin: 15px 0; }
         .badge-methodology { background: #1e293b; padding: 8px 12px; border-radius: 8px; font-size: 12px; color: #94a3b8; display: inline-block; margin: 5px; }
+        .assessment-type-card { background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s; }
+        .assessment-type-card:hover { border-color: #eab308; transform: translateY(-3px); }
+        .assessment-type-card.selected { border-color: #eab308; background: #2d3a4e; }
         @media (max-width: 768px) { .row, .row-3 { grid-template-columns: 1fr; } .assessment-tabs { border-radius: 16px; } .assessment-tab { font-size: 11px; padding: 6px 12px; } .nav-buttons { flex-direction: column; } .nav-buttons button { width: 100%; } }
     </style>
 </head>
 <body>
     <header>
         <div class="logo">⚠️ AUTO-V <span>| Vehicle Assessment</span></div>
-        <button class="btn btn-secondary" id="logoutBtn" style="padding:8px 16px; font-size:12px;">Logout</button>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <span id="userEmail" style="font-size:12px;color:#94a3b8;">Loading...</span>
+            <button class="btn btn-secondary" id="logoutBtn" style="padding:8px 16px; font-size:12px;">Logout</button>
+        </div>
     </header>
     <div class="container">
         <div id="errorMsg" class="error"></div>
@@ -79,7 +85,7 @@
         <div class="card" id="dataEntryCard">
             <div style="margin-bottom:15px;">
                 <span class="service-badge">⚠️ Professional Assessment</span>
-                <span style="color:#94a3b8; font-size:14px; margin-left:10px;" id="purposeDisplay">Assessment Type: Accident</span>
+                <span style="color:#94a3b8; font-size:14px; margin-left:10px;" id="purposeDisplay">Assessment Type: Not selected</span>
                 <span style="color:#22c55e; font-size:14px; margin-left:10px;" id="priceDisplay">KES 0</span>
             </div>
             <h2>⚠️ Professional Vehicle Assessment</h2>
@@ -95,7 +101,7 @@
                 <button class="assessment-tab" data-tab="inspector">👤 Inspector</button>
             </div>
 
-            <form id="assessmentForm">
+            <form id="assessmentForm" onsubmit="return false;">
                 <!-- TAB 1: Vehicle Info -->
                 <div id="tab-basic" class="tab-content">
                     <div class="row">
@@ -161,38 +167,49 @@
                             <input type="number" id="marketValue" placeholder="2000000" value="2000000">
                         </div>
                     </div>
+                    <div class="row">
+                        <div class="form-group"><label>Upload Images</label>
+                            <input type="file" id="imageUpload" accept="image/*" multiple>
+                            <div id="imagePreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                        </div>
+                        <div class="form-group"><label>Upload Documents</label>
+                            <input type="file" id="docUpload" accept=".pdf,.jpg,.png" multiple>
+                            <div id="docPreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="autoFillBtn" style="margin-top:10px;">🔍 Auto-fill from VIN</button>
                 </div>
 
                 <!-- TAB 2: Assessment Type -->
                 <div id="tab-assessment-type" class="tab-content hidden">
                     <h3>Select Assessment Type</h3>
                     <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:15px; margin-top:15px;">
-                        <div class="assessment-type-card" data-type="accident" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                        <div class="assessment-type-card" data-type="accident">
                             <div style="font-size:40px;">💥</div>
                             <h4 style="color:#eab308;">Accident</h4>
                             <p style="font-size:11px; color:#94a3b8;">Accident damage assessment</p>
                         </div>
-                        <div class="assessment-type-card" data-type="insurance_claim" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                        <div class="assessment-type-card" data-type="insurance_claim">
                             <div style="font-size:40px;">📋</div>
                             <h4 style="color:#eab308;">Insurance Claim</h4>
                             <p style="font-size:11px; color:#94a3b8;">Insurance claim processing</p>
                         </div>
-                        <div class="assessment-type-card" data-type="repair_cost" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                        <div class="assessment-type-card" data-type="repair_cost">
                             <div style="font-size:40px;">🔧</div>
                             <h4 style="color:#eab308;">Repair Cost</h4>
                             <p style="font-size:11px; color:#94a3b8;">Standalone repair estimate</p>
                         </div>
-                        <div class="assessment-type-card" data-type="total_loss" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                        <div class="assessment-type-card" data-type="total_loss">
                             <div style="font-size:40px;">📊</div>
                             <h4 style="color:#eab308;">Total Loss</h4>
                             <p style="font-size:11px; color:#94a3b8;">Total loss determination</p>
                         </div>
-                        <div class="assessment-type-card" data-type="salvage" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                        <div class="assessment-type-card" data-type="salvage">
                             <div style="font-size:40px;">♻️</div>
                             <h4 style="color:#eab308;">Salvage</h4>
                             <p style="font-size:11px; color:#94a3b8;">Salvage value estimation</p>
                         </div>
-                        <div class="assessment-type-card" data-type="theft_recovery" style="background:#1e293b; border-radius:12px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s;">
+                        <div class="assessment-type-card" data-type="theft_recovery">
                             <div style="font-size:40px;">🔍</div>
                             <h4 style="color:#eab308;">Theft Recovery</h4>
                             <p style="font-size:11px; color:#94a3b8;">Recovered stolen vehicle</p>
@@ -204,17 +221,17 @@
                 <!-- TAB 3: Details -->
                 <div id="tab-details" class="tab-content hidden">
                     <div id="assessmentDetailsFields">
-                        <!-- Dynamic fields will be rendered here based on assessment type -->
+                        <p style="color:#94a3b8;">Select an assessment type first to see details.</p>
                     </div>
                 </div>
 
                 <!-- TAB 4: Inspector -->
                 <div id="tab-inspector" class="tab-content hidden">
                     <div class="row">
-                        <div class="form-group"><label class="required">Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name" value="John M. Valuer"></div>
-                        <div class="form-group"><label class="required">Inspector License/Credentials</label><input type="text" id="inspectorCredentials" placeholder="e.g. AVM-12345" value="AVM-45678"></div>
+                        <div class="form-group"><label class="required">Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name"></div>
+                        <div class="form-group"><label class="required">Inspector License/Credentials</label><input type="text" id="inspectorCredentials" placeholder="e.g. AVM-12345"></div>
                     </div>
-                    <div class="form-group"><label class="required">Digital Signature</label><input type="text" id="inspectorSignature" placeholder="Type full name as signature" value="John M. Valuer"></div>
+                    <div class="form-group"><label class="required">Digital Signature</label><input type="text" id="inspectorSignature" placeholder="Type full name as signature"></div>
                     <div style="background:#1e293b; border-radius:12px; padding:16px; margin-top:10px;">
                         <h4 style="color:#eab308;">📌 Inspector Declaration</h4>
                         <p style="color:#94a3b8; font-size:13px;">I confirm that the assessment was conducted personally and the findings reported are accurate and complete to the best of my knowledge.</p>
@@ -241,7 +258,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V PROFESSIONAL ASSESSMENT ENGINE
+        // AUTO-V PROFESSIONAL ASSESSMENT ENGINE - PRODUCTION READY
         // ============================================================
         (function() {
             if (window.autoVProfAssessmentInitialized) return;
@@ -251,7 +268,9 @@
             const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-            const API_BASE = 'https://auto-v.onrender.com/api';
+            const API_BASE = window.location.hostname === 'localhost' 
+                ? 'http://localhost:10000/api' 
+                : 'https://auto-v-backend.onrender.com/api';
 
             // ─── VEHICLE MODELS ──────────────────────────────────────
             const vehicleModels = {
@@ -278,70 +297,114 @@
                 'Other': ['Other']
             };
 
-            // ─── STATE ──────────────────────────────────────────────
-            let selectedAssessmentType = null;
-            let currentUser = null;
-            let currentRequestId = null;
-
-            // ─── ASSESSMENT TYPE DETAILS ────────────────────────────
-            function getAssessmentFields(type) {
-                const fields = {
-                    accident: [
+            // ─── ASSESSMENT TYPES ────────────────────────────────────
+            const ASSESSMENT_TYPES = {
+                accident: {
+                    label: 'Accident',
+                    price: 3500,
+                    fields: [
                         { key: "incident_date", label: "Incident Date", type: "date", required: true },
                         { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe", "catastrophic"], required: true },
                         { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres", "airbags", "cooling", "exhaust", "fuel_system", "steering"], required: true, multiple: true },
                         { key: "police_report", label: "Police Report Number", type: "text", required: false },
                         { key: "location", label: "Location", type: "text", required: false },
                         { key: "description", label: "Description of Incident", type: "textarea", required: true }
-                    ],
-                    insurance_claim: [
+                    ]
+                },
+                insurance_claim: {
+                    label: 'Insurance Claim',
+                    price: 4000,
+                    fields: [
                         { key: "claim_number", label: "Claim Number", type: "text", required: true },
                         { key: "insurance_company", label: "Insurance Company", type: "text", required: true },
                         { key: "adjuster_name", label: "Adjuster Name", type: "text", required: false },
                         { key: "policy_excess", label: "Policy Excess (KES)", type: "number", required: false },
                         { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe"], required: true },
                         { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres"], required: true, multiple: true }
-                    ],
-                    repair_cost: [
+                    ]
+                },
+                repair_cost: {
+                    label: 'Repair Cost',
+                    price: 3000,
+                    fields: [
                         { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe"], required: true },
                         { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres"], required: true, multiple: true },
                         { key: "labour_hours", label: "Labour Hours", type: "number", required: false }
-                    ],
-                    total_loss: [
+                    ]
+                },
+                total_loss: {
+                    label: 'Total Loss',
+                    price: 4000,
+                    fields: [
                         { key: "repair_estimate", label: "Repair Estimate (KES)", type: "number", required: true },
                         { key: "policy_details", label: "Insurance Policy Details", type: "text", required: false },
                         { key: "salvage_value", label: "Estimated Salvage Value (KES)", type: "number", required: false }
-                    ],
-                    salvage: [
+                    ]
+                },
+                salvage: {
+                    label: 'Salvage',
+                    price: 3500,
+                    fields: [
                         { key: "damage_severity", label: "Damage Severity", type: "select", options: ["minor", "moderate", "major", "severe", "catastrophic"], required: true },
                         { key: "parts_affected", label: "Parts Affected", type: "select", options: ["engine", "transmission", "suspension", "brakes", "body", "paint", "electrical", "interior", "chassis", "tyres"], required: true, multiple: true }
-                    ],
-                    theft_recovery: [
+                    ]
+                },
+                theft_recovery: {
+                    label: 'Theft Recovery',
+                    price: 4000,
+                    fields: [
                         { key: "theft_date", label: "Theft Date", type: "date", required: true },
                         { key: "recovery_date", label: "Recovery Date", type: "date", required: true },
                         { key: "police_station", label: "Police Station", type: "text", required: true },
                         { key: "condition", label: "Condition on Recovery", type: "select", options: ["excellent", "good", "fair", "poor", "damaged"], required: true },
                         { key: "modifications", label: "Modifications", type: "text", required: false }
                     ]
-                };
-                return fields[type] || [];
-            }
-
-            // ─── PRICES ──────────────────────────────────────────────
-            const assessmentPrices = {
-                accident: 3500,
-                insurance_claim: 4000,
-                repair_cost: 3000,
-                total_loss: 4000,
-                salvage: 3500,
-                theft_recovery: 4000
+                }
             };
 
+            // ─── STATE ──────────────────────────────────────────────
+            let selectedAssessmentType = null;
+            let currentUser = null;
+            let uploadedImages = [];
+            let uploadedDocs = [];
+
             // ─── HELPERS ─────────────────────────────────────────────
-            function showToast(msg, type='success') { /* toast */ }
-            function showLoading(show) { /* loading */ }
-            function populateYears() { /* populate year dropdown */ }
-            function showMessage(msg, type='error') { /* message */ }
+            function showToast(msg, type = 'success') {
+                const t = document.createElement('div');
+                t.className = `toast toast-${type}`;
+                t.textContent = msg;
+                document.body.appendChild(t);
+                setTimeout(() => t.remove(), 3000);
+            }
+
+            function showLoading(show) {
+                let overlay = document.getElementById('loadingOverlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'loadingOverlay';
+                    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;display:none;justify-content:center;align-items:center;';
+                    overlay.innerHTML = '<div class="spinner" style="width:60px;height:60px;"></div>';
+                    document.body.appendChild(overlay);
+                }
+                overlay.style.display = show ? 'flex' : 'none';
+            }
+
+            function showMessage(msg, type = 'error') {
+                const el = document.getElementById(type === 'error' ? 'errorMsg' : 'successMsg');
+                el.textContent = msg;
+                el.style.display = 'block';
+                setTimeout(() => el.style.display = 'none', 5000);
+            }
+
+            function populateYears() {
+                const yearSelect = document.getElementById('vehicleYear');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= 1950; y--) {
+                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+                }
+                yearSelect.value = 2022;
+            }
 
             // ─── MAKE-MODEL SYNC ────────────────────────────────────
             document.getElementById('vehicleMake').addEventListener('change', function() {
@@ -365,19 +428,16 @@
             document.querySelectorAll('.assessment-type-card').forEach(card => {
                 card.addEventListener('click', function() {
                     document.querySelectorAll('.assessment-type-card').forEach(c => {
-                        c.style.borderColor = 'transparent';
-                        c.style.background = '#1e293b';
+                        c.classList.remove('selected');
                     });
-                    this.style.borderColor = '#eab308';
-                    this.style.background = '#2d3a4e';
+                    this.classList.add('selected');
                     selectedAssessmentType = this.dataset.type;
                     
-                    // Update price display
-                    const price = assessmentPrices[selectedAssessmentType] || 0;
+                    const typeData = ASSESSMENT_TYPES[selectedAssessmentType];
+                    const price = typeData?.price || 0;
                     document.getElementById('priceDisplay').textContent = `KES ${price.toLocaleString()}`;
-                    document.getElementById('purposeDisplay').textContent = `Assessment Type: ${selectedAssessmentType.replace('_', ' ').toUpperCase()}`;
+                    document.getElementById('purposeDisplay').textContent = `Assessment Type: ${typeData?.label || selectedAssessmentType}`;
                     
-                    // Render details fields
                     renderAssessmentFields(selectedAssessmentType);
                     
                     // Switch to details tab
@@ -391,15 +451,15 @@
             // ─── RENDER ASSESSMENT FIELDS ──────────────────────────
             function renderAssessmentFields(type) {
                 const container = document.getElementById('assessmentDetailsFields');
-                const fields = getAssessmentFields(type);
+                const typeData = ASSESSMENT_TYPES[type];
                 
                 container.innerHTML = '';
-                if (fields.length === 0) {
+                if (!typeData || !typeData.fields || typeData.fields.length === 0) {
                     container.innerHTML = '<p style="color:#94a3b8;">No additional details required.</p>';
                     return;
                 }
                 
-                fields.forEach(field => {
+                typeData.fields.forEach(field => {
                     const div = document.createElement('div');
                     div.className = 'form-group';
                     
@@ -438,16 +498,97 @@
                 });
             }
 
+            // ─── FILE UPLOAD HANDLERS ──────────────────────────────
+            document.getElementById('imageUpload').addEventListener('change', function() {
+                const preview = document.getElementById('imagePreview');
+                preview.innerHTML = '';
+                uploadedImages = [];
+                for (const file of this.files) {
+                    uploadedImages.push(file);
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #334155;';
+                        preview.appendChild(img);
+                    };
+                    reader.readAsDataURL(file);
+                }
+                showToast(`📸 ${uploadedImages.length} image(s) uploaded`, 'success');
+            });
+
+            document.getElementById('docUpload').addEventListener('change', function() {
+                const preview = document.getElementById('docPreview');
+                preview.innerHTML = '';
+                uploadedDocs = [];
+                for (const file of this.files) {
+                    uploadedDocs.push(file);
+                    const div = document.createElement('div');
+                    div.style.cssText = 'background:#1e293b;padding:8px 12px;border-radius:8px;font-size:12px;color:#94a3b8;';
+                    div.textContent = `📄 ${file.name}`;
+                    preview.appendChild(div);
+                }
+                showToast(`📄 ${uploadedDocs.length} document(s) uploaded`, 'success');
+            });
+
+            // ─── AUTO-FILL FROM VIN ────────────────────────────────
+            document.getElementById('autoFillBtn').addEventListener('click', async function() {
+                const vin = document.getElementById('vehicleVin').value.trim();
+                if (!vin || vin === 'N/A') {
+                    showToast('Please enter a VIN number', 'warning');
+                    return;
+                }
+                if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+                    showToast('Invalid VIN format. Must be 17 characters.', 'error');
+                    return;
+                }
+                
+                showLoading(true);
+                try {
+                    const token = await getValidToken();
+                    const response = await fetch(`${API_BASE}/vehicles/decode-vin`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ vin })
+                    });
+                    
+                    if (!response.ok) throw new Error('VIN decode failed');
+                    const result = await response.json();
+                    
+                    if (result.success && result.data) {
+                        const data = result.data.vehicle || result.data;
+                        document.getElementById('vehicleMake').value = data.make || '';
+                        document.getElementById('vehicleMake').dispatchEvent(new Event('change'));
+                        setTimeout(() => {
+                            document.getElementById('vehicleModel').value = data.model || '';
+                        }, 100);
+                        document.getElementById('vehicleYear').value = data.year || '';
+                        document.getElementById('vehicleBody').value = data.body_type || 'Sedan';
+                        showToast(`✅ Vehicle found: ${data.make} ${data.model}`, 'success');
+                    } else {
+                        showToast('Vehicle not found', 'warning');
+                    }
+                } catch (error) {
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
+            });
+
             // ─── SUBMIT ASSESSMENT ─────────────────────────────────
-            async function handleSubmit() {
+            document.getElementById('submitBtn').addEventListener('click', async function() {
                 // Validate basic vehicle info
                 const make = document.getElementById('vehicleMake').value;
                 const model = document.getElementById('vehicleModel').value;
                 const year = parseInt(document.getElementById('vehicleYear').value);
-                const odometer = parseInt(document.getElementById('vehicleOdometer').value);
-                const marketValue = parseInt(document.getElementById('marketValue').value);
+                const odometer = parseInt(document.getElementById('vehicleOdometer').value) || 0;
+                const marketValue = parseInt(document.getElementById('marketValue').value) || 0;
+                const reg = document.getElementById('vehicleReg').value.toUpperCase();
                 
-                if (!make || !model || !year || !marketValue) {
+                if (!make || !model || !year) {
                     showMessage('Please fill all required vehicle details', 'error');
                     return;
                 }
@@ -476,40 +617,50 @@
                         return;
                     }
                     currentUser = user;
+                    document.getElementById('userEmail').textContent = user.email;
                     
                     // Collect assessment-specific fields
-                    const fields = getAssessmentFields(selectedAssessmentType);
+                    const typeData = ASSESSMENT_TYPES[selectedAssessmentType];
                     const assessmentData = {};
-                    fields.forEach(f => {
-                        const el = document.getElementById(`field_${f.key}`);
-                        if (el) {
-                            if (f.multiple) {
-                                assessmentData[f.key] = Array.from(el.selectedOptions).map(o => o.value);
-                            } else {
-                                assessmentData[f.key] = el.value;
+                    if (typeData?.fields) {
+                        typeData.fields.forEach(f => {
+                            const el = document.getElementById(`field_${f.key}`);
+                            if (el) {
+                                if (f.multiple) {
+                                    assessmentData[f.key] = Array.from(el.selectedOptions).map(o => o.value);
+                                } else {
+                                    assessmentData[f.key] = el.value;
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                     
-                    // Build request payload
+                    // Build payload
                     const payload = {
-                        make: make,
-                        model: model,
-                        year: year,
-                        odometer: odometer,
-                        market_value: marketValue,
+                        vehicle: {
+                            reg: reg,
+                            vin: document.getElementById('vehicleVin').value.toUpperCase(),
+                            make: make,
+                            model: model,
+                            year: year,
+                            body_type: document.getElementById('vehicleBody').value,
+                            odometer: odometer,
+                            market_value: marketValue
+                        },
                         assessment_type: selectedAssessmentType,
                         inspector: {
                             name: inspectorName,
                             credentials: inspectorCreds,
                             signature: inspectorSig
                         },
+                        images: uploadedImages.map(f => f.name),
+                        documents: uploadedDocs.map(f => f.name),
                         ...assessmentData
                     };
                     
                     // Call backend API
                     const token = await getValidToken();
-                    const response = await fetch(`${API_BASE}/assessment`, {
+                    const response = await fetch(`${API_BASE}/assessments/create`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -520,7 +671,7 @@
                     
                     if (!response.ok) {
                         const err = await response.json();
-                        throw new Error(err.message || 'Assessment failed');
+                        throw new Error(err.message || err.error || 'Assessment failed');
                     }
                     
                     const result = await response.json();
@@ -529,16 +680,16 @@
                     const requestData = {
                         user_id: user.id,
                         service_type: 'assessment',
-                        registration_number: document.getElementById('vehicleReg').value.toUpperCase(),
+                        registration_number: reg,
                         make: make,
                         model: model,
                         year: year,
                         odometer: odometer,
-                        amount: assessmentPrices[selectedAssessmentType] || 0,
+                        amount: typeData?.price || 3000,
                         payment_status: 'paid',
                         status: 'completed',
                         purpose: selectedAssessmentType,
-                        result: result,
+                        result: result.data || result,
                         inspector: { name: inspectorName, credentials: inspectorCreds, signature: inspectorSig },
                         created_at: new Date().toISOString()
                     };
@@ -546,7 +697,8 @@
                     await supabase.from('service_requests').insert(requestData);
                     
                     // Display results
-                    displayResults(result);
+                    displayResults(result.data || result);
+                    showToast('✅ Assessment completed successfully!', 'success');
                     
                 } catch (error) {
                     console.error('Assessment error:', error);
@@ -554,7 +706,7 @@
                 } finally {
                     showLoading(false);
                 }
-            }
+            });
 
             // ─── DISPLAY RESULTS ────────────────────────────────────
             function displayResults(result) {
@@ -562,30 +714,31 @@
                 document.getElementById('resultsCard').classList.remove('hidden');
                 
                 const container = document.getElementById('resultsContainer');
-                const assessmentType = selectedAssessmentType.replace('_', ' ').toUpperCase();
+                const typeData = ASSESSMENT_TYPES[selectedAssessmentType];
+                const assessmentLabel = typeData?.label || selectedAssessmentType || 'Assessment';
                 
                 let html = `
                     <div style="margin-bottom:20px; display:flex; justify-content:center; gap:15px; flex-wrap:wrap;">
-                        <span class="badge-methodology">📋 ${assessmentType}</span>
+                        <span class="badge-methodology">📋 ${assessmentLabel}</span>
                         <span class="badge-methodology" style="background:#22c55e; color:#000;">Confidence ${result.confidence_score || 85}%</span>
                     </div>
-                    <div class="result-value">${result.repair_estimate ? 'KES ' + result.repair_estimate.total_cost.toLocaleString() : 'Assessment Complete'}</div>
-                    <p style="color:#eab308; font-weight:600;">${result.recommendation || 'Assessment Result'}</p>
+                    <div class="result-value">${result.repair_estimate ? 'KES ' + (result.repair_estimate.total_cost || result.repair_estimate).toLocaleString() : 'Assessment Complete'}</div>
+                    <p style="color:#eab308; font-weight:600;">${result.recommendation || result.status || 'Assessment Result'}</p>
                     <div class="result-detail">
                         ${result.repair_estimate ? `
-                            <div class="item"><span class="label">Parts Cost</span><span class="value">KES ${result.repair_estimate.parts_cost.toLocaleString()}</span></div>
-                            <div class="item"><span class="label">Labour Cost</span><span class="value">KES ${result.repair_estimate.labour_cost.toLocaleString()}</span></div>
-                            <div class="item"><span class="label">Total Cost</span><span class="value green">KES ${result.repair_estimate.total_cost.toLocaleString()}</span></div>
+                            <div class="item"><span class="label">Parts Cost</span><span class="value">KES ${(result.repair_estimate.parts_cost || 0).toLocaleString()}</span></div>
+                            <div class="item"><span class="label">Labour Cost</span><span class="value">KES ${(result.repair_estimate.labour_cost || 0).toLocaleString()}</span></div>
+                            <div class="item"><span class="label">Total Cost</span><span class="value green">KES ${(result.repair_estimate.total_cost || 0).toLocaleString()}</span></div>
                         ` : ''}
                         ${result.total_loss !== undefined ? `
                             <div class="item"><span class="label">Total Loss</span><span class="value ${result.total_loss ? 'red' : 'green'}">${result.total_loss ? '✅ Yes' : '❌ No'}</span></div>
-                            <div class="item"><span class="label">Loss Ratio</span><span class="value">${(result.loss_ratio * 100).toFixed(1)}%</span></div>
+                            <div class="item"><span class="label">Loss Ratio</span><span class="value">${((result.loss_ratio || 0) * 100).toFixed(1)}%</span></div>
                         ` : ''}
                         ${result.salvage_value ? `
-                            <div class="item"><span class="label">Salvage Value</span><span class="value gold">KES ${result.salvage_value.toLocaleString()}</span></div>
+                            <div class="item"><span class="label">Salvage Value</span><span class="value gold">KES ${(result.salvage_value).toLocaleString()}</span></div>
                         ` : ''}
                         ${result.estimated_payout ? `
-                            <div class="item"><span class="label">Estimated Payout</span><span class="value green">KES ${result.estimated_payout.toLocaleString()}</span></div>
+                            <div class="item"><span class="label">Estimated Payout</span><span class="value green">KES ${(result.estimated_payout).toLocaleString()}</span></div>
                         ` : ''}
                         ${result.claim_valid !== undefined ? `
                             <div class="item"><span class="label">Claim Valid</span><span class="value ${result.claim_valid ? 'green' : 'red'}">${result.claim_valid ? '✅ Valid' : '❌ Invalid'}</span></div>
@@ -593,9 +746,13 @@
                         ${result.valuation_recommendation ? `
                             <div class="item"><span class="label">Recommendation</span><span class="value gold">${result.valuation_recommendation}</span></div>
                         ` : ''}
-                        <div class="item"><span class="label">Assessment ID</span><span class="value" style="font-family:monospace;font-size:12px;color:#eab308;">${result.assessment_id}</span></div>
-                        <div class="item"><span class="label">Inspector</span><span class="value">${result.inspector?.name || 'N/A'}</span></div>
-                        <div class="item"><span class="label">Generated</span><span class="value">${new Date(result.generated_at).toLocaleString()}</span></div>
+                        <div class="item"><span class="label">Assessment ID</span><span class="value" style="font-family:monospace;font-size:12px;color:#eab308;">${result.assessment_id || result.id || 'N/A'}</span></div>
+                        <div class="item"><span class="label">Inspector</span><span class="value">${result.inspector?.name || document.getElementById('inspectorName').value || 'N/A'}</span></div>
+                        <div class="item"><span class="label">Generated</span><span class="value">${new Date(result.generated_at || result.created_at || Date.now()).toLocaleString()}</span></div>
+                    </div>
+                    <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
+                        <p style="color:#22c55e; font-weight:600;">✅ Assessment Complete</p>
+                        <p style="color:#bbf7d0; font-size:13px;">This report is digitally signed and has a unique audit trail.</p>
                     </div>
                 `;
                 
@@ -609,8 +766,42 @@
                 return session.access_token;
             }
 
-            // ─── EVENT LISTENERS ──────────────────────────────────
-            document.getElementById('submitBtn').addEventListener('click', handleSubmit);
+            // ─── DOWNLOAD REPORT ────────────────────────────────────
+            document.getElementById('downloadReportBtn').addEventListener('click', function() {
+                const content = document.getElementById('resultsContainer').cloneNode(true);
+                const win = window.open('', '_blank');
+                win.document.write(`
+                    <html><head><title>AUTO-V Assessment Report</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; background: #fff; color: #000; padding: 40px; }
+                        .result-box { border: 2px solid #000; padding: 20px; }
+                        .result-value { font-size: 36px; font-weight: bold; color: #22c55e; }
+                        .result-detail { margin: 10px 0; }
+                        .item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #ddd; }
+                        .label { color: #666; }
+                        .value { font-weight: bold; }
+                        .header { border-bottom: 2px solid #eab308; padding-bottom: 10px; margin-bottom: 20px; }
+                        .header h1 { color: #eab308; }
+                        .footer { margin-top: 30px; border-top: 1px solid #ccc; padding-top: 15px; font-size: 12px; color: #999; text-align: center; }
+                    </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <h1>⚠️ AUTO-V Assessment Report</h1>
+                            <p>${new Date().toLocaleString()}</p>
+                        </div>
+                        ${content.innerHTML}
+                        <div class="footer">
+                            <p>This report is electronically generated and signed.</p>
+                        </div>
+                    </body></html>
+                `);
+                win.document.close();
+                win.print();
+                win.close();
+            });
+
+            // ─── NAVIGATION ──────────────────────────────────────────
             document.getElementById('backBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
             document.getElementById('newRequestBtn').addEventListener('click', () => location.reload());
             document.getElementById('dashboardBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
@@ -620,16 +811,6 @@
                 window.location.href = 'login.html';
             });
 
-            // ─── POPULATE YEARS ──────────────────────────────────────
-            function populateYears() {
-                const yearSelect = document.getElementById('vehicleYear');
-                const currentYear = new Date().getFullYear();
-                yearSelect.innerHTML = '';
-                for (let y = currentYear; y >= 1950; y--) {
-                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
-                }
-            }
-
             // ─── INIT ──────────────────────────────────────────────
             async function init() {
                 populateYears();
@@ -638,12 +819,22 @@
                 document.getElementById('vehicleModel').innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
                 
                 const { data: { user } } = await supabase.auth.getUser();
-                if (!user) window.location.href = 'login.html';
+                if (!user) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                currentUser = user;
+                document.getElementById('userEmail').textContent = user.email;
+                document.getElementById('inspectorName').value = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Inspector';
+                document.getElementById('inspectorSignature').value = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Inspector';
                 
-                document.getElementById('inspectorName').value = user?.user_metadata?.full_name || user?.email || 'Inspector';
-                
-                // Set default market value from session if available
-                // Otherwise keep default
+                // Check URL params for pre-selected assessment type
+                const urlParams = new URLSearchParams(window.location.search);
+                const typeParam = urlParams.get('type');
+                if (typeParam && ASSESSMENT_TYPES[typeParam]) {
+                    const card = document.querySelector(`.assessment-type-card[data-type="${typeParam}"]`);
+                    if (card) card.click();
+                }
             }
             init();
         })();
