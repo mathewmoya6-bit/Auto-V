@@ -10,7 +10,9 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
-from services.supabase_client import get_supabase
+
+# ─── FIXED: Import the correct function ──────────────────────────
+from services.supabase_client import get_supabase_client as get_supabase
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -21,16 +23,16 @@ MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
 MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
 CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')
-MPESA_ENV = os.getenv('MPESA_ENV', 'production').lower()  # ← Default to production
+MPESA_ENV = os.getenv('MPESA_ENV', 'production').lower()
 
 # ─── BASE URL ──────────────────────────────────────────────
 BASE_URL = (
     'https://sandbox.safaricom.co.ke'
     if MPESA_ENV == 'sandbox'
-    else 'https://api.safaricom.co.ke'  # Production
+    else 'https://api.safaricom.co.ke'
 )
 
-REQUEST_TIMEOUT = 30  # Increased for production
+REQUEST_TIMEOUT = 30
 MAX_RETRIES = 3
 _token_cache = {'token': None, 'expires_at': None}
 
@@ -48,15 +50,11 @@ SAFARICOM_IPS = [
 ]
 
 def verify_safaricom_ip(ip: str) -> bool:
-    """
-    Verify if IP belongs to Safaricom's production ranges.
-    Returns True if valid, False otherwise.
-    """
+    """Verify if IP belongs to Safaricom's production ranges."""
     if not ip:
         logger.warning("⚠️ No IP provided for verification")
         return False
     
-    # In production, strictly verify
     if MPESA_ENV == 'production':
         try:
             import ipaddress
@@ -71,10 +69,9 @@ def verify_safaricom_ip(ip: str) -> bool:
             logger.error(f"❌ IP verification error: {e}")
             return False
     else:
-        # In sandbox, allow localhost for testing
         if ip in ['127.0.0.1', 'localhost']:
             return True
-        return True  # Allow all in sandbox for testing
+        return True
 
 
 # ─── SAFETY CHECK ──────────────────────────────────────────
@@ -98,12 +95,10 @@ def is_mpesa_configured() -> bool:
         logger.error(f"❌ Missing M-Pesa config: {', '.join(missing)}")
         return False
     
-    # Validate shortcode
     if MPESA_ENV == 'production' and len(MPESA_SHORTCODE) != 7:
         logger.error(f"❌ Production shortcode must be 7 digits: {MPESA_SHORTCODE}")
         return False
     
-    # Validate callback URL
     if MPESA_ENV == 'production' and not CALLBACK_URL.startswith('https://'):
         logger.error("❌ Production callback must use HTTPS")
         return False
@@ -114,24 +109,18 @@ def is_mpesa_configured() -> bool:
 
 # ─── PHONE NORMALIZER ──────────────────────────────────────
 def normalize_phone(phone: str) -> str:
-    """
-    Normalize phone number to 254XXXXXXXXX format.
-    """
+    """Normalize phone number to 254XXXXXXXXX format."""
     if not phone:
         raise ValueError("Phone number is required")
 
-    # Remove all non-digit characters
     phone = ''.join(c for c in phone if c.isdigit())
 
-    # Remove leading 0
     if phone.startswith("0"):
         phone = "254" + phone[1:]
 
-    # Add 254 if starting with 7
     if phone.startswith("7") and len(phone) == 9:
         phone = "254" + phone
 
-    # Validate final format
     if not phone.startswith("254") or len(phone) != 12:
         raise ValueError(f"Invalid phone format: {phone}")
 
@@ -140,12 +129,9 @@ def normalize_phone(phone: str) -> str:
 
 # ─── TOKEN ──────────────────────────────────────────────────
 def get_mpesa_token(force: bool = False) -> str:
-    """
-    Get M-Pesa access token with caching.
-    """
+    """Get M-Pesa access token with caching."""
     global _token_cache
 
-    # Check cache
     if (
         not force
         and _token_cache["token"]
@@ -165,7 +151,6 @@ def get_mpesa_token(force: bool = False) -> str:
 
     for attempt in range(MAX_RETRIES):
         try:
-            # ─── REMOVED proxy parameter ──────────────────────────
             res = requests.get(
                 url,
                 headers={"Authorization": f"Basic {auth}"},
@@ -217,14 +202,10 @@ def initiate_stk_push(
     service: str = "AUTO-V",
     reference: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Initiate STK Push to customer's phone.
-    Returns M-Pesa response.
-    """
+    """Initiate STK Push to customer's phone."""
     if not is_mpesa_configured():
         raise Exception("M-Pesa is not configured")
 
-    # Validate amount
     if amount <= 0:
         raise ValueError("Amount must be greater than 0")
     
@@ -239,7 +220,6 @@ def initiate_stk_push(
         f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()
     ).decode()
 
-    # ─── Build payload ──────────────────────────────────────────
     payload = {
         "BusinessShortCode": MPESA_SHORTCODE,
         "Password": password,
@@ -251,7 +231,7 @@ def initiate_stk_push(
         "PhoneNumber": phone,
         "CallBackURL": CALLBACK_URL,
         "AccountReference": reference or f"AUTO-{payment_id[:8].upper()}",
-        "TransactionDesc": service[:36]  # Max 36 characters
+        "TransactionDesc": service[:36]
     }
 
     logger.info(f"📤 Initiating STK Push for payment {payment_id}")
@@ -266,7 +246,6 @@ def initiate_stk_push(
 
     for attempt in range(MAX_RETRIES):
         try:
-            # ─── REMOVED proxy parameter ──────────────────────────
             res = requests.post(
                 url, 
                 json=payload, 
@@ -285,7 +264,6 @@ def initiate_stk_push(
             data = res.json()
             logger.info(f"📥 STK Push response: {data}")
 
-            # Check response code
             if data.get("ResponseCode") != "0":
                 error_msg = data.get("ResponseDescription", "Unknown error")
                 raise Exception(f"M-Pesa error: {error_msg}")
@@ -318,9 +296,7 @@ def initiate_stk_push(
 
 # ─── STATUS QUERY ──────────────────────────────────────────
 def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
-    """
-    Query M-Pesa payment status.
-    """
+    """Query M-Pesa payment status."""
     if not checkout_request_id:
         raise ValueError("CheckoutRequestID is required")
 
@@ -342,7 +318,6 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
 
     for attempt in range(MAX_RETRIES):
         try:
-            # ─── REMOVED proxy parameter ──────────────────────────
             res = requests.post(
                 f"{BASE_URL}/mpesa/stkpushquery/v1/query",
                 json=payload,
@@ -374,9 +349,7 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
 
 # ─── CALLBACK HANDLER ──────────────────────────────────────
 def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) -> Dict[str, Any]:
-    """
-    Handle M-Pesa callback with proper transaction extraction.
-    """
+    """Handle M-Pesa callback with proper transaction extraction."""
     try:
         logger.info("=" * 60)
         logger.info("📥 Processing M-Pesa callback")
@@ -385,7 +358,6 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             logger.error("❌ No callback data")
             return {"ResultCode": 1, "ResultDesc": "No data"}
 
-        # ─── Validate callback structure ──────────────────────────
         stk = callback_data.get("Body", {}).get("stkCallback", {})
         if not stk:
             logger.error("❌ Missing stkCallback")
@@ -401,7 +373,6 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             logger.error("❌ Missing CheckoutRequestID")
             return {"ResultCode": 1, "ResultDesc": "Missing CheckoutRequestID"}
 
-        # ─── Extract transaction ID ────────────────────────────────
         transaction_id = None
         amount = None
         phone = None
@@ -423,10 +394,9 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         else:
             logger.warning("⚠️ No CallbackMetadata found")
 
-        # ─── Update database ────────────────────────────────────
-        supabase = get_supabase()
+        # ─── FIXED: Use the correct Supabase function ──────────────
+        supabase = get_supabase()  # Now works with alias
 
-        # Find payment by checkout_id
         payment = supabase.table("payments") \
             .select("*") \
             .eq("checkout_request_id", checkout_id) \
@@ -440,12 +410,10 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         payment_id = payment["id"]
         logger.info(f"✅ Found payment: {payment_id}")
 
-        # ─── Idempotency check ──────────────────────────────────
         if payment.get("status") == "completed":
             logger.info(f"ℹ️ Payment {payment_id} already completed")
             return {"ResultCode": 0, "ResultDesc": "Already processed"}
 
-        # ─── Update status ──────────────────────────────────────
         if result_code == "0" and transaction_id:
             update = {
                 "status": "completed",
