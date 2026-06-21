@@ -1,144 +1,228 @@
 # api/routes/admin.py - Admin Routes
-
-import logging
-from datetime import datetime
 from flask import Blueprint, request, jsonify
+from datetime import datetime
+import logging
+
 from services.supabase_client import get_supabase
-from api.auth_middleware import require_auth
+from utils.decorators import rate_limit, require_auth, log_request
 
 logger = logging.getLogger(__name__)
+
 admin_bp = Blueprint('admin', __name__)
 
-@admin_bp.route('/dashboard', methods=['GET'])
+# ─── SYSTEM STATUS ─────────────────────────────────────────────
+
+@admin_bp.route('/status', methods=['GET'])
+@rate_limit(limit=30, per=60)
 @require_auth
-def dashboard(user):
-    """Get admin dashboard data."""
+@log_request
+def system_status():
+    """Get system status"""
     try:
-        # Check if user is admin
-        if not user.user_metadata.get('role') == 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
-        
         supabase = get_supabase()
-        
-        # Get stats
-        users = supabase.table('users').select('*', count='exact').execute()
-        payments = supabase.table('payments').select('*', count='exact').execute()
-        valuations = supabase.table('valuations').select('*', count='exact').execute()
+        health = supabase.check_health()
         
         return jsonify({
-            'total_users': users.count if users else 0,
-            'total_payments': payments.count if payments else 0,
-            'total_valuations': valuations.count if valuations else 0,
+            'success': True,
+            'data': {
+                'status': 'operational' if health.get('connected') else 'degraded',
+                'timestamp': datetime.now().isoformat(),
+                'services': {
+                    'supabase': health,
+                    'api': 'operational'
+                }
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"System status error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@admin_bp.route('/stats', methods=['GET'])
+@rate_limit(limit=30, per=60)
+@require_auth
+@log_request
+def system_stats():
+    """Get system statistics"""
+    try:
+        supabase = get_supabase()
+        stats = supabase.get_stats()
+        
+        return jsonify({
+            'success': True,
+            'data': stats,
             'timestamp': datetime.now().isoformat()
         }), 200
     except Exception as e:
-        logger.error(f"Admin dashboard error: {e}")
-        return jsonify({'error': 'Failed to fetch dashboard data'}), 500
+        logger.error(f"System stats error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ─── USERS ──────────────────────────────────────────────────────
 
 @admin_bp.route('/users', methods=['GET'])
+@rate_limit(limit=30, per=60)
 @require_auth
-def get_users(user):
-    """Get all users (admin only)."""
+@log_request
+def list_users():
+    """List all users"""
     try:
-        if not user.user_metadata.get('role') == 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
-        
         supabase = get_supabase()
-        response = supabase.table('users')\
-            .select('*')\
-            .order('created_at', desc=True)\
-            .execute()
+        users = supabase.list_users()
         
-        return jsonify(response.data), 200
+        return jsonify({
+            'success': True,
+            'data': users,
+            'count': len(users)
+        }), 200
     except Exception as e:
-        logger.error(f"Error fetching users: {e}")
-        return jsonify({'error': 'Failed to fetch users'}), 500
+        logger.error(f"List users error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@admin_bp.route('/users/<user_id>', methods=['PUT'])
+@admin_bp.route('/users/<user_id>', methods=['GET'])
+@rate_limit(limit=30, per=60)
 @require_auth
-def update_user(user, user_id):
-    """Update a user (admin only)."""
+@log_request
+def get_user(user_id):
+    """Get user by ID"""
     try:
-        if not user.user_metadata.get('role') == 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
+        supabase = get_supabase()
+        user = supabase.get_user(user_id)
         
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'data': user
+        }), 200
+    except Exception as e:
+        logger.error(f"Get user error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@admin_bp.route('/users/<user_id>/status', methods=['PUT'])
+@rate_limit(limit=20, per=60)
+@require_auth
+@log_request
+def update_user_status(user_id):
+    """Update user status"""
+    try:
         data = request.get_json()
-        data['updated_at'] = datetime.now().isoformat()
+        
+        if not data or 'status' not in data:
+            return jsonify({'success': False, 'error': 'status is required'}), 400
         
         supabase = get_supabase()
-        response = supabase.table('users')\
-            .update(data)\
-            .eq('id', user_id)\
-            .execute()
+        result = supabase.update_user_status(user_id, data['status'])
         
-        if not response.data:
-            return jsonify({'error': 'User not found'}), 404
+        if not result.get('success'):
+            return jsonify({'success': False, 'error': result.get('error')}), 500
         
-        return jsonify(response.data[0]), 200
+        return jsonify({
+            'success': True,
+            'data': result.get('data'),
+            'message': 'User status updated'
+        }), 200
     except Exception as e:
-        logger.error(f"Error updating user: {e}")
-        return jsonify({'error': 'Failed to update user'}), 500
+        logger.error(f"Update user status error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@admin_bp.route('/system/settings', methods=['GET'])
+# ─── SYSTEM CONFIG ─────────────────────────────────────────────
+
+@admin_bp.route('/config', methods=['GET'])
+@rate_limit(limit=20, per=60)
 @require_auth
-def get_settings(user):
-    """Get system settings (admin only)."""
+@log_request
+def get_config():
+    """Get system configuration"""
     try:
-        if not user.user_metadata.get('role') == 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
-        
         supabase = get_supabase()
-        response = supabase.table('system_settings')\
-            .select('*')\
-            .execute()
+        config = supabase.get_system_config()
         
-        return jsonify(response.data), 200
+        return jsonify({
+            'success': True,
+            'data': config
+        }), 200
     except Exception as e:
-        logger.error(f"Error fetching settings: {e}")
-        return jsonify({'error': 'Failed to fetch settings'}), 500
+        logger.error(f"Get config error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@admin_bp.route('/system/settings', methods=['PUT'])
+@admin_bp.route('/config', methods=['PUT'])
+@rate_limit(limit=10, per=60)
 @require_auth
-def update_settings(user):
-    """Update system settings (admin only)."""
+@log_request
+def update_config():
+    """Update system configuration"""
     try:
-        if not user.user_metadata.get('role') == 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
-        
         data = request.get_json()
-        data['updated_at'] = datetime.now().isoformat()
-        data['updated_by'] = user.id
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
         
         supabase = get_supabase()
+        result = supabase.update_system_config(data)
         
-        # Update or insert settings
-        for key, value in data.items():
-            if key in ['updated_at', 'updated_by']:
-                continue
-            response = supabase.table('system_settings')\
-                .upsert({'key': key, 'value': value, 'updated_at': datetime.now().isoformat()})\
-                .execute()
+        if not result.get('success'):
+            return jsonify({'success': False, 'error': result.get('error')}), 500
         
-        return jsonify({'message': 'Settings updated successfully'}), 200
+        return jsonify({
+            'success': True,
+            'data': result.get('data'),
+            'message': 'Configuration updated'
+        }), 200
     except Exception as e:
-        logger.error(f"Error updating settings: {e}")
-        return jsonify({'error': 'Failed to update settings'}), 500
+        logger.error(f"Update config error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@admin_bp.route('/payments', methods=['GET'])
+# ─── LOGS ──────────────────────────────────────────────────────
+
+@admin_bp.route('/logs', methods=['GET'])
+@rate_limit(limit=20, per=60)
 @require_auth
-def get_all_payments(user):
-    """Get all payments (admin only)."""
+@log_request
+def get_logs():
+    """Get system logs"""
     try:
-        if not user.user_metadata.get('role') == 'admin':
-            return jsonify({'error': 'Admin access required'}), 403
+        limit = request.args.get('limit', 100, type=int)
+        level = request.args.get('level', 'INFO')
         
-        supabase = get_supabase()
-        response = supabase.table('payments')\
-            .select('*, users(full_name, email)')\
-            .order('created_at', desc=True)\
-            .execute()
+        # Read logs from file
+        import os
+        log_file = os.getenv('LOG_FILE', 'auto-v.log')
         
-        return jsonify(response.data), 200
+        if not os.path.exists(log_file):
+            return jsonify({
+                'success': True,
+                'data': [],
+                'message': 'No log file found'
+            }), 200
+        
+        with open(log_file, 'r') as f:
+            lines = f.readlines()[-limit:]
+        
+        return jsonify({
+            'success': True,
+            'data': lines,
+            'count': len(lines)
+        }), 200
     except Exception as e:
-        logger.error(f"Error fetching payments: {e}")
-        return jsonify({'error': 'Failed to fetch payments'}), 500
+        logger.error(f"Get logs error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ─── CACHE ──────────────────────────────────────────────────────
+
+@admin_bp.route('/cache/clear', methods=['POST'])
+@rate_limit(limit=10, per=60)
+@require_auth
+@log_request
+def clear_cache():
+    """Clear system cache"""
+    try:
+        supabase = get_supabase()
+        supabase.clear_cache()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cache cleared successfully'
+        }), 200
+    except Exception as e:
+        logger.error(f"Clear cache error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
