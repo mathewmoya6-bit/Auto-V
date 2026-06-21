@@ -280,6 +280,24 @@
         .fuel-price-item .price { font-size: 16px; font-weight: 700; color: #eab308; }
         .fuel-price-item input { width: 80px; padding: 4px 8px; font-size: 13px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; text-align: center; margin-top: 4px; }
         
+        /* Auto-fill status indicator */
+        .auto-fill-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .auto-fill-status.success { background: #22c55e; color: #000; }
+        .auto-fill-status.loading { background: #eab308; color: #000; animation: pulse 1s infinite; }
+        .auto-fill-status.error { background: #dc2626; color: #fff; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
         @media (max-width: 768px) {
             .container { padding: 16px; }
             .card { padding: 20px; }
@@ -340,8 +358,12 @@
                 <!-- SECTION 1: Vehicle Parameters -->
                 <h3 style="color:#eab308; font-size:15px; margin-bottom:16px;">🚗 Vehicle Parameters</h3>
                 <div class="row-3">
-                    <div class="form-group"><label class="required">Registration</label><input type="text" id="regNumber" placeholder="KCA 123A" value="KDA 123A"></div>
-                    <div class="form-group"><label class="required">Vehicle Type</label>
+                    <div class="form-group">
+                        <label class="required">Registration</label>
+                        <input type="text" id="regNumber" placeholder="KCA 123A" value="KDA 123A">
+                    </div>
+                    <div class="form-group">
+                        <label class="required">Vehicle Type</label>
                         <select id="vehicleType">
                             <option value="sedan" selected>Sedan</option>
                             <option value="suv">SUV</option>
@@ -351,7 +373,8 @@
                             <option value="motorcycle">Motorcycle</option>
                         </select>
                     </div>
-                    <div class="form-group"><label class="required">Make</label>
+                    <div class="form-group">
+                        <label class="required">Make</label>
                         <select id="make">
                             <option value="Toyota" selected>Toyota</option>
                             <option value="Nissan">Nissan</option>
@@ -376,7 +399,8 @@
                 </div>
 
                 <div class="row-3">
-                    <div class="form-group"><label class="required">Model</label>
+                    <div class="form-group">
+                        <label class="required">Model</label>
                         <select id="model">
                             <option value="Axio" selected>Axio</option>
                             <option value="Corolla">Corolla</option>
@@ -391,11 +415,14 @@
                             <option value="Vitz">Vitz</option>
                             <option value="Other">Other</option>
                         </select>
+                        <span id="autoFillStatus" class="auto-fill-status"></span>
                     </div>
-                    <div class="form-group"><label class="required">Year</label>
+                    <div class="form-group">
+                        <label class="required">Year</label>
                         <select id="year"></select>
                     </div>
-                    <div class="form-group"><label class="required">Engine Capacity (CC)</label>
+                    <div class="form-group">
+                        <label class="required">Engine Capacity (CC)</label>
                         <select id="engineCC">
                             <option value="1000">1,000</option>
                             <option value="1300">1,300</option>
@@ -410,7 +437,8 @@
                 </div>
 
                 <div class="row-3">
-                    <div class="form-group"><label class="required">Fuel Type</label>
+                    <div class="form-group">
+                        <label class="required">Fuel Type</label>
                         <select id="fuelType">
                             <option value="petrol">Petrol</option>
                             <option value="diesel">Diesel</option>
@@ -419,15 +447,18 @@
                             <option value="lpg">LPG</option>
                         </select>
                     </div>
-                    <div class="form-group"><label class="required">Transmission</label>
+                    <div class="form-group">
+                        <label class="required">Transmission</label>
                         <select id="transmission">
                             <option value="manual">Manual</option>
                             <option value="automatic" selected>Automatic</option>
                             <option value="cvt">CVT</option>
                         </select>
                     </div>
-                    <div class="form-group"><label class="required">Purchase Price (KES)</label>
+                    <div class="form-group">
+                        <label class="required">Purchase Price (KES)</label>
                         <input type="number" id="purchasePrice" value="2500000" step="100000">
+                        <span style="font-size:10px;color:#64748b;">Auto-filled from vehicle database</span>
                     </div>
                 </div>
 
@@ -437,13 +468,16 @@
                 <h3 style="color:#eab308; font-size:15px; margin-bottom:16px;">⛽ Operating Costs</h3>
 
                 <div class="row-4">
-                    <div class="form-group"><label>Fuel Price (KES/L)</label>
+                    <div class="form-group">
+                        <label>Fuel Price (KES/L)</label>
                         <input type="number" id="fuelPrice" value="199.15" step="0.05">
                     </div>
-                    <div class="form-group"><label>Fuel Economy (km/L)</label>
+                    <div class="form-group">
+                        <label>Fuel Economy (km/L)</label>
                         <input type="number" id="fuelEconomy" value="15" step="0.5">
                     </div>
-                    <div class="form-group"><label>Annual Distance (km)</label>
+                    <div class="form-group">
+                        <label>Annual Distance (km)</label>
                         <input type="number" id="annualKm" value="20000" step="1000">
                     </div>
                     <div class="form-group" id="evFields" style="display:none;">
@@ -748,6 +782,53 @@
                 }
             }
 
+            // ─── VEHICLE AUTO-FILL FROM DATABASE ──────────────────
+            function autoFillVehicle() {
+                const make = document.getElementById('make').value;
+                const model = document.getElementById('model').value;
+                const key = `${make} ${model}`;
+                const statusEl = document.getElementById('autoFillStatus');
+                
+                // Check if vehicle exists in database
+                if (vehicleDatabase[key]) {
+                    const data = vehicleDatabase[key];
+                    document.getElementById('purchasePrice').value = data.basePrice;
+                    document.getElementById('insuranceCost').value = data.insurance;
+                    document.getElementById('serviceCost').value = data.service;
+                    document.getElementById('repairCost').value = data.repairs;
+                    document.getElementById('tyreCost').value = data.tyres;
+                    document.getElementById('licenceCost').value = data.licence;
+                    document.getElementById('financeCost').value = data.finance;
+                    document.getElementById('fuelEconomy').value = data.economy;
+                    
+                    statusEl.textContent = '✅ Auto-filled';
+                    statusEl.className = 'auto-fill-status success';
+                    
+                    // Update vehicle type based on make/model
+                    if (make === 'Toyota') {
+                        if (['Land Cruiser', 'Prado', 'Fortuner'].includes(model)) {
+                            document.getElementById('vehicleType').value = 'suv';
+                        } else if (['Hilux'].includes(model)) {
+                            document.getElementById('vehicleType').value = 'pickup';
+                        }
+                    }
+                    
+                    showToast(`✅ Vehicle data loaded for ${make} ${model}`, 'success');
+                } else {
+                    statusEl.textContent = '⚠️ Using defaults';
+                    statusEl.className = 'auto-fill-status error';
+                    // Use default values
+                    document.getElementById('purchasePrice').value = 2500000;
+                    document.getElementById('insuranceCost').value = 65000;
+                    document.getElementById('serviceCost').value = 35000;
+                    document.getElementById('repairCost').value = 25000;
+                    document.getElementById('tyreCost').value = 40000;
+                    document.getElementById('licenceCost').value = 15000;
+                    document.getElementById('financeCost').value = 50000;
+                    document.getElementById('fuelEconomy').value = 15;
+                }
+            }
+
             // ─── FUEL TYPE TOGGLE ──────────────────────────────────
             document.getElementById('fuelType').addEventListener('change', function() {
                 const fuel = this.value;
@@ -755,28 +836,29 @@
                 const evFields = document.getElementById('evFields');
                 const lpgFields = document.getElementById('lpgFields');
 
-                // Show/hide EV and LPG specific fields
                 evFields.style.display = fuel === 'electric' ? 'block' : 'none';
                 lpgFields.style.display = fuel === 'lpg' ? 'block' : 'none';
 
-                // Update fuel price input based on selected fuel
                 if (fuelPrices[fuel] !== undefined) {
                     fuelPriceInput.value = fuelPrices[fuel].toFixed(2);
                 } else {
                     fuelPriceInput.value = defaultFuelPrices.petrol.toFixed(2);
                 }
 
-                // Adjust fuel economy for electric or LPG if needed
                 if (fuel === 'electric') {
                     document.getElementById('fuelEconomy').value = 0;
                     document.getElementById('fuelEconomy').readOnly = true;
                 } else if (fuel === 'lpg') {
-                    document.getElementById('fuelEconomy').value = 12; // typical LPG km/kg
+                    document.getElementById('fuelEconomy').value = 12;
                     document.getElementById('fuelEconomy').readOnly = false;
                 } else {
                     document.getElementById('fuelEconomy').readOnly = false;
                 }
             });
+
+            // ─── MAKE/MODEL CHANGE TRIGGERS AUTO-FILL ─────────────
+            document.getElementById('make').addEventListener('change', autoFillVehicle);
+            document.getElementById('model').addEventListener('change', autoFillVehicle);
 
             // ─── FUEL PRICE INPUT SYNC ─────────────────────────────
             document.getElementById('fuelPrice').addEventListener('input', function() {
@@ -814,7 +896,6 @@
                 fuelPrices.lpg = lpg;
                 fuelPrices.electric = electric;
 
-                // Update the main fuel price input if it matches the current type
                 const currentFuel = document.getElementById('fuelType').value;
                 document.getElementById('fuelPrice').value = fuelPrices[currentFuel].toFixed(2);
 
@@ -823,7 +904,7 @@
                     document.getElementById('fuelUpdateStatus').style.display = 'none';
                 }, 3000);
                 showToast('Fuel prices updated successfully!', 'success');
-                calculateMileageRate(); // recalc
+                calculateMileageRate();
             }
 
             function resetFuelPrices() {
@@ -872,21 +953,20 @@
                 let annualFuelCost = 0;
                 if (fuelType === 'electric') {
                     const elecCost = parseFloat(document.getElementById('electricityCost').value) || 20;
-                    annualFuelCost = annualKm * (elecCost * 0.5); // ~0.5 kWh per km
+                    annualFuelCost = annualKm * (elecCost * 0.5);
                 } else if (fuelType === 'lpg') {
-                    // LPG: fuelEconomy is km/kg, fuelPrice is KES/kg
                     annualFuelCost = (annualKm / fuelEconomy) * fuelPrice;
                 } else {
                     annualFuelCost = (annualKm / fuelEconomy) * fuelPrice;
                 }
 
-                // 3. Depreciation (using purchase price × depreciation rate)
+                // 3. Depreciation
                 const annualDepreciation = purchasePrice * depreciationRate;
 
                 // 4. Tyre Cost (annualized)
                 const annualTyreCost = (tyres / tyreLife) * annualKm;
 
-                // 5. Apply combined factor to variable costs
+                // 5. Apply combined factor
                 const adjustedFuelCost = annualFuelCost * combinedFactor;
                 const adjustedTyreCost = annualTyreCost * combinedFactor;
                 const adjustedServiceCost = service * combinedFactor * maintenanceFactor;
@@ -974,7 +1054,7 @@
                     const annDep = data.basePrice * depreciationRate;
                     let fuelCost;
                     if (fuelType === 'electric') {
-                        fuelCost = annualKm * (20 * 0.5); // 20 KES/kWh * 0.5 kWh/km
+                        fuelCost = annualKm * (20 * 0.5);
                     } else if (fuelType === 'lpg') {
                         fuelCost = (annualKm / (data.economy || 12)) * fuelPrice;
                     } else {
@@ -1150,6 +1230,9 @@
 
                     // Trigger fuel type change to set visibility
                     document.getElementById('fuelType').dispatchEvent(new Event('change'));
+
+                    // Auto-fill initial vehicle
+                    autoFillVehicle();
 
                     // Auto-calculate
                     setTimeout(calculateMileageRate, 500);
