@@ -1,4 +1,4 @@
-# api/routes/mpesa.py - M-Pesa Routes (Production Ready)
+# api/routes/mpesa.py - Production Ready M-Pesa Routes
 
 import os
 import logging
@@ -7,10 +7,8 @@ import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
-# ─── FIXED: Import from the correct location ──────────────────
-# Use the services/supabase_client.py
-from services.supabase_client import get_supabase_client as get_supabase
-
+# ─── FIXED: Correct import from services ──────────────────────
+from services.supabase_client import get_supabase_client
 from services.mpesa import (
     initiate_stk_push,
     query_payment_status,
@@ -40,10 +38,6 @@ def initiate_payment():
     try:
         data = request.get_json()
         logger.info("📥 Payment initiation request received")
-        
-        if data:
-            sanitized = sanitize_log_data(data)
-            logger.info(f"Request data: {json.dumps(sanitized, indent=2)}")
 
         # ─── Validate required fields ──────────────────────────
         required = ['phone', 'amount', 'service', 'purpose']
@@ -93,8 +87,8 @@ def initiate_payment():
             except Exception as e:
                 logger.warning(f"Could not get user from token: {e}")
 
-        # ─── Get Supabase client ──────────────────────────────────
-        supabase = get_supabase()
+        # ─── FIXED: Correct Supabase client call ──────────────────
+        supabase = get_supabase_client()
 
         # ─── Create payment record ──────────────────────────────
         payment_id = str(uuid.uuid4())
@@ -199,7 +193,8 @@ def get_payment_status(payment_id):
         return jsonify({"status": "ok"}), 200
 
     try:
-        supabase = get_supabase()
+        # ─── FIXED: Correct Supabase client call ──────────────────
+        supabase = get_supabase_client()
 
         response = supabase.table('payments')\
             .select('*')\
@@ -246,7 +241,8 @@ def force_complete_payment(payment_id):
         if not transaction_id:
             return jsonify({'success': False, 'message': 'Transaction ID is required'}), 400
         
-        supabase = get_supabase()
+        # ─── FIXED: Correct Supabase client call ──────────────────
+        supabase = get_supabase_client()
         
         response = supabase.table('payments')\
             .select('*')\
@@ -295,108 +291,3 @@ def force_complete_payment(payment_id):
     except Exception as e:
         logger.error(f"❌ Force complete error: {e}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)}), 500
-
-
-# ─── =========================================================───
-# ─── ROUTE: CALLBACK ────────────────────────────────────────────
-# ─── =========================================================───
-
-@mpesa_bp.route('/callback', methods=['POST', 'GET'])
-def mpesa_callback():
-    """Handle M-Pesa callback from Safaricom."""
-    logger.info("=" * 60)
-    logger.info("📥 M-PESA CALLBACK ENDPOINT HIT")
-    logger.info(f"Method: {request.method}")
-    logger.info(f"Client IP: {request.remote_addr}")
-    
-    try:
-        raw_data = request.get_data(as_text=True)
-        logger.info(f"Raw data (first 500 chars): {raw_data[:500] if raw_data else 'Empty'}")
-        
-        data = request.get_json()
-        if not data:
-            data = request.form.to_dict()
-            if not data:
-                logger.error("❌ No data in callback")
-                return jsonify({'ResultCode': 1, 'ResultDesc': 'No data'}), 400
-        
-        try:
-            sanitized = sanitize_log_data(data)
-            logger.info(f"Callback data (sanitized): {json.dumps(sanitized, indent=2)[:500]}")
-        except Exception as e:
-            logger.warning(f"Could not sanitize callback data: {e}")
-        
-        result = handle_mpesa_callback(
-            callback_data=data,
-            client_ip=request.remote_addr
-        )
-        
-        logger.info(f"✅ Callback result: {result}")
-        
-        return jsonify({
-            'ResultCode': result.get('ResultCode', 0),
-            'ResultDesc': result.get('ResultDesc', 'Success')
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"❌ Callback error: {e}", exc_info=True)
-        return jsonify({'ResultCode': 1, 'ResultDesc': str(e)}), 200
-
-
-# ─── =========================================================───
-# ─── ROUTE: HEALTH CHECK ────────────────────────────────────────
-# ─── =========================================================───
-
-@mpesa_bp.route('/health', methods=['GET'])
-def mpesa_health():
-    """M-Pesa specific health check."""
-    try:
-        return jsonify({
-            'status': 'healthy',
-            'is_configured': is_mpesa_configured(),
-            'environment': os.getenv('MPESA_ENV', 'production'),
-            'shortcode': os.getenv('MPESA_SHORTCODE', '4095377'),
-            'callback_url': os.getenv('MPESA_CALLBACK_URL', 'not_set'),
-            'timestamp': datetime.now().isoformat()
-        }), 200
-    except Exception as e:
-        logger.error(f"Health check error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-
-# ─── =========================================================───
-# ─── ROUTE: CONFIG STATUS ───────────────────────────────────────
-# ─── =========================================================───
-
-@mpesa_bp.route('/config-status', methods=['GET'])
-def config_status():
-    """Check M-Pesa configuration status."""
-    try:
-        result = {
-            'is_configured': is_mpesa_configured(),
-            'environment': os.getenv('MPESA_ENV', 'production'),
-            'shortcode': os.getenv('MPESA_SHORTCODE', '4095377'),
-            'shortcode_type': os.getenv('MPESA_SHORTCODE_TYPE', 'paybill'),
-            'callback_url': os.getenv('MPESA_CALLBACK_URL', 'not_set'),
-            'variables': {
-                'MPESA_CONSUMER_KEY': '✅' if os.getenv('MPESA_CONSUMER_KEY') else '❌',
-                'MPESA_CONSUMER_SECRET': '✅' if os.getenv('MPESA_CONSUMER_SECRET') else '❌',
-                'MPESA_PASSKEY': '✅' if os.getenv('MPESA_PASSKEY') else '❌',
-                'MPESA_SHORTCODE': '✅' if os.getenv('MPESA_SHORTCODE') else '❌',
-                'MPESA_CALLBACK_URL': '✅' if os.getenv('MPESA_CALLBACK_URL') else '❌',
-            }
-        }
-
-        if result['is_configured']:
-            try:
-                token = get_mpesa_token()
-                result['token_test'] = '✅ Success'
-                result['token_preview'] = token[:20] + '...' if token else None
-            except Exception as e:
-                result['token_test'] = f'❌ Failed: {str(e)}'
-
-        return jsonify(result), 200
-
-    except Exception as e:
-        logger.error(f"Config status error: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
