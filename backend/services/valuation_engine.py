@@ -1,11 +1,13 @@
-# valuation.py – AUTO-V AI Valuation Engine
+# services/valuation.py – AUTO-V AI Valuation Engine
+# Production-Ready - Aligned with Frontend and API Routes
 
 import math
 import random
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
-# Base prices for common makes in Kenya (as of 2026)
+# ─── BASE PRICES ──────────────────────────────────────────────────
+
 BASE_PRICES: Dict[str, Dict[str, int]] = {
     "toyota": {
         "default": 1800000,
@@ -235,7 +237,8 @@ BASE_PRICES: Dict[str, Dict[str, int]] = {
     }
 }
 
-# Condition multipliers
+# ─── CONDITION MULTIPLIERS ───────────────────────────────────────
+
 CONDITION_MAP = {
     "excellent": 1.00,
     "good": 0.92,
@@ -243,7 +246,8 @@ CONDITION_MAP = {
     "poor": 0.70,
 }
 
-# Accident adjustments
+# ─── ACCIDENT ADJUSTMENTS ───────────────────────────────────────
+
 ACCIDENT_FACTORS = {
     "none": 1.00,
     "minor": 0.85,
@@ -251,14 +255,16 @@ ACCIDENT_FACTORS = {
     "major": 0.40,
 }
 
-# Service history adjustments
+# ─── SERVICE HISTORY ADJUSTMENTS ───────────────────────────────
+
 SERVICE_FACTORS = {
     "full": 1.00,
     "partial": 0.90,
     "none": 0.75,
 }
 
-# Owner count adjustments
+# ─── OWNER COUNT ADJUSTMENTS ────────────────────────────────────
+
 OWNER_FACTORS = {
     1: 1.00,
     2: 0.92,
@@ -266,7 +272,8 @@ OWNER_FACTORS = {
     4: 0.75,
 }
 
-# Usage adjustments
+# ─── USAGE ADJUSTMENTS ──────────────────────────────────────────
+
 USAGE_FACTORS = {
     "personal": 1.00,
     "commercial": 0.80,
@@ -274,21 +281,24 @@ USAGE_FACTORS = {
     "rental": 0.70,
 }
 
-# Import status adjustments
+# ─── IMPORT STATUS ADJUSTMENTS ──────────────────────────────────
+
 IMPORT_FACTORS = {
     "local": 1.00,
     "imported": 0.85,
     "new import": 0.95,
 }
 
-# Warranty adjustments
+# ─── WARRANTY ADJUSTMENTS ───────────────────────────────────────
+
 WARRANTY_FACTORS = {
     "active": 1.05,
     "expired": 1.00,
     "none": 0.95,
 }
 
-# Modification adjustments
+# ─── MODIFICATION ADJUSTMENTS ───────────────────────────────────
+
 MOD_FACTORS = {
     "none": 1.00,
     "minor": 1.02,
@@ -296,7 +306,8 @@ MOD_FACTORS = {
     "extensive": 0.80,
 }
 
-# Regional price adjustments (relative to Nairobi as base)
+# ─── REGIONAL PRICE ADJUSTMENTS ─────────────────────────────────
+
 REGION_FACTORS = {
     "nairobi": 1.05,
     "mombasa": 1.02,
@@ -306,7 +317,8 @@ REGION_FACTORS = {
     "national": 1.00,
 }
 
-# Purpose-specific adjustments (applied to final market value)
+# ─── PURPOSE-SPECIFIC ADJUSTMENTS ──────────────────────────────
+
 PURPOSE_FACTORS = {
     "market_value": 1.00,
     "insurance": 1.10,
@@ -319,28 +331,44 @@ PURPOSE_FACTORS = {
 }
 
 
+# ─── HELPER FUNCTIONS ───────────────────────────────────────────
+
 def get_base_price(make: str, model: str) -> int:
-    """
-    Get the base price for a given make and model.
-    Falls back to default if model not found.
-    """
+    """Get base price for a given make and model."""
     make_lower = make.lower().strip()
     model_lower = model.lower().strip()
-
     make_data = BASE_PRICES.get(make_lower, BASE_PRICES["other"])
-    # Try exact model match, else fallback to "default"
     price = make_data.get(model_lower)
     if price is None:
         price = make_data.get("default", 1200000)
     return price
 
 
+def get_default_values_for_make(make: str) -> Dict[str, Any]:
+    """Get default values for a specific make."""
+    make_lower = make.lower().strip()
+    return {
+        "base_price": BASE_PRICES.get(make_lower, BASE_PRICES["other"]).get("default", 1200000),
+        "condition": "good",
+        "accident": "none",
+        "service": "full",
+        "owners": 1,
+        "usage": "personal",
+        "import_status": "local",
+        "warranty": "expired",
+        "modifications": "none",
+        "region": "nairobi"
+    }
+
+
+# ─── CORE VALUATION FUNCTION ────────────────────────────────────
+
 def calculate_value(
     make: str,
     model: str,
     year: int,
     odometer: int,
-    condition: str,
+    condition: str = "good",
     accident_history: str = "none",
     service_history: str = "full",
     owners: int = 1,
@@ -352,10 +380,12 @@ def calculate_value(
     purpose: str = "market_value",
     valuation_methodology: str = "market_comparison",
     current_year: Optional[int] = None,
+    inspector: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Calculate a professional vehicle valuation with full audit trail.
-
+    Aligned with frontend valuation engine.
+    
     Args:
         make: Vehicle make (e.g., Toyota, BMW)
         model: Vehicle model (e.g., Axio, 3 Series)
@@ -373,30 +403,33 @@ def calculate_value(
         purpose: Market Value, Insurance, Bank Financing, Sale, Purchase, Fleet, Tax, Internal Audit
         valuation_methodology: Market Comparison, Cost Approach, Income Approach, Hybrid
         current_year: Override current year (defaults to system year)
+        inspector: Inspector details
 
     Returns:
-        Dictionary with valuation details, including:
-        - market_value
-        - insurance_value
-        - forced_sale_value
-        - confidence_score
-        - risk_score
-        - condition_score
-        - valuation_id
-        - inspector details (if provided)
-        - comparables
-        - factors used
+        Dictionary with valuation details
     """
     # Default current year if not provided
     if current_year is None:
         current_year = datetime.now().year
 
-    # ---- 1. Base Price ----
+    # Normalize inputs
+    make_lower = make.lower().strip()
+    model_lower = model.lower().strip()
+    condition_lower = condition.lower().strip()
+    accident_lower = accident_history.lower().strip()
+    service_lower = service_history.lower().strip()
+    usage_lower = usage.lower().strip()
+    import_lower = import_status.lower().strip()
+    warranty_lower = warranty.lower().strip()
+    mod_lower = modifications.lower().strip()
+    region_lower = region.lower().strip()
+    purpose_lower = purpose.lower().strip().replace(" ", "_")
+
+    # ─── 1. Base Price ──────────────────────────────────────────
     base_price = get_base_price(make, model)
 
-    # ---- 2. Age & Depreciation ----
+    # ─── 2. Age & Depreciation ──────────────────────────────────
     age = current_year - year
-    # Depreciation curve: higher for newer cars, tapers off
     if age <= 1:
         dep_rate = 0.05
     elif age <= 3:
@@ -411,8 +444,7 @@ def calculate_value(
         dep_rate = 0.18
     dep_factor = (1 - dep_rate) ** age
 
-    # ---- 3. Mileage Adjustment ----
-    # Expected mileage: 15,000 km/year for personal use
+    # ─── 3. Mileage Adjustment ──────────────────────────────────
     expected_mileage = max(age * 15000, 1)
     mileage_ratio = odometer / expected_mileage
 
@@ -429,47 +461,38 @@ def calculate_value(
     else:
         mileage_factor = 0.55
 
-    # ---- 4. Condition Factor ----
-    cond_lower = condition.lower().strip()
-    condition_factor = CONDITION_MAP.get(cond_lower, 0.85)
+    # ─── 4. Condition Factor ────────────────────────────────────
+    condition_factor = CONDITION_MAP.get(condition_lower, 0.85)
 
-    # ---- 5. Accident Factor ----
-    accident_lower = accident_history.lower().strip()
+    # ─── 5. Accident Factor ─────────────────────────────────────
     accident_factor = ACCIDENT_FACTORS.get(accident_lower, 1.00)
 
-    # ---- 6. Service History Factor ----
-    service_lower = service_history.lower().strip()
+    # ─── 6. Service History Factor ─────────────────────────────
     service_factor = SERVICE_FACTORS.get(service_lower, 1.00)
 
-    # ---- 7. Owner Factor ----
+    # ─── 7. Owner Factor ────────────────────────────────────────
     owner_key = min(owners, 4)
     owner_factor = OWNER_FACTORS.get(owner_key, 0.75)
 
-    # ---- 8. Usage Factor ----
-    usage_lower = usage.lower().strip()
+    # ─── 8. Usage Factor ────────────────────────────────────────
     usage_factor = USAGE_FACTORS.get(usage_lower, 1.00)
 
-    # ---- 9. Import Factor ----
-    import_lower = import_status.lower().strip()
+    # ─── 9. Import Factor ───────────────────────────────────────
     import_factor = IMPORT_FACTORS.get(import_lower, 1.00)
 
-    # ---- 10. Warranty Factor ----
-    warranty_lower = warranty.lower().strip()
+    # ─── 10. Warranty Factor ────────────────────────────────────
     warranty_factor = WARRANTY_FACTORS.get(warranty_lower, 1.00)
 
-    # ---- 11. Modification Factor ----
-    mod_lower = modifications.lower().strip()
+    # ─── 11. Modification Factor ────────────────────────────────
     mod_factor = MOD_FACTORS.get(mod_lower, 1.00)
 
-    # ---- 12. Region Factor ----
-    region_lower = region.lower().strip()
+    # ─── 12. Region Factor ──────────────────────────────────────
     region_factor = REGION_FACTORS.get(region_lower, 1.00)
 
-    # ---- 13. Purpose Factor ----
-    purpose_lower = purpose.lower().strip().replace(" ", "_")
+    # ─── 13. Purpose Factor ─────────────────────────────────────
     purpose_factor = PURPOSE_FACTORS.get(purpose_lower, 1.00)
 
-    # ---- 14. Calculate Market Value ----
+    # ─── 14. Calculate Market Value ─────────────────────────────
     market_value = (
         base_price
         * dep_factor
@@ -485,27 +508,23 @@ def calculate_value(
         * region_factor
         * purpose_factor
     )
-    # Floor value
     market_value = max(market_value, 100000)
-    # Round to nearest 1000
     market_value = round(market_value / 1000) * 1000
 
-    # ---- 15. Derived Values ----
+    # ─── 15. Derived Values ─────────────────────────────────────
     insurance_value = round(market_value * 1.12 / 1000) * 1000
     forced_sale_value = round(market_value * 0.72 / 1000) * 1000
 
-    # ---- 16. Confidence Score ----
+    # ─── 16. Confidence Score ───────────────────────────────────
     confidence = 100
-    if not make or make.lower() == "other":
+    if make_lower == "other":
         confidence -= 10
-    if not model or model.lower() == "other":
+    if model_lower == "other":
         confidence -= 5
     if age > 15:
         confidence -= 10
     if odometer < 100:
         confidence -= 5
-    # Condition scoring: average of inspection scores would be used in real app
-    # Here we use condition factor as proxy
     if condition_factor < 0.8:
         confidence -= 10
     if accident_lower == "major":
@@ -520,20 +539,19 @@ def calculate_value(
         confidence -= 10
     confidence = max(0, min(100, confidence))
 
-    # ---- 17. Risk Score (inverse of confidence) ----
+    # ─── 17. Risk Score ─────────────────────────────────────────
     risk_score = 100 - confidence
 
-    # ---- 18. Condition Score (0-10) ----
-    # Map condition factor to a 0-10 scale
+    # ─── 18. Condition Score ────────────────────────────────────
     condition_score = round(condition_factor * 10, 1)
 
-    # ---- 19. Generate Comparable Vehicles ----
+    # ─── 19. Generate Comparable Vehicles ──────────────────────
     comparables = _generate_comparables(make, model, year, market_value)
 
-    # ---- 20. Valuation ID ----
+    # ─── 20. Valuation ID ───────────────────────────────────────
     valuation_id = f"VAL-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
 
-    # ---- 21. Build result object ----
+    # ─── 21. Build Result ───────────────────────────────────────
     result = {
         "valuation_id": valuation_id,
         "market_value": market_value,
@@ -575,6 +593,7 @@ def calculate_value(
             "purpose_factor": round(purpose_factor, 3),
         },
         "comparables": comparables,
+        "inspector": inspector or {},
         "generated_at": datetime.now().isoformat(),
         "report_date": datetime.now().strftime("%Y-%m-%d"),
     }
@@ -583,16 +602,12 @@ def calculate_value(
 
 
 def _generate_comparables(make: str, model: str, year: int, market_value: int) -> List[Dict[str, Any]]:
-    """
-    Generate a list of comparable vehicles for the report.
-    """
+    """Generate comparable vehicles for the report."""
     comparables = []
-    # Generate 3 comps with slight variations
     for i in range(1, 4):
-        comp_year = year + (i - 2)  # -1, 0, +1 year
-        comp_price = market_value * (0.95 + 0.05 * i)  # 95%, 100%, 105%
-        comp_odometer = max(10000, 50000 + (i - 2) * 20000)  # variations in mileage
-
+        comp_year = year + (i - 2)
+        comp_price = market_value * (0.95 + 0.05 * i)
+        comp_odometer = max(10000, 50000 + (i - 2) * 20000)
         comparables.append({
             "make": make,
             "model": model,
@@ -604,7 +619,8 @@ def _generate_comparables(make: str, model: str, year: int, market_value: int) -
     return comparables
 
 
-# -------------------- Helper for quick valuations --------------------
+# ─── QUICK ESTIMATE ─────────────────────────────────────────────
+
 def quick_estimate(
     make: str,
     model: str,
@@ -612,10 +628,7 @@ def quick_estimate(
     odometer: int,
     condition: str = "good",
 ) -> int:
-    """
-    Fast market value estimate without full audit trail (used for Instant Check).
-    Returns estimated market value as integer.
-    """
+    """Fast market value estimate without full audit trail."""
     result = calculate_value(
         make=make,
         model=model,
@@ -635,12 +648,90 @@ def quick_estimate(
     return result["market_value"]
 
 
-# -------------------- Example usage --------------------
+# ─── VALIDATE VALUATION DATA ────────────────────────────────────
+
+def validate_valuation_data(data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    """Validate valuation input data."""
+    required_fields = ['make', 'model', 'year']
+    
+    for field in required_fields:
+        if not data.get(field):
+            return False, f"Missing required field: {field}"
+    
+    if not str(data.get('year')).isdigit():
+        return False, "Year must be a valid number"
+    
+    return True, None
+
+
+# ─── GET VALUATION PRICE ─────────────────────────────────────────
+
+def get_valuation_price(purpose: str) -> int:
+    """Get the price for a specific valuation purpose."""
+    prices = {
+        "market_value": 2000,
+        "insurance": 2500,
+        "bank_financing": 3000,
+        "sale": 2000,
+        "purchase": 2500,
+        "fleet": 4000,
+        "tax": 3500,
+        "internal_audit": 4000,
+    }
+    return prices.get(purpose.lower().replace(" ", "_"), 2500)
+
+
+# ─── UNIFIED ENTRY POINT ────────────────────────────────────────
+
+def run_valuation(
+    make: str,
+    model: str,
+    year: int,
+    odometer: int = 0,
+    condition: str = "good",
+    accident_history: str = "none",
+    service_history: str = "full",
+    owners: int = 1,
+    usage: str = "personal",
+    import_status: str = "local",
+    warranty: str = "expired",
+    modifications: str = "none",
+    region: str = "nairobi",
+    purpose: str = "market_value",
+    methodology: str = "market_comparison",
+    inspector: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Unified entry point for valuation.
+    Matches the style of valuation.py, inspection.py, assessment.py.
+    """
+    return calculate_value(
+        make=make,
+        model=model,
+        year=year,
+        odometer=odometer,
+        condition=condition,
+        accident_history=accident_history,
+        service_history=service_history,
+        owners=owners,
+        usage=usage,
+        import_status=import_status,
+        warranty=warranty,
+        modifications=modifications,
+        region=region,
+        purpose=purpose,
+        valuation_methodology=methodology,
+        inspector=inspector,
+    )
+
+
+# ─── EXAMPLE USAGE ─────────────────────────────────────────────
+
 if __name__ == "__main__":
     # Test valuation
     vehicle = {
-        "make": "toyota",
-        "model": "axio",
+        "make": "Toyota",
+        "model": "Axio",
         "year": 2018,
         "odometer": 85000,
         "condition": "good",
@@ -656,15 +747,20 @@ if __name__ == "__main__":
     }
 
     result = calculate_value(**vehicle)
-    print("Valuation Result:")
-    print(f"  Market Value: KES {result['market_value']:,}")
-    print(f"  Insurance Value: KES {result['insurance_value']:,}")
-    print(f"  Forced Sale Value: KES {result['forced_sale_value']:,}")
-    print(f"  Confidence: {result['confidence_score']}%")
-    print(f"  Condition Score: {result['condition_score']}/10")
-    print("  Factors:")
+    
+    print("=" * 60)
+    print("VALUATION RESULT")
+    print("=" * 60)
+    print(f"Market Value: KES {result['market_value']:,}")
+    print(f"Insurance Value: KES {result['insurance_value']:,}")
+    print(f"Forced Sale Value: KES {result['forced_sale_value']:,}")
+    print(f"Confidence: {result['confidence_score']}%")
+    print(f"Condition Score: {result['condition_score']}/10")
+    
+    print("\nFactors:")
     for key, val in result["factors"].items():
-        print(f"    {key}: {val}")
-    print("  Comparables:")
+        print(f"  {key}: {val}")
+    
+    print("\nComparables:")
     for comp in result["comparables"]:
-        print(f"    {comp['make']} {comp['model']} ({comp['year']}) - KES {comp['price']:,}")
+        print(f"  {comp['make']} {comp['model']} ({comp['year']}) - KES {comp['price']:,}")
