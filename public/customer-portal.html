@@ -84,6 +84,9 @@
         .force-complete-btn { margin-top: 5px; width: 100%; padding: 10px; border-radius: 40px; background: #22c55e; color: #000; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
         .force-complete-btn:hover { background: #16a34a; transform:translateY(-2px); }
         .force-complete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .force-refresh-btn { margin-top: 5px; width: 100%; padding: 10px; border-radius: 40px; background: #3b82f6; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
+        .force-refresh-btn:hover { background: #2563eb; transform:translateY(-2px); }
+        .force-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .welcome-banner { background: linear-gradient(135deg, #1e293b, #2d3a4e); border: 2px solid #eab308; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px; text-align: center; display: none; }
         .welcome-banner h3 { color: #eab308; font-size: 20px; margin-bottom: 8px; }
         .welcome-banner p { color: #94a3b8; font-size: 14px; }
@@ -202,6 +205,7 @@
             </form>
             <button class="manual-check-btn" id="manualCheckBtn">🔄 Check Payment Status</button>
             <button class="force-complete-btn" id="forceCompleteBtn">✅ I've Confirmed Payment</button>
+            <button class="force-refresh-btn" id="forceRefreshBtn">🔄 Refresh Status</button>
         </div>
 
         <!-- Redirect Message -->
@@ -246,6 +250,7 @@
             let paymentId = null;
             let paymentInProgress = false;
             let manualCheckAttempt = 0;
+            let isPaymentConfirmed = false;
 
             // ─── SERVICE PAGES ──────────────────────────────────────────
             const SERVICE_PAGES = {
@@ -319,6 +324,7 @@
             const summaryAmount = document.getElementById('summaryAmount');
             const manualCheckBtn = document.getElementById('manualCheckBtn');
             const forceCompleteBtn = document.getElementById('forceCompleteBtn');
+            const forceRefreshBtn = document.getElementById('forceRefreshBtn');
 
             // ─── HELPER FUNCTIONS ──────────────────────────────────────
             function formatKES(amount) {
@@ -359,6 +365,9 @@
                 }
                 if (forceCompleteBtn) {
                     forceCompleteBtn.style.display = (status === 'processing' || status === 'pending') ? 'block' : 'none';
+                }
+                if (forceRefreshBtn) {
+                    forceRefreshBtn.style.display = (status === 'processing' || status === 'pending') ? 'block' : 'none';
                 }
             }
 
@@ -695,6 +704,69 @@
                 }
             }
 
+            // ─── CHECK PAYMENT STATUS ──────────────────────────────────
+            async function checkPaymentStatus() {
+                if (!paymentId) {
+                    return { status: 'unknown' };
+                }
+                
+                try {
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) {
+                        return { status: 'unknown', error: 'No token' };
+                    }
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000);
+                    
+                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.status === 404) {
+                        return { status: 'not_found' };
+                    }
+                    
+                    if (!response.ok) {
+                        return { status: 'error', code: response.status };
+                    }
+                    
+                    const data = await response.json();
+                    console.log('📊 Status check response:', data);
+                    
+                    const status = data.status || data.payment_status;
+                    const resultCode = data.result_code;
+                    
+                    // Check multiple completion indicators
+                    const isCompleted = 
+                        status === 'completed' || 
+                        resultCode === '0' ||
+                        data.result_code === '0' ||
+                        (data.payment_data && data.payment_data.receipt);
+                    
+                    if (isCompleted) {
+                        return { status: 'completed', data: data };
+                    }
+                    
+                    if (status === 'failed' || resultCode === '1' || resultCode === '1037') {
+                        return { status: 'failed', data: data };
+                    }
+                    
+                    return { status: status || 'pending', data: data };
+                    
+                } catch (err) {
+                    console.error('Status check error:', err);
+                    return { status: 'error', error: err.message };
+                }
+            }
+
             // ─── PAYMENT HANDLER ───────────────────────────────────────
             async function processPayment(e) {
                 e.preventDefault();
@@ -702,6 +774,7 @@
                 if (paymentInProgress) return;
                 paymentInProgress = true;
                 manualCheckAttempt = 0;
+                isPaymentConfirmed = false;
                 
                 const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
                 let formattedPhone = mpesaPhone.replace(/[\s\-+]/g, '');
@@ -816,65 +889,23 @@
                     
                     let attempts = 0;
                     const maxAttempts = 30;
-                    let pollDelay = 5000;
+                    let pollDelay = 3000;
                     
                     async function pollWithBackoff() {
                         attempts++;
                         console.log(`⏳ Polling attempt ${attempts}/${maxAttempts}`);
                         
                         try {
-                            const { data: sessionData } = await supabase.auth.getSession();
-                            const token = sessionData?.session?.access_token;
-                            if (!token) {
-                                setTimeout(pollWithBackoff, pollDelay);
-                                return;
-                            }
+                            const statusResult = await checkPaymentStatus();
+                            console.log('📊 Status result:', statusResult);
                             
-                            const statusResp = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
-                                headers: {
-                                    'Authorization': `Bearer ${token}`,
-                                    'Content-Type': 'application/json'
-                                }
-                            });
-                            
-                            if (statusResp.status === 404) {
-                                if (attempts >= maxAttempts) {
-                                    clearInterval(pollInterval);
-                                    setPaymentStatus('timeout', '⏰ Payment timed out. Please retry.');
-                                    showMessage('Payment took too long. Please try again.', 'error');
-                                    payBtn.disabled = false;
-                                    payBtn.innerHTML = originalText;
-                                    paymentInProgress = false;
-                                    document.getElementById('paymentRetry').style.display = 'block';
-                                    manualCheckBtn.style.display = 'block';
-                                    forceCompleteBtn.style.display = 'block';
-                                    return;
-                                }
-                                setTimeout(pollWithBackoff, pollDelay);
-                                return;
-                            }
-                            
-                            if (statusResp.status === 429) {
-                                pollDelay = Math.min(pollDelay * 1.5, 15000);
-                                setTimeout(pollWithBackoff, pollDelay);
-                                return;
-                            }
-                            
-                            if (!statusResp.ok) {
-                                setTimeout(pollWithBackoff, pollDelay);
-                                return;
-                            }
-                            
-                            const statusData = await statusResp.json();
-                            const status = statusData.status || statusData.payment_status;
-                            
-                            if (status === 'completed' || statusData.result_code === '0') {
+                            if (statusResult.status === 'completed') {
                                 clearInterval(pollInterval);
                                 setPaymentStatus('completed', '✅ Payment confirmed!');
                                 payBtn.innerHTML = '✅ Payment Complete';
                                 showMessage('Payment successful! Redirecting to service page...', 'success');
+                                isPaymentConfirmed = true;
                                 
-                                // ─── FIXED: Redirect immediately ──────
                                 setTimeout(() => {
                                     redirectToServicePage();
                                 }, 1500);
@@ -883,10 +914,11 @@
                                 paymentInProgress = false;
                                 manualCheckBtn.style.display = 'none';
                                 forceCompleteBtn.style.display = 'none';
+                                forceRefreshBtn.style.display = 'none';
                                 return;
                             }
                             
-                            if (status === 'failed') {
+                            if (statusResult.status === 'failed') {
                                 clearInterval(pollInterval);
                                 setPaymentStatus('failed', '❌ Payment failed. Please try again.');
                                 showMessage('Payment failed. Please try again.', 'error');
@@ -896,6 +928,7 @@
                                 document.getElementById('paymentRetry').style.display = 'block';
                                 manualCheckBtn.style.display = 'block';
                                 forceCompleteBtn.style.display = 'block';
+                                forceRefreshBtn.style.display = 'block';
                                 return;
                             }
                             
@@ -909,6 +942,7 @@
                                 document.getElementById('paymentRetry').style.display = 'block';
                                 manualCheckBtn.style.display = 'block';
                                 forceCompleteBtn.style.display = 'block';
+                                forceRefreshBtn.style.display = 'block';
                                 return;
                             }
                             
@@ -924,7 +958,7 @@
                         }
                     }
                     
-                    setTimeout(pollWithBackoff, 3000);
+                    setTimeout(pollWithBackoff, 2000);
                     
                 } catch (err) {
                     console.error('Payment error:', err);
@@ -941,6 +975,7 @@
                     document.getElementById('paymentRetry').style.display = 'block';
                     manualCheckBtn.style.display = 'block';
                     forceCompleteBtn.style.display = 'block';
+                    forceRefreshBtn.style.display = 'block';
                 }
             }
 
@@ -958,44 +993,13 @@
                 manualCheckAttempt++;
                 
                 try {
-                    const { data: sessionData } = await supabase.auth.getSession();
-                    const token = sessionData?.session?.access_token;
-                    if (!token) {
-                        showMessage('Please login again', 'error');
-                        return;
-                    }
+                    const statusResult = await checkPaymentStatus();
+                    console.log('📊 Manual check result:', statusResult);
                     
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 30000);
-                    
-                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/status/${paymentId}`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        signal: controller.signal
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (response.status === 404) {
-                        showMessage('Payment not found. Please try again later.', 'warning');
-                        return;
-                    }
-                    
-                    if (!response.ok) {
-                        showMessage(`Status check failed: ${response.status}`, 'error');
-                        return;
-                    }
-                    
-                    const data = await response.json();
-                    console.log('📊 Manual check response:', data);
-                    
-                    const status = data.status || data.payment_status;
-                    
-                    if (status === 'completed' || data.result_code === '0') {
+                    if (statusResult.status === 'completed') {
                         setPaymentStatus('completed', '✅ Payment confirmed!');
                         showMessage('Payment successful! Redirecting...', 'success');
+                        isPaymentConfirmed = true;
                         setTimeout(() => {
                             redirectToServicePage();
                         }, 1500);
@@ -1003,13 +1007,14 @@
                         paymentInProgress = false;
                         manualCheckBtn.style.display = 'none';
                         forceCompleteBtn.style.display = 'none';
-                    } else if (status === 'failed') {
+                        forceRefreshBtn.style.display = 'none';
+                    } else if (statusResult.status === 'failed') {
                         setPaymentStatus('failed', '❌ Payment failed.');
                         showMessage('Payment failed. Please retry.', 'error');
                         if (pollInterval) clearInterval(pollInterval);
                         paymentInProgress = false;
                     } else {
-                        showMessage(`Payment status: ${status || 'pending'} (Attempt ${manualCheckAttempt})`, 'info');
+                        showMessage(`Payment status: ${statusResult.status || 'pending'} (Attempt ${manualCheckAttempt})`, 'info');
                     }
                 } catch (err) {
                     if (err.name === 'AbortError') {
@@ -1061,6 +1066,7 @@
                         if (statusData.status === 'completed' || statusData.result_code === '0') {
                             setPaymentStatus('completed', '✅ Payment already confirmed!');
                             showMessage('Payment already completed! Redirecting...', 'success');
+                            isPaymentConfirmed = true;
                             setTimeout(() => {
                                 redirectToServicePage();
                             }, 1500);
@@ -1068,6 +1074,7 @@
                             paymentInProgress = false;
                             manualCheckBtn.style.display = 'none';
                             forceCompleteBtn.style.display = 'none';
+                            forceRefreshBtn.style.display = 'none';
                             return;
                         }
                     }
@@ -1097,10 +1104,12 @@
                     if (result.success) {
                         setPaymentStatus('completed', '✅ Payment confirmed!');
                         showMessage('✅ Payment confirmed successfully! Redirecting...', 'success');
+                        isPaymentConfirmed = true;
                         
                         paymentInProgress = false;
                         manualCheckBtn.style.display = 'none';
                         forceCompleteBtn.style.display = 'none';
+                        forceRefreshBtn.style.display = 'none';
                         
                         setTimeout(() => {
                             redirectToServicePage();
@@ -1117,6 +1126,52 @@
                     showMessage('Error confirming payment: ' + err.message, 'error');
                     forceCompleteBtn.disabled = false;
                     forceCompleteBtn.innerHTML = originalText;
+                }
+            }
+
+            // ─── FORCE REFRESH ──────────────────────────────────────────
+            async function forceRefreshStatus() {
+                console.log('🔄 Force refresh triggered for paymentId:', paymentId);
+                
+                if (!paymentId) {
+                    showMessage('No payment in progress', 'error');
+                    return;
+                }
+                
+                forceRefreshBtn.disabled = true;
+                forceRefreshBtn.innerHTML = '<span class="spinner"></span> Refreshing...';
+                
+                try {
+                    const statusResult = await checkPaymentStatus();
+                    console.log('📊 Refresh result:', statusResult);
+                    
+                    if (statusResult.status === 'completed') {
+                        setPaymentStatus('completed', '✅ Payment confirmed!');
+                        showMessage('Payment successful! Redirecting...', 'success');
+                        isPaymentConfirmed = true;
+                        setTimeout(() => {
+                            redirectToServicePage();
+                        }, 1500);
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                        manualCheckBtn.style.display = 'none';
+                        forceCompleteBtn.style.display = 'none';
+                        forceRefreshBtn.style.display = 'none';
+                    } else if (statusResult.status === 'failed') {
+                        setPaymentStatus('failed', '❌ Payment failed.');
+                        showMessage('Payment failed. Please retry.', 'error');
+                        if (pollInterval) clearInterval(pollInterval);
+                        paymentInProgress = false;
+                    } else {
+                        showMessage(`Payment status: ${statusResult.status || 'pending'}`, 'info');
+                        setPaymentStatus('processing', `⏳ ${statusResult.status || 'Pending...'}`);
+                    }
+                } catch (err) {
+                    console.error('Refresh error:', err);
+                    showMessage('Error refreshing status. Please try again.', 'error');
+                } finally {
+                    forceRefreshBtn.disabled = false;
+                    forceRefreshBtn.innerHTML = '🔄 Refresh Status';
                 }
             }
 
@@ -1195,6 +1250,7 @@
                 document.getElementById('paymentRetry').style.display = 'none';
                 if (manualCheckBtn) manualCheckBtn.style.display = 'none';
                 if (forceCompleteBtn) forceCompleteBtn.style.display = 'none';
+                if (forceRefreshBtn) forceRefreshBtn.style.display = 'none';
                 if (pollInterval) clearInterval(pollInterval);
                 paymentInProgress = false;
                 processPayment(new Event('submit'));
@@ -1208,6 +1264,11 @@
             // ─── FORCE COMPLETE BUTTON ──────────────────────────────────
             if (forceCompleteBtn) {
                 forceCompleteBtn.addEventListener('click', forceCompletePayment);
+            }
+
+            // ─── FORCE REFRESH BUTTON ───────────────────────────────────
+            if (forceRefreshBtn) {
+                forceRefreshBtn.addEventListener('click', forceRefreshStatus);
             }
 
             // ─── CLIENT TYPE SELECTOR ───────────────────────────────────
