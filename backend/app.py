@@ -4,6 +4,7 @@ import sys
 import signal
 import logging
 import time
+import traceback
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify, request, g, make_response
@@ -108,6 +109,14 @@ class Config:
         if cls.ENV == 'production' and cls.DEBUG:
             errors.append("DEBUG should be False in production")
         
+        # Check M-Pesa config (warnings only, not errors)
+        if not cls.MPESA_CONSUMER_KEY:
+            warnings.append("MPESA_CONSUMER_KEY is not set")
+        if not cls.MPESA_CONSUMER_SECRET:
+            warnings.append("MPESA_CONSUMER_SECRET is not set")
+        if not cls.MPESA_PASSKEY:
+            warnings.append("MPESA_PASSKEY is not set")
+        
         if errors:
             for error in errors:
                 logger.error(f"❌ {error}")
@@ -159,10 +168,10 @@ def init_supabase():
         logger.info("✅ Supabase client initialized")
         return True
     except ImportError as e:
-        logger.warning(f"⚠️ Supabase client not available: {e}")
+        logger.error(f"❌ Supabase import error: {e}")
         return False
     except Exception as e:
-        logger.warning(f"⚠️ Supabase init warning: {e}")
+        logger.error(f"❌ Supabase init error: {e}")
         return False
 
 # ─── Request Middleware ──────────────────────────────────────
@@ -212,16 +221,17 @@ def internal_error(e):
     logger.error(f"❌ Internal error: {e}", exc_info=True)
     return jsonify({
         'error': 'Internal server error',
-        'message': 'An unexpected error occurred. Please try again later.'
+        'message': str(e) if app.config['DEBUG'] else 'An unexpected error occurred. Please try again later.'
     }), 500
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Handle all unhandled exceptions."""
     logger.error(f"❌ Unhandled exception: {e}", exc_info=True)
+    logger.error(traceback.format_exc())
     return jsonify({
         'error': 'Server error',
-        'message': 'An unexpected error occurred'
+        'message': str(e) if app.config['DEBUG'] else 'An unexpected error occurred'
     }), 500
 
 # ─── HEALTH ROUTES ────────────────────────────────────────────
@@ -231,8 +241,11 @@ def health_check():
     try:
         from services.mpesa import is_mpesa_configured
         mpesa_status = is_mpesa_configured()
-    except:
+    except Exception as e:
+        logger.error(f"Health check mpesa error: {e}")
         mpesa_status = False
+    
+    supabase_status = 'connected' if init_supabase() else 'disconnected'
     
     return jsonify({
         'status': 'healthy',
@@ -245,7 +258,7 @@ def health_check():
                 'environment': app.config['MPESA_ENV'],
                 'shortcode': app.config['MPESA_SHORTCODE']
             },
-            'supabase': 'connected' if init_supabase() else 'disconnected'
+            'supabase': supabase_status
         }
     }), 200
 
@@ -280,16 +293,11 @@ def root():
 @app.route('/mpesa/callback', methods=['POST'])
 def mpesa_callback():
     """Handle M-Pesa STK Push callback."""
-    from services.mpesa import handle_mpesa_callback, verify_safaricom_ip
-    
     try:
+        from services.mpesa import handle_mpesa_callback
+        
         client_ip = request.remote_addr or request.headers.get('X-Forwarded-For', '')
         logger.info(f"📥 M-Pesa callback received from IP: {client_ip}")
-        
-        # Verify IP (optional - can be disabled for testing)
-        # if not verify_safaricom_ip(client_ip):
-        #     logger.warning(f"⚠️ Invalid IP: {client_ip}")
-        #     return jsonify({"ResultCode": 1, "ResultDesc": "Invalid IP"}), 403
         
         callback_data = request.get_json()
         if not callback_data:
@@ -309,33 +317,52 @@ def mpesa_callback():
 @limiter.limit("10 per minute", key_func=lambda: request.headers.get('Authorization', ''))
 def initiate_payment():
     """Initiate M-Pesa STK Push payment."""
-    from services.mpesa import initiate_stk_push, get_supabase
-    
     try:
+        from services.mpesa import initiate_stk_push
+        from services.supabase import get_supabase
+        
+        # Log the raw request for debugging
+        logger.info(f"📥 Initiate payment request received")
+        
         data = request.get_json()
+        if not data:
+            logger.error("❌ No JSON data in request")
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        logger.info(f"📦 Request data: {data}")
         
         # Validate required fields
         required = ['phone', 'amount', 'payment_id']
         for field in required:
             if not data.get(field):
+                logger.error(f"❌ Missing required field: {field}")
                 return jsonify({'error': f'Missing required field: {field}'}), 400
         
+        # Ensure phone number is properly formatted
+        phone = data['phone']
+        if not phone or len(phone) < 10:
+            logger.error(f"❌ Invalid phone number: {phone}")
+            return jsonify({'error': 'Invalid phone number format'}), 400
+        
         # Initiate STK Push
+        logger.info(f"💳 Initiating STK Push for payment: {data['payment_id']}")
         result = initiate_stk_push(
-            phone=data['phone'],
-            amount=data['amount'],
+            phone=phone,
+            amount=float(data['amount']),
             payment_id=data['payment_id'],
             service=data.get('service', 'AUTO-V'),
             reference=data.get('reference')
         )
         
+        logger.info(f"✅ STK Push initiated: {result}")
+        
         # Save transaction to database
-        supabase = get_supabase()
         try:
+            supabase = get_supabase()
             payment_data = {
                 'id': data['payment_id'],
-                'amount': data['amount'],
-                'phone': data['phone'],
+                'amount': float(data['amount']),
+                'phone': phone,
                 'service': data.get('service', 'AUTO-V'),
                 'purpose': data.get('purpose'),
                 'client_type': data.get('client_type', 'individual'),
@@ -349,8 +376,9 @@ def initiate_payment():
             
             supabase.table('payments').insert(payment_data).execute()
             logger.info(f"✅ Payment record saved: {data['payment_id']}")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not save payment record: {e}")
+        except Exception as db_err:
+            logger.error(f"❌ Database save error: {db_err}")
+            # Continue - payment already initiated
         
         return jsonify({
             'success': True,
@@ -358,7 +386,8 @@ def initiate_payment():
         }), 200
         
     except Exception as e:
-        logger.error(f"Payment initiation error: {e}")
+        logger.error(f"❌ Payment initiation error: {e}", exc_info=True)
+        logger.error(traceback.format_exc())
         return jsonify({
             'success': False,
             'error': str(e)
@@ -369,9 +398,9 @@ def initiate_payment():
 @limiter.limit("15 per minute", key_func=lambda: request.headers.get('Authorization', ''))
 def payment_status(payment_id):
     """Get payment status with auto-verification."""
-    from services.mpesa import get_payment_status
-    
     try:
+        from services.mpesa import get_payment_status
+        
         # Get auth token
         auth_header = request.headers.get('Authorization', '')
         if not auth_header or not auth_header.startswith('Bearer '):
@@ -385,7 +414,7 @@ def payment_status(payment_id):
         return jsonify(result), 200
         
     except Exception as e:
-        logger.error(f"Status query error: {e}")
+        logger.error(f"❌ Status query error: {e}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e)
@@ -394,11 +423,11 @@ def payment_status(payment_id):
 
 @app.route('/api/mpesa/auto-confirm/<payment_id>', methods=['POST'])
 @limiter.limit("5 per minute", key_func=lambda: request.headers.get('Authorization', ''))
-def auto_confirm_payment(payment_id):
+def auto_confirm_payment_route(payment_id):
     """Auto-confirm payment by verifying with M-Pesa API."""
-    from services.mpesa import auto_confirm_payment
-    
     try:
+        from services.mpesa import auto_confirm_payment
+        
         # Get auth token
         auth_header = request.headers.get('Authorization', '')
         if not auth_header or not auth_header.startswith('Bearer '):
@@ -412,7 +441,7 @@ def auto_confirm_payment(payment_id):
             return jsonify(result), 400
             
     except Exception as e:
-        logger.error(f"Auto-confirm error: {e}", exc_info=True)
+        logger.error(f"❌ Auto-confirm error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -420,9 +449,9 @@ def auto_confirm_payment(payment_id):
 @limiter.limit("10 per minute")
 def query_mpesa_status(checkout_id):
     """Direct query to M-Pesa API for status."""
-    from services.mpesa import query_payment_status
-    
     try:
+        from services.mpesa import query_payment_status
+        
         result = query_payment_status(checkout_id)
         return jsonify({
             'success': True,
@@ -430,7 +459,7 @@ def query_mpesa_status(checkout_id):
         }), 200
         
     except Exception as e:
-        logger.error(f"Query error: {e}")
+        logger.error(f"❌ Query error: {e}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e)
@@ -440,17 +469,19 @@ def query_mpesa_status(checkout_id):
 @app.route('/api/mpesa/configured', methods=['GET'])
 def mpesa_configured():
     """Check if M-Pesa is configured."""
-    from services.mpesa import is_mpesa_configured
-    
     try:
+        from services.mpesa import is_mpesa_configured
+        
         configured = is_mpesa_configured()
         return jsonify({
             'configured': configured,
             'environment': app.config['MPESA_ENV'],
-            'shortcode': app.config['MPESA_SHORTCODE']
+            'shortcode': app.config['MPESA_SHORTCODE'],
+            'callback_url': app.config['MPESA_CALLBACK_URL']
         }), 200
         
     except Exception as e:
+        logger.error(f"❌ Config check error: {e}")
         return jsonify({
             'configured': False,
             'error': str(e)
@@ -467,8 +498,10 @@ def register_blueprints():
         app.register_blueprint(mileage_bp, url_prefix='/api/mileage')
         registered += 1
         logger.info("✅ Registered: /api/mileage")
+    except ImportError as e:
+        logger.warning(f"⚠️ Mileage routes import error: {e}")
     except Exception as e:
-        logger.warning(f"⚠️ Mileage routes not available: {e}")
+        logger.warning(f"⚠️ Mileage routes error: {e}")
     
     return registered
 
