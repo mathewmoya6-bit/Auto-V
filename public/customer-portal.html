@@ -764,8 +764,8 @@
                         service: selectedService,
                         purpose: selectedPurpose,
                         client_type: clientType,
-                        reference: reference,      // ✅ Sending as 'reference'
-                        payment_reference: reference  // ✅ Also sending as 'payment_reference' for backward compatibility
+                        reference: reference,
+                        payment_reference: reference
                     };
                     
                     console.log('📦 PAYLOAD:', payload);
@@ -1061,12 +1061,14 @@
                         }
                     }
                     
-                    const transactionId = prompt('Enter the M-Pesa transaction ID from your SMS (e.g., QWERTY123):');
+                    // ─── GET TRANSACTION ID FROM USER ────────────────────
+                    const transactionId = prompt('📱 Enter the M-Pesa transaction ID from your SMS (e.g., QWERTY123):');
                     if (!transactionId || transactionId.length < 5) {
                         showMessage('Transaction ID is required to confirm payment.', 'error');
                         return;
                     }
                     
+                    // ─── SEND TO BACKEND ──────────────────────────────────
                     const response = await fetch(`${CONFIG.API_BASE}/mpesa/force-complete/${paymentId}`, {
                         method: 'POST',
                         headers: {
@@ -1079,26 +1081,31 @@
                     });
                     
                     const result = await response.json();
-                    console.log('Force complete result:', result);
+                    console.log('✅ Force complete result:', result);
                     
                     if (result.success) {
                         setPaymentStatus('completed', '✅ Payment confirmed!');
-                        showMessage('Payment confirmed successfully! Redirecting...', 'success');
-                        setTimeout(() => {
-                            redirectToServicePage();
-                        }, 1500);
-                        if (pollInterval) clearInterval(pollInterval);
+                        showMessage('✅ Payment confirmed successfully! Redirecting...', 'success');
+                        
+                        // ─── UPDATE PAYMENT ID IN STATE ──────────────────
                         paymentInProgress = false;
                         manualCheckBtn.style.display = 'none';
                         forceCompleteBtn.style.display = 'none';
+                        
+                        // ─── REDIRECT AFTER DELAY ─────────────────────────
+                        setTimeout(() => {
+                            redirectToServicePage();
+                        }, 1500);
+                        
                     } else {
-                        showMessage(result.message || 'Failed to confirm payment', 'error');
+                        showMessage(result.message || 'Failed to confirm payment. Please check your transaction ID.', 'error');
+                        forceCompleteBtn.disabled = false;
+                        forceCompleteBtn.innerHTML = originalText;
                     }
                     
                 } catch (err) {
                     console.error('Force complete error:', err);
-                    showMessage('Error confirming payment. Please try again.', 'error');
-                } finally {
+                    showMessage('Error confirming payment: ' + err.message, 'error');
                     forceCompleteBtn.disabled = false;
                     forceCompleteBtn.innerHTML = originalText;
                 }
@@ -1170,7 +1177,10 @@
                 processPayment(new Event('submit'));
             });
 
+            // ─── MANUAL CHECK BUTTON ──────────────────────────────────
             manualCheckBtn?.addEventListener('click', manualCheckPayment);
+
+            // ─── FORCE COMPLETE BUTTON ────────────────────────────────
             forceCompleteBtn?.addEventListener('click', forceCompletePayment);
 
             // ─── Client Type Selector ──────────────────────────────
