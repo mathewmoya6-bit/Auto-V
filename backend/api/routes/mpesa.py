@@ -17,12 +17,14 @@ from services.mpesa import (
 )
 from services.supabase_client import (
     get_supabase_client,
+    get_payment_by_id,
+    get_payment_by_custom_id,           # ✅ NEW: Custom payment_id lookup
     get_payment_by_checkout_id,
     update_payment,
+    update_payment_by_custom_id,        # ✅ NEW: Update by custom payment_id
     get_user_payments,
     get_payments_by_status,
-    get_payment_stats,
-    get_payment_by_id
+    get_payment_stats
 )
 
 logger = logging.getLogger(__name__)
@@ -80,7 +82,7 @@ def initiate_payment():
         if not phone or len(phone) < 10:
             return standard_response(False, error='Invalid phone number', status=400)
         
-        # ✅ FIX: Robust amount parsing
+        # Robust amount parsing
         amount = data['amount']
         try:
             amount_str = str(amount).replace(",", "").strip()
@@ -116,14 +118,24 @@ def initiate_payment():
         return standard_response(False, error='Payment initiation failed', status=500)
 
 
+# ─── STATUS ENDPOINT ──────────────────────────────────────────────
+# ✅ FIXED: Now checks both UUID and custom payment_id
+
 @mpesa_bp.route('/status/<payment_id>', methods=['GET'])
 def get_payment_status(payment_id):
-    """Get payment status"""
+    """
+    Get payment status by either UUID or custom payment_id.
+    
+    Args:
+        payment_id: Can be UUID (id) or string (payment_id)
+    """
     try:
+        # Try by primary key (UUID)
         payment = get_payment_by_id(payment_id)
         
         if not payment:
-            payment = get_payment_by_checkout_id(payment_id)
+            # ✅ Try by custom payment_id (string like 'PAY-XXXXXX')
+            payment = get_payment_by_custom_id(payment_id)
         
         if not payment:
             return standard_response(True, data={
@@ -133,7 +145,8 @@ def get_payment_status(payment_id):
             })
         
         return standard_response(True, data={
-            'payment_id': payment.get('id'),
+            'payment_id': payment.get('payment_id'),
+            'id': payment.get('id'),
             'checkout_request_id': payment.get('checkout_request_id'),
             'status': payment.get('status'),
             'amount': payment.get('amount'),
@@ -174,11 +187,32 @@ def verify_payment(checkout_id):
         return standard_response(False, error='Verification failed', status=500)
 
 
+# ─── AUTO-CONFIRM ENDPOINT ──────────────────────────────────────
+# ✅ FIXED: Now handles both UUID and custom payment_id
+
 @mpesa_bp.route('/auto-confirm/<payment_id>', methods=['POST'])
 def auto_confirm(payment_id):
-    """Auto-confirm payment by verifying with M-Pesa API"""
+    """
+    Auto-confirm payment by verifying with M-Pesa API.
+    
+    Args:
+        payment_id: Can be UUID (id) or string (payment_id)
+    """
     try:
-        result = auto_confirm_payment(payment_id)
+        # First try to find the payment
+        payment = get_payment_by_id(payment_id)
+        
+        if not payment:
+            payment = get_payment_by_custom_id(payment_id)
+        
+        if not payment:
+            return standard_response(False, error='Payment not found', status=404)
+        
+        # Get the actual UUID for the payment
+        actual_id = payment.get('id')
+        
+        # Auto-confirm using the UUID
+        result = auto_confirm_payment(actual_id)
         return standard_response(result.get('success'), data=result)
         
     except Exception as e:
@@ -267,18 +301,18 @@ def mpesa_callback_route():
         logger.info("=" * 60)
         logger.info("📞 M-Pesa callback received")
         
-        # ✅ FIX: Silent JSON parsing (won't crash on malformed JSON)
+        # Silent JSON parsing (won't crash on malformed JSON)
         callback_data = request.get_json(silent=True)
         
         # Log only that we received something (mask sensitive data)
         logger.info("📥 Callback received (payload hidden for security)")
         
-        # ✅ FIX: Validate callback data
+        # Validate callback data
         if not callback_data:
             logger.error("❌ No JSON data in callback")
             return jsonify({"ResultCode": 1, "ResultDesc": "No data"}), 200
         
-        # ✅ FIX: Check for stkCallback with proper None check
+        # Check for stkCallback with proper None check
         body = callback_data.get('Body')
         if not body:
             logger.error("❌ Missing Body in callback")
@@ -286,7 +320,7 @@ def mpesa_callback_route():
         
         stk_callback = body.get('stkCallback')
         
-        # ✅ FIX: Proper None check (not truthy check on empty dict)
+        # Proper None check (not truthy check on empty dict)
         if stk_callback is None:
             logger.error("❌ Missing stkCallback in payload")
             logger.info(f"📥 Received structure keys: {body.keys()}")
@@ -299,13 +333,73 @@ def mpesa_callback_route():
         result = handle_mpesa_callback(callback_data)
         logger.info(f"✅ Callback processed: {result}")
         
-        # ✅ FIX: Always return 200 to Safaricom
+        # Always return 200 to Safaricom
         return jsonify(result), 200
         
     except Exception as e:
-        # ✅ FIX: Log the real error but return safe message
+        # Log the real error but return safe message
         logger.error(f"❌ M-Pesa callback error: {str(e)}", exc_info=True)
         return jsonify({
             "ResultCode": 1,
             "ResultDesc": "System error"
         }), 200
+
+
+# ============================================================
+# ✅ FORCE COMPLETE ROUTE (Manual confirmation)
+# ============================================================
+
+@mpesa_bp.route('/force-complete/<payment_id>', methods=['POST'])
+def force_complete_payment(payment_id):
+    """
+    Force complete a payment manually (admin use only).
+    
+    Args:
+        payment_id: Can be UUID (id) or string (payment_id)
+        
+    Request body:
+        {
+            "transaction_id": "QWERTY123"
+        }
+    """
+    try:
+        data = request.get_json()
+        transaction_id = data.get('transaction_id') if data else None
+        
+        if not transaction_id:
+            return standard_response(False, error='Transaction ID is required', status=400)
+        
+        logger.info(f"📝 Force completing payment: {payment_id} with transaction: {transaction_id}")
+        
+        # Find the payment
+        payment = get_payment_by_id(payment_id)
+        
+        if not payment:
+            payment = get_payment_by_custom_id(payment_id)
+        
+        if not payment:
+            return standard_response(False, error='Payment not found', status=404)
+        
+        actual_id = payment.get('id')
+        
+        # Update payment
+        result = update_payment(actual_id, {
+            'status': 'completed',
+            'transaction_id': transaction_id,
+            'mpesa_code': transaction_id,
+            'payment_data': {'transaction_id': transaction_id, 'manual_confirm': True},
+            'paid_at': datetime.now().isoformat()
+        })
+        
+        if result.get('success'):
+            return standard_response(True, data={
+                'message': 'Payment confirmed successfully',
+                'payment_id': payment_id,
+                'transaction_id': transaction_id
+            })
+        else:
+            return standard_response(False, error='Failed to update payment', status=500)
+        
+    except Exception as e:
+        logger.error(f"❌ Force complete error: {str(e)}", exc_info=True)
+        return standard_response(False, error='Force complete failed', status=500)
