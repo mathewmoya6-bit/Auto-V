@@ -312,17 +312,5 @@ def mpesa_health():
     
     return jsonify(status), 200
 
-
-@mpesa_bp.route('/callback', methods=['POST'])
-def mpesa_callback_route():
-    """M-Pesa callback endpoint (receives payment confirmation from Safaricom)."""
-    try:
-        data = request.get_json()
-        logger.info(f"📞 M-Pesa callback received: {data}")
-        
-        result = handle_mpesa_callback(data)
-        return jsonify(result), 200
-        
-    except Exception as e:
-        logger.error(f"❌ M-Pesa callback error: {str(e)}")
-        return jsonify({'ResultCode': 1, 'ResultDesc': 'Failed'}), 500
+# ─── REMOVED DUPLICATE CALLBACK ROUTE ─────────────────────────
+# The callback route is now ONLY in app.py at /mpesa/callback
