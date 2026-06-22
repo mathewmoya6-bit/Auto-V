@@ -18,10 +18,11 @@ from services.mpesa import (
 from services.supabase_client import (
     get_supabase_client,
     get_payment_by_id,
-    get_payment_by_custom_id,           # ✅ NEW: Custom payment_id lookup
+    get_payment_by_custom_id,
     get_payment_by_checkout_id,
+    get_payment_by_mpesa_code,
     update_payment,
-    update_payment_by_custom_id,        # ✅ NEW: Update by custom payment_id
+    update_payment_by_custom_id,
     get_user_payments,
     get_payments_by_status,
     get_payment_stats
@@ -119,23 +120,36 @@ def initiate_payment():
 
 
 # ─── STATUS ENDPOINT ──────────────────────────────────────────────
-# ✅ FIXED: Now checks both UUID and custom payment_id
+# ✅ FIXED: Now checks ALL possible ID fields
 
 @mpesa_bp.route('/status/<payment_id>', methods=['GET'])
 def get_payment_status(payment_id):
     """
-    Get payment status by either UUID or custom payment_id.
+    Get payment status by ANY ID type.
     
-    Args:
-        payment_id: Can be UUID (id) or string (payment_id)
+    Supports:
+    - UUID (id column)
+    - Custom payment_id (string like 'PAY-XXXXXX')
+    - checkout_request_id
+    - mpesa_code
     """
     try:
-        # Try by primary key (UUID)
+        payment = None
+        
+        # 1. Try by primary key (UUID)
         payment = get_payment_by_id(payment_id)
         
+        # 2. Try by custom payment_id (string like 'PAY-XXXXXX')
         if not payment:
-            # ✅ Try by custom payment_id (string like 'PAY-XXXXXX')
             payment = get_payment_by_custom_id(payment_id)
+        
+        # 3. Try by checkout_request_id
+        if not payment:
+            payment = get_payment_by_checkout_id(payment_id)
+        
+        # 4. Try by mpesa_code (receipt number)
+        if not payment:
+            payment = get_payment_by_mpesa_code(payment_id)
         
         if not payment:
             return standard_response(True, data={
@@ -188,7 +202,6 @@ def verify_payment(checkout_id):
 
 
 # ─── AUTO-CONFIRM ENDPOINT ──────────────────────────────────────
-# ✅ FIXED: Now handles both UUID and custom payment_id
 
 @mpesa_bp.route('/auto-confirm/<payment_id>', methods=['POST'])
 def auto_confirm(payment_id):
