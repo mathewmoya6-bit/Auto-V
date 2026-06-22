@@ -113,9 +113,33 @@
         .polling-timer { color: #3b82f6; font-weight: 600; }
         .payment-actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
         .payment-actions button { flex: 1; min-width: 120px; }
+        .payment-success-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; flex-direction: column; }
+        .payment-success-overlay.active { display: flex; }
+        .payment-success-box { background: #0f172a; border: 2px solid #22c55e; border-radius: 24px; padding: 40px; text-align: center; max-width: 500px; width: 90%; animation: popIn 0.5s ease; }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .payment-success-box .icon { font-size: 72px; margin-bottom: 16px; }
+        .payment-success-box h2 { color: #22c55e; border: none; padding: 0; margin-bottom: 8px; }
+        .payment-success-box p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+        .payment-success-box .redirect-timer { color: #eab308; font-size: 24px; font-weight: 700; }
+        .payment-success-box .btn { margin-top: 16px; }
     </style>
 </head>
 <body>
+    <!-- Payment Success Overlay -->
+    <div id="paymentSuccessOverlay" class="payment-success-overlay">
+        <div class="payment-success-box">
+            <div class="icon">✅</div>
+            <h2>Payment Successful!</h2>
+            <p>Your payment has been confirmed. You will be redirected to your service page shortly.</p>
+            <div style="margin: 16px 0;">
+                <span style="color:#94a3b8;">Redirecting in </span>
+                <span class="redirect-timer" id="redirectTimer">5</span>
+                <span style="color:#94a3b8;"> seconds</span>
+            </div>
+            <button class="btn btn-primary" id="redirectNowBtn">Go Now →</button>
+        </div>
+    </div>
+
     <header>
         <div class="logo">🚗 AUTO-V <span>| Customer Portal</span></div>
         <div style="display: flex; gap: 10px; align-items: center;">
@@ -263,8 +287,8 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL v5.0 - PRODUCTION READY
-        // With Improved Polling Management
+        // AUTO-V CUSTOMER PORTAL v6.0 - PRODUCTION READY
+        // Only redirects on successful payment
         // ============================================================
         (function() {
             'use strict';
@@ -277,7 +301,7 @@
                 ENV: 'production'
             };
 
-            console.log('🚀 AUTO-V Customer Portal v5.0');
+            console.log('🚀 AUTO-V Customer Portal v6.0');
             console.log(`📡 API: ${CONFIG.API_BASE}`);
 
             const supabase = window.supabase.createClient(
@@ -299,9 +323,11 @@
             let pollStartTime = null;
             let isPollingActive = false;
             let paymentRequestFailed = false;
+            let redirectTimer = null;
+            let redirectCountdown = 5;
             const MIN_CHECK_INTERVAL = 3000;
-            const MAX_POLL_ATTEMPTS = 15;
-            const POLL_TIMEOUT = 60000; // 60 seconds max polling
+            const MAX_POLL_ATTEMPTS = 20;
+            const POLL_TIMEOUT = 60000;
             let consecutiveRateLimits = 0;
             let pollingTimerInterval = null;
 
@@ -379,6 +405,9 @@
             const pollingIndicator = document.getElementById('pollingIndicator');
             const pollingCount = document.getElementById('pollingCount');
             const pollingTimer = document.getElementById('pollingTimer');
+            const paymentSuccessOverlay = document.getElementById('paymentSuccessOverlay');
+            const redirectTimerEl = document.getElementById('redirectTimer');
+            const redirectNowBtn = document.getElementById('redirectNowBtn');
 
             // ─── Toast System ──────────────────────────────────────────
             function showToast(message, type = 'success', duration = 5000) {
@@ -424,6 +453,32 @@
                 if (manualCheckBtn) manualCheckBtn.style.display = showControls ? 'block' : 'none';
                 if (forceRefreshBtn) forceRefreshBtn.style.display = showControls ? 'block' : 'none';
                 if (autoConfirmBtn) autoConfirmBtn.style.display = showControls ? 'block' : 'none';
+            }
+
+            // ─── Success Overlay ──────────────────────────────────────
+            function showSuccessOverlay() {
+                paymentSuccessOverlay.classList.add('active');
+                redirectCountdown = 5;
+                redirectTimerEl.textContent = redirectCountdown;
+                
+                if (redirectTimer) clearInterval(redirectTimer);
+                redirectTimer = setInterval(() => {
+                    redirectCountdown--;
+                    redirectTimerEl.textContent = redirectCountdown;
+                    if (redirectCountdown <= 0) {
+                        clearInterval(redirectTimer);
+                        redirectTimer = null;
+                        redirectToServicePage();
+                    }
+                }, 1000);
+            }
+
+            function hideSuccessOverlay() {
+                paymentSuccessOverlay.classList.remove('active');
+                if (redirectTimer) {
+                    clearInterval(redirectTimer);
+                    redirectTimer = null;
+                }
             }
 
             // ─── Polling UI ──────────────────────────────────────────
@@ -515,6 +570,7 @@
                 return `${serviceCode}-${timestamp}-${random}`;
             }
 
+            // ─── ONLY REDIRECT ON SUCCESS ────────────────────────────
             function redirectToServicePage() {
                 if (!selectedService) {
                     showMessage('No service selected', 'error');
@@ -524,6 +580,12 @@
                 const page = SERVICE_PAGES[selectedService];
                 if (!page) {
                     showMessage('Service page not found', 'error');
+                    return;
+                }
+                
+                // Only redirect if payment was successful
+                if (!isPaymentConfirmed) {
+                    showMessage('Payment not confirmed. Please complete payment first.', 'error');
                     return;
                 }
                 
@@ -936,7 +998,7 @@
                     
                     if (result.success) {
                         setPaymentStatus('completed', '✅ Payment confirmed by M-Pesa!');
-                        showMessage('✅ Payment verified successfully! Redirecting...', 'success');
+                        showMessage('✅ Payment verified successfully!', 'success');
                         isPaymentConfirmed = true;
                         
                         stopPolling();
@@ -946,9 +1008,8 @@
                         autoConfirmBtn.style.display = 'none';
                         document.getElementById('paymentRetry').style.display = 'none';
                         
-                        setTimeout(() => {
-                            redirectToServicePage();
-                        }, 1500);
+                        // Show success overlay and redirect
+                        showSuccessOverlay();
                     } else {
                         if (result.result_code === '1037' || result.result_code === '1032') {
                             showMessage('⏳ Payment is still pending. Please wait or check your M-Pesa.', 'info');
@@ -976,6 +1037,9 @@
                 manualCheckAttempt = 0;
                 isPaymentConfirmed = false;
                 paymentRequestFailed = false;
+                
+                // Hide any previous success overlay
+                hideSuccessOverlay();
                 
                 const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
                 let formattedPhone = mpesaPhone.replace(/[\s\-+]/g, '');
@@ -1096,15 +1160,14 @@
                     if (result.success === true || result.data?.status === 'completed') {
                         setPaymentStatus('completed', '✅ Payment confirmed!');
                         payBtn.innerHTML = '✅ Payment Complete';
-                        showMessage('Payment successful! Redirecting to service page...', 'success');
+                        showMessage('Payment successful!', 'success');
                         isPaymentConfirmed = true;
-                        
-                        setTimeout(() => {
-                            redirectToServicePage();
-                        }, 1500);
                         
                         payBtn.disabled = false;
                         paymentInProgress = false;
+                        
+                        // Show success overlay and redirect
+                        showSuccessOverlay();
                         return;
                     }
                     
@@ -1189,13 +1252,9 @@
                                 stopPolling();
                                 setPaymentStatus('completed', '✅ Payment confirmed!');
                                 payBtn.innerHTML = '✅ Payment Complete';
-                                showMessage('Payment successful! Redirecting to service page...', 'success');
+                                showMessage('Payment successful!', 'success');
                                 isPaymentConfirmed = true;
                                 showRateLimitWarning(false);
-                                
-                                setTimeout(() => {
-                                    redirectToServicePage();
-                                }, 1500);
                                 
                                 payBtn.disabled = false;
                                 paymentInProgress = false;
@@ -1203,6 +1262,9 @@
                                 forceRefreshBtn.style.display = 'none';
                                 autoConfirmBtn.style.display = 'none';
                                 document.getElementById('paymentRetry').style.display = 'none';
+                                
+                                // Show success overlay and redirect
+                                showSuccessOverlay();
                                 return;
                             }
                             
@@ -1303,17 +1365,17 @@
                     if (statusResult.status === 'completed') {
                         stopPolling();
                         setPaymentStatus('completed', '✅ Payment confirmed!');
-                        showMessage('Payment successful! Redirecting...', 'success');
+                        showMessage('Payment successful!', 'success');
                         isPaymentConfirmed = true;
-                        setTimeout(() => {
-                            redirectToServicePage();
-                        }, 1500);
                         paymentInProgress = false;
                         manualCheckBtn.style.display = 'none';
                         forceRefreshBtn.style.display = 'none';
                         autoConfirmBtn.style.display = 'none';
                         document.getElementById('paymentRetry').style.display = 'none';
                         showRateLimitWarning(false);
+                        
+                        // Show success overlay and redirect
+                        showSuccessOverlay();
                     } else if (statusResult.status === 'failed') {
                         stopPolling();
                         setPaymentStatus('failed', '❌ Payment failed.');
@@ -1366,17 +1428,17 @@
                     if (statusResult.status === 'completed') {
                         stopPolling();
                         setPaymentStatus('completed', '✅ Payment confirmed!');
-                        showMessage('Payment successful! Redirecting...', 'success');
+                        showMessage('Payment successful!', 'success');
                         isPaymentConfirmed = true;
-                        setTimeout(() => {
-                            redirectToServicePage();
-                        }, 1500);
                         paymentInProgress = false;
                         manualCheckBtn.style.display = 'none';
                         forceRefreshBtn.style.display = 'none';
                         autoConfirmBtn.style.display = 'none';
                         document.getElementById('paymentRetry').style.display = 'none';
                         showRateLimitWarning(false);
+                        
+                        // Show success overlay and redirect
+                        showSuccessOverlay();
                     } else if (statusResult.status === 'failed') {
                         stopPolling();
                         setPaymentStatus('failed', '❌ Payment failed.');
@@ -1432,7 +1494,7 @@
 
             // ─── Init ─────────────────────────────────────────────────
             async function init() {
-                console.log('🚀 Initializing AUTO-V Customer Portal v5.0...');
+                console.log('🚀 Initializing AUTO-V Customer Portal v6.0...');
                 await loadFees();
                 await checkExistingSession();
                 if (!document.querySelector('.step.active')) {
@@ -1441,9 +1503,7 @@
                 console.log('✅ Customer Portal ready');
                 console.log(`📡 Connected to: ${CONFIG.API_BASE}`);
                 console.log(`🔑 M-Pesa Shortcode: ${CONFIG.MPESA_SHORTCODE}`);
-                console.log('✅ Improved Polling Management: Enabled');
-                console.log('✅ Auto-Confirm: Enabled');
-                console.log('✅ Retry on Failure: Enabled');
+                console.log('✅ Only redirects on successful payment');
             }
 
             // ─── Event Listeners ─────────────────────────────────────
@@ -1495,6 +1555,17 @@
             });
 
             document.getElementById('cancelPaymentBtn')?.addEventListener('click', cancelPayment);
+
+            // Redirect Now button
+            redirectNowBtn?.addEventListener('click', () => {
+                if (isPaymentConfirmed) {
+                    clearInterval(redirectTimer);
+                    redirectTimer = null;
+                    redirectToServicePage();
+                } else {
+                    showMessage('Payment not confirmed yet.', 'error');
+                }
+            });
 
             if (manualCheckBtn) {
                 manualCheckBtn.addEventListener('click', manualCheckPayment);
