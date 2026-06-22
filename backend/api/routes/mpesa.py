@@ -120,7 +120,7 @@ def initiate_payment():
 
 
 # ─── STATUS ENDPOINT ──────────────────────────────────────────────
-# ✅ FIXED: Now checks ALL possible ID fields
+# ✅ FIXED: Uses Supabase or_() to check both id and payment_id
 
 @mpesa_bp.route('/status/<payment_id>', methods=['GET'])
 def get_payment_status(payment_id):
@@ -134,20 +134,20 @@ def get_payment_status(payment_id):
     - mpesa_code
     """
     try:
-        payment = None
+        # ✅ FIX: Use Supabase or_() to check both id and payment_id in one query
+        supabase = get_supabase_client()
+        response = supabase.table('payments') \
+            .select('*') \
+            .or_(f'id.eq.{payment_id},payment_id.eq.{payment_id}') \
+            .execute()
         
-        # 1. Try by primary key (UUID)
-        payment = get_payment_by_id(payment_id)
+        payment = response.data[0] if response.data else None
         
-        # 2. Try by custom payment_id (string like 'PAY-XXXXXX')
-        if not payment:
-            payment = get_payment_by_custom_id(payment_id)
-        
-        # 3. Try by checkout_request_id
+        # If not found by id or payment_id, try checkout_request_id
         if not payment:
             payment = get_payment_by_checkout_id(payment_id)
         
-        # 4. Try by mpesa_code (receipt number)
+        # If still not found, try mpesa_code
         if not payment:
             payment = get_payment_by_mpesa_code(payment_id)
         
