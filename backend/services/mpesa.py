@@ -1,23 +1,13 @@
-# services/mpesa.py - M-Pesa Service (Production Ready)
+# services/mpesa.py - M-Pesa Service (Minimal Working Version)
 
 import os
 import base64
 import logging
 import requests
 import time
-import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
-
-from services.supabase_client import (
-    get_supabase_client,
-    create_payment,
-    get_payment_by_checkout_id,
-    update_payment,
-    update_payment_status,
-    update_payment_with_transaction
-)
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -30,7 +20,6 @@ MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
 CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')
 MPESA_ENV = os.getenv('MPESA_ENV', 'production').lower()
 
-# ─── BASE URL ──────────────────────────────────────────────
 BASE_URL = (
     'https://sandbox.safaricom.co.ke'
     if MPESA_ENV == 'sandbox'
@@ -40,78 +29,6 @@ BASE_URL = (
 REQUEST_TIMEOUT = 30
 MAX_RETRIES = 3
 _token_cache = {'token': None, 'expires_at': None}
-
-# ─── Circuit Breaker State ──────────────────────────────────
-_circuit_breaker = {
-    'is_open': False,
-    'failure_count': 0,
-    'last_failure_time': None,
-    'threshold': 5,
-    'timeout_seconds': 60
-}
-
-
-# ─── CIRCUIT BREAKER ──────────────────────────────────────────
-def check_circuit_breaker() -> bool:
-    """Check if circuit breaker is open."""
-    if not _circuit_breaker['is_open']:
-        return False
-    
-    if _circuit_breaker['last_failure_time']:
-        elapsed = (datetime.now() - _circuit_breaker['last_failure_time']).total_seconds()
-        if elapsed >= _circuit_breaker['timeout_seconds']:
-            _circuit_breaker['is_open'] = False
-            _circuit_breaker['failure_count'] = 0
-            logger.info("🔌 Circuit breaker reset")
-            return False
-    
-    return True
-
-
-def record_failure():
-    """Record a failure for circuit breaker."""
-    _circuit_breaker['failure_count'] += 1
-    _circuit_breaker['last_failure_time'] = datetime.now()
-    
-    if _circuit_breaker['failure_count'] >= _circuit_breaker['threshold']:
-        _circuit_breaker['is_open'] = True
-        logger.warning(f"🔌 Circuit breaker opened after {_circuit_breaker['failure_count']} failures")
-
-
-def record_success():
-    """Record a success for circuit breaker."""
-    _circuit_breaker['failure_count'] = 0
-    if _circuit_breaker['is_open']:
-        _circuit_breaker['is_open'] = False
-        logger.info("🔌 Circuit breaker closed")
-
-
-# ─── SAFE LOGGING ──────────────────────────────────────────────
-def safe_log_data(data: Dict[str, Any], max_length: int = 200) -> str:
-    """Safely log data with sensitive information masked."""
-    if not data:
-        return "{}"
-    
-    safe_data = data.copy() if isinstance(data, dict) else {}
-    
-    sensitive_keys = [
-        'password', 'consumer_secret', 'api_key', 'token', 
-        'pin', 'passkey', 'phone', 'PhoneNumber', 'PartyA',
-        'PartyB', 'mpesa_phone', 'phone_number'
-    ]
-    
-    for key in sensitive_keys:
-        if key in safe_data and safe_data[key]:
-            if isinstance(safe_data[key], str) and len(safe_data[key]) > 4:
-                safe_data[key] = safe_data[key][:2] + '****' + safe_data[key][-2:]
-            else:
-                safe_data[key] = '***'
-    
-    result = json.dumps(safe_data, default=str)
-    if len(result) > max_length:
-        result = result[:max_length] + '...'
-    
-    return result
 
 
 # ─── SAFETY CHECK ──────────────────────────────────────────
@@ -192,9 +109,6 @@ def get_mpesa_token(force: bool = False) -> str:
 
     for attempt in range(MAX_RETRIES):
         try:
-            if check_circuit_breaker():
-                raise Exception("Circuit breaker is open")
-
             res = requests.get(
                 url,
                 headers={"Authorization": f"Basic {auth}"},
@@ -203,7 +117,6 @@ def get_mpesa_token(force: bool = False) -> str:
             
             if res.status_code != 200:
                 logger.error(f"❌ Token request failed: {res.status_code}")
-                record_failure()
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(2 ** attempt)
                     continue
@@ -214,7 +127,6 @@ def get_mpesa_token(force: bool = False) -> str:
             
             if not token:
                 logger.error(f"❌ No access_token in response: {data}")
-                record_failure()
                 raise Exception("Invalid token response")
 
             _token_cache = {
@@ -222,13 +134,11 @@ def get_mpesa_token(force: bool = False) -> str:
                 "expires_at": datetime.now() + timedelta(seconds=3500)
             }
 
-            record_success()
             logger.info("✅ M-Pesa token acquired")
             return token
 
         except requests.exceptions.Timeout:
             logger.error(f"❌ Token timeout (attempt {attempt+1})")
-            record_failure()
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** attempt)
                 continue
@@ -236,7 +146,6 @@ def get_mpesa_token(force: bool = False) -> str:
             
         except Exception as e:
             logger.error(f"❌ Token error: {e}")
-            record_failure()
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** attempt)
                 continue
@@ -254,7 +163,7 @@ def initiate_stk_push(
     request_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Initiate STK Push to customer's phone and create payment record.
+    Initiate STK Push to customer's phone.
     """
     if not is_mpesa_configured():
         raise Exception("M-Pesa is not configured")
@@ -288,7 +197,7 @@ def initiate_stk_push(
     }
 
     logger.info(f"📤 Initiating STK Push for payment {payment_id}")
-    logger.info(f"💰 Amount: {amount}, Shortcode: {MPESA_SHORTCODE}")
+    logger.info(f"📱 Phone: {phone}, Amount: {amount}, Shortcode: {MPESA_SHORTCODE}")
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -299,9 +208,6 @@ def initiate_stk_push(
 
     for attempt in range(MAX_RETRIES):
         try:
-            if check_circuit_breaker():
-                raise Exception("Circuit breaker is open")
-
             res = requests.post(
                 url, 
                 json=payload, 
@@ -311,46 +217,46 @@ def initiate_stk_push(
             
             if res.status_code != 200:
                 logger.error(f"❌ STK Push failed (attempt {attempt+1}): {res.status_code}")
-                logger.error(f"Response: {res.text[:200]}")
-                record_failure()
+                logger.error(f"Response: {res.text[:500]}")
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(2 ** attempt)
                     continue
                 raise Exception(f"STK Push failed: {res.status_code}")
 
             data = res.json()
-            logger.info(f"📥 STK Push response: {safe_log_data(data)}")
+            logger.info(f"📥 STK Push response: {data}")
 
             if data.get("ResponseCode") != "0":
                 error_msg = data.get("ResponseDescription", "Unknown error")
-                record_failure()
                 raise Exception(f"M-Pesa error: {error_msg}")
 
             checkout_id = data.get("CheckoutRequestID")
             if not checkout_id:
-                record_failure()
                 raise Exception("No CheckoutRequestID returned")
 
-            record_success()
-
             # ─── Create Payment Record ──────────────────────────────────
-            payment_data = {
-                'id': payment_id,
-                'payment_id': payment_id,
-                'user_id': user_id,
-                'request_id': request_id,
-                'amount': amount,
-                'phone': phone,
-                'mpesa_phone': phone,
-                'merchant_request_id': data.get("MerchantRequestID"),
-                'checkout_request_id': checkout_id,
-                'payment_method': 'mpesa',
-                'status': 'pending'
-            }
-            
-            create_result = create_payment(payment_data)
-            if not create_result.get('success'):
-                logger.warning(f"⚠️ Could not create payment record: {create_result.get('error')}")
+            try:
+                from services.supabase_client import create_payment
+                
+                payment_data = {
+                    'id': payment_id,
+                    'payment_id': payment_id,
+                    'user_id': user_id,
+                    'request_id': request_id,
+                    'amount': amount,
+                    'phone': phone,
+                    'mpesa_phone': phone,
+                    'merchant_request_id': data.get("MerchantRequestID"),
+                    'checkout_request_id': checkout_id,
+                    'payment_method': 'mpesa',
+                    'status': 'pending'
+                }
+                
+                create_result = create_payment(payment_data)
+                if not create_result.get('success'):
+                    logger.warning(f"⚠️ Could not create payment record: {create_result.get('error')}")
+            except Exception as db_err:
+                logger.warning(f"⚠️ Database error: {db_err}")
 
             return {
                 "success": True,
@@ -363,7 +269,6 @@ def initiate_stk_push(
 
         except requests.exceptions.Timeout:
             logger.error(f"❌ STK Push timeout (attempt {attempt+1})")
-            record_failure()
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** attempt)
                 continue
@@ -371,41 +276,10 @@ def initiate_stk_push(
             
         except Exception as e:
             logger.error(f"❌ STK Push error: {e}")
-            record_failure()
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** attempt)
                 continue
             raise
-
-
-# ─── VALIDATE CALLBACK ──────────────────────────────────────────
-def validate_callback(callback_data: Dict[str, Any]) -> Optional[str]:
-    """Validate callback structure and extract checkout ID."""
-    try:
-        if not callback_data:
-            logger.error("❌ No callback data")
-            return None
-        
-        body = callback_data.get('Body')
-        if not body or not isinstance(body, dict):
-            logger.error("❌ Invalid Body structure")
-            return None
-        
-        stk = body.get('stkCallback')
-        if not stk or not isinstance(stk, dict):
-            logger.error("❌ Invalid stkCallback structure")
-            return None
-        
-        checkout_id = stk.get('CheckoutRequestID')
-        if not checkout_id:
-            logger.error("❌ Missing CheckoutRequestID")
-            return None
-        
-        return checkout_id
-        
-    except Exception as e:
-        logger.error(f"❌ Callback validation error: {e}")
-        return None
 
 
 # ─── CALLBACK HANDLER ──────────────────────────────────────
@@ -415,15 +289,24 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         logger.info("=" * 60)
         logger.info("📥 Processing M-Pesa callback")
         
-        checkout_id = validate_callback(callback_data)
-        if not checkout_id:
-            return {"ResultCode": 1, "ResultDesc": "Invalid callback data"}
+        if not callback_data:
+            logger.error("❌ No callback data")
+            return {"ResultCode": 1, "ResultDesc": "No data"}
 
         stk = callback_data.get("Body", {}).get("stkCallback", {})
+        if not stk:
+            logger.error("❌ Missing stkCallback")
+            return {"ResultCode": 1, "ResultDesc": "Missing stkCallback"}
+
+        checkout_id = stk.get("CheckoutRequestID")
         result_code = str(stk.get("ResultCode", "1"))
         result_desc = stk.get("ResultDesc", "Unknown error")
 
         logger.info(f"📊 CheckoutID: {checkout_id}, ResultCode: {result_code}")
+
+        if not checkout_id:
+            logger.error("❌ Missing CheckoutRequestID")
+            return {"ResultCode": 1, "ResultDesc": "Missing CheckoutRequestID"}
 
         # ─── Extract transaction details ──────────────────────────────
         transaction_id = None
@@ -448,64 +331,70 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
             logger.warning("⚠️ No CallbackMetadata found")
 
         # ─── Get payment from database ──────────────────────────────────
-        payment = get_payment_by_checkout_id(checkout_id)
-        
-        if not payment:
-            logger.error(f"❌ Payment not found for CheckoutID: {checkout_id}")
-            return {"ResultCode": 1, "ResultDesc": "Payment not found"}
-
-        payment_id = payment.get("id")
-        logger.info(f"✅ Found payment: {payment_id}")
-
-        # Idempotency check
-        if payment.get("status") == "completed":
-            logger.info(f"ℹ️ Payment {payment_id} already completed (idempotent)")
-            return {"ResultCode": 0, "ResultDesc": "Already processed"}
-
-        # ─── Update payment based on result ──────────────────────────────
-        if result_code == "0" and transaction_id:
-            update_data = {
-                "status": "completed",
-                "mpesa_code": transaction_id,
-                "transaction_id": transaction_id,
-                "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or "Transaction completed",
-                "paid_at": datetime.now().isoformat()
-            }
+        try:
+            from services.supabase_client import get_payment_by_checkout_id, update_payment
             
-            if amount:
-                update_data["amount"] = amount
-            if phone:
-                update_data["mpesa_phone"] = phone
+            payment = get_payment_by_checkout_id(checkout_id)
             
-            result = update_payment_with_transaction(payment_id, update_data)
-            
-            if result.get('success'):
-                logger.info(f"✅ Payment {payment_id} completed. Receipt: {transaction_id}")
+            if not payment:
+                logger.error(f"❌ Payment not found for CheckoutID: {checkout_id}")
+                return {"ResultCode": 1, "ResultDesc": "Payment not found"}
+
+            payment_id = payment.get("id")
+            logger.info(f"✅ Found payment: {payment_id}")
+
+            if payment.get("status") == "completed":
+                logger.info(f"ℹ️ Payment {payment_id} already completed")
+                return {"ResultCode": 0, "ResultDesc": "Already processed"}
+
+            # ─── Update payment based on result ──────────────────────────────
+            if result_code == "0" and transaction_id:
+                update_data = {
+                    "status": "completed",
+                    "mpesa_code": transaction_id,
+                    "transaction_id": transaction_id,
+                    "mpesa_result_code": result_code,
+                    "mpesa_result_desc": result_desc or "Transaction completed",
+                    "paid_at": datetime.now().isoformat()
+                }
+                
+                if amount:
+                    update_data["amount"] = amount
+                if phone:
+                    update_data["mpesa_phone"] = phone
+                
+                result = update_payment(payment_id, update_data)
+                
+                if result.get('success'):
+                    logger.info(f"✅ Payment {payment_id} completed. Receipt: {transaction_id}")
+                    return {"ResultCode": 0, "ResultDesc": "Success"}
+                else:
+                    logger.error(f"❌ Database update failed: {result.get('error')}")
+                    return {"ResultCode": 1, "ResultDesc": "Update failed"}
+                
+            elif result_code in ["1037", "1032"]:
+                update_data = {
+                    "status": "cancelled",
+                    "mpesa_result_code": result_code,
+                    "mpesa_result_desc": result_desc or "Transaction cancelled"
+                }
+                update_payment(payment_id, update_data)
+                logger.warning(f"⚠️ Payment {payment_id} cancelled")
                 return {"ResultCode": 0, "ResultDesc": "Success"}
+                
             else:
-                logger.error(f"❌ Database update failed: {result.get('error')}")
-                return {"ResultCode": 1, "ResultDesc": "Update failed"}
-            
-        elif result_code in ["1037", "1032"]:
-            update_data = {
-                "status": "cancelled",
-                "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or "Transaction cancelled"
-            }
-            update_payment(payment_id, update_data)
-            logger.warning(f"⚠️ Payment {payment_id} cancelled")
-            return {"ResultCode": 0, "ResultDesc": "Success"}
-            
-        else:
-            update_data = {
-                "status": "failed",
-                "mpesa_result_code": result_code,
-                "mpesa_result_desc": result_desc or "Transaction failed"
-            }
-            update_payment(payment_id, update_data)
-            logger.warning(f"❌ Payment {payment_id} failed: {result_desc}")
-            return {"ResultCode": 0, "ResultDesc": "Success"}
+                update_data = {
+                    "status": "failed",
+                    "mpesa_result_code": result_code,
+                    "mpesa_result_desc": result_desc or "Transaction failed"
+                }
+                update_payment(payment_id, update_data)
+                logger.warning(f"❌ Payment {payment_id} failed: {result_desc}")
+                return {"ResultCode": 0, "ResultDesc": "Success"}
+                
+        except ImportError as e:
+            logger.error(f"❌ Database import error: {e}")
+            return {"ResultCode": 1, "ResultDesc": "Database error"}
 
     except Exception as e:
         logger.error(f"❌ Callback error: {e}", exc_info=True)
@@ -536,9 +425,6 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
 
     for attempt in range(MAX_RETRIES):
         try:
-            if check_circuit_breaker():
-                raise Exception("Circuit breaker is open")
-
             res = requests.post(
                 f"{BASE_URL}/mpesa/stkpushquery/v1/query",
                 json=payload,
@@ -551,20 +437,17 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
             
             if res.status_code != 200:
                 logger.error(f"❌ Status query failed (attempt {attempt+1}): {res.status_code}")
-                record_failure()
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(2 ** attempt)
                     continue
                 raise Exception(f"Status query failed: {res.status_code}")
 
             data = res.json()
-            record_success()
-            logger.info(f"📥 Status query response: {safe_log_data(data)}")
+            logger.info(f"📥 Status query response: {data}")
             return data
 
         except Exception as e:
             logger.error(f"❌ Status query error: {e}")
-            record_failure()
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** attempt)
                 continue
@@ -600,22 +483,27 @@ def verify_payment_with_mpesa(checkout_request_id: str) -> Dict[str, Any]:
                     phone = value
             
             # Update payment in database
-            payment = get_payment_by_checkout_id(checkout_request_id)
-            if payment:
-                update_data = {
-                    "status": "completed",
-                    "mpesa_code": receipt,
-                    "transaction_id": receipt,
-                    "mpesa_result_code": result_code,
-                    "mpesa_result_desc": result_desc,
-                    "paid_at": datetime.now().isoformat()
-                }
-                if amount:
-                    update_data["amount"] = amount
-                if phone:
-                    update_data["mpesa_phone"] = phone
+            try:
+                from services.supabase_client import get_payment_by_checkout_id, update_payment
                 
-                update_payment_with_transaction(payment.get("id"), update_data)
+                payment = get_payment_by_checkout_id(checkout_request_id)
+                if payment:
+                    update_data = {
+                        "status": "completed",
+                        "mpesa_code": receipt,
+                        "transaction_id": receipt,
+                        "mpesa_result_code": result_code,
+                        "mpesa_result_desc": result_desc,
+                        "paid_at": datetime.now().isoformat()
+                    }
+                    if amount:
+                        update_data["amount"] = amount
+                    if phone:
+                        update_data["mpesa_phone"] = phone
+                    
+                    update_payment(payment.get("id"), update_data)
+            except Exception as db_err:
+                logger.warning(f"Database update error: {db_err}")
             
             return {
                 "verified": True,
@@ -644,6 +532,8 @@ def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
     """Auto-confirm a payment by verifying with M-Pesa API."""
     try:
         logger.info(f"🔍 Auto-confirming payment: {payment_id}")
+        
+        from services.supabase_client import get_supabase_client
         
         supabase = get_supabase_client()
         response = supabase.table('payments').select('*').eq('id', payment_id).execute()
@@ -693,6 +583,8 @@ def force_complete_payment(payment_id: str, transaction_id: str) -> Dict[str, An
     try:
         logger.info(f"📝 Force completing payment: {payment_id}")
         
+        from services.supabase_client import get_supabase_client, update_payment
+        
         supabase = get_supabase_client()
         response = supabase.table('payments').select('*').eq('id', payment_id).execute()
         
@@ -718,7 +610,7 @@ def force_complete_payment(payment_id: str, transaction_id: str) -> Dict[str, An
             "updated_at": datetime.now().isoformat()
         }
         
-        result = update_payment_with_transaction(payment_id, update_data)
+        result = update_payment(payment_id, update_data)
         
         if result.get('success'):
             return {
@@ -734,17 +626,6 @@ def force_complete_payment(payment_id: str, transaction_id: str) -> Dict[str, An
         return {"success": False, "error": str(e)}
 
 
-# ─── CIRCUIT BREAKER STATUS ──────────────────────────────────
-def get_circuit_breaker_status() -> Dict[str, Any]:
-    """Get circuit breaker status."""
-    return {
-        'is_open': _circuit_breaker['is_open'],
-        'failure_count': _circuit_breaker['failure_count'],
-        'threshold': _circuit_breaker['threshold'],
-        'timeout_seconds': _circuit_breaker['timeout_seconds']
-    }
-
-
 # ─── Exports ──────────────────────────────────────────────────
 
 __all__ = [
@@ -756,6 +637,5 @@ __all__ = [
     'force_complete_payment',
     'is_mpesa_configured',
     'normalize_phone',
-    'get_mpesa_token',
-    'get_circuit_breaker_status'
+    'get_mpesa_token'
 ]
