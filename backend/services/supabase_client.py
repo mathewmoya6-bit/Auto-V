@@ -1,84 +1,32 @@
-import os
-import logging
-import uuid
-from datetime import datetime
+# services/supabase_client.py
 
-logger = logging.getLogger(__name__)
+import os
+from supabase import create_client
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Missing Supabase credentials")
-
-_supabase = None
+supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 
 def get_supabase_client():
-    global _supabase
-
-    if _supabase is None:
-        from supabase import create_client
-        _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-    return _supabase
+    return supabase
 
 
-# ─── CREATE PAYMENT ─────────────────────────────
-def create_payment(data: dict):
-    try:
-        client = get_supabase_client()
-
-        if not data.get("payment_id"):
-            data["payment_id"] = f"PAY-{uuid.uuid4().hex[:8].upper()}"
-
-        data["status"] = data.get("status", "pending")
-        data["created_at"] = datetime.now().isoformat()
-        data["updated_at"] = datetime.now().isoformat()
-
-        res = client.table("payments").insert(data).execute()
-
-        if res.data:
-            return {"success": True, "data": res.data[0]}
-
-        logger.error(f"Insert failed: {res}")
-        return {"success": False, "error": str(res)}
-
-    except Exception as e:
-        logger.error(f"create_payment error: {e}")
-        return {"success": False, "error": str(e)}
+# ─── PAYMENTS ───────────────────────────────────────────
+def create_payment(data):
+    return supabase.table("payments").insert(data).execute().data
 
 
-# ─── GET BY ID ─────────────────────────────
-def get_payment_by_id(id: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("id", id).execute()
+def get_payment_by_id(payment_id):
+    res = supabase.table("payments").select("*").eq("id", payment_id).execute()
     return res.data[0] if res.data else None
 
 
-def get_payment_by_custom_id(payment_id: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("payment_id", payment_id).execute()
+def get_payment_by_checkout_id(checkout_id):
+    res = supabase.table("payments").select("*").eq("checkout_request_id", checkout_id).execute()
     return res.data[0] if res.data else None
 
 
-def get_payment_by_checkout_id(checkout_id: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("checkout_request_id", checkout_id).execute()
-    return res.data[0] if res.data else None
-
-
-def get_payment_by_mpesa_code(code: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("mpesa_code", code).execute()
-    return res.data[0] if res.data else None
-
-
-# ─── UPDATE ─────────────────────────────
-def update_payment(id: str, data: dict):
-    client = get_supabase_client()
-    data["updated_at"] = datetime.now().isoformat()
-
-    res = client.table("payments").update(data).eq("id", id).execute()
-
-    return {"success": bool(res.data), "data": res.data}
+def update_payment(payment_id, data):
+    return supabase.table("payments").update(data).eq("id", payment_id).execute().data
