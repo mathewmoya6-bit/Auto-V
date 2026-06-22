@@ -1,100 +1,55 @@
 # api/__init__.py - AUTO-V API Package
 """
 AUTO-V API Routes Package
-Contains all API route blueprints
+Contains all API route blueprints (Production Ready v2)
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-# ─── Import All Blueprints ──────────────────────────────────────
+# ─── Import All Blueprints Safely ──────────────────────────────
 
-try:
-    from .routes.admin import admin_bp
-    logger.info("✅ Admin routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Admin routes not available: {e}")
-    admin_bp = None
+def safe_import(module_path, attr_name, label):
+    """Safe dynamic import helper"""
+    try:
+        module = __import__(module_path, fromlist=[attr_name])
+        blueprint = getattr(module, attr_name)
+        logger.info(f"✅ {label} loaded")
+        return blueprint
+    except Exception as e:
+        logger.warning(f"⚠️ {label} not available: {e}")
+        return None
 
-try:
-    from .routes.auth import auth_bp
-    logger.info("✅ Auth routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Auth routes not available: {e}")
-    auth_bp = None
 
-try:
-    from .routes.inspections import inspections_bp
-    logger.info("✅ Inspection routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Inspection routes not available: {e}")
-    inspections_bp = None
+# ─── Core API Routes ───────────────────────────────────────────
 
-try:
-    from .routes.intelligence import intelligence_bp
-    logger.info("✅ Intelligence routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Intelligence routes not available: {e}")
-    intelligence_bp = None
+admin_bp = safe_import(".routes.admin", "admin_bp", "Admin routes")
+auth_bp = safe_import(".routes.auth", "auth_bp", "Auth routes")
+inspections_bp = safe_import(".routes.inspections", "inspections_bp", "Inspection routes")
+intelligence_bp = safe_import(".routes.intelligence", "intelligence_bp", "Intelligence routes")
 
-try:
-    from .routes.mpesa import mpesa_bp
-    logger.info("✅ M-Pesa routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ M-Pesa routes not available: {e}")
-    mpesa_bp = None
+# ─── Payment System (IMPORTANT ALIGNMENT AREA) ─────────────────
 
-try:
-    from .routes.payments import payments_bp
-    logger.info("✅ Payment routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Payment routes not available: {e}")
-    payments_bp = None
+mpesa_bp = safe_import(".routes.mpesa", "mpesa_bp", "M-Pesa routes")
+payments_bp = safe_import(".routes.payments", "payments_bp", "Payment routes")
 
-try:
-    from .routes.valuations import valuations_bp
-    logger.info("✅ Valuation routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Valuation routes not available: {e}")
-    valuations_bp = None
+# ─── Vehicle / Valuation / Services ────────────────────────────
 
-try:
-    from .routes.vehicles import vehicles_bp
-    logger.info("✅ Vehicle routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Vehicle routes not available: {e}")
-    vehicles_bp = None
+valuations_bp = safe_import(".routes.valuations", "valuations_bp", "Valuation routes")
+vehicles_bp = safe_import(".routes.vehicles", "vehicles_bp", "Vehicle routes")
+services_bp = safe_import(".routes.services", "services_bp", "Service routes")
 
-try:
-    from .routes.services import services_bp
-    logger.info("✅ Service routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Service routes not available: {e}")
-    services_bp = None
+# ─── Assessment & Analytics ────────────────────────────────────
 
-try:
-    from .routes.assessments import assessments_bp
-    logger.info("✅ Assessment routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Assessment routes not available: {e}")
-    assessments_bp = None
+assessments_bp = safe_import(".routes.assessments", "assessments_bp", "Assessment routes")
+mileage_bp = safe_import(".routes.mileage", "mileage_bp", "Mileage routes")
 
-try:
-    from .routes.mileage import mileage_bp
-    logger.info("✅ Mileage routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ Mileage routes not available: {e}")
-    mileage_bp = None
+# ─── VIN System ────────────────────────────────────────────────
 
-try:
-    from .routes.vin_routes import router as vin_router
-    logger.info("✅ VIN routes loaded")
-except ImportError as e:
-    logger.warning(f"⚠️ VIN routes not available: {e}")
-    vin_router = None
+vin_router = safe_import(".routes.vin_routes", "router", "VIN routes")
 
-# ─── Export All Blueprints ──────────────────────────────────────
+# ─── Export All Blueprints ─────────────────────────────────────
 
 __all__ = [
     'admin_bp',
@@ -111,48 +66,69 @@ __all__ = [
     'vin_router'
 ]
 
-# ─── Register Blueprints Helper ────────────────────────────────
+# ─── Blueprint Registration Helper ─────────────────────────────
 
 def register_blueprints(app):
     """
-    Register all blueprints to the Flask app.
-    
+    Register all available blueprints to Flask app.
+
+    IMPORTANT ALIGNMENT NOTES:
+    - M-Pesa routes must be under /api/mpesa
+    - Payments routes must be under /api/payments
+    - Supabase-backed tables MUST match:
+        payments (NOT payment)
+        mpesa fields mapped correctly
+
     Args:
         app: Flask application instance
-        
+
     Returns:
         int: Number of successfully registered blueprints
     """
+
     blueprints = [
         (admin_bp, '/api/admin'),
         (auth_bp, '/api/auth'),
         (inspections_bp, '/api/inspections'),
         (intelligence_bp, '/api/intelligence'),
+
+        # 💰 PAYMENT SYSTEM (CRITICAL)
         (mpesa_bp, '/api/mpesa'),
         (payments_bp, '/api/payments'),
+
+        # 🚗 VEHICLE SYSTEM
         (valuations_bp, '/api/valuations'),
         (vehicles_bp, '/api/vehicles'),
         (services_bp, '/api/services'),
+
+        # 📊 ANALYTICS / ASSESSMENTS
         (assessments_bp, '/api/assessments'),
         (mileage_bp, '/api/mileage'),
+
+        # 🔎 VIN SYSTEM
         (vin_router, '/api/vin')
     ]
-    
+
     registered_count = 0
+
     for blueprint, url_prefix in blueprints:
-        if blueprint is not None:
-            try:
-                app.register_blueprint(blueprint, url_prefix=url_prefix)
-                registered_count += 1
-                logger.info(f"✅ Registered: {blueprint.name} at {url_prefix}")
-            except Exception as e:
-                logger.error(f"❌ Failed to register {blueprint.name}: {e}")
-    
-    logger.info(f"📋 Registered {registered_count}/{len(blueprints)} blueprints")
+        if blueprint is None:
+            continue
+
+        try:
+            app.register_blueprint(blueprint, url_prefix=url_prefix)
+            registered_count += 1
+            logger.info(f"✅ Registered: {blueprint.name} → {url_prefix}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to register {blueprint.name}: {e}")
+
+    logger.info(f"📋 Blueprint registration complete: {registered_count}/{len(blueprints)}")
     return registered_count
 
-# ─── Package Info ────────────────────────────────────────────────
 
-__version__ = '1.0.0'
-__author__ = 'AUTO-V Team'
-__description__ = 'AUTO-V API Routes Package'
+# ─── Package Metadata ──────────────────────────────────────────
+
+__version__ = "2.0.0"
+__author__ = "AUTO-V Team"
+__description__ = "AUTO-V API Routes Package (Production Ready v2)"
