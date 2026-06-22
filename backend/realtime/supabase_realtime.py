@@ -1,19 +1,34 @@
-# realtime/supabase_realtime.py – Real-time Event Streaming
+# realtime/supabase_realtime.py – Real-time Event Streaming (PRODUCTION HARDENED)
 """
 Supabase Realtime Integration for AUTO-V
 Handles real-time event streaming for payments, valuations, inspections, mileage, and more
 """
 
+import os
 import logging
 import json
+import time
 from typing import Callable, Dict, Any, Optional, List
 from datetime import datetime
 from threading import Thread, Event
-import time
 
-from services.supabase import get_client as get_supabase
+# ✅ FIX: Correct import path
+try:
+    from services.supabase_client import get_supabase_client as get_supabase
+except ImportError:
+    # Fallback for direct import
+    import sys
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from services.supabase_client import get_supabase_client as get_supabase
 
 logger = logging.getLogger(__name__)
+
+# ─── Configuration ──────────────────────────────────────────────
+REALTIME_ENABLED = os.getenv('REALTIME_ENABLED', 'true').lower() == 'true'
+REALTIME_HEARTBEAT_INTERVAL = int(os.getenv('REALTIME_HEARTBEAT_INTERVAL', '30'))
+REALTIME_RETRY_ATTEMPTS = int(os.getenv('REALTIME_RETRY_ATTEMPTS', '3'))
+REALTIME_RETRY_DELAY = int(os.getenv('REALTIME_RETRY_DELAY', '2'))
+
 
 class SupabaseRealtime:
     """
@@ -32,12 +47,57 @@ class SupabaseRealtime:
     """
     
     def __init__(self):
-        self.supabase = get_supabase()
+        # ✅ FIX: Use the correct client function
+        self._client = None
+        self._client_initialized = False
+        self._init_client()
+        
         self.channels = {}
         self.listeners = {}
         self._stop_events = {}
         self._threads = {}
-        self._heartbeat_interval = 30  # seconds
+        self._heartbeat_interval = REALTIME_HEARTBEAT_INTERVAL
+        self._enabled = REALTIME_ENABLED
+        
+        if not self._enabled:
+            logger.warning("⚠️ Realtime is disabled (REALTIME_ENABLED=false)")
+    
+    def _init_client(self):
+        """Initialize Supabase client safely."""
+        if self._client_initialized:
+            return
+        
+        try:
+            self._client = get_supabase()
+            self._client_initialized = True
+            logger.info("✅ Supabase client initialized for realtime")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Supabase client: {e}")
+            self._client = None
+            self._client_initialized = False
+    
+    def _get_client(self):
+        """Get Supabase client with lazy initialization."""
+        if not self._client_initialized:
+            self._init_client()
+        return self._client
+    
+    def _safe_channel(self, channel_id: str):
+        """Safely create a channel with error handling."""
+        if not self._enabled:
+            logger.warning(f"⚠️ Realtime disabled, not creating channel: {channel_id}")
+            return None
+        
+        client = self._get_client()
+        if not client:
+            logger.error(f"❌ No Supabase client for channel: {channel_id}")
+            return None
+        
+        try:
+            return client.channel(channel_id)
+        except Exception as e:
+            logger.error(f"❌ Failed to create channel {channel_id}: {e}")
+            return None
     
     # ─── Payment Events ──────────────────────────────────────────
     
@@ -46,7 +106,7 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE']
-    ) -> str:
+    ) -> Optional[str]:
         """
         Subscribe to payment changes for a user.
         
@@ -56,8 +116,11 @@ class SupabaseRealtime:
             event_types: List of event types to listen for
             
         Returns:
-            str: Channel ID
+            str: Channel ID or None on failure
         """
+        if not self._enabled:
+            return None
+        
         channel_id = f"payments-{user_id}"
         
         if channel_id in self.channels:
@@ -77,7 +140,9 @@ class SupabaseRealtime:
                 logger.error(f"Payment callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -105,7 +170,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to payments for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── Service Request Events ──────────────────────────────────
     
@@ -114,22 +179,14 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE', 'DELETE']
-    ) -> str:
-        """
-        Subscribe to service request changes for a user.
+    ) -> Optional[str]:
+        """Subscribe to service request changes for a user."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on service request update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"service_requests-{user_id}"
         
         if channel_id in self.channels:
-            logger.warning(f"Already subscribed to service requests for user {user_id}")
             return channel_id
         
         def handler(payload):
@@ -145,7 +202,9 @@ class SupabaseRealtime:
                 logger.error(f"Service request callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -173,7 +232,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to service requests for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── Valuation Events ────────────────────────────────────────
     
@@ -182,18 +241,11 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE']
-    ) -> str:
-        """
-        Subscribe to valuation changes for a user.
+    ) -> Optional[str]:
+        """Subscribe to valuation changes for a user."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on valuation update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"valuations-{user_id}"
         
         if channel_id in self.channels:
@@ -212,7 +264,9 @@ class SupabaseRealtime:
                 logger.error(f"Valuation callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -240,7 +294,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to valuations for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── Inspection Events ────────────────────────────────────────
     
@@ -249,18 +303,11 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE']
-    ) -> str:
-        """
-        Subscribe to inspection changes for a user.
+    ) -> Optional[str]:
+        """Subscribe to inspection changes for a user."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on inspection update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"inspections-{user_id}"
         
         if channel_id in self.channels:
@@ -279,7 +326,9 @@ class SupabaseRealtime:
                 logger.error(f"Inspection callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -307,7 +356,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to inspections for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── Assessment Events ────────────────────────────────────────
     
@@ -316,18 +365,11 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE']
-    ) -> str:
-        """
-        Subscribe to assessment changes for a user.
+    ) -> Optional[str]:
+        """Subscribe to assessment changes for a user."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on assessment update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"assessments-{user_id}"
         
         if channel_id in self.channels:
@@ -346,7 +388,9 @@ class SupabaseRealtime:
                 logger.error(f"Assessment callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -374,7 +418,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to assessments for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── Mileage Rate Events ──────────────────────────────────────
     
@@ -383,22 +427,14 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE', 'DELETE']
-    ) -> str:
-        """
-        Subscribe to mileage rate changes for a user.
+    ) -> Optional[str]:
+        """Subscribe to mileage rate changes for a user."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on mileage rate update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"mileage_rates-{user_id}"
         
         if channel_id in self.channels:
-            logger.warning(f"Already subscribed to mileage rates for user {user_id}")
             return channel_id
         
         def handler(payload):
@@ -414,7 +450,9 @@ class SupabaseRealtime:
                 logger.error(f"Mileage rate callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -442,7 +480,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to mileage rates for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── Mileage Claim Events ─────────────────────────────────────
     
@@ -451,22 +489,14 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE', 'DELETE']
-    ) -> str:
-        """
-        Subscribe to mileage claim changes for a user.
+    ) -> Optional[str]:
+        """Subscribe to mileage claim changes for a user."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on mileage claim update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"mileage_claims-{user_id}"
         
         if channel_id in self.channels:
-            logger.warning(f"Already subscribed to mileage claims for user {user_id}")
             return channel_id
         
         def handler(payload):
@@ -482,7 +512,9 @@ class SupabaseRealtime:
                 logger.error(f"Mileage claim callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -510,7 +542,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to mileage claims for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── Notification Events ──────────────────────────────────────
     
@@ -518,17 +550,11 @@ class SupabaseRealtime:
         self,
         user_id: str,
         callback: Callable[[Dict[str, Any]], None]
-    ) -> str:
-        """
-        Subscribe to notification changes for a user.
+    ) -> Optional[str]:
+        """Subscribe to notification changes for a user."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on notification update
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"notifications-{user_id}"
         
         if channel_id in self.channels:
@@ -547,19 +573,22 @@ class SupabaseRealtime:
                 logger.error(f"Notification callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)\
-                .on(
-                    'postgres_changes',
-                    {
-                        'event': 'INSERT',
-                        'schema': 'public',
-                        'table': 'notifications',
-                        'filter': f'user_id=eq.{user_id}'
-                    },
-                    handler
-                )\
-                .subscribe()
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
+            channel = channel.on(
+                'postgres_changes',
+                {
+                    'event': 'INSERT',
+                    'schema': 'public',
+                    'table': 'notifications',
+                    'filter': f'user_id=eq.{user_id}'
+                },
+                handler
+            )
+            
+            channel.subscribe()
             self.channels[channel_id] = channel
             self.listeners[channel_id] = {
                 'type': 'notifications',
@@ -573,7 +602,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to notifications for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── User Profile Events ──────────────────────────────────────
     
@@ -582,18 +611,11 @@ class SupabaseRealtime:
         user_id: str,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['UPDATE']
-    ) -> str:
-        """
-        Subscribe to user profile changes.
+    ) -> Optional[str]:
+        """Subscribe to user profile changes."""
+        if not self._enabled:
+            return None
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on profile update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = f"user_profiles-{user_id}"
         
         if channel_id in self.channels:
@@ -612,7 +634,9 @@ class SupabaseRealtime:
                 logger.error(f"User profile callback error: {e}")
         
         try:
-            channel = self.supabase.channel(channel_id)
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for event_type in event_types:
                 channel = channel.on(
@@ -640,7 +664,7 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to user profile for user {user_id}: {e}")
-            raise
+            return None
     
     # ─── System Events ────────────────────────────────────────────
     
@@ -648,17 +672,11 @@ class SupabaseRealtime:
         self,
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['UPDATE', 'INSERT']
-    ) -> str:
-        """
-        Subscribe to system-wide events (admin use).
+    ) -> Optional[str]:
+        """Subscribe to system-wide events (admin use)."""
+        if not self._enabled:
+            return None
         
-        Args:
-            callback: Function to call on system event
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID
-        """
         channel_id = "system-events"
         
         if channel_id in self.channels:
@@ -687,7 +705,10 @@ class SupabaseRealtime:
                 'mileage_claims',
                 'user_profiles'
             ]
-            channel = self.supabase.channel(channel_id)
+            
+            channel = self._safe_channel(channel_id)
+            if not channel:
+                return None
             
             for table in tables:
                 for event_type in event_types:
@@ -714,28 +735,21 @@ class SupabaseRealtime:
             
         except Exception as e:
             logger.error(f"Failed to subscribe to system events: {e}")
-            raise
+            return None
     
-    # ─── Combined Events (All User Events) ────────────────────────
+    # ─── Combined Events ────────────────────────────────────────
     
     def subscribe_to_all_user_events(
         self,
         user_id: str,
         callback: Callable[[Dict[str, Any]], None]
     ) -> List[str]:
-        """
-        Subscribe to all events for a user.
+        """Subscribe to all events for a user."""
+        if not self._enabled:
+            return []
         
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on any event
-            
-        Returns:
-            List[str]: All channel IDs created
-        """
         channel_ids = []
         
-        # Define all subscriptions
         subscriptions = [
             (self.subscribe_to_payments, 'payments'),
             (self.subscribe_to_service_requests, 'service_requests'),
@@ -751,17 +765,21 @@ class SupabaseRealtime:
         for subscribe_func, name in subscriptions:
             try:
                 channel_id = subscribe_func(user_id, callback)
-                channel_ids.append(channel_id)
-                logger.info(f"✅ Subscribed to {name} for user {user_id}")
+                if channel_id:
+                    channel_ids.append(channel_id)
+                    logger.info(f"✅ Subscribed to {name} for user {user_id}")
             except Exception as e:
                 logger.error(f"Failed to subscribe to {name} for user {user_id}: {e}")
         
         return channel_ids
     
-    # ─── Heartbeat / Keep Alive ──────────────────────────────────
+    # ─── Heartbeat ──────────────────────────────────────────────────
     
     def _heartbeat(self, channel_id: str):
         """Send periodic heartbeat to keep channel alive."""
+        if not self._enabled:
+            return
+        
         if channel_id in self.channels:
             try:
                 channel = self.channels[channel_id]
@@ -773,6 +791,9 @@ class SupabaseRealtime:
     
     def start_heartbeat(self, channel_id: str):
         """Start heartbeat for a channel."""
+        if not self._enabled:
+            return
+        
         if channel_id in self._stop_events:
             return
         
@@ -799,15 +820,10 @@ class SupabaseRealtime:
     # ─── Reconnection ─────────────────────────────────────────────
     
     def reconnect(self, channel_id: str) -> bool:
-        """
-        Reconnect a channel.
+        """Reconnect a channel."""
+        if not self._enabled:
+            return False
         
-        Args:
-            channel_id: Channel ID to reconnect
-            
-        Returns:
-            bool: True if reconnected successfully
-        """
         if channel_id not in self.channels:
             logger.warning(f"Channel {channel_id} not found for reconnection")
             return False
@@ -830,7 +846,6 @@ class SupabaseRealtime:
             user_id = listener.get('user_id')
             callback = listener.get('callback')
             
-            # Map listener type to subscription function
             type_map = {
                 'payments': self.subscribe_to_payments,
                 'service_requests': self.subscribe_to_service_requests,
@@ -867,13 +882,7 @@ class SupabaseRealtime:
     # ─── Unsubscribe ──────────────────────────────────────────────
     
     def unsubscribe(self, user_id: str = None, channel_id: str = None):
-        """
-        Unsubscribe from a channel.
-        
-        Args:
-            user_id: User ID to unsubscribe (unsubscribes all user channels)
-            channel_id: Specific channel ID to unsubscribe
-        """
+        """Unsubscribe from a channel."""
         if channel_id:
             self._unsubscribe_channel(channel_id)
         elif user_id:
@@ -894,7 +903,6 @@ class SupabaseRealtime:
     def _unsubscribe_channel(self, channel_id: str):
         """Unsubscribe a specific channel."""
         if channel_id not in self.channels:
-            logger.warning(f"Channel {channel_id} not found")
             return
         
         try:
@@ -912,13 +920,9 @@ class SupabaseRealtime:
     # ─── Status ────────────────────────────────────────────────────
     
     def get_status(self) -> Dict[str, Any]:
-        """
-        Get real-time service status.
-        
-        Returns:
-            Dict with status information
-        """
+        """Get real-time service status."""
         return {
+            'enabled': self._enabled,
             'active_channels': len(self.channels),
             'listeners': [
                 {
@@ -951,6 +955,8 @@ class SupabaseRealtime:
     
     def is_connected(self, channel_id: str) -> bool:
         """Check if a channel is connected."""
+        if not self._enabled:
+            return False
         if channel_id not in self.channels:
             return False
         try:
@@ -999,7 +1005,6 @@ if __name__ == "__main__":
     
     realtime = get_realtime()
     
-    # Test mileage rate subscription
     def on_mileage_update(data):
         print(f"📏 Mileage update: {data}")
     
@@ -1009,7 +1014,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ Error: {e}")
     
-    # Test all user events
     def on_all_events(data):
         print(f"📡 Event: {data.get('table')} - {data.get('event')}")
     
@@ -1019,14 +1023,11 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ Error: {e}")
     
-    # Check status
     status = realtime.get_status()
     print(f"📊 Status: {status}")
     
-    # Check listener types
     types = realtime.get_listener_types()
     print(f"📋 Listener types: {types}")
     
-    # Cleanup
     realtime.cleanup()
     print("✅ Test complete")
