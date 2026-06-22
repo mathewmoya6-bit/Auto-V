@@ -69,7 +69,8 @@ class Config:
     MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
     MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
     MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
-    MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://auto-v.meipressgroup.com/mpesa/callback')
+    # ✅ FIX: Use onrender.com for backend
+    MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://auto-v.onrender.com/api/mpesa/callback')
     MPESA_ENV = os.getenv('MPESA_ENV', 'production')
     
     SECRET_KEY = os.getenv('SECRET_KEY', os.urandom(24).hex())
@@ -243,7 +244,7 @@ def root():
             'health': '/api/health',
             'ping': '/api/ping',
             'mpesa': '/api/mpesa',
-            'mpesa_callback': '/mpesa/callback'
+            'mpesa_callback': '/api/mpesa/callback'
         }
     }), 200
 
@@ -252,49 +253,13 @@ def root():
 def serve_portal():
     return send_from_directory('templates', 'customer-portal.html')
 
-# ============================================================
-# ─── M-PESA CALLBACK ──────────────────────────────────────────
-# ============================================================
-
-@app.route('/mpesa/callback', methods=['POST'])
-def mpesa_callback():
-    """Handle M-Pesa STK Push callback from Safaricom."""
-    try:
-        from services.mpesa import handle_mpesa_callback
-        
-        # Log everything for debugging
-        client_ip = request.remote_addr or request.headers.get('X-Forwarded-For', '')
-        logger.info("=" * 60)
-        logger.info(f"📥 M-Pesa callback received from IP: {client_ip}")
-        logger.info(f"📥 Headers: {dict(request.headers)}")
-        
-        # Get callback data
-        callback_data = request.get_json()
-        if not callback_data:
-            logger.error("❌ No JSON data in callback")
-            # ✅ Always return 200 to Safaricom
-            return jsonify({"ResultCode": 1, "ResultDesc": "No data"}), 200
-        
-        logger.info(f"📥 Callback data: {callback_data}")
-        
-        # Process callback
-        result = handle_mpesa_callback(callback_data, client_ip)
-        logger.info(f"✅ Callback processed: {result}")
-        
-        # ✅ Always return 200
-        return jsonify(result), 200
-        
-    except Exception as e:
-        logger.error(f"❌ Callback error: {e}", exc_info=True)
-        # ✅ Always return 200 to Safaricom even on error
-        return jsonify({"ResultCode": 1, "ResultDesc": str(e)}), 200
-
 # ─── REGISTER BLUEPRINTS ──────────────────────────────────────
 def register_blueprints():
     registered = 0
     
     try:
         from api.routes.mpesa import mpesa_bp
+        # ✅ FIX: Blueprint handles all /api/mpesa/* routes including callback
         app.register_blueprint(mpesa_bp, url_prefix='/api/mpesa')
         registered += 1
         logger.info("✅ Registered: /api/mpesa")
