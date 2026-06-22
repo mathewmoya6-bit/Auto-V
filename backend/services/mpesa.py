@@ -1,4 +1,4 @@
-# services/mpesa.py - FINAL PRODUCTION STABLE
+# services/mpesa.py - Production Ready v3
 
 import os
 import base64
@@ -7,6 +7,7 @@ import requests
 import time
 import uuid
 from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,7 @@ _token_cache = {"token": None, "expires": None}
 
 
 # ─── CONFIG CHECK ───────────────────────────────────────
-def is_mpesa_configured():
-    """Check if all M-Pesa config is present."""
+def is_mpesa_configured() -> bool:
     return all([
         MPESA_CONSUMER_KEY,
         MPESA_CONSUMER_SECRET,
@@ -42,16 +42,11 @@ def is_mpesa_configured():
 
 
 # ─── TOKEN ──────────────────────────────────────────────
-def get_mpesa_token(force=False):
+def get_mpesa_token(force: bool = False) -> str:
     """Get M-Pesa access token with caching."""
     global _token_cache
 
-    if (
-        not force
-        and _token_cache["token"]
-        and _token_cache["expires"]
-        and datetime.now() < _token_cache["expires"]
-    ):
+    if not force and _token_cache["token"] and _token_cache["expires"] and datetime.now() < _token_cache["expires"]:
         return _token_cache["token"]
 
     auth = base64.b64encode(
@@ -91,7 +86,7 @@ def get_mpesa_token(force=False):
 
 
 # ─── PHONE NORMALIZER ───────────────────────────────────
-def normalize_phone(phone):
+def normalize_phone(phone: str) -> str:
     """Normalize phone number to 254XXXXXXXXX format."""
     if not phone:
         raise ValueError("Phone number is required")
@@ -112,7 +107,14 @@ def normalize_phone(phone):
 
 
 # ─── STK PUSH ───────────────────────────────────────────
-def initiate_stk_push(phone, amount, payment_id, reference="AUTO-V", user_id=None, request_id=None):
+def initiate_stk_push(
+    phone: str, 
+    amount: float, 
+    payment_id: str, 
+    reference: str = "AUTO-V",
+    user_id: Optional[str] = None,
+    request_id: Optional[str] = None
+) -> Dict[str, Any]:
     """Initiate STK Push to customer's phone."""
     
     if not is_mpesa_configured():
@@ -181,7 +183,6 @@ def initiate_stk_push(phone, amount, payment_id, reference="AUTO-V", user_id=Non
             try:
                 from services.supabase_client import create_payment
                 
-                # Generate proper UUID for the primary key
                 payment_uuid = str(uuid.uuid4())
                 
                 payment_data = {
@@ -201,6 +202,8 @@ def initiate_stk_push(phone, amount, payment_id, reference="AUTO-V", user_id=Non
                 create_result = create_payment(payment_data)
                 if not create_result.get('success'):
                     logger.warning(f"⚠️ Could not create payment record: {create_result.get('error')}")
+                else:
+                    logger.info(f"✅ Payment record created: {payment_id}")
             except Exception as db_err:
                 logger.warning(f"⚠️ Database error: {db_err}")
 
@@ -219,10 +222,10 @@ def initiate_stk_push(phone, amount, payment_id, reference="AUTO-V", user_id=Non
 
 
 # ─── CALLBACK ───────────────────────────────────────────
-def handle_mpesa_callback(data):
+def handle_mpesa_callback(callback_data: Dict[str, Any]) -> Dict[str, Any]:
     """Handle M-Pesa callback and update payment status."""
     try:
-        stk = data.get("Body", {}).get("stkCallback", {})
+        stk = callback_data.get("Body", {}).get("stkCallback", {})
         if not stk:
             return {"ResultCode": 1, "ResultDesc": "Missing stkCallback"}
 
@@ -312,11 +315,140 @@ def handle_mpesa_callback(data):
         return {"ResultCode": 1, "ResultDesc": "System error"}
 
 
-# ─── EXPORTS ────────────────────────────────────────────
+# ─── QUERY PAYMENT STATUS ──────────────────────────────────
+def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
+    """Query M-Pesa payment status directly."""
+    if not checkout_request_id:
+        raise ValueError("CheckoutRequestID is required")
+
+    token = get_mpesa_token()
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    password = base64.b64encode(
+        f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()
+    ).decode()
+
+    payload = {
+        "BusinessShortCode": MPESA_SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "CheckoutRequestID": checkout_request_id
+    }
+
+    logger.info(f"🔍 Querying payment status: {checkout_request_id}")
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            res = requests.post(
+                f"{BASE_URL}/mpesa/stkpushquery/v1/query",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                },
+                timeout=REQUEST_TIMEOUT
+            )
+            
+            if res.status_code != 200:
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise Exception(f"Status query failed: {res.status_code}")
+
+            return res.json()
+
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+
+
+# ─── AUTO-CONFIRM ──────────────────────────────────────────
+def auto_confirm_payment(payment_uuid: str) -> Dict[str, Any]:
+    """Auto-confirm a payment by verifying with M-Pesa API."""
+    try:
+        logger.info(f"🔍 Auto-confirming payment: {payment_uuid}")
+        
+        from services.supabase_client import get_payment_by_id, update_payment
+        
+        payment = get_payment_by_id(payment_uuid)
+        
+        if not payment:
+            return {"success": False, "error": "Payment not found"}
+        
+        checkout_id = payment.get('checkout_request_id')
+        
+        if not checkout_id:
+            return {"success": False, "error": "No checkout ID found"}
+        
+        if payment.get('status') == 'completed':
+            return {
+                "success": True, 
+                "message": "Payment already completed",
+                "payment": payment
+            }
+        
+        result = query_payment_status(checkout_id)
+        result_code = result.get("ResultCode")
+        
+        if result_code == "0":
+            # Extract transaction details
+            metadata = result.get("CallbackMetadata", {})
+            items = metadata.get("Item", [])
+            
+            receipt = None
+            amount = None
+            phone = None
+            
+            for item in items:
+                name = item.get("Name")
+                value = item.get("Value")
+                if name == "MpesaReceiptNumber":
+                    receipt = value
+                elif name == "Amount":
+                    amount = value
+                elif name == "PhoneNumber":
+                    phone = value
+            
+            update_data = {
+                "status": "completed",
+                "mpesa_code": receipt,
+                "transaction_id": receipt,
+                "mpesa_result_code": "0",
+                "mpesa_result_desc": "Transaction completed",
+                "paid_at": datetime.now().isoformat()
+            }
+            if amount:
+                update_data["amount"] = amount
+            if phone:
+                update_data["mpesa_phone"] = phone
+            
+            update_payment(payment_uuid, update_data)
+            
+            return {
+                "success": True,
+                "message": "Payment verified by M-Pesa",
+                "receipt": receipt
+            }
+        else:
+            return {
+                "success": False,
+                "error": "M-Pesa verification failed",
+                "result_code": result_code
+            }
+            
+    except Exception as e:
+        logger.error(f"Auto-confirm error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
 __all__ = [
-    "initiate_stk_push",
-    "handle_mpesa_callback",
-    "is_mpesa_configured",
-    "normalize_phone",
-    "get_mpesa_token"
+    'initiate_stk_push',
+    'handle_mpesa_callback',
+    'query_payment_status',
+    'auto_confirm_payment',
+    'is_mpesa_configured',
+    'normalize_phone',
+    'get_mpesa_token'
 ]
