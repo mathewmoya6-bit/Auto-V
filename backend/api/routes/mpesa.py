@@ -39,20 +39,7 @@ MPESA_ENV = os.getenv('MPESA_ENV', 'production')
 
 @mpesa_bp.route('/initiate', methods=['OPTIONS', 'POST'])
 def initiate_payment():
-    """
-    Initiate M-Pesa STK Push payment
-    
-    Request body:
-    {
-        "phone": "0712345678",
-        "amount": 100.00,
-        "service": "valuation",
-        "purpose": "Insurance Valuation",
-        "user_id": "uuid",
-        "request_id": "uuid",
-        "reference": "VAL-ABC123-XYZ"
-    }
-    """
+    """Initiate M-Pesa STK Push payment"""
     if request.method == 'OPTIONS':
         response = make_response()
         response.headers.add("Access-Control-Allow-Origin", "*")
@@ -70,7 +57,6 @@ def initiate_payment():
         
         logger.info(f"📦 PAYLOAD RECEIVED: {data}")
         
-        # ─── Validate Required Fields ──────────────────────────────
         required = ['phone', 'amount']
         missing = [f for f in required if not data.get(f)]
         
@@ -80,11 +66,9 @@ def initiate_payment():
                 'error': f'Missing required fields: {", ".join(missing)}'
             }), 400
         
-        # ─── Get Payment ID ──────────────────────────────────────────
         payment_id = data.get('payment_id') or f"PAY-{uuid.uuid4().hex[:8].upper()}"
         reference = data.get('reference') or f"AUTO-{uuid.uuid4().hex[:8].upper()}"
         
-        # ─── Validate Phone Number ──────────────────────────────────
         phone = data['phone']
         if not phone or len(phone) < 10:
             return jsonify({
@@ -92,7 +76,6 @@ def initiate_payment():
                 'error': 'Invalid phone number'
             }), 400
         
-        # ─── Validate Amount ─────────────────────────────────────────
         amount = data['amount']
         try:
             amount = float(amount)
@@ -106,7 +89,6 @@ def initiate_payment():
         
         logger.info(f"📝 Processing payment: {payment_id} for {phone} - KES {amount}")
         
-        # ─── Process Payment with M-Pesa ────────────────────────────
         result = initiate_stk_push(
             phone=phone,
             amount=amount,
@@ -138,18 +120,11 @@ def initiate_payment():
 
 @mpesa_bp.route('/status/<payment_id>', methods=['GET'])
 def get_payment_status(payment_id):
-    """
-    Get payment status
-    
-    Args:
-        payment_id: Payment ID or checkout request ID
-    """
+    """Get payment status"""
     try:
-        # Try to find by payment_id
         payment = get_payment_by_id(payment_id)
         
         if not payment:
-            # Try by checkout_request_id
             payment = get_payment_by_checkout_id(payment_id)
         
         if not payment:
@@ -183,12 +158,7 @@ def get_payment_status(payment_id):
 
 @mpesa_bp.route('/verify/<checkout_id>', methods=['POST'])
 def verify_payment(checkout_id):
-    """
-    Verify payment with M-Pesa API
-    
-    Args:
-        checkout_id: M-Pesa checkout request ID
-    """
+    """Verify payment with M-Pesa API"""
     try:
         result = verify_payment_with_mpesa(checkout_id)
         
@@ -218,9 +188,7 @@ def verify_payment(checkout_id):
 
 @mpesa_bp.route('/auto-confirm/<payment_id>', methods=['POST'])
 def auto_confirm(payment_id):
-    """
-    Auto-confirm payment by verifying with M-Pesa API
-    """
+    """Auto-confirm payment by verifying with M-Pesa API"""
     try:
         result = auto_confirm_payment(payment_id)
         return jsonify(result), 200 if result.get('success') else 400
@@ -232,12 +200,7 @@ def auto_confirm(payment_id):
 
 @mpesa_bp.route('/user/<user_id>', methods=['GET'])
 def get_user_payments_route(user_id):
-    """
-    Get all payments for a user
-    
-    Args:
-        user_id: User ID
-    """
+    """Get all payments for a user"""
     try:
         limit = request.args.get('limit', 50, type=int)
         payments = get_user_payments(user_id, limit)
@@ -258,9 +221,7 @@ def get_user_payments_route(user_id):
 
 @mpesa_bp.route('/stats', methods=['GET'])
 def get_stats():
-    """
-    Get payment statistics
-    """
+    """Get payment statistics"""
     try:
         stats = get_payment_stats()
         return jsonify({
@@ -299,7 +260,6 @@ def mpesa_health():
         'configured': is_mpesa_configured()
     }
     
-    # Test token generation
     try:
         token = get_mpesa_token()
         status['token_available'] = bool(token)
@@ -312,5 +272,52 @@ def mpesa_health():
     
     return jsonify(status), 200
 
-# ─── REMOVED DUPLICATE CALLBACK ROUTE ─────────────────────────
-# The callback route is now ONLY in app.py at /mpesa/callback
+
+# ============================================================
+# ✅ FIX: M-PESA CALLBACK ROUTE (Now in Blueprint)
+# ============================================================
+
+@mpesa_bp.route('/callback', methods=['POST'])
+def mpesa_callback_route():
+    """
+    M-Pesa callback endpoint (receives payment confirmation from Safaricom).
+    ✅ FIX: Properly handles Safaricom payload with safety checks
+    ✅ FIX: Always returns 200 to Safaricom
+    ✅ FIX: Validates structure before processing
+    """
+    try:
+        # Log the raw request for debugging
+        logger.info("=" * 60)
+        logger.info("📞 M-Pesa callback received")
+        
+        # Get the raw JSON data
+        callback_data = request.get_json()
+        logger.info(f"📥 Raw callback data: {callback_data}")
+        
+        # ✅ FIX: Validate callback structure
+        if not callback_data:
+            logger.error("❌ No JSON data in callback")
+            return jsonify({"ResultCode": 1, "ResultDesc": "No data"}), 200
+        
+        # ✅ FIX: Safely check for stkCallback using .get()
+        body = callback_data.get('Body', {})
+        stk_callback = body.get('stkCallback', {})
+        
+        if not stk_callback:
+            logger.error("❌ Missing stkCallback in payload")
+            logger.info(f"📥 Received structure: {callback_data.keys()}")
+            return jsonify({"ResultCode": 1, "ResultDesc": "Missing stkCallback"}), 200
+        
+        logger.info(f"📊 stkCallback: {stk_callback}")
+        
+        # Process the callback with the handler
+        result = handle_mpesa_callback(callback_data)
+        logger.info(f"✅ Callback processed: {result}")
+        
+        # ✅ FIX: Always return 200 to Safaricom
+        return jsonify(result), 200
+        
+    except Exception as e:
+        logger.error(f"❌ M-Pesa callback error: {str(e)}", exc_info=True)
+        # ✅ FIX: Always return 200 even on error
+        return jsonify({"ResultCode": 1, "ResultDesc": str(e)}), 200
