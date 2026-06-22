@@ -24,8 +24,10 @@ if not SUPABASE_ANON_KEY:
 _supabase_client: Optional[Client] = None
 _supabase_admin_client: Optional[Client] = None
 
+
 # ─── Main Client ──────────────────────────────────────────────
 
+# ✅ FIX: Standardized function name - get_supabase_client
 def get_supabase_client() -> Client:
     """Get Supabase client instance (singleton pattern)."""
     global _supabase_client
@@ -38,6 +40,12 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
+# ✅ FIX: Alias for consistency
+def get_supabase() -> Client:
+    """Alias for get_supabase_client()."""
+    return get_supabase_client()
+
+
 def get_supabase_admin_client() -> Optional[Client]:
     """Get Supabase admin client with service role."""
     global _supabase_admin_client
@@ -48,11 +56,6 @@ def get_supabase_admin_client() -> Optional[Client]:
         logger.info("✅ Supabase admin client initialized")
     
     return _supabase_admin_client
-
-
-def get_supabase() -> Client:
-    """Alias for get_supabase_client()."""
-    return get_supabase_client()
 
 
 # ─── Health Check ─────────────────────────────────────────────
