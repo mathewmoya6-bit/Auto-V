@@ -1,10 +1,16 @@
-# services/supabase_client.py - Supabase Client (Production Ready)
+# services/supabase.py - Supabase Client (Fixed for Production)
 
 import os
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from supabase import create_client, Client
+
+# ─── Import Supabase with error handling ────────────────────────
+try:
+    from supabase import create_client, Client
+except ImportError:
+    # Fallback for older versions
+    from supabase_py import create_client, Client
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +31,61 @@ _supabase_client: Optional[Client] = None
 _supabase_admin_client: Optional[Client] = None
 
 
+# ─── Client Factory ──────────────────────────────────────────────
+def _create_supabase_client(url: str, key: str) -> Optional[Client]:
+    """
+    Create Supabase client with compatibility handling.
+    Handles the 'proxy' error across different library versions.
+    """
+    try:
+        # Try 1: Standard way
+        return create_client(url, key)
+    except TypeError as e:
+        error_str = str(e)
+        # Check if it's the proxy error
+        if 'proxy' in error_str:
+            logger.warning(f"⚠️ Proxy error detected, trying compatibility mode...")
+            
+            # Try 2: Different parameter names
+            try:
+                return create_client(supabase_url=url, supabase_key=key)
+            except:
+                pass
+            
+            # Try 3: Try with different import
+            try:
+                from supabase_py import create_client as create_client_old
+                return create_client_old(url, key)
+            except:
+                pass
+            
+            # Try 4: Monkey patch - remove proxy from kwargs
+            try:
+                import httpx
+                original_init = httpx.Client.__init__
+                
+                def patched_init(self, *args, **kwargs):
+                    kwargs.pop('proxy', None)
+                    return original_init(self, *args, **kwargs)
+                
+                httpx.Client.__init__ = patched_init
+                result = create_client(url, key)
+                # Restore original
+                httpx.Client.__init__ = original_init
+                return result
+            except:
+                pass
+            
+            logger.error(f"❌ All compatibility attempts failed for proxy error")
+            return None
+        else:
+            logger.error(f"❌ Unexpected TypeError: {error_str}")
+            return None
+    except Exception as e:
+        logger.error(f"❌ Failed to create Supabase client: {e}")
+        return None
+
+
 # ─── Main Client ──────────────────────────────────────────────
 
 def get_supabase_client() -> Client:
@@ -33,7 +94,13 @@ def get_supabase_client() -> Client:
     
     if _supabase_client is None:
         logger.info(f"🔌 Initializing Supabase client for: {SUPABASE_URL}")
-        _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        
+        client = _create_supabase_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        
+        if client is None:
+            raise RuntimeError("Failed to initialize Supabase client")
+        
+        _supabase_client = client
         logger.info("✅ Supabase client initialized successfully")
     
     return _supabase_client
@@ -50,7 +117,14 @@ def get_supabase_admin_client() -> Optional[Client]:
     
     if _supabase_admin_client is None and SUPABASE_KEY:
         logger.info("🔌 Initializing Supabase admin client")
-        _supabase_admin_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        
+        client = _create_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+        
+        if client is None:
+            logger.warning("⚠️ Failed to initialize Supabase admin client")
+            return None
+        
+        _supabase_admin_client = client
         logger.info("✅ Supabase admin client initialized")
     
     return _supabase_admin_client
@@ -87,10 +161,8 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
         if 'amount' not in payment_data:
             return {'success': False, 'error': 'Amount is required'}
         
-        # ✅ FIX: Handle both 'id' and 'payment_id'
-        # If 'payment_id' is provided but 'id' is not, use 'payment_id' as the custom ID
+        # Handle payment_id if provided
         if 'payment_id' in payment_data and 'id' not in payment_data:
-            # Keep payment_id as custom string ID, let Supabase generate UUID for 'id'
             pass
         
         payment_data['status'] = payment_data.get('status', 'pending')
@@ -98,14 +170,10 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
         payment_data['created_at'] = payment_data.get('created_at', datetime.now().isoformat())
         payment_data['updated_at'] = datetime.now().isoformat()
         
-        # ✅ FIX: If 'id' is a string like 'PAY-XXXX', we need to handle it properly
-        # The 'id' column is UUID, so we should not pass string IDs to it
-        # Instead, use 'payment_id' for custom string IDs
+        # If 'id' is a custom string like 'PAY-XXXX', move it to payment_id
         if 'id' in payment_data and payment_data['id'] and len(payment_data['id']) > 36:
-            # This is likely a custom string ID, move it to payment_id
             if 'payment_id' not in payment_data:
                 payment_data['payment_id'] = payment_data['id']
-            # Let Supabase generate a UUID for 'id'
             del payment_data['id']
         
         response = client.table('payments').insert(payment_data).execute()
@@ -131,17 +199,8 @@ def get_payment_by_id(payment_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-# ✅ NEW: Get payment by custom payment_id (string)
 def get_payment_by_custom_id(payment_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Get payment by custom payment_id (string like 'PAY-XXXXXX').
-    
-    Args:
-        payment_id: Custom payment ID string
-        
-    Returns:
-        Payment record or None
-    """
+    """Get payment by custom payment_id (string like 'PAY-XXXXXX')."""
     try:
         client = get_supabase_client()
         response = client.table('payments').select('*').eq('payment_id', payment_id).execute()
@@ -192,16 +251,7 @@ def update_payment(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, An
 
 
 def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Update a payment record by custom payment_id (string).
-    
-    Args:
-        payment_id: Custom payment ID string
-        update_data: Data to update
-        
-    Returns:
-        Dict with success status and payment data
-    """
+    """Update a payment record by custom payment_id (string)."""
     try:
         client = get_supabase_client()
         update_data['updated_at'] = datetime.now().isoformat()
@@ -265,17 +315,7 @@ def update_payment_status(payment_id: str, status: str, extra_data: Dict[str, An
 
 
 def update_payment_status_by_custom_id(payment_id: str, status: str, extra_data: Dict[str, Any] = None) -> Dict[str, Any]:
-    """
-    Update payment status by custom payment_id (string).
-    
-    Args:
-        payment_id: Custom payment ID string
-        status: New status
-        extra_data: Additional data to update
-        
-    Returns:
-        Dict with success status and payment data
-    """
+    """Update payment status by custom payment_id (string)."""
     try:
         client = get_supabase_client()
         
@@ -299,6 +339,38 @@ def update_payment_status_by_custom_id(payment_id: str, status: str, extra_data:
         
     except Exception as e:
         logger.error(f"Update payment status by custom ID error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+
+def update_payment_with_transaction(payment_id: str, transaction_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update payment with M-Pesa transaction data."""
+    try:
+        client = get_supabase_client()
+        
+        update_data = {
+            'status': 'completed',
+            'mpesa_code': transaction_data.get('mpesa_code'),
+            'transaction_id': transaction_data.get('mpesa_code'),
+            'mpesa_result_code': '0',
+            'mpesa_result_desc': 'Transaction completed',
+            'paid_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        if transaction_data.get('amount'):
+            update_data['amount'] = transaction_data.get('amount')
+        if transaction_data.get('phone'):
+            update_data['mpesa_phone'] = transaction_data.get('phone')
+        
+        response = client.table('payments').update(update_data).eq('id', payment_id).execute()
+        
+        if response.data:
+            logger.info(f"✅ Payment transaction updated: {payment_id}")
+            return {'success': True, 'data': response.data[0]}
+        return {'success': False, 'error': 'Payment not found'}
+        
+    except Exception as e:
+        logger.error(f"Update payment with transaction error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
 
@@ -361,6 +433,8 @@ def get_payment_stats() -> Dict[str, Any]:
         return {'error': str(e)}
 
 
+# ─── Delete Functions ──────────────────────────────────────────
+
 def delete_payment(payment_id: str) -> Dict[str, Any]:
     """Delete a payment record by UUID ID (use with caution)."""
     try:
@@ -377,15 +451,7 @@ def delete_payment(payment_id: str) -> Dict[str, Any]:
 
 
 def delete_payment_by_custom_id(payment_id: str) -> Dict[str, Any]:
-    """
-    Delete a payment record by custom payment_id (string).
-    
-    Args:
-        payment_id: Custom payment ID string
-        
-    Returns:
-        Dict with success status
-    """
+    """Delete a payment record by custom payment_id (string)."""
     try:
         client = get_supabase_client()
         response = client.table('payments').delete().eq('payment_id', payment_id).execute()
@@ -397,3 +463,30 @@ def delete_payment_by_custom_id(payment_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Delete payment by custom ID error: {str(e)}")
         return {'success': False, 'error': str(e)}
+
+
+# ─── Exports ──────────────────────────────────────────────────
+
+__all__ = [
+    'get_supabase_client',
+    'get_supabase',
+    'get_supabase_admin_client',
+    'check_health',
+    'create_payment',
+    'get_payment_by_id',
+    'get_payment_by_custom_id',
+    'get_payment_by_checkout_id',
+    'get_payment_by_mpesa_code',
+    'update_payment',
+    'update_payment_by_custom_id',
+    'update_payment_by_checkout_id',
+    'update_payment_status',
+    'update_payment_status_by_custom_id',
+    'update_payment_with_transaction',
+    'get_user_payments',
+    'get_payments_by_status',
+    'get_pending_payments',
+    'get_payment_stats',
+    'delete_payment',
+    'delete_payment_by_custom_id'
+]
