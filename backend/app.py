@@ -1,42 +1,44 @@
-# app.py - AUTO-V Production Entry Point
-
-import os
-import logging
 from flask import Flask, jsonify
 from flask_cors import CORS
+import logging
 
-from api import register_blueprints
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from api.routes.mpesa import mpesa_bp
 
 app = Flask(__name__)
 
-# ─── CORS (PRODUCTION SAFE) ─────────────────────────────
+# ─────────────────────────────────────────────
+# CORS FIX (CRITICAL FOR FRONTEND FETCH)
+# ─────────────────────────────────────────────
 CORS(
     app,
-    resources={r"/api/*": {"origins": [
-        "https://auto-v.meipressgroup.com"
+    resources={r"/*": {"origins": [
+        "https://auto-v.meipressgroup.com",
+        "http://localhost:3000",
+        "http://127.0.0.1:5500"
     ]}},
-    supports_credentials=True
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "X-Session-Token"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
 
-# ─── HEALTH CHECK ───────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+
+# register routes
+app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
+
+
 @app.route("/")
 def home():
-    return jsonify({
-        "status": "AUTO-V API RUNNING",
-        "version": "1.0.0"
-    })
+    return jsonify({"status": "AUTO-V API running"})
 
-@app.route("/health")
-def health():
-    return jsonify({"status": "healthy"}), 200
 
-# ─── REGISTER ROUTES ────────────────────────────────────
-register_blueprints(app)
+# ─────────────────────────────────────────────
+# GLOBAL OPTIONS HANDLER (FIX PREFLIGHT FAIL)
+# ─────────────────────────────────────────────
+@app.route("/<path:path>", methods=["OPTIONS"])
+def options_handler(path):
+    return jsonify({}), 200
 
-# ─── RUN ────────────────────────────────────────────────
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
