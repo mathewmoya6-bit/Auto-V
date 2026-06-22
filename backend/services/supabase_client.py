@@ -1,16 +1,9 @@
-# services/supabase.py - Supabase Client (Fixed for Production)
+# services/supabase_client.py - Supabase Client (Production Ready)
 
 import os
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-
-# ─── Import Supabase with error handling ────────────────────────
-try:
-    from supabase import create_client, Client
-except ImportError:
-    # Fallback for older versions
-    from supabase_py import create_client, Client
 
 logger = logging.getLogger(__name__)
 
@@ -27,104 +20,87 @@ if not SUPABASE_ANON_KEY:
 
 # ─── Global Clients ─────────────────────────────────────────────
 
-_supabase_client: Optional[Client] = None
-_supabase_admin_client: Optional[Client] = None
+_supabase_client = None
+_supabase_admin_client = None
 
 
 # ─── Client Factory ──────────────────────────────────────────────
-def _create_supabase_client(url: str, key: str) -> Optional[Client]:
+def _create_supabase_client(url: str, key: str):
     """
     Create Supabase client with compatibility handling.
     Handles the 'proxy' error across different library versions.
     """
+    # Try different import methods
+    methods = [
+        # Method 1: Standard import
+        lambda: __import__('supabase').create_client(url, key),
+        # Method 2: Direct import
+        lambda: __import__('supabase', fromlist=['create_client']).create_client(url, key),
+        # Method 3: Try with different parameter names
+        lambda: __import__('supabase').create_client(supabase_url=url, supabase_key=key),
+        # Method 4: Try supabase_py fallback
+        lambda: __import__('supabase_py').create_client(url, key),
+    ]
+    
+    for method in methods:
+        try:
+            return method()
+        except TypeError as e:
+            if 'proxy' in str(e):
+                logger.warning("⚠️ Proxy error detected, trying next method...")
+                continue
+            else:
+                raise
+        except ImportError:
+            continue
+        except Exception as e:
+            logger.warning(f"⚠️ Method failed: {e}")
+            continue
+    
+    # If all methods fail, try monkey patching httpx
     try:
-        # Try 1: Standard way
-        return create_client(url, key)
-    except TypeError as e:
-        error_str = str(e)
-        # Check if it's the proxy error
-        if 'proxy' in error_str:
-            logger.warning(f"⚠️ Proxy error detected, trying compatibility mode...")
-            
-            # Try 2: Different parameter names
-            try:
-                return create_client(supabase_url=url, supabase_key=key)
-            except:
-                pass
-            
-            # Try 3: Try with different import
-            try:
-                from supabase_py import create_client as create_client_old
-                return create_client_old(url, key)
-            except:
-                pass
-            
-            # Try 4: Monkey patch - remove proxy from kwargs
-            try:
-                import httpx
-                original_init = httpx.Client.__init__
-                
-                def patched_init(self, *args, **kwargs):
-                    kwargs.pop('proxy', None)
-                    return original_init(self, *args, **kwargs)
-                
-                httpx.Client.__init__ = patched_init
-                result = create_client(url, key)
-                # Restore original
-                httpx.Client.__init__ = original_init
-                return result
-            except:
-                pass
-            
-            logger.error(f"❌ All compatibility attempts failed for proxy error")
-            return None
-        else:
-            logger.error(f"❌ Unexpected TypeError: {error_str}")
-            return None
+        import httpx
+        original_init = httpx.Client.__init__
+        
+        def patched_init(self, *args, **kwargs):
+            kwargs.pop('proxy', None)
+            return original_init(self, *args, **kwargs)
+        
+        httpx.Client.__init__ = patched_init
+        result = __import__('supabase').create_client(url, key)
+        httpx.Client.__init__ = original_init
+        return result
     except Exception as e:
-        logger.error(f"❌ Failed to create Supabase client: {e}")
-        return None
+        logger.error(f"❌ All compatibility methods failed: {e}")
+        raise RuntimeError(f"Failed to create Supabase client: {e}")
 
 
 # ─── Main Client ──────────────────────────────────────────────
 
-def get_supabase_client() -> Client:
+def get_supabase_client():
     """Get Supabase client instance (singleton pattern)."""
     global _supabase_client
     
     if _supabase_client is None:
         logger.info(f"🔌 Initializing Supabase client for: {SUPABASE_URL}")
-        
-        client = _create_supabase_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        
-        if client is None:
-            raise RuntimeError("Failed to initialize Supabase client")
-        
-        _supabase_client = client
+        _supabase_client = _create_supabase_client(SUPABASE_URL, SUPABASE_ANON_KEY)
         logger.info("✅ Supabase client initialized successfully")
     
     return _supabase_client
 
 
-def get_supabase() -> Client:
+def get_supabase():
     """Alias for get_supabase_client()."""
     return get_supabase_client()
 
 
-def get_supabase_admin_client() -> Optional[Client]:
+def get_supabase_admin_client():
     """Get Supabase admin client with service role."""
     global _supabase_admin_client
     
     if _supabase_admin_client is None and SUPABASE_KEY:
         logger.info("🔌 Initializing Supabase admin client")
-        
-        client = _create_supabase_client(SUPABASE_URL, SUPABASE_KEY)
-        
-        if client is None:
-            logger.warning("⚠️ Failed to initialize Supabase admin client")
-            return None
-        
-        _supabase_admin_client = client
+        _supabase_admin_client = _create_supabase_client(SUPABASE_URL, SUPABASE_KEY)
         logger.info("✅ Supabase admin client initialized")
     
     return _supabase_admin_client
@@ -160,10 +136,6 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
         
         if 'amount' not in payment_data:
             return {'success': False, 'error': 'Amount is required'}
-        
-        # Handle payment_id if provided
-        if 'payment_id' in payment_data and 'id' not in payment_data:
-            pass
         
         payment_data['status'] = payment_data.get('status', 'pending')
         payment_data['payment_method'] = payment_data.get('payment_method', 'mpesa')
