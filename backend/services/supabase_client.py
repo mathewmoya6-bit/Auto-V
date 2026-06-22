@@ -27,7 +27,6 @@ _supabase_admin_client: Optional[Client] = None
 
 # ─── Main Client ──────────────────────────────────────────────
 
-# ✅ FIX: Standardized function name - get_supabase_client
 def get_supabase_client() -> Client:
     """Get Supabase client instance (singleton pattern)."""
     global _supabase_client
@@ -40,7 +39,6 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
-# ✅ FIX: Alias for consistency
 def get_supabase() -> Client:
     """Alias for get_supabase_client()."""
     return get_supabase_client()
@@ -89,10 +87,26 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
         if 'amount' not in payment_data:
             return {'success': False, 'error': 'Amount is required'}
         
+        # ✅ FIX: Handle both 'id' and 'payment_id'
+        # If 'payment_id' is provided but 'id' is not, use 'payment_id' as the custom ID
+        if 'payment_id' in payment_data and 'id' not in payment_data:
+            # Keep payment_id as custom string ID, let Supabase generate UUID for 'id'
+            pass
+        
         payment_data['status'] = payment_data.get('status', 'pending')
         payment_data['payment_method'] = payment_data.get('payment_method', 'mpesa')
         payment_data['created_at'] = payment_data.get('created_at', datetime.now().isoformat())
         payment_data['updated_at'] = datetime.now().isoformat()
+        
+        # ✅ FIX: If 'id' is a string like 'PAY-XXXX', we need to handle it properly
+        # The 'id' column is UUID, so we should not pass string IDs to it
+        # Instead, use 'payment_id' for custom string IDs
+        if 'id' in payment_data and payment_data['id'] and len(payment_data['id']) > 36:
+            # This is likely a custom string ID, move it to payment_id
+            if 'payment_id' not in payment_data:
+                payment_data['payment_id'] = payment_data['id']
+            # Let Supabase generate a UUID for 'id'
+            del payment_data['id']
         
         response = client.table('payments').insert(payment_data).execute()
         
@@ -107,13 +121,33 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_payment_by_id(payment_id: str) -> Optional[Dict[str, Any]]:
-    """Get payment by ID."""
+    """Get payment by UUID ID."""
     try:
         client = get_supabase_client()
         response = client.table('payments').select('*').eq('id', payment_id).execute()
         return response.data[0] if response.data else None
     except Exception as e:
         logger.error(f"Get payment by ID error: {str(e)}")
+        return None
+
+
+# ✅ NEW: Get payment by custom payment_id (string)
+def get_payment_by_custom_id(payment_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get payment by custom payment_id (string like 'PAY-XXXXXX').
+    
+    Args:
+        payment_id: Custom payment ID string
+        
+    Returns:
+        Payment record or None
+    """
+    try:
+        client = get_supabase_client()
+        response = client.table('payments').select('*').eq('payment_id', payment_id).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        logger.error(f"Get payment by custom ID error: {str(e)}")
         return None
 
 
@@ -140,7 +174,7 @@ def get_payment_by_mpesa_code(mpesa_code: str) -> Optional[Dict[str, Any]]:
 
 
 def update_payment(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Update a payment record."""
+    """Update a payment record by UUID ID."""
     try:
         client = get_supabase_client()
         update_data['updated_at'] = datetime.now().isoformat()
@@ -154,6 +188,33 @@ def update_payment(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, An
         
     except Exception as e:
         logger.error(f"Update payment error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+
+def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Update a payment record by custom payment_id (string).
+    
+    Args:
+        payment_id: Custom payment ID string
+        update_data: Data to update
+        
+    Returns:
+        Dict with success status and payment data
+    """
+    try:
+        client = get_supabase_client()
+        update_data['updated_at'] = datetime.now().isoformat()
+        
+        response = client.table('payments').update(update_data).eq('payment_id', payment_id).execute()
+        
+        if response.data:
+            logger.info(f"✅ Payment updated by custom ID: {payment_id}")
+            return {'success': True, 'data': response.data[0]}
+        return {'success': False, 'error': 'Payment not found'}
+        
+    except Exception as e:
+        logger.error(f"Update payment by custom ID error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
 
@@ -176,7 +237,7 @@ def update_payment_by_checkout_id(checkout_request_id: str, update_data: Dict[st
 
 
 def update_payment_status(payment_id: str, status: str, extra_data: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Update payment status."""
+    """Update payment status by UUID ID."""
     try:
         client = get_supabase_client()
         
@@ -200,6 +261,44 @@ def update_payment_status(payment_id: str, status: str, extra_data: Dict[str, An
         
     except Exception as e:
         logger.error(f"Update payment status error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+
+def update_payment_status_by_custom_id(payment_id: str, status: str, extra_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Update payment status by custom payment_id (string).
+    
+    Args:
+        payment_id: Custom payment ID string
+        status: New status
+        extra_data: Additional data to update
+        
+    Returns:
+        Dict with success status and payment data
+    """
+    try:
+        client = get_supabase_client()
+        
+        update_data = {
+            'status': status,
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        if status == 'completed':
+            update_data['paid_at'] = datetime.now().isoformat()
+        
+        if extra_data:
+            update_data.update(extra_data)
+        
+        response = client.table('payments').update(update_data).eq('payment_id', payment_id).execute()
+        
+        if response.data:
+            logger.info(f"✅ Payment status updated by custom ID: {payment_id} → {status}")
+            return {'success': True, 'data': response.data[0]}
+        return {'success': False, 'error': 'Payment not found'}
+        
+    except Exception as e:
+        logger.error(f"Update payment status by custom ID error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
 
@@ -263,7 +362,7 @@ def get_payment_stats() -> Dict[str, Any]:
 
 
 def delete_payment(payment_id: str) -> Dict[str, Any]:
-    """Delete a payment record (use with caution)."""
+    """Delete a payment record by UUID ID (use with caution)."""
     try:
         client = get_supabase_client()
         response = client.table('payments').delete().eq('id', payment_id).execute()
@@ -274,4 +373,27 @@ def delete_payment(payment_id: str) -> Dict[str, Any]:
         return {'success': False, 'error': 'Payment not found'}
     except Exception as e:
         logger.error(f"Delete payment error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+
+def delete_payment_by_custom_id(payment_id: str) -> Dict[str, Any]:
+    """
+    Delete a payment record by custom payment_id (string).
+    
+    Args:
+        payment_id: Custom payment ID string
+        
+    Returns:
+        Dict with success status
+    """
+    try:
+        client = get_supabase_client()
+        response = client.table('payments').delete().eq('payment_id', payment_id).execute()
+        
+        if response.data:
+            logger.info(f"✅ Payment deleted by custom ID: {payment_id}")
+            return {'success': True, 'data': response.data[0]}
+        return {'success': False, 'error': 'Payment not found'}
+    except Exception as e:
+        logger.error(f"Delete payment by custom ID error: {str(e)}")
         return {'success': False, 'error': str(e)}
