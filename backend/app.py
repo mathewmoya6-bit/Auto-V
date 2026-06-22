@@ -1,14 +1,23 @@
+# app.py - Production Ready v3
+
+import os
+import logging
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import logging
+from dotenv import load_dotenv
 
 from api.routes.mpesa import mpesa_bp
 
+load_dotenv()
+
 app = Flask(__name__)
 
-# ─────────────────────────────────────────────
-# COMPLETE CORS CONFIGURATION
-# ─────────────────────────────────────────────
+# ─── Configuration ─────────────────────────────────────────────
+DEBUG = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+PORT = int(os.getenv('PORT', 10000))
+ENV = os.getenv('FLASK_ENV', 'production')
+
+# ─── CORS Configuration ────────────────────────────────────────
 CORS(
     app,
     resources={
@@ -25,21 +34,14 @@ CORS(
     allow_headers=["Content-Type", "Authorization", "X-Session-Token", "Accept"],
     expose_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    max_age=3600  # Cache preflight for 1 hour
+    max_age=3600
 )
 
+# ─── Logging ──────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────
-# REGISTER BLUEPRINTS
-# ─────────────────────────────────────────────
-app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
-
-
-# ─────────────────────────────────────────────
-# GLOBAL PREFLIGHT HANDLER
-# ─────────────────────────────────────────────
+# ─── Preflight Handler ─────────────────────────────────────────
 @app.before_request
 def handle_preflight():
     """Handle OPTIONS requests globally."""
@@ -52,22 +54,27 @@ def handle_preflight():
         response.headers.add("Access-Control-Max-Age", "3600")
         return response, 200
 
+# ─── Register Blueprints ──────────────────────────────────────
+app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
 
-# ─────────────────────────────────────────────
-# ROOT ROUTE
-# ─────────────────────────────────────────────
+# ─── Routes ────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "status": "AUTO-V API running",
         "service": "mpesa",
-        "version": "1.0.0"
+        "version": "3.0.0",
+        "environment": ENV
     }), 200
 
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({
+        "status": "healthy",
+        "environment": ENV,
+        "timestamp": "2026-06-22T17:00:00Z"
+    }), 200
 
-# ─────────────────────────────────────────────
-# CATCH-ALL FOR PREFLIGHT
-# ─────────────────────────────────────────────
 @app.route("/<path:path>", methods=["OPTIONS"])
 def catch_all_options(path):
     response = jsonify({"status": "ok"})
@@ -78,6 +85,6 @@ def catch_all_options(path):
     response.headers.add("Access-Control-Max-Age", "3600")
     return response, 200
 
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000, debug=False)
+    logger.info(f"🚀 Starting AUTO-V API on port {PORT} (ENV: {ENV})")
+    app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
