@@ -315,4 +315,268 @@ def handle_mpesa_callback(callback_data: Dict[str, Any], client_ip: str = None) 
         # ✅ FIX: Safe extraction of callback data
         checkout_id = stk.get("CheckoutRequestID")
         result_code = str(stk.get("ResultCode", "1"))
-       
+        result_desc = stk.get("ResultDesc", "Unknown error")
+
+        logger.info(f"📊 CheckoutID: {checkout_id}, ResultCode: {result_code}")
+
+        if not checkout_id:
+            logger.error("❌ Missing CheckoutRequestID")
+            return {"ResultCode": 1, "ResultDesc": "Missing CheckoutRequestID"}
+
+        # ─── Extract transaction details ──────────────────────────────
+        transaction_id = None
+        amount = None
+        phone = None
+
+        metadata = stk.get("CallbackMetadata")
+        if metadata:
+            items = metadata.get("Item", [])
+            for item in items:
+                name = item.get("Name")
+                value = item.get("Value")
+                
+                if name == "MpesaReceiptNumber":
+                    transaction_id = value
+                    logger.info(f"✅ Found MpesaReceiptNumber: {value}")
+                elif name == "Amount":
+                    amount = value
+                elif name == "PhoneNumber":
+                    phone = value
+        else:
+            logger.warning("⚠️ No CallbackMetadata found")
+
+        # ─── Get payment from database ──────────────────────────────────
+        payment = get_payment_by_checkout_id(checkout_id)
+        
+        if not payment:
+            logger.error(f"❌ Payment not found for CheckoutID: {checkout_id}")
+            return {"ResultCode": 1, "ResultDesc": "Payment not found"}
+
+        payment_id = payment.get("id")
+        logger.info(f"✅ Found payment: {payment_id}")
+
+        if payment.get("status") == "completed":
+            logger.info(f"ℹ️ Payment {payment_id} already completed")
+            return {"ResultCode": 0, "ResultDesc": "Already processed"}
+
+        # ─── Update payment based on result ──────────────────────────────
+        if result_code == "0" and transaction_id:
+            update_data = {
+                "status": "completed",
+                "mpesa_code": transaction_id,
+                "transaction_id": transaction_id,
+                "mpesa_result_code": result_code,
+                "mpesa_result_desc": result_desc or "Transaction completed",
+                "paid_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            if amount:
+                update_data["amount"] = amount
+            if phone:
+                update_data["mpesa_phone"] = phone
+            
+            result = update_payment(payment_id, update_data)
+            
+            if result.get('success'):
+                logger.info(f"✅ Payment {payment_id} completed. Receipt: {transaction_id}")
+                return {"ResultCode": 0, "ResultDesc": "Success"}
+            else:
+                logger.error(f"❌ Database update failed: {result.get('error')}")
+                return {"ResultCode": 1, "ResultDesc": "Update failed"}
+            
+        elif result_code in ["1037", "1032"]:
+            update_data = {
+                "status": "cancelled",
+                "mpesa_result_code": result_code,
+                "mpesa_result_desc": result_desc or "Transaction cancelled",
+                "updated_at": datetime.now().isoformat()
+            }
+            update_payment(payment_id, update_data)
+            logger.warning(f"⚠️ Payment {payment_id} cancelled")
+            return {"ResultCode": 0, "ResultDesc": "Success"}
+            
+        else:
+            update_data = {
+                "status": "failed",
+                "mpesa_result_code": result_code,
+                "mpesa_result_desc": result_desc or "Transaction failed",
+                "updated_at": datetime.now().isoformat()
+            }
+            update_payment(payment_id, update_data)
+            logger.warning(f"❌ Payment {payment_id} failed: {result_desc}")
+            return {"ResultCode": 0, "ResultDesc": "Success"}
+
+    except Exception as e:
+        logger.error(f"❌ Callback error: {e}", exc_info=True)
+        # ✅ FIX: Always return safe response
+        return {"ResultCode": 1, "ResultDesc": str(e)}
+
+
+# ─── QUERY PAYMENT STATUS ──────────────────────────────────
+def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
+    """Query M-Pesa payment status directly."""
+    if not checkout_request_id:
+        raise ValueError("CheckoutRequestID is required")
+
+    token = get_mpesa_token()
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    password = base64.b64encode(
+        f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()
+    ).decode()
+
+    payload = {
+        "BusinessShortCode": MPESA_SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "CheckoutRequestID": checkout_request_id
+    }
+
+    logger.info(f"🔍 Querying payment status: {checkout_request_id}")
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            res = requests.post(
+                f"{BASE_URL}/mpesa/stkpushquery/v1/query",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                },
+                timeout=REQUEST_TIMEOUT
+            )
+            
+            if res.status_code != 200:
+                logger.error(f"❌ Status query failed (attempt {attempt+1}): {res.status_code}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise Exception(f"Status query failed: {res.status_code}")
+
+            data = res.json()
+            logger.info(f"📥 Status query response: {data}")
+            return data
+
+        except Exception as e:
+            logger.error(f"❌ Status query error: {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+
+
+# ─── VERIFY PAYMENT ──────────────────────────────────────────
+def verify_payment_with_mpesa(checkout_request_id: str) -> Dict[str, Any]:
+    """Verify payment with M-Pesa API and update database."""
+    try:
+        result = query_payment_status(checkout_request_id)
+        
+        result_code = result.get("ResultCode")
+        result_desc = result.get("ResultDesc")
+        
+        if result_code == "0":
+            metadata = result.get("CallbackMetadata", {})
+            items = metadata.get("Item", [])
+            
+            receipt = None
+            amount = None
+            phone = None
+            
+            for item in items:
+                name = item.get("Name")
+                value = item.get("Value")
+                
+                if name == "MpesaReceiptNumber":
+                    receipt = value
+                elif name == "Amount":
+                    amount = value
+                elif name == "PhoneNumber":
+                    phone = value
+            
+            # Update payment in database
+            payment = get_payment_by_checkout_id(checkout_request_id)
+            if payment:
+                update_data = {
+                    "status": "completed",
+                    "mpesa_code": receipt,
+                    "transaction_id": receipt,
+                    "mpesa_result_code": result_code,
+                    "mpesa_result_desc": result_desc,
+                    "paid_at": datetime.now().isoformat()
+                }
+                if amount:
+                    update_data["amount"] = amount
+                if phone:
+                    update_data["mpesa_phone"] = phone
+                
+                update_payment(payment.get("id"), update_data)
+            
+            return {
+                "verified": True,
+                "status": "completed",
+                "receipt": receipt,
+                "amount": amount,
+                "phone": phone,
+                "result_code": result_code,
+                "result_desc": result_desc
+            }
+        else:
+            return {
+                "verified": False,
+                "status": "failed" if result_code != "1037" else "cancelled",
+                "result_code": result_code,
+                "result_desc": result_desc
+            }
+            
+    except Exception as e:
+        logger.error(f"Payment verification error: {e}")
+        return {"verified": False, "error": str(e)}
+
+
+# ─── AUTO-CONFIRM PAYMENT ──────────────────────────────────
+def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
+    """Auto-confirm a payment by verifying with M-Pesa API."""
+    try:
+        logger.info(f"🔍 Auto-confirming payment: {payment_id}")
+        
+        supabase = get_supabase_client()
+        response = supabase.table('payments').select('*').eq('id', payment_id).execute()
+        
+        if not response.data:
+            return {"success": False, "error": "Payment not found"}
+        
+        payment = response.data[0]
+        checkout_id = payment.get('checkout_request_id')
+        
+        if not checkout_id:
+            return {"success": False, "error": "No checkout ID found"}
+        
+        if payment.get('status') == 'completed':
+            return {
+                "success": True, 
+                "message": "Payment already completed",
+                "payment": payment,
+                "mpesa_verified": True
+            }
+        
+        verification = verify_payment_with_mpesa(checkout_id)
+        
+        if verification.get('verified'):
+            return {
+                "success": True,
+                "message": "Payment verified by M-Pesa",
+                "mpesa_verified": True,
+                "receipt": verification.get('receipt')
+            }
+        else:
+            return {
+                "success": False,
+                "error": "M-Pesa verification failed",
+                "details": verification.get('result_desc'),
+                "result_code": verification.get('result_code')
+            }
+            
+    except Exception as e:
+        logger.error(f"Auto-confirm error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
