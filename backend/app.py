@@ -7,14 +7,12 @@ from api.routes.mpesa import mpesa_bp
 app = Flask(__name__)
 
 # ─────────────────────────────────────────────
-# CORS FIX (CRITICAL FOR FRONTEND FETCH)
+# STRICT CORS FIX (WORKING FOR MPESA)
 # ─────────────────────────────────────────────
 CORS(
     app,
     resources={r"/*": {"origins": [
-        "https://auto-v.meipressgroup.com",
-        "http://localhost:3000",
-        "http://127.0.0.1:5500"
+        "https://auto-v.meipressgroup.com"
     ]}},
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization", "X-Session-Token"],
@@ -23,22 +21,21 @@ CORS(
 
 logging.basicConfig(level=logging.INFO)
 
-# register routes
 app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
 
 
-@app.route("/")
+# ─────────────────────────────────────────────
+# FORCE HANDLE PREFLIGHT (VERY IMPORTANT)
+# ─────────────────────────────────────────────
+@app.route("/", methods=["GET", "OPTIONS"])
 def home():
-    return jsonify({"status": "AUTO-V API running"})
+    return jsonify({"status": "AUTO-V API running"}), 200
 
 
-# ─────────────────────────────────────────────
-# GLOBAL OPTIONS HANDLER (FIX PREFLIGHT FAIL)
-# ─────────────────────────────────────────────
 @app.route("/<path:path>", methods=["OPTIONS"])
-def options_handler(path):
-    return jsonify({}), 200
+def options(path):
+    return jsonify({"status": "ok"}), 200
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
