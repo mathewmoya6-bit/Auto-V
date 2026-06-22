@@ -23,7 +23,7 @@ MPESA_ENV = os.getenv('MPESA_ENV', 'production').lower()
 
 BASE_URL = (
     'https://sandbox.safaricom.co.ke'
-    if MPESA_ENV == 'sandbox'
+    if MPESA_ENV == 'production'
     else 'https://api.safaricom.co.ke'
 )
 
@@ -310,7 +310,124 @@ def query_payment_status(checkout_request_id: str):
     )
 
     return res.json()
+# ─── VERIFY PAYMENT ──────────────────────────────────────────
 
+def verify_payment_with_mpesa(checkout_request_id: str):
+    """
+    Verify payment directly with Safaricom using STK Query API.
+    """
+
+    try:
+        result = query_payment_status(checkout_request_id)
+
+        result_code = str(result.get("ResultCode", ""))
+
+        if result_code == "0":
+            return {
+                "verified": True,
+                "status": "completed",
+                "receipt": result.get("MpesaReceiptNumber"),
+                "amount": result.get("Amount"),
+                "phone": result.get("PhoneNumber"),
+                "result_code": result_code,
+                "result_desc": result.get("ResultDesc")
+            }
+
+        if result_code in ["1032", "1037"]:
+            return {
+                "verified": False,
+                "status": "cancelled",
+                "result_code": result_code,
+                "result_desc": result.get("ResultDesc")
+            }
+
+        return {
+            "verified": False,
+            "status": "pending",
+            "result_code": result_code,
+            "result_desc": result.get("ResultDesc")
+        }
+
+    except Exception as e:
+        logger.error(f"Verify payment error: {e}")
+
+        return {
+            "verified": False,
+            "status": "error",
+            "result_desc": str(e)
+        }
+
+
+# ─── AUTO CONFIRM PAYMENT ────────────────────────────────────
+
+def auto_confirm_payment(payment_uuid: str):
+    """
+    Auto-confirm payment using checkout_request_id.
+    """
+
+    try:
+        from services.supabase_client import (
+            get_payment_by_id,
+            update_payment
+        )
+
+        payment = get_payment_by_id(payment_uuid)
+
+        if not payment:
+            return {
+                "success": False,
+                "error": "Payment not found"
+            }
+
+        checkout_request_id = payment.get("checkout_request_id")
+
+        if not checkout_request_id:
+            return {
+                "success": False,
+                "error": "CheckoutRequestID missing"
+            }
+
+        verification = verify_payment_with_mpesa(
+            checkout_request_id
+        )
+
+        if verification.get("verified"):
+
+            receipt = verification.get("receipt")
+
+            update_result = update_payment(
+                payment_uuid,
+                {
+                    "status": "completed",
+                    "mpesa_code": receipt,
+                    "transaction_id": receipt,
+                    "mpesa_result_code": "0",
+                    "mpesa_result_desc": "Payment confirmed",
+                    "paid_at": datetime.now().isoformat()
+                }
+            )
+
+            return {
+                "success": True,
+                "status": "completed",
+                "receipt": receipt,
+                "payment": update_result.get("data")
+            }
+
+        return {
+            "success": False,
+            "status": verification.get("status"),
+            "result_code": verification.get("result_code"),
+            "result_desc": verification.get("result_desc")
+        }
+
+    except Exception as e:
+        logger.error(f"Auto confirm payment error: {e}")
+
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # ─── EXPORTS ────────────────────────────────────────────────
 __all__ = [
@@ -320,4 +437,5 @@ __all__ = [
     "get_mpesa_token",
     "normalize_phone",
     "is_mpesa_configured"
+]
 ]
