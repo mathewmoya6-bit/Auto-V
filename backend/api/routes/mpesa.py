@@ -1,28 +1,40 @@
-# api/routes/mpesa.py - Clean Production Version
+# api/routes/mpesa.py - Production Ready v3
 
-from flask import Blueprint, request, jsonify
-import uuid
+import os
 import logging
+import uuid
 from datetime import datetime
+from flask import Blueprint, request, jsonify
 
-from services.mpesa import initiate_stk_push, handle_mpesa_callback
+from services.mpesa import (
+    initiate_stk_push,
+    handle_mpesa_callback,
+    query_payment_status,
+    auto_confirm_payment,
+    is_mpesa_configured,
+    get_mpesa_token
+)
 from services.supabase_client import (
+    get_supabase_client,
+    get_payment_by_id,
     get_payment_by_custom_id,
     get_payment_by_checkout_id,
     get_payment_by_mpesa_code,
-    get_payment_by_id,
-    get_supabase_client,
-    create_payment,
-    update_payment
+    update_payment,
+    update_payment_by_custom_id,
+    get_user_payments
 )
 
 logger = logging.getLogger(__name__)
 
 mpesa_bp = Blueprint("mpesa", __name__)
 
+MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '4095377')
+MPESA_ENV = os.getenv('MPESA_ENV', 'production')
 
-def response(success=True, data=None, error=None, status=200):
-    """Standardized response format."""
+
+def response(success: bool, data: dict = None, error: str = None, status: int = 200):
+    """Standardized API response format."""
     result = {"success": success}
     if data is not None:
         result["data"] = data
@@ -33,9 +45,8 @@ def response(success=True, data=None, error=None, status=200):
 
 @mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"])
 def initiate_payment():
-    """Initiate M-Pesa STK Push."""
+    """Initiate M-Pesa STK Push payment."""
     try:
-        # Handle preflight
         if request.method == "OPTIONS":
             return response(True, {"status": "ok"})
 
@@ -44,7 +55,6 @@ def initiate_payment():
         if not data:
             return response(False, error="No data provided", status=400)
 
-        # Validate required fields
         if "phone" not in data or "amount" not in data:
             return response(False, error="Phone and amount are required", status=400)
 
@@ -96,7 +106,6 @@ def initiate_payment():
 def get_payment_status(payment_id):
     """Get payment status by payment_id or ID."""
     try:
-        # Handle preflight
         if request.method == "OPTIONS":
             return response(True, {"status": "ok"})
 
@@ -151,12 +160,57 @@ def mpesa_callback():
         return jsonify({"ResultCode": 1, "ResultDesc": "System error"}), 200
 
 
+@mpesa_bp.route("/auto-confirm/<payment_id>", methods=["POST", "OPTIONS"])
+def auto_confirm(payment_id):
+    """Auto-confirm payment by verifying with M-Pesa API."""
+    try:
+        if request.method == "OPTIONS":
+            return response(True, {"status": "ok"})
+
+        # First try to find by custom payment_id
+        payment = get_payment_by_custom_id(payment_id)
+        
+        if not payment:
+            try:
+                uuid.UUID(payment_id)
+                payment = get_payment_by_id(payment_id)
+            except ValueError:
+                pass
+
+        if not payment:
+            return response(False, error="Payment not found", status=404)
+
+        actual_uuid = payment.get("id")
+        result = auto_confirm_payment(actual_uuid)
+        
+        return response(result.get("success"), data=result)
+
+    except Exception as e:
+        logger.error(f"❌ Auto-confirm error: {str(e)}", exc_info=True)
+        return response(False, error=str(e), status=500)
+
+
+@mpesa_bp.route("/user/<user_id>", methods=["GET"])
+def get_user_payments_route(user_id):
+    """Get all payments for a user."""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        payments = get_user_payments(user_id, limit)
+        return response(True, {"payments": payments, "count": len(payments)})
+    except Exception as e:
+        logger.error(f"❌ Get user payments error: {str(e)}")
+        return response(False, error="Failed to get user payments", status=500)
+
+
 @mpesa_bp.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint."""
     return jsonify({
         "status": "ok",
         "service": "mpesa",
+        "environment": MPESA_ENV,
+        "shortcode": MPESA_SHORTCODE,
+        "configured": is_mpesa_configured(),
         "timestamp": datetime.now().isoformat()
     }), 200
 
@@ -166,5 +220,7 @@ def test_endpoint():
     """Test endpoint."""
     return response(True, {
         "message": "M-Pesa routes are working",
+        "environment": MPESA_ENV,
+        "shortcode": MPESA_SHORTCODE,
         "timestamp": datetime.now().isoformat()
     })
