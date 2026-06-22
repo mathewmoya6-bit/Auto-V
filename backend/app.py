@@ -5,10 +5,9 @@ import sys
 import signal
 import logging
 import time
-import traceback
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from flask import Flask, jsonify, request, g, make_response
+from flask import Flask, jsonify, request, g, make_response, send_from_directory
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -55,10 +54,8 @@ if USE_REDIS:
         logger.error(f"❌ Redis connection failed: {e}")
         storage_uri = "memory://"
 
-# ============================================================
-# 1. CREATE FLASK APP FIRST
-# ============================================================
-app = Flask(__name__)
+# ─── Create Flask App ─────────────────────────────────────────
+app = Flask(__name__, static_folder='templates', static_url_path='')
 
 # ─── Configuration ────────────────────────────────────────────
 class Config:
@@ -101,10 +98,6 @@ class Config:
                 logger.error(f"❌ {error}")
             return False
         
-        if warnings:
-            for warning in warnings:
-                logger.warning(f"⚠️ {warning}")
-        
         return True
 
 # ─── Apply Configuration ─────────────────────────────────────
@@ -142,7 +135,6 @@ logger.info(f"CORS allowed origins: {Config.ALLOWED_ORIGINS}")
 # ─── Manual OPTIONS Handler ──────────────────────────────────
 @app.before_request
 def handle_options():
-    """Handle OPTIONS preflight requests."""
     if request.method == "OPTIONS":
         response = make_response()
         response.headers.add("Access-Control-Allow-Origin", request.headers.get('Origin', '*'))
@@ -204,10 +196,6 @@ def handle_exception(e):
         'message': 'An unexpected error occurred'
     }), 500
 
-# ============================================================
-# 2. ROUTES GO HERE - AFTER app IS CREATED
-# ============================================================
-
 # ─── HEALTH ROUTES ────────────────────────────────────────────
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -219,8 +207,8 @@ def health_check():
     
     supabase_status = 'disconnected'
     try:
-        from services.supabase import get_supabase
-        get_supabase()
+        from services.supabase_client import get_supabase_client
+        get_supabase_client()
         supabase_status = 'connected'
     except:
         pass
@@ -242,12 +230,9 @@ def health_check():
 
 @app.route('/api/ping', methods=['GET'])
 def ping():
-    return jsonify({
-        'pong': True,
-        'timestamp': datetime.now().isoformat()
-    }), 200
+    return jsonify({'pong': True, 'timestamp': datetime.now().isoformat()}), 200
 
-@app.route('/', methods=['GET'])
+@app.route('/')
 def root():
     return jsonify({
         'name': 'AUTO-V API',
@@ -261,6 +246,11 @@ def root():
             'mpesa_callback': '/mpesa/callback'
         }
     }), 200
+
+# ─── SERVE FRONTEND ────────────────────────────────────────────
+@app.route('/portal')
+def serve_portal():
+    return send_from_directory('templates', 'customer-portal.html')
 
 # ─── M-PESA CALLBACK ──────────────────────────────────────────
 @app.route('/mpesa/callback', methods=['POST'])
@@ -285,9 +275,7 @@ def mpesa_callback():
         logger.error(f"❌ Callback endpoint error: {e}", exc_info=True)
         return jsonify({"ResultCode": 1, "ResultDesc": str(e)}), 500
 
-# ============================================================
-# 3. REGISTER BLUEPRINTS
-# ============================================================
+# ─── REGISTER BLUEPRINTS ──────────────────────────────────────
 def register_blueprints():
     registered = 0
     
@@ -299,21 +287,13 @@ def register_blueprints():
     except Exception as e:
         logger.warning(f"⚠️ M-Pesa routes not available: {e}")
     
-    try:
-        from api.routes.mileage import mileage_bp
-        app.register_blueprint(mileage_bp, url_prefix='/api/mileage')
-        registered += 1
-        logger.info("✅ Registered: /api/mileage")
-    except Exception as e:
-        logger.warning(f"⚠️ Mileage routes not available: {e}")
-    
     return registered
 
 # ─── Initialize Supabase ──────────────────────────────────────
 def init_supabase():
     try:
-        from services.supabase import get_supabase
-        get_supabase()
+        from services.supabase_client import get_supabase_client
+        get_supabase_client()
         logger.info("✅ Supabase client initialized")
         return True
     except Exception as e:
@@ -335,9 +315,7 @@ def graceful_shutdown(signum, frame):
 signal.signal(signal.SIGTERM, graceful_shutdown)
 signal.signal(signal.SIGINT, graceful_shutdown)
 
-# ============================================================
-# 4. CREATE APP
-# ============================================================
+# ─── APPLICATION FACTORY ─────────────────────────────────────
 def create_app():
     if not Config.validate():
         logger.error("❌ Invalid configuration.")
