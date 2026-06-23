@@ -1,4 +1,4 @@
-# services/supabase_client.py - Production Ready v6
+# services/supabase_client.py - Production Ready v6 (Aligned)
 
 import os
 import logging
@@ -83,18 +83,7 @@ def get_payment_by_mpesa_code(code: str):
     return res.data[0] if res.data else None
 
 
-# ✅ FIX: missing function (THIS WAS YOUR ERROR)
-def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]):
-    client = get_supabase_client()
-    update_data["updated_at"] = datetime.utcnow().isoformat()
-
-    res = client.table("payments") \
-        .update(update_data) \
-        .eq("payment_id", payment_id) \
-        .execute()
-
-    return {"success": bool(res.data), "data": res.data}
-
+# ─── UPDATE FUNCTIONS ─────────────────────────────────────
 
 def update_payment(payment_id: str, update_data: Dict[str, Any]):
     client = get_supabase_client()
@@ -107,6 +96,20 @@ def update_payment(payment_id: str, update_data: Dict[str, Any]):
 
     return {"success": bool(res.data), "data": res.data}
 
+
+def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]):
+    client = get_supabase_client()
+    update_data["updated_at"] = datetime.utcnow().isoformat()
+
+    res = client.table("payments") \
+        .update(update_data) \
+        .eq("payment_id", payment_id) \
+        .execute()
+
+    return {"success": bool(res.data), "data": res.data}
+
+
+# ─── USER PAYMENTS ────────────────────────────────────────
 
 def get_user_payments(user_id: str, limit: int = 50):
     client = get_supabase_client()
@@ -121,6 +124,8 @@ def get_user_payments(user_id: str, limit: int = 50):
     return res.data or []
 
 
+# ─── EXPORTS ──────────────────────────────────────────────
+
 __all__ = [
     "get_supabase_client",
     "create_payment",
@@ -130,5 +135,5 @@ __all__ = [
     "get_payment_by_mpesa_code",
     "update_payment",
     "update_payment_by_custom_id",
-    "get_user_payments",
+    "get_user_payments"
 ]
