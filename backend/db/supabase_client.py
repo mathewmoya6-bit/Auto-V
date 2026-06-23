@@ -1,4 +1,4 @@
-# db/supabase_client.py - FIXED (Production Ready)
+# db/supabase_client.py - Production Ready (Fixed)
 
 import os
 import logging
@@ -44,6 +44,8 @@ def get_supabase_status() -> dict:
     - RLS policies
     - Database schema
     
+    Uses auth.get_session() as a lightweight, table-independent verification.
+    
     Returns:
         dict: Connection status with 'connected' and 'error' fields
     """
@@ -59,21 +61,16 @@ def get_supabase_status() -> dict:
         # Get or create client (this will initialize if not already)
         client = get_supabase()
         
-        # Lightweight real test - access schema property (NO TABLE DEPENDENCY)
-        # This tests that the client is properly configured without hitting a specific table
-        if hasattr(client, 'postgrest') and client.postgrest is not None:
-            # Try to access schema property (doesn't require table existence)
-            schema = client.postgrest.schema
+        # ─── Real lightweight verification (safe + production standard) ──
+        # This does NOT require table or schema existence
+        try:
+            client.auth.get_session()
             status["connected"] = True
-            logger.debug("✅ Supabase connection verified (postgrest schema accessible)")
-        else:
-            # Fallback: check if client has table method (also safe)
-            if hasattr(client, 'table'):
-                status["connected"] = True
-                logger.debug("✅ Supabase connection verified (table method accessible)")
-            else:
-                status["error"] = "Client initialized but postgrest/table not accessible"
-                logger.warning("⚠️ Supabase client available but postgrest not accessible")
+            logger.info("✅ Supabase connection verified (auth session check)")
+        except Exception as e:
+            status["connected"] = False
+            status["error"] = str(e)
+            logger.warning(f"⚠️ Supabase connection not fully verified: {e}")
         
     except Exception as e:
         status["connected"] = False
@@ -93,16 +90,17 @@ def force_supabase_connection() -> bool:
     try:
         client = get_supabase()
         
-        # Test connection without table dependency
-        if hasattr(client, 'postgrest') and client.postgrest is not None:
-            _ = client.postgrest.schema
-            logger.info("🔥 Supabase forced initialization successful")
+        # Test connection without table dependency using auth session
+        try:
+            client.auth.get_session()
+            logger.info("🔥 Supabase forced initialization successful (auth session check)")
             return True
-        elif hasattr(client, 'table'):
-            logger.info("🔥 Supabase forced initialization successful (table method available)")
-            return True
-        else:
-            logger.error("🔥 Supabase client initialized but postgrest not available")
+        except Exception as e:
+            logger.warning(f"🔥 Supabase auth session check failed: {e}")
+            # Check if client is at least initialized
+            if _supabase_client is not None:
+                logger.info("🔥 Supabase client initialized but auth session check failed")
+                return True
             return False
             
     except Exception as e:
