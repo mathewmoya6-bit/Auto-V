@@ -4,16 +4,17 @@
 
 import os
 
-# ─── PROXY HARD RESET (Production Grade) ────────────────────
+# ─── PROXY HARD RESET (Production Grade - FINAL) ────────────
 proxy_keys = [
     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
     "http_proxy", "https_proxy", "all_proxy"
 ]
 
+# Remove proxies completely - DO NOT set empty string
 for k in proxy_keys:
     os.environ.pop(k, None)
-    os.environ[k] = ""
 
+# Hard guarantee: prevent HTTPX proxy resolution entirely
 os.environ["NO_PROXY"] = "*"
 os.environ.setdefault("SUPABASE_POSTGREST_CLIENT_TIMEOUT", "60")
 
@@ -136,58 +137,6 @@ class Config:
         }
 
 
-# ─── Request ID Middleware ──────────────────────────────────
-@app.before_request
-def before_request():
-    """Add request ID and start time to request context."""
-    g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4())[:8])
-    g.start_time = time.time()
-    
-    # Log request start
-    logger.info(
-        f"Request started: {request.method} {request.path}",
-        {
-            "method": request.method,
-            "path": request.path,
-            "client_ip": request.remote_addr,
-            "user_agent": request.headers.get('User-Agent', 'unknown')
-        }
-    )
-
-
-@app.after_request
-def after_request(response):
-    """Add request ID to response and log completion."""
-    if has_request_context() and hasattr(g, 'request_id'):
-        response.headers['X-Request-ID'] = g.request_id
-        
-        # Log request completion
-        duration = time.time() - g.start_time if hasattr(g, 'start_time') else 0
-        logger.info(
-            f"Request completed: {request.method} {request.path}",
-            {
-                "method": request.method,
-                "path": request.path,
-                "status": response.status_code,
-                "duration_ms": round(duration * 1000, 2),
-                "request_id": g.request_id
-            }
-        )
-        
-        # Log slow requests
-        if duration > 1.0:
-            logger.warning(
-                f"Slow request: {duration:.2f}s",
-                {
-                    "path": request.path,
-                    "duration": duration,
-                    "status": response.status_code
-                }
-            )
-    
-    return response
-
-
 # ─── Supabase Connection Wrapper (Singleton + Retry) ──────
 class SupabaseConnection:
     """Production-grade Supabase connection with retry and fallback."""
@@ -226,13 +175,13 @@ class SupabaseConnection:
                 cls._last_connected = datetime.utcnow()
                 cls._connection_attempts += 1
                 
-                # Verify connection
+                # ✅ SAFE: Verify connection without crashing on missing table
                 try:
                     cls._client.table('system_settings').select('*').limit(1).execute()
                     logger.info("Supabase connection verified")
                 except Exception as e:
-                    logger.warning(f"Supabase verification failed: {e}")
-                    # Still return client, will retry on next call if needed
+                    # Table might not exist yet - this is NOT critical
+                    logger.warning(f"Supabase table verification skipped (non-critical): {e}")
                 
                 return cls._client
                 
@@ -241,7 +190,7 @@ class SupabaseConnection:
                 cls._connection_attempts += 1
                 
                 if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)  # Exponential backoff
+                    wait_time = retry_delay * (2 ** attempt)
                     logger.warning(
                         f"Supabase connection attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s"
                     )
@@ -295,48 +244,57 @@ def with_retry(max_retries: int = 3, delay: int = 1, backoff: int = 2):
     return decorator
 
 
-# ─── Error Handlers ──────────────────────────────────────────
-@app.errorhandler(404)
-def not_found(error):
-    logger.warning(f"Not found: {request.path}")
-    return jsonify({
-        "success": False,
-        "error": "Not Found",
-        "message": "The requested resource was not found",
-        "path": request.path
-    }), 404
+# ─── Middleware Registration ─────────────────────────────────
+def register_middleware(app):
+    """Register request/response middleware safely (prevents duplicate registration)."""
+    
+    @app.before_request
+    def before_request():
+        """Add request ID and start time to request context."""
+        g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4())[:8])
+        g.start_time = time.time()
+        
+        logger.info(
+            f"Request started: {request.method} {request.path}",
+            {
+                "method": request.method,
+                "path": request.path,
+                "client_ip": request.remote_addr,
+                "user_agent": request.headers.get('User-Agent', 'unknown')
+            }
+        )
 
-
-@app.errorhandler(405)
-def method_not_allowed(error):
-    logger.warning(f"Method not allowed: {request.method} {request.path}")
-    return jsonify({
-        "success": False,
-        "error": "Method Not Allowed",
-        "message": f"Method {request.method} is not allowed for this endpoint"
-    }), 405
-
-
-@app.errorhandler(500)
-def internal_error(error):
-    logger.error(f"Internal server error: {error}", {"error": str(error)})
-    return jsonify({
-        "success": False,
-        "error": "Internal Server Error",
-        "message": "An unexpected error occurred. Please try again later.",
-        "request_id": getattr(g, 'request_id', None)
-    }), 500
-
-
-@app.errorhandler(Exception)
-def handle_exception(error):
-    logger.error(f"Unhandled exception: {error}", {"error": str(error)})
-    return jsonify({
-        "success": False,
-        "error": "Server Error",
-        "message": "An unexpected error occurred",
-        "request_id": getattr(g, 'request_id', None)
-    }), 500
+    @app.after_request
+    def after_request(response):
+        """Add request ID to response and log completion."""
+        if has_request_context() and hasattr(g, 'request_id'):
+            response.headers['X-Request-ID'] = g.request_id
+            
+            duration = time.time() - g.start_time if hasattr(g, 'start_time') else 0
+            logger.info(
+                f"Request completed: {request.method} {request.path}",
+                {
+                    "method": request.method,
+                    "path": request.path,
+                    "status": response.status_code,
+                    "duration_ms": round(duration * 1000, 2),
+                    "request_id": g.request_id
+                }
+            )
+            
+            # Log slow requests (>1 second)
+            if duration > 1.0:
+                logger.warning(
+                    f"Slow request: {duration:.2f}s",
+                    {
+                        "path": request.path,
+                        "duration": duration,
+                        "status": response.status_code,
+                        "request_id": g.request_id
+                    }
+                )
+        
+        return response
 
 
 # ─── App Factory ─────────────────────────────────────────────
@@ -359,7 +317,52 @@ def create_app():
         max_age=3600
     )
     
-    # ─── Register Blueprints ──────────────────────────────────────
+    # ─── REGISTER MIDDLEWARE (Safe, no duplicate risk) ───────────
+    register_middleware(app)
+    
+    # ─── ERROR HANDLERS ──────────────────────────────────────────
+    @app.errorhandler(404)
+    def not_found(error):
+        logger.warning(f"Not found: {request.path}")
+        return jsonify({
+            "success": False,
+            "error": "Not Found",
+            "message": "The requested resource was not found",
+            "path": request.path,
+            "request_id": getattr(g, 'request_id', None)
+        }), 404
+
+    @app.errorhandler(405)
+    def method_not_allowed(error):
+        logger.warning(f"Method not allowed: {request.method} {request.path}")
+        return jsonify({
+            "success": False,
+            "error": "Method Not Allowed",
+            "message": f"Method {request.method} is not allowed for this endpoint",
+            "request_id": getattr(g, 'request_id', None)
+        }), 405
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        logger.error(f"Internal server error: {error}", {"error": str(error)})
+        return jsonify({
+            "success": False,
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred. Please try again later.",
+            "request_id": getattr(g, 'request_id', None)
+        }), 500
+
+    @app.errorhandler(Exception)
+    def handle_exception(error):
+        logger.error(f"Unhandled exception: {error}", {"error": str(error)})
+        return jsonify({
+            "success": False,
+            "error": "Server Error",
+            "message": "An unexpected error occurred",
+            "request_id": getattr(g, 'request_id', None)
+        }), 500
+    
+    # ─── REGISTER BLUEPRINTS ──────────────────────────────────────
     try:
         from api.routes.mpesa import mpesa_bp
         app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
@@ -369,12 +372,12 @@ def create_app():
     except Exception as e:
         logger.error(f"M-Pesa blueprint failed to load: {e}")
     
-    # ─── Preflight Handler ──────────────────────────────────────
+    # ─── PREFLIGHT HANDLER ──────────────────────────────────────
     @app.route("/<path:path>", methods=["OPTIONS"])
     def options_handler(path):
         return jsonify({"status": "ok"}), 200
     
-    # ─── Health Check ──────────────────────────────────────────
+    # ─── ROUTES ──────────────────────────────────────────────────
     @app.route("/", methods=["GET"])
     def home():
         return jsonify({
@@ -398,7 +401,7 @@ def create_app():
     @app.route("/api/health", methods=["GET"])
     def health():
         """Comprehensive health check with all services."""
-        health_status = {
+        return jsonify({
             "success": True,
             "data": {
                 "status": "healthy",
@@ -414,16 +417,19 @@ def create_app():
                         Config.MPESA_PASSKEY
                     ),
                     "environment": Config.MPESA_ENV,
-                    "shortcode": Config.MPESA_SHORTCODE
+                    "shortcode": Config.MPESA_SHORTCODE,
+                    "callback_url": Config.MPESA_CALLBACK_URL
                 },
                 "proxy": {
-                    "HTTP_PROXY": "cleared" if os.getenv("HTTP_PROXY") in (None, "") else "set",
-                    "HTTPS_PROXY": "cleared" if os.getenv("HTTPS_PROXY") in (None, "") else "set",
+                    "HTTP_PROXY": "cleared" if os.getenv("HTTP_PROXY") is None else "set",
+                    "HTTPS_PROXY": "cleared" if os.getenv("HTTPS_PROXY") is None else "set",
                     "NO_PROXY": os.getenv("NO_PROXY", "not set")
+                },
+                "redis": {
+                    "configured": bool(Config.REDIS_URL)
                 }
             }
-        }
-        return jsonify(health_status), 200
+        }), 200
     
     @app.route("/api/ping", methods=["GET"])
     def ping():
@@ -457,7 +463,7 @@ if __name__ == "__main__":
         "supabase": "configured" if Config.SUPABASE_URL else "missing",
         "mpesa": "configured" if Config.MPESA_CONSUMER_KEY else "missing",
         "redis": "configured" if Config.REDIS_URL else "not configured",
-        "proxy_cleared": os.getenv("HTTP_PROXY") in (None, "")
+        "proxy_cleared": os.getenv("HTTP_PROXY") is None
     })
     
     # Run with Waitress or Flask dev server
