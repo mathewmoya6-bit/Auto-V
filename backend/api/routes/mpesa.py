@@ -1,10 +1,10 @@
-# api/routes/mpesa.py - Production Ready v5 (Aligned)
+# api/routes/mpesa.py - Production Ready v6
 
 import os
 import logging
 import uuid
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 
 from services.mpesa import (
     initiate_stk_push,
@@ -48,15 +48,18 @@ def response(success: bool, data=None, error=None, status=200):
 
 
 # ─────────────────────────────────────────────
-# INITIATE PAYMENT
+# 🔥 FIX: Explicit route with strict_slashes=False
 # ─────────────────────────────────────────────
 
-@mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"])
+@mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"], strict_slashes=False)
 def initiate_payment():
-    try:
-        if request.method == "OPTIONS":
-            return response(True, {"status": "ok"})
+    """Initiate M-Pesa STK Push payment."""
+    
+    # Handle preflight
+    if request.method == "OPTIONS":
+        return response(True, {"status": "ok"})
 
+    try:
         data = request.get_json()
         if not data:
             return response(False, error="Missing data", status=400)
@@ -102,7 +105,7 @@ def initiate_payment():
 # STATUS CHECK
 # ─────────────────────────────────────────────
 
-@mpesa_bp.route("/status/<payment_id>", methods=["GET", "OPTIONS"])
+@mpesa_bp.route("/status/<payment_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
 def get_payment_status(payment_id):
     try:
         if request.method == "OPTIONS":
@@ -145,7 +148,7 @@ def get_payment_status(payment_id):
 # CALLBACK
 # ─────────────────────────────────────────────
 
-@mpesa_bp.route("/callback", methods=["POST"])
+@mpesa_bp.route("/callback", methods=["POST"], strict_slashes=False)
 def mpesa_callback():
     try:
         data = request.get_json(silent=True)
@@ -164,7 +167,7 @@ def mpesa_callback():
 # AUTO CONFIRM
 # ─────────────────────────────────────────────
 
-@mpesa_bp.route("/auto-confirm/<payment_id>", methods=["POST", "OPTIONS"])
+@mpesa_bp.route("/auto-confirm/<payment_id>", methods=["POST", "OPTIONS"], strict_slashes=False)
 def auto_confirm(payment_id):
     try:
         if request.method == "OPTIONS":
@@ -192,7 +195,7 @@ def auto_confirm(payment_id):
 # USER PAYMENTS
 # ─────────────────────────────────────────────
 
-@mpesa_bp.route("/user/<user_id>", methods=["GET"])
+@mpesa_bp.route("/user/<user_id>", methods=["GET"], strict_slashes=False)
 def user_payments(user_id):
     try:
         limit = request.args.get("limit", 50, type=int)
@@ -200,6 +203,29 @@ def user_payments(user_id):
         return response(True, {"payments": payments})
     except Exception as e:
         return response(False, error=str(e), status=500)
+
+
+# ─────────────────────────────────────────────
+# DEBUG: LIST ALL ROUTES
+# ─────────────────────────────────────────────
+
+@mpesa_bp.route("/routes", methods=["GET"])
+def list_routes():
+    """Debug endpoint to list all registered routes."""
+    routes = []
+    for rule in current_app.url_map.iter_rules():
+        if rule.endpoint.startswith("mpesa"):
+            routes.append({
+                "endpoint": rule.endpoint,
+                "methods": list(rule.methods),
+                "path": str(rule)
+            })
+    
+    return jsonify({
+        "routes": routes,
+        "total": len(routes),
+        "blueprint": "mpesa"
+    }), 200
 
 
 # ─────────────────────────────────────────────
