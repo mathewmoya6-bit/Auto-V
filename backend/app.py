@@ -15,17 +15,17 @@ app = Flask(__name__)
 DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 PORT = int(os.getenv("PORT", 10000))
 ENV = os.getenv("FLASK_ENV", "production")
-SECRET_KEY = os.getenv("SECRET_KEY", os.urandom(24).hex())  # For sessions if needed
+SECRET_KEY = os.getenv("SECRET_KEY", os.urandom(24).hex())
 
-# ─── SAFE CORS (FIXED: avoid hardcoding headers manually) ──────
+# ─── SAFE CORS ──────────────────────────────────────────────
 CORS(
     app,
-    resources={r"/*": {"origins": "*"}},  # safer for debugging; tighten later in prod
+    resources={r"/*": {"origins": "*"}},
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization", "X-Session-Token", "Accept"],
     expose_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    max_age=3600  # Cache preflight requests for 1 hour
+    max_age=3600
 )
 
 # ─── Logging ──────────────────────────────────────────────────
@@ -45,15 +45,6 @@ except ImportError as e:
     logger.error("   Make sure api/routes/mpesa.py exists")
 except Exception as e:
     logger.error(f"❌ M-Pesa blueprint failed to load: {e}")
-
-# Try to load any additional blueprints
-try:
-    # Placeholder for future blueprints (auth, admin, etc.)
-    # from api.routes.auth import auth_bp
-    # app.register_blueprint(auth_bp, url_prefix="/api/auth")
-    pass
-except Exception as e:
-    logger.warning(f"Additional blueprints not loaded: {e}")
 
 # ─── ROOT ROUTES ──────────────────────────────────────────────
 @app.route("/", methods=["GET"])
@@ -117,14 +108,14 @@ def method_not_allowed(error):
         "message": "The HTTP method is not allowed for this endpoint"
     }), 405
 
-# ─── BEFORE REQUEST (Optional) ──────────────────────────────
+# ─── BEFORE REQUEST ──────────────────────────────────────────
 @app.before_request
 def before_request():
     """Log all requests in production"""
     if ENV == "production":
         logger.info(f"{request.method} {request.path} - {request.remote_addr}")
 
-# ─── AFTER REQUEST (Optional) ──────────────────────────────
+# ─── AFTER REQUEST ──────────────────────────────────────────
 @app.after_request
 def after_request(response):
     """Add security headers to all responses"""
