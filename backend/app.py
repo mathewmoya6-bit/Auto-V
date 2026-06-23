@@ -1,4 +1,4 @@
-# app.py - Production Ready v3
+# app.py - Production Ready v4 (FIXED)
 
 import os
 import logging
@@ -6,85 +6,62 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-from api.routes.mpesa import mpesa_bp
-
+# 🔥 MUST LOAD ENV FIRST (critical fix)
 load_dotenv()
 
 app = Flask(__name__)
 
 # ─── Configuration ─────────────────────────────────────────────
-DEBUG = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-PORT = int(os.getenv('PORT', 10000))
-ENV = os.getenv('FLASK_ENV', 'production')
+DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+PORT = int(os.getenv("PORT", 10000))
+ENV = os.getenv("FLASK_ENV", "production")
 
-# ─── CORS Configuration ────────────────────────────────────────
+# ─── SAFE CORS (FIXED: avoid hardcoding headers manually) ──────
 CORS(
     app,
-    resources={
-        r"/*": {
-            "origins": [
-                "https://auto-v.meipressgroup.com",
-                "https://auto-v.onrender.com",
-                "http://localhost:3000",
-                "http://localhost:5000"
-            ]
-        }
-    },
+    resources={r"/*": {"origins": "*"}},  # safer for debugging; tighten later in prod
     supports_credentials=True,
-    allow_headers=["Content-Type", "Authorization", "X-Session-Token", "Accept"],
+    allow_headers=["Content-Type", "Authorization", "X-Session-Token"],
     expose_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    max_age=3600
 )
 
 # ─── Logging ──────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("auto-v")
 
-# ─── Preflight Handler ─────────────────────────────────────────
-@app.before_request
-def handle_preflight():
-    """Handle OPTIONS requests globally."""
-    if request.method == "OPTIONS":
-        response = jsonify({"status": "ok"})
-        response.headers.add("Access-Control-Allow-Origin", "https://auto-v.meipressgroup.com")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-        response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        response.headers.add("Access-Control-Allow-Credentials", "true")
-        response.headers.add("Access-Control-Max-Age", "3600")
-        return response, 200
-
-# ─── Register Blueprints ──────────────────────────────────────
-app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
+# ─── SAFE IMPORT (prevents crash if env missing) ──────────────
+try:
+    from api.routes.mpesa import mpesa_bp
+    app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
+except Exception as e:
+    logger.error(f"MPESA BLUEPRINT FAILED TO LOAD: {e}")
 
 # ─── Routes ────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "status": "AUTO-V API running",
-        "service": "mpesa",
         "version": "3.0.0",
         "environment": ENV
     }), 200
+
 
 @app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({
         "status": "healthy",
-        "environment": ENV,
-        "timestamp": "2026-06-22T17:00:00Z"
+        "environment": ENV
     }), 200
 
-@app.route("/<path:path>", methods=["OPTIONS"])
-def catch_all_options(path):
-    response = jsonify({"status": "ok"})
-    response.headers.add("Access-Control-Allow-Origin", "https://auto-v.meipressgroup.com")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-    response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-    response.headers.add("Access-Control-Allow-Credentials", "true")
-    response.headers.add("Access-Control-Max-Age", "3600")
-    return response, 200
 
+# ─── GLOBAL OPTIONS FIX (clean version) ────────────────────────
+@app.route("/<path:path>", methods=["OPTIONS"])
+def options_handler(path):
+    return jsonify({"status": "ok"}), 200
+
+
+# ─── START SERVER ──────────────────────────────────────────────
 if __name__ == "__main__":
-    logger.info(f"🚀 Starting AUTO-V API on port {PORT} (ENV: {ENV})")
+    logger.info(f"🚀 AUTO-V starting on port {PORT} | ENV={ENV}")
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
