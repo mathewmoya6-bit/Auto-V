@@ -1,4 +1,4 @@
-# services/supabase_client.py - Production Ready v7 (Clean & Aligned)
+# services/supabase_client.py - Production Ready v8 (Clean & Reliable)
 
 import os
 import logging
@@ -13,35 +13,66 @@ logger = logging.getLogger(__name__)
 
 SUPABASE_URL = (os.getenv('SUPABASE_URL') or '').strip()
 SUPABASE_ANON_KEY = (os.getenv('SUPABASE_ANON_KEY') or '').strip()
+SUPABASE_SERVICE_ROLE_KEY = (os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_KEY') or '').strip()
+
 _supabase_client: Optional[Client] = None
+_supabase_admin_client: Optional[Client] = None
 
 if not SUPABASE_URL:
     raise ValueError("SUPABASE_URL environment variable is not set")
 
-if not SUPABASE_ANON_KEY:
-    raise ValueError("SUPABASE_ANON_KEY environment variable is not set")
+# Don't raise error for missing keys - we'll handle gracefully
 
 
 # ─── CLIENT ────────────────────────────────────────────────────
 
-def get_supabase_client() -> Client:
-    """Get or create singleton Supabase client."""
-    global _supabase_client
-
+def get_supabase_client(use_service_role: bool = False) -> Client:
+    """
+    Get or create singleton Supabase client.
+    
+    Args:
+        use_service_role: If True, use service role key (for admin operations)
+    
+    Returns:
+        Supabase Client instance
+    """
+    global _supabase_client, _supabase_admin_client
+    
+    if use_service_role:
+        if _supabase_admin_client is None:
+            key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
+            if not key:
+                raise ValueError("No Supabase key available for admin client")
+            
+            logger.info("🔌 Initializing Supabase admin client (service role)")
+            _supabase_admin_client = create_client(SUPABASE_URL, key)
+            logger.info("✅ Supabase admin client initialized")
+        
+        return _supabase_admin_client
+    
     if _supabase_client is None:
-        logger.info("🔌 Initializing Supabase client")
+        if not SUPABASE_ANON_KEY:
+            raise ValueError("SUPABASE_ANON_KEY environment variable is not set")
+        
+        logger.info("🔌 Initializing Supabase client (anon key)")
         _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
         logger.info("✅ Supabase client initialized")
-
+    
     return _supabase_client
+
+
+def get_admin_client() -> Client:
+    """Get admin client with service role (for writes, callbacks, admin ops)."""
+    return get_supabase_client(use_service_role=True)
 
 
 # ─── PAYMENT CREATE ──────────────────────────────────────────
 
 def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Create a new payment record."""
+    """Create a new payment record using admin client (bypasses RLS)."""
     try:
-        client = get_supabase_client()
+        # Use admin client for writes to avoid RLS issues
+        client = get_admin_client()
         now = datetime.now(timezone.utc).isoformat()
 
         # Ensure 'id' is always a valid UUID
@@ -51,7 +82,6 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 uuid.UUID(str(payment_data['id']))
             except ValueError:
-                # If not a valid UUID, move it to payment_id and generate new UUID
                 if 'payment_id' not in payment_data or not payment_data['payment_id']:
                     payment_data['payment_id'] = str(payment_data['id'])
                 payment_data['id'] = str(uuid.uuid4())
@@ -66,7 +96,7 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
         payment_data.setdefault("created_at", now)
         payment_data["updated_at"] = now
 
-        logger.info(f"📝 Creating payment: {payment_data['payment_id']} with UUID: {payment_data['id']}")
+        logger.info(f"📝 Creating payment: {payment_data['payment_id']}")
 
         result = client.table("payments").insert(payment_data).execute()
 
@@ -84,10 +114,10 @@ def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
 
 # ─── READ HELPERS ─────────────────────────────────────────────
 
-def get_payment_by_id(payment_id: str) -> Optional[Dict[str, Any]]:
+def get_payment_by_id(payment_id: str, use_admin: bool = False) -> Optional[Dict[str, Any]]:
     """Get payment by UUID primary key."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client() if use_admin else get_supabase_client()
         result = client.table("payments").select("*").eq("id", payment_id).execute()
         return result.data[0] if result.data else None
     except Exception as e:
@@ -95,10 +125,10 @@ def get_payment_by_id(payment_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_payment_by_custom_id(payment_id: str) -> Optional[Dict[str, Any]]:
+def get_payment_by_custom_id(payment_id: str, use_admin: bool = False) -> Optional[Dict[str, Any]]:
     """Get payment by custom payment_id field."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client() if use_admin else get_supabase_client()
         result = client.table("payments").select("*").eq("payment_id", payment_id).execute()
         return result.data[0] if result.data else None
     except Exception as e:
@@ -106,10 +136,10 @@ def get_payment_by_custom_id(payment_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_payment_by_checkout_id(checkout_id: str) -> Optional[Dict[str, Any]]:
+def get_payment_by_checkout_id(checkout_id: str, use_admin: bool = False) -> Optional[Dict[str, Any]]:
     """Get payment by M-Pesa CheckoutRequestID."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client() if use_admin else get_supabase_client()
         result = client.table("payments").select("*").eq("checkout_request_id", checkout_id).execute()
         return result.data[0] if result.data else None
     except Exception as e:
@@ -117,10 +147,10 @@ def get_payment_by_checkout_id(checkout_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_payment_by_mpesa_code(code: str) -> Optional[Dict[str, Any]]:
+def get_payment_by_mpesa_code(code: str, use_admin: bool = False) -> Optional[Dict[str, Any]]:
     """Get payment by M-Pesa receipt number."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client() if use_admin else get_supabase_client()
         result = client.table("payments").select("*").eq("mpesa_code", code).execute()
         return result.data[0] if result.data else None
     except Exception as e:
@@ -128,7 +158,7 @@ def get_payment_by_mpesa_code(code: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_payment_by_any_id(identifier: str) -> Optional[Dict[str, Any]]:
+def get_payment_by_any_id(identifier: str, use_admin: bool = False) -> Optional[Dict[str, Any]]:
     """
     Get payment by any identifier type.
     
@@ -140,24 +170,24 @@ def get_payment_by_any_id(identifier: str) -> Optional[Dict[str, Any]]:
     """
     try:
         # Try custom payment_id first
-        payment = get_payment_by_custom_id(identifier)
+        payment = get_payment_by_custom_id(identifier, use_admin)
         if payment:
             return payment
 
         # Try checkout_request_id
-        payment = get_payment_by_checkout_id(identifier)
+        payment = get_payment_by_checkout_id(identifier, use_admin)
         if payment:
             return payment
 
         # Try mpesa_code
-        payment = get_payment_by_mpesa_code(identifier)
+        payment = get_payment_by_mpesa_code(identifier, use_admin)
         if payment:
             return payment
 
         # Try UUID
         try:
             uuid.UUID(identifier)
-            payment = get_payment_by_id(identifier)
+            payment = get_payment_by_id(identifier, use_admin)
             if payment:
                 return payment
         except ValueError:
@@ -173,9 +203,9 @@ def get_payment_by_any_id(identifier: str) -> Optional[Dict[str, Any]]:
 # ─── UPDATE FUNCTIONS ─────────────────────────────────────────
 
 def update_payment(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Update payment by UUID primary key."""
+    """Update payment by UUID primary key using admin client (bypasses RLS)."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         result = client.table("payments") \
@@ -196,9 +226,9 @@ def update_payment(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, An
 
 
 def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Update payment by custom payment_id field."""
+    """Update payment by custom payment_id field using admin client."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         result = client.table("payments") \
@@ -219,9 +249,9 @@ def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]) ->
 
 
 def update_payment_by_checkout_id(checkout_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Update payment by checkout_request_id."""
+    """Update payment by checkout_request_id using admin client."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         result = client.table("payments") \
@@ -242,9 +272,9 @@ def update_payment_by_checkout_id(checkout_id: str, update_data: Dict[str, Any])
 
 
 def update_payment_status(payment_id: str, status: str, extra_data: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Update payment status by UUID primary key."""
+    """Update payment status by UUID primary key using admin client."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         now = datetime.now(timezone.utc).isoformat()
 
         update_data = {
@@ -276,9 +306,9 @@ def update_payment_status(payment_id: str, status: str, extra_data: Dict[str, An
 
 
 def update_payment_status_by_custom_id(payment_id: str, status: str, extra_data: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Update payment status by custom payment_id field."""
+    """Update payment status by custom payment_id field using admin client."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         now = datetime.now(timezone.utc).isoformat()
 
         update_data = {
@@ -310,9 +340,9 @@ def update_payment_status_by_custom_id(payment_id: str, status: str, extra_data:
 
 
 def update_payment_with_transaction(payment_id: str, transaction_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Update payment with M-Pesa transaction data."""
+    """Update payment with M-Pesa transaction data using admin client."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         now = datetime.now(timezone.utc).isoformat()
 
         update_data = {
@@ -433,7 +463,7 @@ def get_payment_stats() -> Dict[str, Any]:
 def delete_payment(payment_id: str) -> Dict[str, Any]:
     """Delete a payment record by UUID primary key (use with caution)."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         result = client.table("payments").delete().eq("id", payment_id).execute()
 
         if result.data:
@@ -451,7 +481,7 @@ def delete_payment(payment_id: str) -> Dict[str, Any]:
 def delete_payment_by_custom_id(payment_id: str) -> Dict[str, Any]:
     """Delete a payment record by custom payment_id field (use with caution)."""
     try:
-        client = get_supabase_client()
+        client = get_admin_client()
         result = client.table("payments").delete().eq("payment_id", payment_id).execute()
 
         if result.data:
@@ -466,11 +496,40 @@ def delete_payment_by_custom_id(payment_id: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+# ─── HEALTH STATUS ────────────────────────────────────────────
+
+def get_connection_status() -> Dict[str, Any]:
+    """
+    Get connection status WITHOUT testing database tables.
+    
+    This is a clean health check that doesn't depend on:
+    - Table existence
+    - RLS policies
+    - Database schema
+    """
+    return {
+        "initialized": _supabase_client is not None,
+        "admin_initialized": _supabase_admin_client is not None,
+        "url_configured": bool(SUPABASE_URL),
+        "anon_key_configured": bool(SUPABASE_ANON_KEY),
+        "service_role_configured": bool(SUPABASE_KEY),
+        "key_mode": (
+            "service_role"
+            if SUPABASE_KEY and _supabase_admin_client is not None
+            else "anon"
+            if _supabase_client is not None
+            else "uninitialized"
+        ),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
 # ─── EXPORTS ──────────────────────────────────────────────────
 
 __all__ = [
     # Client
     "get_supabase_client",
+    "get_admin_client",
 
     # Create
     "create_payment",
@@ -498,5 +557,8 @@ __all__ = [
 
     # Delete
     "delete_payment",
-    "delete_payment_by_custom_id"
+    "delete_payment_by_custom_id",
+
+    # Health
+    "get_connection_status"
 ]
