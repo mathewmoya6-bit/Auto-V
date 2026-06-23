@@ -1,31 +1,25 @@
-# services/supabase_client.py - Production Ready v6 (Aligned)
+# services/supabase_client.py - Production Ready v7 (Clean & Aligned)
 
 import os
 import logging
 import uuid
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
-# ─── ENV FIX (SAFE + STRIPPED) ─────────────────────────────
+# ─── CONFIGURATION ─────────────────────────────────────────────
 
 SUPABASE_URL = (os.getenv('SUPABASE_URL') or '').strip()
 SUPABASE_ANON_KEY = (os.getenv('SUPABASE_ANON_KEY') or '').strip()
-
-if not SUPABASE_URL:
-    raise ValueError("SUPABASE_URL environment variable is not set")
-
-if not SUPABASE_ANON_KEY:
-    raise ValueError("SUPABASE_ANON_KEY environment variable is not set")
-
-_supabase_client = None
+_supabase_client: Optional[Client] = None
 
 
-# ─── CLIENT ────────────────────────────────────────────────
+# ─── CLIENT ────────────────────────────────────────────────────
 
 def get_supabase_client() -> Client:
+    """Get or create singleton Supabase client."""
     global _supabase_client
 
     if _supabase_client is None:
@@ -36,95 +30,146 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
-# ─── PAYMENT CREATE ───────────────────────────────────────
+# ─── PAYMENT CREATE ──────────────────────────────────────────
 
 def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a new payment record."""
     try:
         client = get_supabase_client()
+        now = datetime.now(timezone.utc).isoformat()
 
         payment_data.setdefault("id", str(uuid.uuid4()))
         payment_data.setdefault("status", "pending")
         payment_data.setdefault("payment_method", "mpesa")
-        payment_data.setdefault("created_at", datetime.utcnow().isoformat())
-        payment_data["updated_at"] = datetime.utcnow().isoformat()
+        payment_data.setdefault("created_at", now)
+        payment_data["updated_at"] = now
 
-        res = client.table("payments").insert(payment_data).execute()
+        result = client.table("payments").insert(payment_data).execute()
 
-        return {"success": True, "data": res.data[0]} if res.data else {"success": False}
+        if result.data:
+            return {"success": True, "data": result.data[0]}
+
+        logger.warning("create_payment: No data returned")
+        return {"success": False, "error": "No data returned"}
 
     except Exception as e:
-        logger.error(f"create_payment error: {e}")
+        logger.error(f"create_payment error: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 
-# ─── READ HELPERS ─────────────────────────────────────────
+# ─── READ HELPERS ─────────────────────────────────────────────
 
-def get_payment_by_id(payment_id: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("id", payment_id).execute()
-    return res.data[0] if res.data else None
-
-
-def get_payment_by_custom_id(payment_id: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("payment_id", payment_id).execute()
-    return res.data[0] if res.data else None
-
-
-def get_payment_by_checkout_id(checkout_id: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("checkout_request_id", checkout_id).execute()
-    return res.data[0] if res.data else None
+def get_payment_by_id(payment_id: str) -> Optional[Dict[str, Any]]:
+    """Get payment by UUID primary key."""
+    try:
+        client = get_supabase_client()
+        result = client.table("payments").select("*").eq("id", payment_id).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"get_payment_by_id error: {e}", exc_info=True)
+        return None
 
 
-def get_payment_by_mpesa_code(code: str):
-    client = get_supabase_client()
-    res = client.table("payments").select("*").eq("mpesa_code", code).execute()
-    return res.data[0] if res.data else None
+def get_payment_by_custom_id(payment_id: str) -> Optional[Dict[str, Any]]:
+    """Get payment by custom payment_id field."""
+    try:
+        client = get_supabase_client()
+        result = client.table("payments").select("*").eq("payment_id", payment_id).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"get_payment_by_custom_id error: {e}", exc_info=True)
+        return None
 
 
-# ─── UPDATE FUNCTIONS ─────────────────────────────────────
-
-def update_payment(payment_id: str, update_data: Dict[str, Any]):
-    client = get_supabase_client()
-    update_data["updated_at"] = datetime.utcnow().isoformat()
-
-    res = client.table("payments") \
-        .update(update_data) \
-        .eq("id", payment_id) \
-        .execute()
-
-    return {"success": bool(res.data), "data": res.data}
+def get_payment_by_checkout_id(checkout_id: str) -> Optional[Dict[str, Any]]:
+    """Get payment by M-Pesa CheckoutRequestID."""
+    try:
+        client = get_supabase_client()
+        result = client.table("payments").select("*").eq("checkout_request_id", checkout_id).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"get_payment_by_checkout_id error: {e}", exc_info=True)
+        return None
 
 
-def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]):
-    client = get_supabase_client()
-    update_data["updated_at"] = datetime.utcnow().isoformat()
-
-    res = client.table("payments") \
-        .update(update_data) \
-        .eq("payment_id", payment_id) \
-        .execute()
-
-    return {"success": bool(res.data), "data": res.data}
-
-
-# ─── USER PAYMENTS ────────────────────────────────────────
-
-def get_user_payments(user_id: str, limit: int = 50):
-    client = get_supabase_client()
-    res = (
-        client.table("payments")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return res.data or []
+def get_payment_by_mpesa_code(code: str) -> Optional[Dict[str, Any]]:
+    """Get payment by M-Pesa receipt number."""
+    try:
+        client = get_supabase_client()
+        result = client.table("payments").select("*").eq("mpesa_code", code).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"get_payment_by_mpesa_code error: {e}", exc_info=True)
+        return None
 
 
-# ─── EXPORTS ──────────────────────────────────────────────
+# ─── UPDATE FUNCTIONS ─────────────────────────────────────────
+
+def update_payment(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update payment by UUID primary key."""
+    try:
+        client = get_supabase_client()
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        result = client.table("payments") \
+            .update(update_data) \
+            .eq("id", payment_id) \
+            .execute()
+
+        if result.data:
+            return {"success": True, "data": result.data}
+
+        logger.warning(f"update_payment: No data for ID {payment_id}")
+        return {"success": False, "error": "Payment not found"}
+
+    except Exception as e:
+        logger.error(f"update_payment error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+def update_payment_by_custom_id(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update payment by custom payment_id field."""
+    try:
+        client = get_supabase_client()
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        result = client.table("payments") \
+            .update(update_data) \
+            .eq("payment_id", payment_id) \
+            .execute()
+
+        if result.data:
+            return {"success": True, "data": result.data}
+
+        logger.warning(f"update_payment_by_custom_id: No data for {payment_id}")
+        return {"success": False, "error": "Payment not found"}
+
+    except Exception as e:
+        logger.error(f"update_payment_by_custom_id error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+# ─── USER PAYMENTS ────────────────────────────────────────────
+
+def get_user_payments(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Get all payments for a specific user."""
+    try:
+        client = get_supabase_client()
+        result = (
+            client.table("payments")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.error(f"get_user_payments error: {e}", exc_info=True)
+        return []
+
+
+# ─── EXPORTS ──────────────────────────────────────────────────
 
 __all__ = [
     "get_supabase_client",
