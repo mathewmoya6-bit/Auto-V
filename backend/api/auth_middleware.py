@@ -1,4 +1,4 @@
-# services/auth_middleware.py - Production Ready
+# services/auth_middleware.py - Production Ready v2
 
 import os
 import logging
@@ -130,7 +130,7 @@ def optional_auth(func):
     return wrapper
 
 
-# ─── TOKEN GENERATION (for completeness) ─────────────────
+# ─── TOKEN GENERATION ─────────────────────────────────
 
 def generate_token(user_id: str, email: str, role: str = "user") -> str:
     """
