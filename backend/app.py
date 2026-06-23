@@ -1,13 +1,38 @@
-# app.py - Production Ready v5 (Aligned)
+# ============================================================
+# CRITICAL SYSTEM FIX - MUST BE FIRST LINE IN APP ENTRYPOINT
+# ============================================================
 
 import os
+
+# ─── PROXY HARD RESET (Production Grade) ────────────────────
+proxy_keys = [
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "all_proxy"
+]
+
+# Remove and override all proxy variables
+for k in proxy_keys:
+    os.environ.pop(k, None)
+    os.environ[k] = ""  # keep override but safer
+
+# HARD GUARANTEE: Prevent HTTPX proxy resolution entirely
+os.environ["NO_PROXY"] = "*"  # ✅ Only set once (no redundant setdefault)
+
+# ─── SUPABASE STABILITY FLAGS ──────────────────────────────
+# Prevent random timeout crashes with Supabase
+os.environ.setdefault("SUPABASE_POSTGREST_CLIENT_TIMEOUT", "60")
+
+# ============================================================
+# NOW SAFE TO IMPORT EVERYTHING ELSE
+# ============================================================
+
 import logging
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# 🔥 MUST LOAD ENV FIRST (critical fix)
-load_dotenv()
+# 🔥 LOAD ENV AFTER PROXY CLEANUP (override=True for Render safety)
+load_dotenv(override=True)
 
 app = Flask(__name__)
 
@@ -52,7 +77,7 @@ def home():
     """Root endpoint - API information"""
     return jsonify({
         "status": "AUTO-V API running",
-        "version": "3.0.0",
+        "version": "5.1.0",
         "environment": ENV,
         "services": {
             "mpesa": "loaded" if "mpesa_bp" in locals() else "failed"
@@ -66,14 +91,24 @@ def home():
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    """Health check endpoint"""
+    """Health check endpoint with proxy verification"""
+    # Check proxy status - ✅ Fixed logic
+    proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']
+    proxy_status = {
+        v: "cleared" if os.getenv(v) in (None, "") else os.getenv(v)
+        for v in proxy_vars
+    }
+    
     return jsonify({
         "status": "healthy",
         "environment": ENV,
         "timestamp": __import__('datetime').datetime.utcnow().isoformat(),
         "services": {
             "mpesa": "configured" if os.getenv("MPESA_CONSUMER_KEY") else "not configured"
-        }
+        },
+        "proxy_status": proxy_status,
+        "no_proxy": os.getenv("NO_PROXY", "not set"),
+        "supabase_timeout": os.getenv("SUPABASE_POSTGREST_CLIENT_TIMEOUT", "not set")
     }), 200
 
 # ─── GLOBAL OPTIONS HANDLER ──────────────────────────────────
@@ -134,5 +169,36 @@ if __name__ == "__main__":
     if not os.getenv("MPESA_CONSUMER_KEY"):
         logger.warning("⚠️ M-Pesa environment variables not fully configured")
         logger.warning("   Set MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_PASSKEY")
+    
+    # ✅ Fixed: Better proxy check logic
+    proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']
+    proxy_set = [v for v in proxy_vars if os.getenv(v) not in (None, "")]
+    
+    if proxy_set:
+        logger.warning(f"⚠️ Proxy variables still set: {proxy_set}")
+        logger.warning("   This may cause issues with Supabase/httpx")
+    else:
+        logger.info("✅ Proxy variables cleared - Supabase/httpx should work correctly")
+    
+    # Verify NO_PROXY is set
+    no_proxy = os.getenv("NO_PROXY")
+    if no_proxy == "*":
+        logger.info("✅ NO_PROXY='*' set - proxy resolution disabled")
+    else:
+        logger.warning(f"⚠️ NO_PROXY='{no_proxy}' - may not fully disable proxy")
+        logger.warning("   ⚠️ Set NO_PROXY='*' in Render environment variables")
+    
+    # Verify Supabase timeout
+    timeout = os.getenv("SUPABASE_POSTGREST_CLIENT_TIMEOUT")
+    if timeout:
+        logger.info(f"✅ Supabase timeout set to {timeout}s")
+    
+    # 🚀 Render environment recommendation
+    logger.info("")
+    logger.info("📋 For production, add these to Render environment:")
+    logger.info("   NO_PROXY=*")
+    logger.info("   HTTP_PROXY=")
+    logger.info("   HTTPS_PROXY=")
+    logger.info("")
     
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
