@@ -1,16 +1,18 @@
-# api/routes/mpesa.py - Updated with auth
+# api/routes/mpesa.py - Production Ready v5 (Aligned)
 
 import os
 import logging
 import uuid
 from datetime import datetime
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify
 
 from services.mpesa import (
     initiate_stk_push,
     handle_mpesa_callback,
     query_payment_status,
-    is_mpesa_configured
+    auto_confirm_payment,
+    is_mpesa_configured,
+    get_mpesa_token
 )
 
 from services.supabase_client import (
@@ -20,17 +22,16 @@ from services.supabase_client import (
     get_payment_by_checkout_id,
     get_payment_by_mpesa_code,
     update_payment,
+    update_payment_by_custom_id,
     get_user_payments
 )
 
-# ✅ Add auth middleware
-from services.auth_middleware import require_auth, optional_auth, get_current_user
-
 logger = logging.getLogger(__name__)
+
 mpesa_bp = Blueprint("mpesa", __name__)
 
 MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
-MPESA_ENV = os.getenv("MPESA_ENV", "production")
+MPESA_ENV = os.getenv("MPESA_ENV", "production").lower().strip()
 
 
 # ─────────────────────────────────────────────
@@ -47,11 +48,10 @@ def response(success: bool, data=None, error=None, status=200):
 
 
 # ─────────────────────────────────────────────
-# INITIATE PAYMENT (WITH AUTH)
+# INITIATE PAYMENT
 # ─────────────────────────────────────────────
 
 @mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"])
-@require_auth  # ✅ Add authentication
 def initiate_payment():
     try:
         if request.method == "OPTIONS":
@@ -74,21 +74,17 @@ def initiate_payment():
         except:
             return response(False, error="Invalid amount", status=400)
 
-        # ✅ Get authenticated user
-        user = get_current_user()
-        user_id = user["user_id"] if user else data.get("user_id")
-
         payment_id = data.get("payment_id") or f"PAY-{uuid.uuid4().hex[:8].upper()}"
         reference = data.get("reference") or f"AUTO-{uuid.uuid4().hex[:8].upper()}"
 
-        logger.info(f"📤 Payment init: {payment_id} | {phone} | {amount} | user={user_id}")
+        logger.info(f"📤 Payment init: {payment_id} | {phone} | {amount}")
 
         result = initiate_stk_push(
             phone=phone,
             amount=amount,
             payment_id=payment_id,
             reference=reference,
-            user_id=user_id
+            user_id=data.get("user_id")
         )
 
         return response(True, {
@@ -103,11 +99,10 @@ def initiate_payment():
 
 
 # ─────────────────────────────────────────────
-# STATUS CHECK (WITH OPTIONAL AUTH)
+# STATUS CHECK
 # ─────────────────────────────────────────────
 
 @mpesa_bp.route("/status/<payment_id>", methods=["GET", "OPTIONS"])
-@optional_auth  # ✅ Optional auth for public status checks
 def get_payment_status(payment_id):
     try:
         if request.method == "OPTIONS":
@@ -147,7 +142,7 @@ def get_payment_status(payment_id):
 
 
 # ─────────────────────────────────────────────
-# CALLBACK (NO AUTH - M-PESA CALLS THIS)
+# CALLBACK
 # ─────────────────────────────────────────────
 
 @mpesa_bp.route("/callback", methods=["POST"])
@@ -166,34 +161,27 @@ def mpesa_callback():
 
 
 # ─────────────────────────────────────────────
-# AUTO CONFIRM (FIXED)
+# AUTO CONFIRM
 # ─────────────────────────────────────────────
 
 @mpesa_bp.route("/auto-confirm/<payment_id>", methods=["POST", "OPTIONS"])
-@require_auth  # ✅ Require auth for manual confirmation
 def auto_confirm(payment_id):
     try:
         if request.method == "OPTIONS":
             return response(True, {"status": "ok"})
 
-        # ✅ Check if auto_confirm_payment exists, otherwise implement inline
-        try:
-            from services.mpesa import auto_confirm_payment
-            result = auto_confirm_payment(payment_id)
-            return response(True, result)
-        except ImportError:
-            # Fallback: manual confirmation logic
-            payment = get_payment_by_custom_id(payment_id)
-            if not payment:
-                try:
-                    uuid.UUID(payment_id)
-                    payment = get_payment_by_id(payment_id)
-                except:
-                    return response(False, error="Payment not found", status=404)
-            
-            # Update payment status to completed
-            update_payment(payment["id"], {"status": "completed"})
-            return response(True, {"status": "completed", "payment_id": payment["id"]})
+        payment = get_payment_by_custom_id(payment_id)
+
+        if not payment:
+            try:
+                uuid.UUID(payment_id)
+                payment = get_payment_by_id(payment_id)
+            except:
+                return response(False, error="Payment not found", status=404)
+
+        result = auto_confirm_payment(payment["id"])
+
+        return response(True, result)
 
     except Exception as e:
         logger.error(e, exc_info=True)
@@ -201,20 +189,12 @@ def auto_confirm(payment_id):
 
 
 # ─────────────────────────────────────────────
-# USER PAYMENTS (WITH AUTH)
+# USER PAYMENTS
 # ─────────────────────────────────────────────
 
 @mpesa_bp.route("/user/<user_id>", methods=["GET"])
-@require_auth  # ✅ Require auth
 def user_payments(user_id):
     try:
-        # ✅ Verify user can only see their own payments
-        current_user = get_current_user()
-        if current_user and current_user["user_id"] != user_id:
-            # Allow if admin or same user
-            if current_user.get("role") != "admin":
-                return response(False, error="Unauthorized", status=403)
-        
         limit = request.args.get("limit", 50, type=int)
         payments = get_user_payments(user_id, limit)
         return response(True, {"payments": payments})
@@ -223,7 +203,7 @@ def user_payments(user_id):
 
 
 # ─────────────────────────────────────────────
-# HEALTH (PUBLIC)
+# HEALTH
 # ─────────────────────────────────────────────
 
 @mpesa_bp.route("/health", methods=["GET"])
@@ -238,7 +218,7 @@ def health():
 
 
 # ─────────────────────────────────────────────
-# TEST (PUBLIC)
+# TEST
 # ─────────────────────────────────────────────
 
 @mpesa_bp.route("/test", methods=["GET"])
