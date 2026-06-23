@@ -12,14 +12,38 @@ from typing import Callable, Dict, Any, Optional, List
 from datetime import datetime
 from threading import Thread, Event
 
-# ✅ FIX: Correct import path
+# ✅ FIX: Correct import path for Render deployment
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Try multiple import paths
 try:
     from services.supabase_client import get_supabase_client as get_supabase
+    print("✅ Imported supabase_client from services")
 except ImportError:
-    # Fallback for direct import
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from services.supabase_client import get_supabase_client as get_supabase
+    try:
+        from backend.services.supabase_client import get_supabase_client as get_supabase
+        print("✅ Imported supabase_client from backend.services")
+    except ImportError:
+        try:
+            from ..services.supabase_client import get_supabase_client as get_supabase
+            print("✅ Imported supabase_client from ..services")
+        except ImportError:
+            print("❌ Could not import supabase_client, using fallback")
+            # Fallback: try to import directly
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "supabase_client",
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), "services", "supabase_client.py")
+            )
+            if spec and spec.loader:
+                supabase_client_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(supabase_client_module)
+                get_supabase = supabase_client_module.get_supabase_client
+                print("✅ Imported supabase_client via fallback")
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +71,6 @@ class SupabaseRealtime:
     """
     
     def __init__(self):
-        # ✅ FIX: Use the correct client function
         self._client = None
         self._client_initialized = False
         self._init_client()
@@ -94,7 +117,14 @@ class SupabaseRealtime:
             return None
         
         try:
-            return client.channel(channel_id)
+            # ✅ FIX: Check if client has realtime attribute
+            if hasattr(client, 'realtime'):
+                return client.realtime.channel(channel_id)
+            elif hasattr(client, 'channel'):
+                return client.channel(channel_id)
+            else:
+                logger.error(f"❌ Client has no realtime or channel method")
+                return None
         except Exception as e:
             logger.error(f"❌ Failed to create channel {channel_id}: {e}")
             return None
@@ -129,11 +159,16 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                # ✅ FIX: Handle different payload structures
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'payments',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -145,6 +180,7 @@ class SupabaseRealtime:
                 return None
             
             for event_type in event_types:
+                # ✅ FIX: Use correct filter format
                 channel = channel.on(
                     'postgres_changes',
                     {
@@ -191,11 +227,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'service_requests',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -253,11 +293,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'valuations',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -315,11 +359,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'inspections',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -377,11 +425,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'assessments',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -439,11 +491,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'mileage_rates',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -501,11 +557,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'mileage_claims',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -562,11 +622,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'notifications',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -623,11 +687,15 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                
                 callback({
-                    'event': payload.get('event_type'),
+                    'event': event_type,
                     'table': 'user_profiles',
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
@@ -684,11 +752,16 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
+                event_type = payload.get('event_type') or payload.get('type')
+                new_data = payload.get('new', {}) or payload.get('data', {})
+                old_data = payload.get('old') or payload.get('old_data')
+                table = payload.get('table') or payload.get('schema')
+                
                 callback({
-                    'event': payload.get('event_type'),
-                    'table': payload.get('table'),
-                    'data': payload.get('new', {}),
-                    'old_data': payload.get('old'),
+                    'event': event_type,
+                    'table': table,
+                    'data': new_data,
+                    'old_data': old_data,
                     'timestamp': datetime.now().isoformat()
                 })
             except Exception as e:
