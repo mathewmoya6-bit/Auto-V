@@ -29,7 +29,6 @@ import uuid
 from datetime import datetime
 from functools import wraps
 from typing import Dict, Any, Optional
-from contextlib import contextmanager
 
 from flask import Flask, jsonify, request, g, has_request_context
 from flask_cors import CORS
@@ -166,7 +165,7 @@ class SupabaseConnection:
         
         for attempt in range(max_retries):
             try:
-                from supabase import create_client, Client
+                from supabase import create_client
                 
                 cls._client = create_client(
                     Config.SUPABASE_URL,
@@ -175,12 +174,11 @@ class SupabaseConnection:
                 cls._last_connected = datetime.utcnow()
                 cls._connection_attempts += 1
                 
-                # ✅ SAFE: Verify connection without crashing on missing table
+                # Safe verification - table might not exist
                 try:
                     cls._client.table('system_settings').select('*').limit(1).execute()
                     logger.info("Supabase connection verified")
                 except Exception as e:
-                    # Table might not exist yet - this is NOT critical
                     logger.warning(f"Supabase table verification skipped (non-critical): {e}")
                 
                 return cls._client
@@ -244,10 +242,27 @@ def with_retry(max_retries: int = 3, delay: int = 1, backoff: int = 2):
     return decorator
 
 
-# ─── Middleware Registration ─────────────────────────────────
-def register_middleware(app):
-    """Register request/response middleware safely (prevents duplicate registration)."""
+# ─── App Factory ─────────────────────────────────────────────
+def create_app():
+    """Application factory with all features initialized."""
     
+    # ─── Create Flask App ──────────────────────────────────────────
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = Config.SECRET_KEY
+    app.config['JSON_SORT_KEYS'] = False
+    
+    # ─── CORS ──────────────────────────────────────────────────────
+    CORS(
+        app,
+        resources={r"/*": {"origins": Config.ALLOWED_ORIGINS}},
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization", "X-Session-Token", "Accept", "X-Request-ID"],
+        expose_headers=["Content-Type", "Authorization", "X-Request-ID"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        max_age=3600
+    )
+    
+    # ─── REQUEST MIDDLEWARE ──────────────────────────────────────
     @app.before_request
     def before_request():
         """Add request ID and start time to request context."""
@@ -282,7 +297,6 @@ def register_middleware(app):
                 }
             )
             
-            # Log slow requests (>1 second)
             if duration > 1.0:
                 logger.warning(
                     f"Slow request: {duration:.2f}s",
@@ -295,30 +309,6 @@ def register_middleware(app):
                 )
         
         return response
-
-
-# ─── App Factory ─────────────────────────────────────────────
-def create_app():
-    """Application factory with all features initialized."""
-    
-    # ─── Configure Flask ──────────────────────────────────────────
-    app = Flask(__name__)
-    app.config['SECRET_KEY'] = Config.SECRET_KEY
-    app.config['JSON_SORT_KEYS'] = False
-    
-    # ─── CORS ──────────────────────────────────────────────────────
-    CORS(
-        app,
-        resources={r"/*": {"origins": Config.ALLOWED_ORIGINS}},
-        supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization", "X-Session-Token", "Accept", "X-Request-ID"],
-        expose_headers=["Content-Type", "Authorization", "X-Request-ID"],
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        max_age=3600
-    )
-    
-    # ─── REGISTER MIDDLEWARE (Safe, no duplicate risk) ───────────
-    register_middleware(app)
     
     # ─── ERROR HANDLERS ──────────────────────────────────────────
     @app.errorhandler(404)
@@ -444,8 +434,11 @@ def create_app():
     return app
 
 
-# ─── Gunicorn Entry Point ────────────────────────────────────
+# ─── Create App Instance for Gunicorn ──────────────────────
+# ✅ CORRECT: Gunicorn will call create_app()
+# Use: gunicorn "app:create_app()"
 app = create_app()
+
 
 # ─── Main Entry Point ────────────────────────────────────────
 if __name__ == "__main__":
