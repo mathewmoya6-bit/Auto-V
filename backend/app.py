@@ -1,4 +1,4 @@
-# app.py - Production Ready v5 (FULLY ALIGNED)
+# app.py - Production Ready v5 (Aligned)
 
 import os
 import logging
