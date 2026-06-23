@@ -1,4 +1,4 @@
-# services/__init__.py
+# services/__init__.py - Complete Version
 
 from .supabase_client import (
     get_supabase_client,
@@ -8,7 +8,7 @@ from .supabase_client import (
     get_payment_by_checkout_id,
     get_payment_by_mpesa_code,
     update_payment,
-    update_payment_by_custom_id,
+    update_payment_by_custom_id,  # ← MAKE SURE THIS IS INCLUDED
     get_user_payments
 )
 
@@ -36,7 +36,7 @@ __all__ = [
     "get_payment_by_checkout_id",
     "get_payment_by_mpesa_code",
     "update_payment",
-    "update_payment_by_custom_id",
+    "update_payment_by_custom_id",  # ← MAKE SURE THIS IS INCLUDED
     "get_user_payments",
     
     # M-Pesa
