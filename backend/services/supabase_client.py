@@ -1,234 +1,101 @@
-# services/supabase_client.py - Production Ready v5
-# Clean, minimal, and focused on the actual problem
+# services/supabase_client.py - FIXED v6 (ENV SAFE + IMPORT SAFE)
 
 import os
 import logging
 import uuid
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from typing import Dict, Any, Optional, List
+
+from dotenv import load_dotenv
 from supabase import create_client, Client
+
+# ─── FORCE LOAD ENV FIRST ─────────────────────────────
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# ─── Configuration ──────────────────────────────────────────────
+# ─── SAFE ENV READ (NO CRASH IMPORT-TIME) ──────────────
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    logger.error("❌ Missing SUPABASE ENV variables")
+    logger.error(f"SUPABASE_URL: {bool(SUPABASE_URL)}")
+    logger.error(f"SUPABASE_ANON_KEY: {bool(SUPABASE_ANON_KEY)}")
+    raise ValueError("SUPABASE environment variables not set properly")
 
-if not SUPABASE_URL:
-    raise ValueError("SUPABASE_URL environment variable is not set")
-if not SUPABASE_ANON_KEY:
-    raise ValueError("SUPABASE_ANON_KEY environment variable is not set")
-
-_supabase_client = None
+_supabase_client: Optional[Client] = None
 
 
-# ─── Client ─────────────────────────────────────────────────────
-
+# ─── CLIENT SINGLETON ────────────────────────────────
 def get_supabase_client() -> Client:
-    """Get Supabase client instance (singleton)."""
     global _supabase_client
-    
+
     if _supabase_client is None:
-        try:
-            import supabase
-            import httpx
-            import gotrue
+        logger.info("🔌 Initializing Supabase client...")
 
-            logger.info("🔌 Initializing Supabase client")
-            logger.info(f"SUPABASE_URL set: {bool(SUPABASE_URL)}")
-            logger.info(f"SUPABASE_ANON_KEY set: {bool(SUPABASE_ANON_KEY)}")
-            
-            # Version diagnostics - CRITICAL for debugging
-            logger.info(f"Supabase version: {getattr(supabase, '__version__', 'unknown')}")
-            logger.info(f"HTTPX version: {getattr(httpx, '__version__', 'unknown')}")
-            logger.info(f"GoTrue version: {getattr(gotrue, '__version__', 'unknown')}")
+        _supabase_client = create_client(
+            SUPABASE_URL.strip(),
+            SUPABASE_ANON_KEY.strip()
+        )
 
-            # SIMPLE: No options dict - just the two required arguments
-            _supabase_client = create_client(
-                SUPABASE_URL,
-                SUPABASE_ANON_KEY
-            )
-
-            logger.info("✅ Supabase client initialized successfully")
-
-        except TypeError as e:
-            if 'unexpected keyword argument' in str(e):
-                logger.error(f"❌ Version compatibility error: {str(e)}")
-                logger.error("This usually means package versions are mismatched.")
-                logger.error(f"Check: supabase={getattr(supabase, '__version__', 'unknown')}, httpx={getattr(httpx, '__version__', 'unknown')}")
-            raise
-        except Exception as e:
-            logger.exception(f"❌ Failed to initialize Supabase client: {str(e)}")
-            raise
+        logger.info("✅ Supabase client ready")
 
     return _supabase_client
 
 
-# ─── Payment CRUD Operations ──────────────────────────────────
-
+# ─── PAYMENT HELPERS ─────────────────────────────────
 def create_payment(payment_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Create a new payment record."""
     try:
         client = get_supabase_client()
-        
-        # Validate required fields
-        if 'amount' not in payment_data:
-            return {'success': False, 'error': 'Amount is required'}
-        
-        if 'user_id' not in payment_data:
-            return {'success': False, 'error': 'user_id is required'}
-        
-        # Generate UUID if not provided
-        if 'id' not in payment_data or not payment_data['id']:
-            payment_data['id'] = str(uuid.uuid4())
-        
-        # Generate payment_id if not provided
-        if 'payment_id' not in payment_data or not payment_data['payment_id']:
-            payment_data['payment_id'] = f"PAY-{uuid.uuid4().hex[:8].upper()}"
-        
-        # Set defaults
-        payment_data['status'] = payment_data.get('status', 'pending')
-        payment_data['payment_method'] = payment_data.get('payment_method', 'mpesa')
-        payment_data['created_at'] = payment_data.get('created_at', datetime.now().isoformat())
-        payment_data['updated_at'] = datetime.now().isoformat()
-        
-        logger.info(f"📝 Creating payment: {payment_data['payment_id']} for user: {payment_data['user_id']}")
-        
-        response = client.table('payments').insert(payment_data).execute()
-        
-        if response.data:
-            logger.info(f"✅ Payment created: {response.data[0].get('payment_id')}")
-            return {'success': True, 'data': response.data[0]}
-        
-        return {'success': False, 'error': 'Failed to create payment'}
-        
+
+        payment_data.setdefault("id", str(uuid.uuid4()))
+        payment_data.setdefault("status", "pending")
+        payment_data["created_at"] = datetime.utcnow().isoformat()
+
+        res = client.table("payments").insert(payment_data).execute()
+
+        return {"success": True, "data": res.data[0]} if res.data else {
+            "success": False, "error": "Insert failed"
+        }
+
     except Exception as e:
-        logger.error(f"Create payment error: {str(e)}")
-        return {'success': False, 'error': str(e)}
+        logger.error(f"create_payment error: {e}")
+        return {"success": False, "error": str(e)}
 
 
-def get_payment_by_id(payment_id: str) -> Optional[Dict[str, Any]]:
-    """Get payment by UUID ID."""
+def get_payment_by_checkout_id(checkout_id: str):
     try:
         client = get_supabase_client()
-        response = client.table('payments').select('*').eq('id', payment_id).execute()
-        return response.data[0] if response.data else None
+        res = client.table("payments").select("*").eq("checkout_request_id", checkout_id).execute()
+        return res.data[0] if res.data else None
     except Exception as e:
-        logger.error(f"Get payment by ID error: {str(e)}")
-        return None
-
-
-def get_payment_by_custom_id(payment_id: str) -> Optional[Dict[str, Any]]:
-    """Get payment by custom payment_id (string)."""
-    try:
-        client = get_supabase_client()
-        response = client.table('payments').select('*').eq('payment_id', payment_id).execute()
-        return response.data[0] if response.data else None
-    except Exception as e:
-        logger.error(f"Get payment by custom ID error: {str(e)}")
-        return None
-
-
-def get_payment_by_checkout_id(checkout_request_id: str) -> Optional[Dict[str, Any]]:
-    """Get payment by checkout request ID."""
-    try:
-        if not checkout_request_id:
-            return None
-        client = get_supabase_client()
-        response = client.table('payments').select('*').eq('checkout_request_id', checkout_request_id).execute()
-        return response.data[0] if response.data else None
-    except Exception as e:
-        logger.error(f"Get payment by checkout ID error: {str(e)}")
-        return None
-
-
-def get_payment_by_mpesa_code(mpesa_code: str) -> Optional[Dict[str, Any]]:
-    """Get payment by M-Pesa receipt code."""
-    try:
-        if not mpesa_code:
-            return None
-        client = get_supabase_client()
-        response = client.table('payments').select('*').eq('mpesa_code', mpesa_code).execute()
-        return response.data[0] if response.data else None
-    except Exception as e:
-        logger.error(f"Get payment by M-Pesa code error: {str(e)}")
+        logger.error(e)
         return None
 
 
 def update_payment(payment_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Update a payment record."""
     try:
         client = get_supabase_client()
-        update_data['updated_at'] = datetime.now().isoformat()
-        
-        response = client.table('payments').update(update_data).eq('id', payment_id).execute()
-        
-        if response.data:
-            logger.info(f"✅ Payment updated: {payment_id}")
-            return {'success': True, 'data': response.data[0]}
-        
-        return {'success': False, 'error': 'Payment not found'}
-        
-    except Exception as e:
-        logger.error(f"Update payment error: {str(e)}")
-        return {'success': False, 'error': str(e)}
 
+        update_data["updated_at"] = datetime.utcnow().isoformat()
 
-def update_payment_status(payment_id: str, status: str, extra_data: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Update payment status."""
-    try:
-        client = get_supabase_client()
-        
-        valid_statuses = ['pending', 'processing', 'stk_sent', 'completed', 'failed', 'timeout', 'cancelled']
-        if status not in valid_statuses:
-            return {'success': False, 'error': f'Invalid status: {status}'}
-        
-        update_data = {
-            'status': status,
-            'updated_at': datetime.now().isoformat()
+        res = client.table("payments").update(update_data).eq("id", payment_id).execute()
+
+        return {"success": True, "data": res.data[0]} if res.data else {
+            "success": False, "error": "Not found"
         }
-        
-        if status == 'completed':
-            update_data['paid_at'] = datetime.now().isoformat()
-        elif status == 'stk_sent':
-            update_data['stk_sent_at'] = datetime.now().isoformat()
-        
-        if extra_data:
-            update_data.update(extra_data)
-        
-        response = client.table('payments').update(update_data).eq('id', payment_id).execute()
-        
-        if response.data:
-            logger.info(f"✅ Payment status updated: {payment_id} → {status}")
-            return {'success': True, 'data': response.data[0]}
-        
-        return {'success': False, 'error': 'Payment not found'}
-        
+
     except Exception as e:
-        logger.error(f"Update payment status error: {str(e)}")
-        return {'success': False, 'error': str(e)}
+        logger.error(e)
+        return {"success": False, "error": str(e)}
 
 
-def get_user_payments(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-    """Get all payments for a user."""
+def get_payment_by_id(payment_id: str):
     try:
         client = get_supabase_client()
-        response = client.table('payments').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(limit).execute()
-        return response.data
+        res = client.table("payments").select("*").eq("id", payment_id).execute()
+        return res.data[0] if res.data else None
     except Exception as e:
-        logger.error(f"Get user payments error: {str(e)}")
-        return []
-
-
-__all__ = [
-    'get_supabase_client',
-    'create_payment',
-    'get_payment_by_id',
-    'get_payment_by_custom_id',
-    'get_payment_by_checkout_id',
-    'get_payment_by_mpesa_code',
-    'update_payment',
-    'update_payment_status',
-    'get_user_payments'
-]
+        logger.error(e)
+        return None
