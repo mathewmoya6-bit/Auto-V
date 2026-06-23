@@ -1,4 +1,4 @@
-# services/__init__.py
+# services/__init__.py - Production Ready v2 (FULLY ALIGNED)
 
 from .supabase_client import (
     get_supabase_client,
@@ -24,7 +24,10 @@ from .mpesa import (
 from .auth_middleware import (
     verify_token,
     require_auth,
-    get_current_user
+    optional_auth,
+    get_current_user,
+    generate_token,
+    verify_supabase_token
 )
 
 __all__ = [
@@ -50,5 +53,8 @@ __all__ = [
     # Auth
     "verify_token",
     "require_auth",
-    "get_current_user"
+    "optional_auth",
+    "get_current_user",
+    "generate_token",
+    "verify_supabase_token"
 ]
