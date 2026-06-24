@@ -23,12 +23,12 @@ def get_supabase_client():
         from supabase import create_client
         
         SUPABASE_URL = os.getenv("SUPABASE_URL")
-        SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+        SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
         
-        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        if not SUPABASE_URL or not SUPABASE_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
         
-        _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
         logger.info("✅ Supabase client initialized")
         return _supabase_client
         
