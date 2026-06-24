@@ -2,13 +2,15 @@
 # API Package Initialization
 # ============================================================
 
-from flask import Blueprint
+from fastapi import APIRouter
 
-# Create main API blueprint
-api_bp = Blueprint("api", __name__, url_prefix="/api")
+# Create main API router
+router = APIRouter(prefix="/api")
 
-# Import routes to register them
+# Import route modules
 from api.routes import mpesa
 
-# Export blueprints for easy import
-__all__ = ["api_bp", "mpesa"]
+# Register routers
+router.include_router(mpesa.router, prefix="/mpesa", tags=["M-Pesa"])
+
+__all__ = ["router"]
