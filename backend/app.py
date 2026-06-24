@@ -1,31 +1,30 @@
 # ============================================================
-# AUTO-V API - CORRECT IMPORT ORDER
+# AUTO-V API - FIXED IMPORT
 # ============================================================
 
-# ─── Step 1: Load environment variables FIRST ──────────────
 import os
+import sys
 import logging
 from dotenv import load_dotenv
 
-# Load .env before ANY other imports
+# Add current directory to path so Python can find modules
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 load_dotenv()
 
-# ─── Step 2: Now import everything else ────────────────────
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+# Import using absolute path
 from api.routes.mpesa import mpesa_bp
 
-# ─── Step 3: Create the app ────────────────────────────────
 app = Flask(__name__)
 
-# ─── Step 4: Configure CORS ────────────────────────────────
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ─── Step 5: Register Blueprints ────────────────────────────
+# Register Blueprints
 app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
 
-# ─── Step 6: Routes ──────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
@@ -48,7 +47,6 @@ def health_check():
         }
     })
 
-# ─── Step 7: Run ─────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
