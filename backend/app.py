@@ -1,465 +1,451 @@
-# ============================================================
-# CRITICAL SYSTEM FIX - MUST BE FIRST LINE IN APP ENTRYPOINT
-# ============================================================
+"""
+AUTO-V Backend API
+FastAPI + Supabase Integration
+Updated with better error handling, CORS, and async support
+"""
 
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse, FileResponse
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Dict, Any
+from datetime import datetime, date, timedelta
 import os
-
-# ─── PROXY HARD RESET (Production Grade - FINAL) ────────────
-proxy_keys = [
-    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
-    "http_proxy", "https_proxy", "all_proxy"
-]
-
-# Remove proxies completely - DO NOT set empty string
-for k in proxy_keys:
-    os.environ.pop(k, None)
-
-# Hard guarantee: prevent HTTPX proxy resolution entirely
-os.environ["NO_PROXY"] = "*"
-os.environ.setdefault("SUPABASE_POSTGREST_CLIENT_TIMEOUT", "60")
-
-# ============================================================
-# NOW SAFE TO IMPORT EVERYTHING ELSE
-# ============================================================
-
-import logging
-import json
-import time
 import uuid
-from datetime import datetime
-from functools import wraps
-from typing import Dict, Any, Optional
-
-from flask import Flask, jsonify, request, g, has_request_context
-from flask_cors import CORS
+import logging
+from supabase import create_client, Client
 from dotenv import load_dotenv
+import httpx
+from contextlib import asynccontextmanager
 
-load_dotenv(override=True)
+# Load environment variables
+load_dotenv()
 
-# ─── Structured JSON Logger ──────────────────────────────────
-class StructuredLogger:
-    """Production-grade JSON structured logger with request tracing."""
-    
-    @staticmethod
-    def _get_request_id() -> str:
-        if has_request_context():
-            return getattr(g, 'request_id', 'no-request')
-        return 'no-request'
-    
-    @staticmethod
-    def _format_log(level: str, message: str, extra: Dict[str, Any] = None) -> str:
-        log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "level": level,
-            "message": message,
-            "request_id": StructuredLogger._get_request_id(),
-            "environment": os.getenv("FLASK_ENV", "production"),
-            "service": "auto-v",
-            "version": os.getenv("APP_VERSION", "5.1.0")
-        }
-        if extra:
-            log_entry.update(extra)
-        return json.dumps(log_entry)
-    
-    @staticmethod
-    def info(message: str, extra: Dict[str, Any] = None):
-        print(StructuredLogger._format_log("INFO", message, extra))
-    
-    @staticmethod
-    def warning(message: str, extra: Dict[str, Any] = None):
-        print(StructuredLogger._format_log("WARNING", message, extra))
-    
-    @staticmethod
-    def error(message: str, extra: Dict[str, Any] = None):
-        print(StructuredLogger._format_log("ERROR", message, extra))
-    
-    @staticmethod
-    def debug(message: str, extra: Dict[str, Any] = None):
-        if os.getenv("FLASK_DEBUG", "false").lower() == "true":
-            print(StructuredLogger._format_log("DEBUG", message, extra))
-    
-    @staticmethod
-    def critical(message: str, extra: Dict[str, Any] = None):
-        print(StructuredLogger._format_log("CRITICAL", message, extra))
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+# ============================================
+# SUPABASE CONFIGURATION (FIXED)
+# ============================================
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://tsvejnzxrxrrecgquxbq.supabase.co")
+# Try SUPABASE_ANON_KEY first, fallback to SUPABASE_KEY
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
+if not SUPABASE_KEY:
+    raise ValueError("Missing SUPABASE_ANON_KEY or SUPABASE_KEY in environment")
 
-logger = StructuredLogger()
+logger.info(f"Supabase URL: {SUPABASE_URL}")
+logger.info(f"Supabase Key: {SUPABASE_KEY[:20]}...")
 
-# ─── Config Manager ──────────────────────────────────────────
-class Config:
-    """Centralized configuration management with environment overrides."""
-    
-    # Core
-    ENV = os.getenv("FLASK_ENV", "production")
-    DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    PORT = int(os.getenv("PORT", 10000))
-    SECRET_KEY = os.getenv("SECRET_KEY", os.urandom(24).hex())
-    APP_VERSION = os.getenv("APP_VERSION", "5.1.0")
-    
-    # Supabase
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-    SUPABASE_TIMEOUT = int(os.getenv("SUPABASE_POSTGREST_CLIENT_TIMEOUT", "60"))
-    SUPABASE_MAX_RETRIES = int(os.getenv("SUPABASE_MAX_RETRIES", "3"))
-    SUPABASE_RETRY_DELAY = int(os.getenv("SUPABASE_RETRY_DELAY", "2"))
-    
-    # M-Pesa
-    MPESA_CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY")
-    MPESA_CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET")
-    MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
-    MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
-    MPESA_ENV = os.getenv("MPESA_ENV", "production")
-    MPESA_CALLBACK_URL = os.getenv("MPESA_CALLBACK_URL")
-    
-    # Redis
-    REDIS_URL = os.getenv("REDIS_URL")
-    
-    # CORS
-    ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-    
-    # Rate Limiting
-    RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
-    RATE_LIMIT_DEFAULT = os.getenv("RATE_LIMIT_DEFAULT", "200 per day,50 per hour")
-    
-    @classmethod
-    def get_all(cls) -> Dict[str, Any]:
-        """Get all config values for health checks."""
-        return {
-            "environment": cls.ENV,
-            "version": cls.APP_VERSION,
-            "debug": cls.DEBUG,
-            "supabase_configured": bool(cls.SUPABASE_URL and cls.SUPABASE_ANON_KEY),
-            "mpesa_configured": bool(cls.MPESA_CONSUMER_KEY and cls.MPESA_CONSUMER_SECRET),
-            "redis_configured": bool(cls.REDIS_URL),
-            "rate_limiting": cls.RATE_LIMIT_ENABLED
-        }
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# ============================================
+# FASTAPI APP WITH LIFESPAN
+# ============================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("🚀 AUTO-V API Starting...")
+    logger.info(f"📡 Environment: {os.getenv('FLASK_ENV', 'production')}")
+    logger.info(f"📡 Version: {os.getenv('APP_VERSION', '1.0.0')}")
+    yield
+    # Shutdown
+    logger.info("👋 AUTO-V API Shutting down...")
 
-# ─── Supabase Connection Wrapper ────────────────────────────
-class SupabaseConnection:
-    """Production-grade Supabase connection with retry and fallback."""
-    
-    _instance = None
-    _client = None
-    _last_connected = None
-    _connection_attempts = 0
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-    
-    @classmethod
-    def get_client(cls, retry: bool = True):
-        """Get Supabase client with retry logic."""
-        if cls._client is not None:
-            return cls._client
-        
-        if not Config.SUPABASE_URL or not Config.SUPABASE_ANON_KEY:
-            logger.error("Supabase credentials not configured")
-            raise ValueError("Supabase credentials not configured")
-        
-        max_retries = Config.SUPABASE_MAX_RETRIES if retry else 1
-        retry_delay = Config.SUPABASE_RETRY_DELAY
-        
-        for attempt in range(max_retries):
-            try:
-                from supabase import create_client
-                
-                cls._client = create_client(
-                    Config.SUPABASE_URL,
-                    Config.SUPABASE_ANON_KEY
-                )
-                cls._last_connected = datetime.utcnow()
-                cls._connection_attempts += 1
-                
-                # Safe verification - table might not exist
-                try:
-                    cls._client.table('fuel_prices').select('*').limit(1).execute()
-                    logger.info("Supabase connection verified")
-                except Exception as e:
-                    logger.warning(f"Supabase table verification skipped (non-critical): {e}")
-                
-                return cls._client
-                
-            except Exception as e:
-                cls._client = None
-                cls._connection_attempts += 1
-                
-                if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)
-                    logger.warning(
-                        f"Supabase connection attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s"
-                    )
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Supabase connection failed after {max_retries} attempts: {e}")
-                    raise
-    
-    @classmethod
-    def reset(cls):
-        """Reset connection (useful for testing)."""
-        cls._client = None
-        cls._last_connected = None
-    
-    @classmethod
-    def get_status(cls) -> Dict[str, Any]:
-        """Get connection status for health checks."""
-        return {
-            "connected": cls._client is not None,
-            "last_connected": cls._last_connected.isoformat() + "Z" if cls._last_connected else None,
-            "attempts": cls._connection_attempts,
-            "url_configured": bool(Config.SUPABASE_URL),
-            "timeout": Config.SUPABASE_TIMEOUT
-        }
+app = FastAPI(
+    title="AUTO-V API",
+    description="Vehicle Valuation, Inspection, and Mileage Reimbursement API",
+    version="2.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan
+)
 
+# ============================================
+# CORS CONFIGURATION
+# ============================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "https://*.supabase.co",
+        "https://auto-v.meipressgroup.com",
+        "https://www.auto-v.meipressgroup.com",
+        "*"  # For development - restrict in production
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
+)
 
-# ─── App Factory ─────────────────────────────────────────────
-def create_app():
-    """Application factory with all features initialized."""
-    
-    # ─── Create Flask App ──────────────────────────────────────────
-    app = Flask(__name__)
-    app.config['SECRET_KEY'] = Config.SECRET_KEY
-    app.config['JSON_SORT_KEYS'] = False
-    
-    # ─── CORS ──────────────────────────────────────────────────────
-    CORS(
-        app,
-        resources={r"/*": {"origins": Config.ALLOWED_ORIGINS}},
-        supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization", "X-Session-Token", "Accept", "X-Request-ID"],
-        expose_headers=["Content-Type", "Authorization", "X-Request-ID"],
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        max_age=3600
-    )
-    
-    # ─── REQUEST MIDDLEWARE ──────────────────────────────────────
-    @app.before_request
-    def before_request():
-        """Add request ID and start time to request context."""
-        g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4())[:8])
-        g.start_time = time.time()
-        
-        logger.info(
-            f"Request started: {request.method} {request.path}",
-            {
-                "method": request.method,
-                "path": request.path,
-                "client_ip": request.remote_addr,
-                "user_agent": request.headers.get('User-Agent', 'unknown')
-            }
-        )
+# Security
+security = HTTPBearer()
 
-    @app.after_request
-    def after_request(response):
-        """Add request ID to response and log completion."""
-        if has_request_context() and hasattr(g, 'request_id'):
-            response.headers['X-Request-ID'] = g.request_id
-            
-            duration = time.time() - g.start_time if hasattr(g, 'start_time') else 0
-            logger.info(
-                f"Request completed: {request.method} {request.path}",
-                {
-                    "method": request.method,
-                    "path": request.path,
-                    "status": response.status_code,
-                    "duration_ms": round(duration * 1000, 2),
-                    "request_id": g.request_id
-                }
-            )
-            
-            if duration > 1.0:
-                logger.warning(
-                    f"Slow request: {duration:.2f}s",
-                    {
-                        "path": request.path,
-                        "duration": duration,
-                        "status": response.status_code,
-                        "request_id": g.request_id
-                    }
-                )
-        
-        return response
-    
-    # ─── ERROR HANDLERS ──────────────────────────────────────────
-    @app.errorhandler(404)
-    def not_found(error):
-        logger.warning(f"Not found: {request.path}")
-        return jsonify({
-            "success": False,
-            "error": "Not Found",
-            "message": "The requested resource was not found",
-            "path": request.path,
-            "request_id": getattr(g, 'request_id', None)
-        }), 404
+# ============================================
+# PYDANTIC MODELS
+# ============================================
 
-    @app.errorhandler(405)
-    def method_not_allowed(error):
-        logger.warning(f"Method not allowed: {request.method} {request.path}")
-        return jsonify({
-            "success": False,
-            "error": "Method Not Allowed",
-            "message": f"Method {request.method} is not allowed for this endpoint",
-            "request_id": getattr(g, 'request_id', None)
-        }), 405
+class User(BaseModel):
+    email: str = Field(..., pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    password: Optional[str] = Field(None, min_length=6)
+    full_name: Optional[str] = None
+    phone: Optional[str] = Field(None, pattern=r'^[0-9]{10,12}$')
 
-    @app.errorhandler(500)
-    def internal_error(error):
-        logger.error(f"Internal server error: {error}", {"error": str(error)})
-        return jsonify({
-            "success": False,
-            "error": "Internal Server Error",
-            "message": "An unexpected error occurred. Please try again later.",
-            "request_id": getattr(g, 'request_id', None)
-        }), 500
+class VehicleValuationRequest(BaseModel):
+    registration_number: str = Field(..., min_length=3, max_length=20)
+    make: str = Field(..., min_length=2)
+    model: str = Field(..., min_length=1)
+    year: int = Field(ge=1950, le=datetime.now().year)
+    odometer: int = Field(ge=0, le=500000)
+    condition: str = Field(..., pattern="^(Excellent|Good|Fair|Poor)$")
+    accident_history: str = Field(..., pattern="^(None|Minor|Moderate|Major)$")
+    valuation_purpose: str
 
-    @app.errorhandler(Exception)
-    def handle_exception(error):
-        logger.error(f"Unhandled exception: {error}", {"error": str(error)})
-        return jsonify({
-            "success": False,
-            "error": "Server Error",
-            "message": "An unexpected error occurred",
-            "request_id": getattr(g, 'request_id', None)
-        }), 500
-    
-    # ─── REGISTER BLUEPRINTS ──────────────────────────────────────
+class MileageRateRequest(BaseModel):
+    vehicle_id: str
+    annual_km: int = Field(ge=0, le=200000)
+    fuel_type: str = Field(..., pattern="^(petrol|diesel|hybrid|electric|lpg)$")
+    journey_purpose: str = Field(..., pattern="^(business|ngo|government|private|fleet)$")
+    road_condition: str = Field(..., pattern="^(highway|mixed|urban|rural|offroad)$")
+
+# ============================================
+# AUTHENTICATION DEPENDENCY
+# ============================================
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify JWT token from Supabase."""
+    token = credentials.credentials
     try:
-        from api.routes.mpesa import mpesa_bp
-        app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
-        logger.info("✅ M-Pesa blueprint registered successfully at /api/mpesa")
-    except ImportError as e:
-        logger.error(f"❌ Failed to import M-Pesa blueprint: {e}")
+        # Verify with Supabase
+        user = supabase.auth.get_user(token)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
     except Exception as e:
-        logger.error(f"❌ M-Pesa blueprint failed to load: {e}")
-    
-    # ─── PREFLIGHT HANDLER ──────────────────────────────────────
-    @app.route("/<path:path>", methods=["OPTIONS"])
-    def options_handler(path):
-        """Handle all OPTIONS requests for CORS."""
-        return jsonify({"status": "ok"}), 200
-    
-    # ─── ROUTES ──────────────────────────────────────────────────
-    @app.route("/", methods=["GET"])
-    def home():
-        return jsonify({
-            "success": True,
-            "data": {
-                "name": "AUTO-V API",
-                "version": Config.APP_VERSION,
-                "environment": Config.ENV,
-                "status": "operational",
-                "endpoints": {
-                    "health": "/api/health",
-                    "ping": "/api/ping",
-                    "mpesa_initiate": "/api/mpesa/initiate",
-                    "mpesa_status": "/api/mpesa/status/<payment_id>",
-                    "mpesa_callback": "/api/mpesa/callback",
-                    "mpesa_auto_confirm": "/api/mpesa/auto-confirm/<payment_id>",
-                    "mpesa_user_payments": "/api/mpesa/user/<user_id>"
-                }
-            }
-        }), 200
-    
-    @app.route("/api/health", methods=["GET"])
-    def health():
-        """Comprehensive health check with all services."""
-        mpesa_configured = bool(
-            Config.MPESA_CONSUMER_KEY and 
-            Config.MPESA_CONSUMER_SECRET and 
-            Config.MPESA_PASSKEY
+        logger.error(f"Auth error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+def calculate_mileage_rate(data: MileageRateRequest) -> Dict[str, Any]:
+    """Calculate mileage rate based on vehicle and usage parameters."""
+    # Default rates (in production, these would come from a database)
+    base_rates = {
+        "petrol": 18.50,
+        "diesel": 16.80,
+        "hybrid": 14.20,
+        "electric": 8.50,
+        "lpg": 12.00
+    }
+    
+    journey_factors = {
+        "business": 1.0,
+        "ngo": 0.95,
+        "government": 0.90,
+        "private": 1.0,
+        "fleet": 0.92
+    }
+    
+    road_factors = {
+        "highway": 0.85,
+        "mixed": 1.0,
+        "urban": 1.10,
+        "rural": 0.95,
+        "offroad": 1.25
+    }
+    
+    base_rate = base_rates.get(data.fuel_type, 18.50)
+    journey_factor = journey_factors.get(data.journey_purpose, 1.0)
+    road_factor = road_factors.get(data.road_condition, 1.0)
+    
+    # Calculate rate
+    rate = base_rate * journey_factor * road_factor
+    
+    # Annual cost
+    annual_cost = rate * data.annual_km
+    
+    return {
+        "rate_per_km": round(rate, 2),
+        "annual_cost": round(annual_cost, 2),
+        "base_rate": base_rate,
+        "factors_applied": {
+            "journey": journey_factor,
+            "road": road_factor
+        }
+    }
+
+# ============================================
+# API ROUTES
+# ============================================
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "success": True,
+        "data": {
+            "name": "AUTO-V API",
+            "version": os.getenv("APP_VERSION", "1.0.0"),
+            "status": "operational",
+            "docs": "/api/docs",
+            "health": "/api/health"
+        }
+    }
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "success": True,
+        "data": {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "version": os.getenv("APP_VERSION", "1.0.0"),
+            "environment": os.getenv("FLASK_ENV", "production"),
+            "supabase_connected": supabase is not None
+        }
+    }
+
+@app.get("/api/ping")
+async def ping():
+    """Ping endpoint."""
+    return {
+        "success": True,
+        "data": {
+            "pong": True,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+    }
+
+@app.post("/api/auth/register")
+async def register_user(user: User):
+    """Register a new user."""
+    try:
+        # Check if user exists
+        existing = supabase.table("users").select("*").eq("email", user.email).execute()
+        if existing.data:
+            raise HTTPException(status_code=400, detail="Email already registered")
         
-        return jsonify({
+        # Create user in Supabase Auth
+        auth_response = supabase.auth.sign_up({
+            "email": user.email,
+            "password": user.password
+        })
+        
+        if not auth_response.user:
+            raise HTTPException(status_code=400, detail="Registration failed")
+        
+        # Create user profile
+        profile_data = {
+            "id": auth_response.user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "phone": user.phone,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        supabase.table("users").insert(profile_data).execute()
+        
+        return {
             "success": True,
             "data": {
-                "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "version": Config.APP_VERSION,
-                "environment": Config.ENV,
-                "config": Config.get_all(),
-                "supabase": SupabaseConnection.get_status(),
-                "mpesa": {
-                    "configured": mpesa_configured,
-                    "environment": Config.MPESA_ENV,
-                    "shortcode": Config.MPESA_SHORTCODE,
-                    "callback_url": Config.MPESA_CALLBACK_URL
-                },
-                "proxy": {
-                    "HTTP_PROXY": "cleared" if os.getenv("HTTP_PROXY") is None else "set",
-                    "HTTPS_PROXY": "cleared" if os.getenv("HTTPS_PROXY") is None else "set",
-                    "NO_PROXY": os.getenv("NO_PROXY", "not set")
-                },
-                "redis": {
-                    "configured": bool(Config.REDIS_URL)
-                }
+                "user_id": auth_response.user.id,
+                "email": user.email,
+                "message": "User registered successfully"
             }
-        }), 200
-    
-    @app.route("/api/ping", methods=["GET"])
-    def ping():
-        return jsonify({
+        }
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/login")
+async def login_user(email: str, password: str):
+    """Login a user."""
+    try:
+        auth_response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
+        
+        if not auth_response.user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        return {
             "success": True,
             "data": {
-                "pong": True,
-                "timestamp": datetime.utcnow().isoformat() + "Z"
+                "user_id": auth_response.user.id,
+                "email": auth_response.user.email,
+                "access_token": auth_response.session.access_token,
+                "refresh_token": auth_response.session.refresh_token
             }
-        }), 200
-    
-    @app.route("/api/routes", methods=["GET"])
-    def list_all_routes():
-        """Debug: List all registered routes."""
-        routes = []
-        for rule in app.url_map.iter_rules():
-            routes.append({
-                "endpoint": rule.endpoint,
-                "methods": list(rule.methods),
-                "path": str(rule)
-            })
-        return jsonify({
+        }
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.post("/api/valuation")
+async def calculate_valuation(request: VehicleValuationRequest):
+    """Calculate vehicle valuation."""
+    try:
+        # Base valuation logic
+        base_value = 2000000  # Base value for new vehicle
+        
+        # Depreciation by year
+        current_year = datetime.now().year
+        age = current_year - request.year
+        depreciation = age * 0.10  # 10% per year
+        value = base_value * (1 - depreciation)
+        
+        # Condition adjustment
+        condition_factors = {
+            "Excellent": 1.1,
+            "Good": 1.0,
+            "Fair": 0.85,
+            "Poor": 0.70
+        }
+        
+        # Accident adjustment
+        accident_factors = {
+            "None": 1.0,
+            "Minor": 0.95,
+            "Moderate": 0.85,
+            "Major": 0.70
+        }
+        
+        condition_factor = condition_factors.get(request.condition, 1.0)
+        accident_factor = accident_factors.get(request.accident_history, 1.0)
+        
+        # Odometer adjustment
+        odometer_factor = max(0.5, 1 - (request.odometer / 200000))
+        
+        final_value = value * condition_factor * accident_factor * odometer_factor
+        
+        return {
             "success": True,
             "data": {
-                "total": len(routes),
-                "routes": sorted(routes, key=lambda x: x["path"])
+                "registration_number": request.registration_number,
+                "make": request.make,
+                "model": request.model,
+                "year": request.year,
+                "estimated_value": round(final_value, 2),
+                "base_value": round(value, 2),
+                "condition_adjustment": condition_factor,
+                "accident_adjustment": accident_factor,
+                "odometer_adjustment": round(odometer_factor, 2),
+                "valuation_date": datetime.utcnow().isoformat() + "Z"
             }
-        }), 200
-    
-    return app
+        }
+    except Exception as e:
+        logger.error(f"Valuation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/mileage/calculate")
+async def calculate_mileage_rate_endpoint(request: MileageRateRequest):
+    """Calculate mileage reimbursement rate."""
+    try:
+        result = calculate_mileage_rate(request)
+        return {
+            "success": True,
+            "data": result
+        }
+    except Exception as e:
+        logger.error(f"Mileage calculation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# ─── Create App Instance for Gunicorn ──────────────────────
-app = create_app()
+@app.get("/api/vehicles/{vehicle_id}")
+async def get_vehicle(vehicle_id: str):
+    """Get vehicle details by ID."""
+    try:
+        result = supabase.table("vehicles").select("*").eq("id", vehicle_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        return {
+            "success": True,
+            "data": result.data[0]
+        }
+    except Exception as e:
+        logger.error(f"Get vehicle error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/routes")
+async def list_routes():
+    """List all registered routes (debug)."""
+    routes = []
+    for route in app.routes:
+        routes.append({
+            "path": route.path,
+            "methods": list(route.methods) if hasattr(route, 'methods') else []
+        })
+    return {
+        "success": True,
+        "data": {
+            "total": len(routes),
+            "routes": routes
+        }
+    }
 
-# ─── Main Entry Point ────────────────────────────────────────
-if __name__ == "__main__":
-    logger.info(
-        f"🚀 AUTO-V starting on port {Config.PORT}",
-        {
-            "environment": Config.ENV,
-            "version": Config.APP_VERSION,
-            "port": Config.PORT
+# ============================================
+# M-PESA ROUTES (FastAPI compatible)
+# ============================================
+
+from api.routes.mpesa import router as mpesa_router
+
+# Register M-Pesa routes
+app.include_router(mpesa_router, prefix="/api/mpesa", tags=["M-Pesa"])
+
+# ============================================
+# ERROR HANDLERS
+# ============================================
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error": exc.detail,
+            "status_code": exc.status_code
         }
     )
-    
-    # Show configuration status
-    logger.info("Configuration summary", {
-        "supabase": "configured" if Config.SUPABASE_URL else "missing",
-        "mpesa": "configured" if Config.MPESA_CONSUMER_KEY else "missing",
-        "redis": "configured" if Config.REDIS_URL else "not configured",
-        "proxy_cleared": os.getenv("HTTP_PROXY") is None
-    })
-    
-    # Run with Waitress or Flask dev server
-    if Config.ENV == "production":
-        try:
-            from waitress import serve
-            logger.info(f"Starting Waitress server on port {Config.PORT}")
-            serve(app, host="0.0.0.0", port=Config.PORT, threads=4, channel_timeout=300)
-        except ImportError:
-            logger.warning("Waitress not installed, using Flask development server")
-            app.run(host="0.0.0.0", port=Config.PORT, debug=False)
-    else:
-        app.run(host="0.0.0.0", port=Config.PORT, debug=Config.DEBUG)
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    logger.error(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "error": "An unexpected error occurred",
+            "status_code": 500
+        }
+    )
+
+# ============================================
+# MAIN ENTRY POINT
+# ============================================
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    logger.info(f"🚀 Starting AUTO-V on port {port}")
+    uvicorn.run(
+        "backend:app",
+        host="0.0.0.0",
+        port=port,
+        reload=os.getenv("FLASK_DEBUG", "false").lower() == "true",
+        log_level="info"
+    )
