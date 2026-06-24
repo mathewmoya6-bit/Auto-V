@@ -1,4 +1,6 @@
-# api/routes/mpesa.py - Production Ready v6
+# ============================================================
+# api/routes/mpesa.py - Production Ready v7 (FIXED)
+# ============================================================
 
 import os
 import logging
@@ -6,6 +8,7 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 
+# ─── Service Imports ──────────────────────────────────────
 from services.mpesa import (
     initiate_stk_push,
     handle_mpesa_callback,
@@ -18,7 +21,6 @@ from services.mpesa import (
 from services.supabase_client import (
     get_supabase_client,
     get_payment_by_id,
-    get_payment_by_custom_id,
     get_payment_by_checkout_id,
     get_payment_by_mpesa_code,
     update_payment,
@@ -26,32 +28,81 @@ from services.supabase_client import (
     get_user_payments
 )
 
+# ─── Logger ───────────────────────────────────────────────
 logger = logging.getLogger(__name__)
 
-mpesa_bp = Blueprint("mpesa", __name__)
+# ─── Blueprint ────────────────────────────────────────────
+mpesa_bp = Blueprint("mpesa", __name__, url_prefix="/api/mpesa")
 
+# ─── Config ───────────────────────────────────────────────
 MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
 MPESA_ENV = os.getenv("MPESA_ENV", "production").lower().strip()
 
 
-# ─────────────────────────────────────────────
-# RESPONSE WRAPPER
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# RESPONSE WRAPPER (with CORS headers)
+# ──────────────────────────────────────────────────────────
 
 def response(success: bool, data=None, error=None, status=200):
+    """Standard API response wrapper with CORS headers."""
     payload = {"success": success}
     if data is not None:
         payload["data"] = data
     if error is not None:
         payload["error"] = error
-    return jsonify(payload), status
+    
+    resp = jsonify(payload)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    
+    return resp, status
 
 
-# ─────────────────────────────────────────────
-# 🔥 FIX: Explicit route with strict_slashes=False
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# HELPER: Get Payment by Custom ID
+# ──────────────────────────────────────────────────────────
 
-@mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"], strict_slashes=False)
+def get_payment_by_custom_id(payment_id):
+    """Get payment by any ID format (payment_id, checkout_id, mpesa_code)."""
+    try:
+        client = get_supabase_client()
+        
+        # Try as payment_id
+        result = client.table("payments").select("*").eq("payment_id", payment_id).execute()
+        if result.data:
+            return result.data[0]
+        
+        # Try as checkout_request_id
+        result = client.table("payments").select("*").eq("checkout_request_id", payment_id).execute()
+        if result.data:
+            return result.data[0]
+        
+        # Try as mpesa_code
+        result = client.table("payments").select("*").eq("mpesa_code", payment_id).execute()
+        if result.data:
+            return result.data[0]
+        
+        # Try as UUID
+        try:
+            uuid.UUID(payment_id)
+            result = client.table("payments").select("*").eq("id", payment_id).execute()
+            if result.data:
+                return result.data[0]
+        except:
+            pass
+        
+        return None
+    except Exception as e:
+        logger.error(f"get_payment_by_custom_id error: {e}")
+        return None
+
+
+# ──────────────────────────────────────────────────────────
+# ROUTE: Initiate STK Push
+# ──────────────────────────────────────────────────────────
+
+@mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"])
 def initiate_payment():
     """Initiate M-Pesa STK Push payment."""
     
@@ -101,41 +152,22 @@ def initiate_payment():
         return response(False, error=str(e), status=500)
 
 
-# ─────────────────────────────────────────────
-# STATUS CHECK
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# ROUTE: Get Payment Status
+# ──────────────────────────────────────────────────────────
 
-@mpesa_bp.route("/status/<payment_id>", methods=["GET", "OPTIONS"], strict_slashes=False)
+@mpesa_bp.route("/status/<payment_id>", methods=["GET", "OPTIONS"])
 def get_payment_status(payment_id):
+    """Get payment status by ID."""
     try:
         if request.method == "OPTIONS":
             return response(True, {"status": "ok"})
 
-        client = get_supabase_client()
-
-        # 1. payment_id lookup
-        res = client.table("payments").select("*").eq("payment_id", payment_id).execute()
-        if res.data:
-            return response(True, res.data[0])
-
-        # 2. checkout id
-        payment = get_payment_by_checkout_id(payment_id)
+        # Try all lookup methods
+        payment = get_payment_by_custom_id(payment_id)
+        
         if payment:
             return response(True, payment)
-
-        # 3. mpesa code
-        payment = get_payment_by_mpesa_code(payment_id)
-        if payment:
-            return response(True, payment)
-
-        # 4. uuid
-        try:
-            uuid.UUID(payment_id)
-            payment = get_payment_by_id(payment_id)
-            if payment:
-                return response(True, payment)
-        except:
-            pass
 
         return response(True, {"status": "not_found"})
 
@@ -144,12 +176,13 @@ def get_payment_status(payment_id):
         return response(False, error=str(e), status=500)
 
 
-# ─────────────────────────────────────────────
-# CALLBACK
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# ROUTE: M-Pesa Callback
+# ──────────────────────────────────────────────────────────
 
-@mpesa_bp.route("/callback", methods=["POST"], strict_slashes=False)
+@mpesa_bp.route("/callback", methods=["POST"])
 def mpesa_callback():
+    """Handle M-Pesa callback from Safaricom."""
     try:
         data = request.get_json(silent=True)
         if not data:
@@ -163,12 +196,13 @@ def mpesa_callback():
         return jsonify({"ResultCode": 1, "ResultDesc": "System error"}), 200
 
 
-# ─────────────────────────────────────────────
-# AUTO CONFIRM
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# ROUTE: Auto-Confirm Payment
+# ──────────────────────────────────────────────────────────
 
-@mpesa_bp.route("/auto-confirm/<payment_id>", methods=["POST", "OPTIONS"], strict_slashes=False)
+@mpesa_bp.route("/auto-confirm/<payment_id>", methods=["POST", "OPTIONS"])
 def auto_confirm(payment_id):
+    """Auto-confirm a pending payment."""
     try:
         if request.method == "OPTIONS":
             return response(True, {"status": "ok"})
@@ -176,11 +210,7 @@ def auto_confirm(payment_id):
         payment = get_payment_by_custom_id(payment_id)
 
         if not payment:
-            try:
-                uuid.UUID(payment_id)
-                payment = get_payment_by_id(payment_id)
-            except:
-                return response(False, error="Payment not found", status=404)
+            return response(False, error="Payment not found", status=404)
 
         result = auto_confirm_payment(payment["id"])
 
@@ -191,12 +221,13 @@ def auto_confirm(payment_id):
         return response(False, error=str(e), status=500)
 
 
-# ─────────────────────────────────────────────
-# USER PAYMENTS
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# ROUTE: Get User Payments
+# ──────────────────────────────────────────────────────────
 
-@mpesa_bp.route("/user/<user_id>", methods=["GET"], strict_slashes=False)
+@mpesa_bp.route("/user/<user_id>", methods=["GET"])
 def user_payments(user_id):
+    """Get all payments for a user."""
     try:
         limit = request.args.get("limit", 50, type=int)
         payments = get_user_payments(user_id, limit)
@@ -205,13 +236,13 @@ def user_payments(user_id):
         return response(False, error=str(e), status=500)
 
 
-# ─────────────────────────────────────────────
-# DEBUG: LIST ALL ROUTES
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# ROUTE: List All Routes (Debug)
+# ──────────────────────────────────────────────────────────
 
 @mpesa_bp.route("/routes", methods=["GET"])
 def list_routes():
-    """Debug endpoint to list all registered routes."""
+    """Debug: List all registered M-Pesa routes."""
     routes = []
     for rule in current_app.url_map.iter_rules():
         if rule.endpoint.startswith("mpesa"):
@@ -224,34 +255,84 @@ def list_routes():
     return jsonify({
         "routes": routes,
         "total": len(routes),
-        "blueprint": "mpesa"
+        "blueprint": "mpesa",
+        "base_url": "/api/mpesa"
     }), 200
 
 
-# ─────────────────────────────────────────────
-# HEALTH
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# ROUTE: Health Check
+# ──────────────────────────────────────────────────────────
 
 @mpesa_bp.route("/health", methods=["GET"])
 def health():
+    """Health check endpoint."""
     return jsonify({
         "status": "ok",
         "service": "mpesa",
         "environment": MPESA_ENV,
         "shortcode": MPESA_SHORTCODE,
-        "configured": is_mpesa_configured()
+        "configured": is_mpesa_configured(),
+        "timestamp": datetime.utcnow().isoformat()
     })
 
 
-# ─────────────────────────────────────────────
-# TEST
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# ROUTE: Test Endpoint
+# ──────────────────────────────────────────────────────────
 
 @mpesa_bp.route("/test", methods=["GET"])
 def test():
+    """Test endpoint to verify M-Pesa API is working."""
     return response(True, {
         "message": "M-Pesa API working",
         "env": MPESA_ENV,
         "shortcode": MPESA_SHORTCODE,
         "configured": is_mpesa_configured()
     })
+
+
+# ──────────────────────────────────────────────────────────
+# ROUTE: Query Payment Status (Additional)
+# ──────────────────────────────────────────────────────────
+
+@mpesa_bp.route("/query/<checkout_request_id>", methods=["GET"])
+def query_status(checkout_request_id):
+    """Query payment status from Safaricom."""
+    try:
+        result = query_payment_status(checkout_request_id)
+        return response(True, result)
+    except Exception as e:
+        logger.error(f"query error: {e}", exc_info=True)
+        return response(False, error=str(e), status=500)
+
+
+# ──────────────────────────────────────────────────────────
+# ROUTE: Webhook for External Systems
+# ──────────────────────────────────────────────────────────
+
+@mpesa_bp.route("/webhook", methods=["POST"])
+def webhook():
+    """Webhook endpoint for external systems to notify payment."""
+    try:
+        data = request.get_json()
+        if not data:
+            return response(False, error="No data", status=400)
+        
+        payment_id = data.get("payment_id")
+        status = data.get("status")
+        
+        if not payment_id or not status:
+            return response(False, error="payment_id and status required", status=400)
+        
+        # Update payment status
+        updated = update_payment_by_custom_id(payment_id, {"status": status})
+        
+        if updated:
+            return response(True, {"message": "Webhook processed"})
+        else:
+            return response(False, error="Payment not found", status=404)
+            
+    except Exception as e:
+        logger.error(f"webhook error: {e}", exc_info=True)
+        return response(False, error=str(e), status=500)
