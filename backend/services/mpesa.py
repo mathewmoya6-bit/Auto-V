@@ -1,5 +1,5 @@
 # ============================================================
-# services/mpesa.py - M-Pesa Service Logic
+# services/mpesa.py - M-Pesa Service Logic (REAL API)
 # ============================================================
 
 import os
@@ -19,43 +19,50 @@ MPESA_CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY")
 MPESA_CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET")
 MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
 MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
-MPESA_ENV = os.getenv("MPESA_ENV", "production").lower().strip()
+MPESA_ENV = os.getenv("MPESA_ENV", "sandbox").lower().strip()
 
 # ─── Base URLs ─────────────────────────────────────────────
 BASE_URLS = {
     "production": "https://api.safaricom.co.ke",
     "sandbox": "https://sandbox.safaricom.co.ke"
 }
-BASE_URL = BASE_URLS.get(MPESA_ENV, BASE_URLS["production"])
+BASE_URL = BASE_URLS.get(MPESA_ENV, BASE_URLS["sandbox"])
+
+logger.info(f"🔧 M-Pesa Environment: {MPESA_ENV}")
+logger.info(f"🔧 M-Pesa Base URL: {BASE_URL}")
+logger.info(f"🔧 M-Pesa Shortcode: {MPESA_SHORTCODE}")
 
 
 def get_mpesa_token() -> Optional[str]:
-    """Get M-Pesa OAuth token."""
+    """Get M-Pesa OAuth token from Safaricom."""
     try:
         if not MPESA_CONSUMER_KEY or not MPESA_CONSUMER_SECRET:
-            logger.error("M-Pesa credentials not configured")
+            logger.error("❌ M-Pesa credentials not configured")
             return None
 
-        auth = base64.b64encode(
-            f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}".encode()
-        ).decode()
+        # Encode credentials
+        credentials = f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
 
-        response = requests.get(
-            f"{BASE_URL}/oauth/v1/generate?grant_type=client_credentials",
-            headers={"Authorization": f"Basic {auth}"},
-            timeout=30
-        )
+        # Make request
+        url = f"{BASE_URL}/oauth/v1/generate?grant_type=client_credentials"
+        headers = {"Authorization": f"Basic {encoded_credentials}"}
+
+        logger.info(f"🔄 Fetching M-Pesa token from {url}")
+
+        response = requests.get(url, headers=headers, timeout=30)
 
         if response.status_code == 200:
             token = response.json().get("access_token")
-            logger.info("M-Pesa token obtained successfully")
+            logger.info("✅ M-Pesa token obtained successfully")
             return token
         else:
-            logger.error(f"Failed to get M-Pesa token: {response.status_code}")
+            logger.error(f"❌ Failed to get M-Pesa token: {response.status_code}")
+            logger.error(f"Response: {response.text}")
             return None
 
     except Exception as e:
-        logger.error(f"M-Pesa token error: {e}")
+        logger.error(f"❌ M-Pesa token error: {e}")
         return None
 
 
@@ -66,22 +73,32 @@ def initiate_stk_push(
     reference: str = None,
     user_id: str = None
 ) -> Dict[str, Any]:
-    """Initiate M-Pesa STK Push payment."""
+    """
+    Initiate M-Pesa STK Push payment using Safaricom API.
+    """
     try:
+        # Get token
         token = get_mpesa_token()
         if not token:
-            raise ValueError("Failed to get M-Pesa token")
+            raise ValueError("❌ Failed to get M-Pesa token. Check your credentials.")
 
-        # Format phone number
+        # Format phone number (ensure it starts with 254)
+        original_phone = phone
         if phone.startswith("0"):
             phone = "254" + phone[1:]
+        elif phone.startswith("+"):
+            phone = phone[1:]
         elif not phone.startswith("254"):
             phone = "254" + phone
 
+        logger.info(f"📱 Phone formatted: {original_phone} → {phone}")
+
+        # Generate timestamp and password
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
         password = base64.b64encode(password_str.encode()).decode()
 
+        # Build payload
         payload = {
             "BusinessShortCode": MPESA_SHORTCODE,
             "Password": password,
@@ -99,26 +116,49 @@ def initiate_stk_push(
         if user_id:
             payload["TransactionDesc"] = f"{payload['TransactionDesc']} - User {user_id}"
 
-        response = requests.post(
-            f"{BASE_URL}/mpesa/stkpush/v1/processrequest",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            },
-            timeout=60
-        )
+        # Log request (hide sensitive data)
+        log_payload = payload.copy()
+        log_payload["Password"] = "***HIDDEN***"
+        logger.info(f"📤 STK Push Request: {log_payload}")
+
+        # Make request to Safaricom
+        url = f"{BASE_URL}/mpesa/stkpush/v1/processrequest"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+
+        # Log response
+        logger.info(f"📥 STK Push Response Status: {response.status_code}")
 
         if response.status_code == 200:
             result = response.json()
-            logger.info(f"STK Push initiated: {result.get('CheckoutRequestID')}")
-            return result
-        else:
-            logger.error(f"STK Push failed: {response.status_code}")
-            raise ValueError(f"STK Push failed: {response.text}")
+            logger.info(f"✅ STK Push Response: {result}")
 
+            # Check if the request was successful
+            if result.get("ResponseCode") == "0":
+                logger.info(f"✅ STK Push initiated successfully for {phone}")
+                logger.info(f"   CheckoutRequestID: {result.get('CheckoutRequestID')}")
+                return result
+            else:
+                error_msg = result.get("ResponseDescription", "Unknown error")
+                logger.error(f"❌ STK Push failed: {error_msg}")
+                raise ValueError(f"STK Push failed: {error_msg}")
+        else:
+            logger.error(f"❌ STK Push HTTP Error: {response.status_code}")
+            logger.error(f"Response: {response.text}")
+            raise ValueError(f"STK Push failed: HTTP {response.status_code}")
+
+    except requests.exceptions.Timeout:
+        logger.error("❌ STK Push timeout - Safaricom API not responding")
+        raise ValueError("STK Push timeout - please try again")
+    except requests.exceptions.ConnectionError:
+        logger.error("❌ STK Push connection error - cannot reach Safaricom")
+        raise ValueError("Connection error - check your internet")
     except Exception as e:
-        logger.error(f"STK Push error: {e}")
+        logger.error(f"❌ STK Push error: {e}")
         raise
 
 
@@ -147,7 +187,7 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
         status = "completed" if result_code == 0 else "failed"
 
         logger.info(
-            f"Callback: {checkout_request_id} -> {status}",
+            f"📩 Callback: {checkout_request_id} → {status}",
             extra={
                 "result_code": result_code,
                 "result_desc": result_desc,
@@ -172,7 +212,7 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Callback handling error: {e}")
+        logger.error(f"❌ Callback handling error: {e}")
         return {"ResultCode": 1, "ResultDesc": f"Error: {str(e)}"}
 
 
@@ -218,14 +258,11 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
 def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
     """Auto-confirm a pending payment (admin override)."""
     try:
-        # This would typically update a database record
-        # For now, return success
         return {
             "success": True,
             "message": "Payment auto-confirmed",
             "payment_id": payment_id
         }
-
     except Exception as e:
         logger.error(f"Auto-confirm error: {e}")
         raise
@@ -233,11 +270,14 @@ def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
 
 def is_mpesa_configured() -> bool:
     """Check if M-Pesa is properly configured."""
-    return bool(
+    configured = bool(
         MPESA_CONSUMER_KEY and
         MPESA_CONSUMER_SECRET and
         MPESA_PASSKEY
     )
+    if not configured:
+        logger.warning("⚠️ M-Pesa not fully configured - missing credentials")
+    return configured
 
 
 def get_mpesa_token_public() -> Optional[Dict[str, Any]]:
@@ -246,19 +286,3 @@ def get_mpesa_token_public() -> Optional[Dict[str, Any]]:
     if token:
         return {"token": token, "expires_in": 3600}
     return None
-
-
-# ─── Alias for backward compatibility ──────────────────────
-mpesa_service = handle_mpesa_callback
-
-
-__all__ = [
-    "get_mpesa_token",
-    "initiate_stk_push",
-    "handle_mpesa_callback",
-    "query_payment_status",
-    "auto_confirm_payment",
-    "is_mpesa_configured",
-    "get_mpesa_token_public",
-    "mpesa_service"
-]
