@@ -1,5 +1,5 @@
 # ============================================================
-# services/mpesa.py - No WebSocket Dependency
+# services/mpesa.py - M-Pesa Service Logic
 # ============================================================
 
 import os
@@ -91,7 +91,7 @@ def initiate_stk_push(
             "PartyA": phone,
             "PartyB": MPESA_SHORTCODE,
             "PhoneNumber": phone,
-            "CallBackURL": os.getenv("MPESA_CALLBACK_URL", "https://your-domain.com/api/mpesa/callback"),
+            "CallBackURL": os.getenv("MPESA_CALLBACK_URL", "https://auto-v.meipressgroup.com/api/mpesa/callback"),
             "AccountReference": reference or f"AUTO-{payment_id[-8:]}",
             "TransactionDesc": f"Payment {payment_id}"
         }
@@ -167,7 +167,7 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
         
         # Update payment in Supabase
         try:
-            from services.supabase_client import get_supabase_client, update_payment_by_checkout_id
+            from services.supabase_client import get_supabase_client
             client = get_supabase_client()
             
             update_data = {
