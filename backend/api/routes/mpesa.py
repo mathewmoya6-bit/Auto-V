@@ -9,13 +9,13 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 
 # ─── Service Imports ──────────────────────────────────────
+# IMPORTANT: Use absolute imports from the services package
 from services.mpesa import (
     initiate_stk_push,
     handle_mpesa_callback,
     query_payment_status,
     auto_confirm_payment,
-    is_mpesa_configured,
-    get_mpesa_token
+    is_mpesa_configured
 )
 
 from services.supabase_client import (
@@ -24,14 +24,13 @@ from services.supabase_client import (
     get_payment_by_checkout_id,
     get_payment_by_mpesa_code,
     update_payment,
-    update_payment_by_custom_id,
     get_user_payments
 )
 
 # ─── Logger ───────────────────────────────────────────────
 logger = logging.getLogger(__name__)
 
-# ─── Blueprint (NO url_prefix here - set in app registration) ──
+# ─── Blueprint ────────────────────────────────────────────
 mpesa_bp = Blueprint("mpesa", __name__)
 
 # ─── Config ───────────────────────────────────────────────
@@ -99,7 +98,7 @@ def get_payment_by_custom_id(payment_id):
 
 
 # ──────────────────────────────────────────────────────────
-# ROUTE: Initiate STK Push (FIXED - explicit methods)
+# ROUTE: Initiate STK Push
 # ──────────────────────────────────────────────────────────
 
 @mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"])
@@ -263,17 +262,7 @@ def health():
         "environment": MPESA_ENV,
         "shortcode": MPESA_SHORTCODE,
         "configured": is_mpesa_configured(),
-        "timestamp": datetime.utcnow().isoformat(),
-        "routes_available": [
-            "POST /api/mpesa/initiate",
-            "GET /api/mpesa/status/<id>",
-            "POST /api/mpesa/callback",
-            "POST /api/mpesa/auto-confirm/<id>",
-            "GET /api/mpesa/user/<user_id>",
-            "GET /api/mpesa/query/<checkout_id>",
-            "GET /api/mpesa/health",
-            "GET /api/mpesa/test"
-        ]
+        "timestamp": datetime.utcnow().isoformat()
     })
 
 
@@ -288,8 +277,7 @@ def test():
         "message": "M-Pesa API working",
         "env": MPESA_ENV,
         "shortcode": MPESA_SHORTCODE,
-        "configured": is_mpesa_configured(),
-        "routes_registered": True
+        "configured": is_mpesa_configured()
     })
 
 
@@ -306,44 +294,12 @@ def list_routes():
             routes.append({
                 "endpoint": rule.endpoint,
                 "methods": list(rule.methods),
-                "path": str(rule),
-                "full_url": f"/api/mpesa{str(rule)}"
+                "path": str(rule)
             })
     
     return jsonify({
         "routes": routes,
         "total": len(routes),
         "blueprint": "mpesa",
-        "base_url": "/api/mpesa",
-        "expected_prefix": "/api/mpesa"
+        "base_url": "/api/mpesa"
     }), 200
-
-
-# ──────────────────────────────────────────────────────────
-# ROUTE: Webhook for External Systems
-# ──────────────────────────────────────────────────────────
-
-@mpesa_bp.route("/webhook", methods=["POST"])
-def webhook():
-    """Webhook endpoint for external systems to notify payment."""
-    try:
-        data = request.get_json()
-        if not data:
-            return response(False, error="No data", status=400)
-        
-        payment_id = data.get("payment_id")
-        status = data.get("status")
-        
-        if not payment_id or not status:
-            return response(False, error="payment_id and status required", status=400)
-        
-        updated = update_payment_by_custom_id(payment_id, {"status": status})
-        
-        if updated:
-            return response(True, {"message": "Webhook processed"})
-        else:
-            return response(False, error="Payment not found", status=404)
-            
-    except Exception as e:
-        logger.error(f"webhook error: {e}", exc_info=True)
-        return response(False, error=str(e), status=500)
