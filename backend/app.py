@@ -329,7 +329,8 @@ def create_app():
             "success": False,
             "error": "Method Not Allowed",
             "message": f"Method {request.method} is not allowed for this endpoint",
-            "request_id": getattr(g, 'request_id', None)
+            "request_id": getattr(g, 'request_id', None),
+            "allowed_methods": list(request.access_route) if hasattr(request, 'access_route') else []
         }), 405
 
     @app.errorhandler(500)
@@ -356,15 +357,16 @@ def create_app():
     try:
         from api.routes.mpesa import mpesa_bp
         app.register_blueprint(mpesa_bp, url_prefix="/api/mpesa")
-        logger.info("M-Pesa blueprint registered successfully")
+        logger.info("✅ M-Pesa blueprint registered successfully at /api/mpesa")
     except ImportError as e:
-        logger.error(f"Failed to import M-Pesa blueprint: {e}")
+        logger.error(f"❌ Failed to import M-Pesa blueprint: {e}")
     except Exception as e:
-        logger.error(f"M-Pesa blueprint failed to load: {e}")
+        logger.error(f"❌ M-Pesa blueprint failed to load: {e}")
     
     # ─── PREFLIGHT HANDLER ──────────────────────────────────────
     @app.route("/<path:path>", methods=["OPTIONS"])
     def options_handler(path):
+        """Handle all OPTIONS requests for CORS."""
         return jsonify({"status": "ok"}), 200
     
     # ─── ROUTES ──────────────────────────────────────────────────
@@ -383,7 +385,9 @@ def create_app():
                     "mpesa_initiate": "/api/mpesa/initiate",
                     "mpesa_status": "/api/mpesa/status/<payment_id>",
                     "mpesa_callback": "/api/mpesa/callback",
-                    "mpesa_auto_confirm": "/api/mpesa/auto-confirm/<payment_id>"
+                    "mpesa_auto_confirm": "/api/mpesa/auto-confirm/<payment_id>",
+                    "mpesa_user_payments": "/api/mpesa/user/<user_id>",
+                    "mpesa_routes": "/api/mpesa/routes"
                 }
             }
         }), 200
@@ -391,6 +395,22 @@ def create_app():
     @app.route("/api/health", methods=["GET"])
     def health():
         """Comprehensive health check with all services."""
+        # Get M-Pesa status
+        mpesa_configured = bool(
+            Config.MPESA_CONSUMER_KEY and 
+            Config.MPESA_CONSUMER_SECRET and 
+            Config.MPESA_PASSKEY
+        )
+        
+        # Check if routes are registered
+        mpesa_routes = []
+        for rule in app.url_map.iter_rules():
+            if "mpesa" in rule.endpoint:
+                mpesa_routes.append({
+                    "path": str(rule),
+                    "methods": list(rule.methods)
+                })
+        
         return jsonify({
             "success": True,
             "data": {
@@ -401,14 +421,12 @@ def create_app():
                 "config": Config.get_all(),
                 "supabase": SupabaseConnection.get_status(),
                 "mpesa": {
-                    "configured": bool(
-                        Config.MPESA_CONSUMER_KEY and 
-                        Config.MPESA_CONSUMER_SECRET and 
-                        Config.MPESA_PASSKEY
-                    ),
+                    "configured": mpesa_configured,
                     "environment": Config.MPESA_ENV,
                     "shortcode": Config.MPESA_SHORTCODE,
-                    "callback_url": Config.MPESA_CALLBACK_URL
+                    "callback_url": Config.MPESA_CALLBACK_URL,
+                    "routes_registered": len(mpesa_routes),
+                    "routes": mpesa_routes
                 },
                 "proxy": {
                     "HTTP_PROXY": "cleared" if os.getenv("HTTP_PROXY") is None else "set",
@@ -428,6 +446,25 @@ def create_app():
             "data": {
                 "pong": True,
                 "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+        }), 200
+    
+    @app.route("/api/routes", methods=["GET"])
+    def list_all_routes():
+        """Debug: List all registered routes."""
+        routes = []
+        for rule in app.url_map.iter_rules():
+            routes.append({
+                "endpoint": rule.endpoint,
+                "methods": list(rule.methods),
+                "path": str(rule)
+            })
+        return jsonify({
+            "success": True,
+            "data": {
+                "total": len(routes),
+                "routes": sorted(routes, key=lambda x: x["path"]),
+                "mpesa_routes": [r for r in routes if "mpesa" in r["endpoint"]]
             }
         }), 200
     
