@@ -1,5 +1,5 @@
 # ============================================================
-# api/routes/mpesa.py - Production Ready v7 (FIXED)
+# api/routes/mpesa.py - Production Ready v8 (FIXED)
 # ============================================================
 
 import os
@@ -31,8 +31,8 @@ from services.supabase_client import (
 # ─── Logger ───────────────────────────────────────────────
 logger = logging.getLogger(__name__)
 
-# ─── Blueprint ────────────────────────────────────────────
-mpesa_bp = Blueprint("mpesa", __name__, url_prefix="/api/mpesa")
+# ─── Blueprint (NO url_prefix here - set in app registration) ──
+mpesa_bp = Blueprint("mpesa", __name__)
 
 # ─── Config ───────────────────────────────────────────────
 MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
@@ -99,7 +99,7 @@ def get_payment_by_custom_id(payment_id):
 
 
 # ──────────────────────────────────────────────────────────
-# ROUTE: Initiate STK Push
+# ROUTE: Initiate STK Push (FIXED - explicit methods)
 # ──────────────────────────────────────────────────────────
 
 @mpesa_bp.route("/initiate", methods=["POST", "OPTIONS"])
@@ -163,7 +163,6 @@ def get_payment_status(payment_id):
         if request.method == "OPTIONS":
             return response(True, {"status": "ok"})
 
-        # Try all lookup methods
         payment = get_payment_by_custom_id(payment_id)
         
         if payment:
@@ -237,27 +236,18 @@ def user_payments(user_id):
 
 
 # ──────────────────────────────────────────────────────────
-# ROUTE: List All Routes (Debug)
+# ROUTE: Query Payment Status (from Safaricom)
 # ──────────────────────────────────────────────────────────
 
-@mpesa_bp.route("/routes", methods=["GET"])
-def list_routes():
-    """Debug: List all registered M-Pesa routes."""
-    routes = []
-    for rule in current_app.url_map.iter_rules():
-        if rule.endpoint.startswith("mpesa"):
-            routes.append({
-                "endpoint": rule.endpoint,
-                "methods": list(rule.methods),
-                "path": str(rule)
-            })
-    
-    return jsonify({
-        "routes": routes,
-        "total": len(routes),
-        "blueprint": "mpesa",
-        "base_url": "/api/mpesa"
-    }), 200
+@mpesa_bp.route("/query/<checkout_request_id>", methods=["GET"])
+def query_status(checkout_request_id):
+    """Query payment status from Safaricom."""
+    try:
+        result = query_payment_status(checkout_request_id)
+        return response(True, result)
+    except Exception as e:
+        logger.error(f"query error: {e}", exc_info=True)
+        return response(False, error=str(e), status=500)
 
 
 # ──────────────────────────────────────────────────────────
@@ -273,7 +263,17 @@ def health():
         "environment": MPESA_ENV,
         "shortcode": MPESA_SHORTCODE,
         "configured": is_mpesa_configured(),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "routes_available": [
+            "POST /api/mpesa/initiate",
+            "GET /api/mpesa/status/<id>",
+            "POST /api/mpesa/callback",
+            "POST /api/mpesa/auto-confirm/<id>",
+            "GET /api/mpesa/user/<user_id>",
+            "GET /api/mpesa/query/<checkout_id>",
+            "GET /api/mpesa/health",
+            "GET /api/mpesa/test"
+        ]
     })
 
 
@@ -288,23 +288,35 @@ def test():
         "message": "M-Pesa API working",
         "env": MPESA_ENV,
         "shortcode": MPESA_SHORTCODE,
-        "configured": is_mpesa_configured()
+        "configured": is_mpesa_configured(),
+        "routes_registered": True
     })
 
 
 # ──────────────────────────────────────────────────────────
-# ROUTE: Query Payment Status (Additional)
+# ROUTE: Debug Routes
 # ──────────────────────────────────────────────────────────
 
-@mpesa_bp.route("/query/<checkout_request_id>", methods=["GET"])
-def query_status(checkout_request_id):
-    """Query payment status from Safaricom."""
-    try:
-        result = query_payment_status(checkout_request_id)
-        return response(True, result)
-    except Exception as e:
-        logger.error(f"query error: {e}", exc_info=True)
-        return response(False, error=str(e), status=500)
+@mpesa_bp.route("/routes", methods=["GET"])
+def list_routes():
+    """Debug: List all registered M-Pesa routes."""
+    routes = []
+    for rule in current_app.url_map.iter_rules():
+        if rule.endpoint.startswith("mpesa"):
+            routes.append({
+                "endpoint": rule.endpoint,
+                "methods": list(rule.methods),
+                "path": str(rule),
+                "full_url": f"/api/mpesa{str(rule)}"
+            })
+    
+    return jsonify({
+        "routes": routes,
+        "total": len(routes),
+        "blueprint": "mpesa",
+        "base_url": "/api/mpesa",
+        "expected_prefix": "/api/mpesa"
+    }), 200
 
 
 # ──────────────────────────────────────────────────────────
@@ -325,7 +337,6 @@ def webhook():
         if not payment_id or not status:
             return response(False, error="payment_id and status required", status=400)
         
-        # Update payment status
         updated = update_payment_by_custom_id(payment_id, {"status": status})
         
         if updated:
