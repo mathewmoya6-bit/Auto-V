@@ -136,7 +136,7 @@ class Config:
         }
 
 
-# ─── Supabase Connection Wrapper (Singleton + Retry) ──────
+# ─── Supabase Connection Wrapper ────────────────────────────
 class SupabaseConnection:
     """Production-grade Supabase connection with retry and fallback."""
     
@@ -176,7 +176,7 @@ class SupabaseConnection:
                 
                 # Safe verification - table might not exist
                 try:
-                    cls._client.table('system_settings').select('*').limit(1).execute()
+                    cls._client.table('fuel_prices').select('*').limit(1).execute()
                     logger.info("Supabase connection verified")
                 except Exception as e:
                     logger.warning(f"Supabase table verification skipped (non-critical): {e}")
@@ -213,33 +213,6 @@ class SupabaseConnection:
             "url_configured": bool(Config.SUPABASE_URL),
             "timeout": Config.SUPABASE_TIMEOUT
         }
-
-
-# ─── Retry Decorator ────────────────────────────────────────
-def with_retry(max_retries: int = 3, delay: int = 1, backoff: int = 2):
-    """Decorator for retrying functions with exponential backoff."""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            last_error = None
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_error = e
-                    if attempt < max_retries - 1:
-                        wait_time = delay * (backoff ** attempt)
-                        logger.warning(
-                            f"Function {func.__name__} failed (attempt {attempt + 1}): {e}. "
-                            f"Retrying in {wait_time}s"
-                        )
-                        time.sleep(wait_time)
-                    else:
-                        logger.error(f"Function {func.__name__} failed after {max_retries} attempts: {e}")
-                        raise
-            raise last_error
-        return wrapper
-    return decorator
 
 
 # ─── App Factory ─────────────────────────────────────────────
@@ -329,8 +302,7 @@ def create_app():
             "success": False,
             "error": "Method Not Allowed",
             "message": f"Method {request.method} is not allowed for this endpoint",
-            "request_id": getattr(g, 'request_id', None),
-            "allowed_methods": list(request.access_route) if hasattr(request, 'access_route') else []
+            "request_id": getattr(g, 'request_id', None)
         }), 405
 
     @app.errorhandler(500)
@@ -386,8 +358,7 @@ def create_app():
                     "mpesa_status": "/api/mpesa/status/<payment_id>",
                     "mpesa_callback": "/api/mpesa/callback",
                     "mpesa_auto_confirm": "/api/mpesa/auto-confirm/<payment_id>",
-                    "mpesa_user_payments": "/api/mpesa/user/<user_id>",
-                    "mpesa_routes": "/api/mpesa/routes"
+                    "mpesa_user_payments": "/api/mpesa/user/<user_id>"
                 }
             }
         }), 200
@@ -395,21 +366,11 @@ def create_app():
     @app.route("/api/health", methods=["GET"])
     def health():
         """Comprehensive health check with all services."""
-        # Get M-Pesa status
         mpesa_configured = bool(
             Config.MPESA_CONSUMER_KEY and 
             Config.MPESA_CONSUMER_SECRET and 
             Config.MPESA_PASSKEY
         )
-        
-        # Check if routes are registered
-        mpesa_routes = []
-        for rule in app.url_map.iter_rules():
-            if "mpesa" in rule.endpoint:
-                mpesa_routes.append({
-                    "path": str(rule),
-                    "methods": list(rule.methods)
-                })
         
         return jsonify({
             "success": True,
@@ -424,9 +385,7 @@ def create_app():
                     "configured": mpesa_configured,
                     "environment": Config.MPESA_ENV,
                     "shortcode": Config.MPESA_SHORTCODE,
-                    "callback_url": Config.MPESA_CALLBACK_URL,
-                    "routes_registered": len(mpesa_routes),
-                    "routes": mpesa_routes
+                    "callback_url": Config.MPESA_CALLBACK_URL
                 },
                 "proxy": {
                     "HTTP_PROXY": "cleared" if os.getenv("HTTP_PROXY") is None else "set",
@@ -463,8 +422,7 @@ def create_app():
             "success": True,
             "data": {
                 "total": len(routes),
-                "routes": sorted(routes, key=lambda x: x["path"]),
-                "mpesa_routes": [r for r in routes if "mpesa" in r["endpoint"]]
+                "routes": sorted(routes, key=lambda x: x["path"])
             }
         }), 200
     
@@ -472,8 +430,6 @@ def create_app():
 
 
 # ─── Create App Instance for Gunicorn ──────────────────────
-# ✅ CORRECT: Gunicorn will call create_app()
-# Use: gunicorn "app:create_app()"
 app = create_app()
 
 
