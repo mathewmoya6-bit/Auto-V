@@ -1,5 +1,14 @@
-# api/__init__.py
+# ============================================================
+# API Package Initialization
+# ============================================================
 
-from .routes.mpesa import mpesa_bp
+from flask import Blueprint
 
-__all__ = ["mpesa_bp"]
+# Create main API blueprint
+api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+# Import routes to register them
+from api.routes import mpesa
+
+# Export blueprints for easy import
+__all__ = ["api_bp", "mpesa"]
