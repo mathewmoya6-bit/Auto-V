@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AUTO-V Service Portal</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>AUTO-V | Customer Portal</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
@@ -12,247 +14,319 @@
         .logo { font-size: 24px; color: #eab308; font-weight: bold; }
         .container { max-width: 800px; margin: auto; padding: 24px; }
         .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+        .step { display: none; animation: fadeIn 0.3s ease; }
+        .step.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .progress-bar { display: flex; margin-bottom: 20px; background: #1e293b; border-radius: 40px; padding: 5px; }
+        .progress-step { flex: 1; text-align: center; padding: 10px; border-radius: 40px; color: #94a3b8; font-size: 12px; font-weight: 600; }
+        .progress-step.active { background: #eab308; color: #000; }
+        .progress-step.completed { background: #22c55e; color: #000; }
         .form-group { margin-bottom: 15px; }
         label { display: block; color: #94a3b8; margin-bottom: 5px; font-weight: 600; }
         input, select { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: white; }
         input:focus { border-color: #eab308; outline: none; }
-        .btn-primary { background: #eab308; color: black; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; }
-        .btn-primary:disabled { background: #555; }
-        .btn-secondary { background: #475569; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
+        .btn { padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; }
+        .btn-primary { background: #eab308; color: black; }
+        .btn-secondary { background: #475569; color: white; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-success:disabled { background: #555; cursor: not-allowed; }
+        .nav-buttons { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
         .status-box { padding: 15px; border-radius: 8px; margin-bottom: 15px; display: none; }
         .status-success { background: #14532d; color: #bbf7d0; border-left: 4px solid #22c55e; }
         .status-error { background: #7f1d1d; color: #fecaca; border-left: 4px solid #ef4444; }
-        .back-btn { display: inline-block; margin-bottom: 20px; color: #94a3b8; text-decoration: none; }
-        .back-btn:hover { color: #eab308; }
+        .service-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .service-card { background: #1e293b; padding: 15px; border-radius: 8px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: 0.3s; }
+        .service-card:hover, .service-card.selected { border-color: #eab308; background: #2d3a4e; }
+        .service-icon { font-size: 36px; display: block; margin-bottom: 5px; }
+        .purpose-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .purpose-item { padding: 10px; background: #0f172a; border-radius: 8px; cursor: pointer; text-align: center; transition: 0.2s; }
+        .purpose-item:hover, .purpose-item.selected { background: #eab308; color: #000; }
+        .payment-summary { background: #1e293b; border-radius: 12px; padding: 15px; margin: 15px 0; }
+        .payment-summary .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #2d3a4e; }
+        .payment-summary .row:last-child { border-bottom: none; }
         .result-box { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 20px; display: none; }
-        .result-value { font-size: 32px; color: #22c55e; font-weight: bold; text-align: center; margin: 10px 0; }
-        .price-display { font-size: 24px; color: #22c55e; text-align: center; margin: 15px 0; }
+        .result-value { font-size: 32px; color: #22c55e; font-weight: bold; text-align: center; }
+        .logout-btn { background: #dc2626; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
     </style>
 </head>
 <body>
     <header>
-        <div class="logo">🚗 AUTO-V Service Portal</div>
-        <button onclick="logout()" style="background:#dc2626;color:white;padding:8px 16px;border:none;border-radius:8px;cursor:pointer;">Logout</button>
+        <div class="logo">🚗 AUTO-V Portal</div>
+        <button class="logout-btn" onclick="window.autoV.logout()">Logout</button>
     </header>
 
     <div class="container">
-        <a href="dashboard.html" class="back-btn">← Back to Dashboard</a>
-
-        <div class="card">
-            <h2 id="serviceTitle" style="color: #eab308;">Loading Service...</h2>
-            <div id="serviceDescription" style="color: #94a3b8; margin-bottom: 20px;"></div>
-            <div class="price-display" id="priceDisplay">KES 0</div>
+        <div class="progress-bar">
+            <div class="progress-step active" id="step1Prog">1. Client</div>
+            <div class="progress-step" id="step2Prog">2. Service</div>
+            <div class="progress-step" id="step3Prog">3. Purpose</div>
+            <div class="progress-step" id="step4Prog">4. Payment</div>
         </div>
 
-        <div id="statusMessage" class="status-box"></div>
+        <!-- STEP 1: CLIENT DETAILS -->
+        <div id="step1" class="card step active">
+            <h2>👤 Client Details</h2>
+            <form id="clientForm">
+                <div class="form-group"><label>Full Name</label><input type="text" id="custName" required></div>
+                <div class="form-group"><label>Email</label><input type="email" id="custEmail" required></div>
+                <div class="form-group"><label>Phone Number</label><input type="tel" id="custPhone" required></div>
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
+                    <button type="submit" class="btn btn-primary">Next →</button>
+                </div>
+            </form>
+        </div>
 
-        <div class="card">
-            <form id="serviceForm">
-                <div class="form-group">
-                    <label>Vehicle Registration Number</label>
-                    <input type="text" id="regNumber" placeholder="KCA 123A" required>
-                </div>
-                <div class="form-group">
-                    <label>Make</label>
-                    <input type="text" id="make" placeholder="Toyota" required>
-                </div>
-                <div class="form-group">
-                    <label>Model</label>
-                    <input type="text" id="model" placeholder="Axio" required>
-                </div>
-                <div class="form-group">
-                    <label>Year</label>
-                    <input type="number" id="year" placeholder="2020" required>
-                </div>
-                <div class="form-group">
-                    <label>Purpose</label>
-                    <select id="purpose">
-                        <option value="Insurance">Insurance</option>
-                        <option value="Sale">Sale</option>
-                        <option value="Bank Loan">Bank Loan</option>
-                        <option value="Transfer">Transfer</option>
-                        <option value="Import">Import</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>M-Pesa Phone Number</label>
-                    <input type="tel" id="phone" placeholder="0712345678" required>
-                </div>
-                <button type="submit" class="btn-primary" id="submitBtn">💳 Pay Now (KES 2,500)</button>
+        <!-- STEP 2: CHOOSE SERVICE -->
+        <div id="step2" class="card step">
+            <h2>🔧 Choose Service</h2>
+            <div class="service-cards" id="serviceCards"></div>
+            <div id="selectedServiceMsg" style="text-align:center;margin-top:10px;color:#eab308;font-weight:500;"></div>
+            <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(1)">← Back</button><button class="btn btn-primary" onclick="confirmService()">Next →</button></div>
+        </div>
+
+        <!-- STEP 3: PURPOSE -->
+        <div id="step3" class="card step">
+            <h2>🎯 Service Purpose</h2>
+            <div class="purpose-list" id="purposeList"></div>
+            <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(2)">← Back</button><button class="btn btn-primary" onclick="confirmPurpose()">Next →</button></div>
+        </div>
+
+        <!-- STEP 4: PAYMENT -->
+        <div id="step4" class="card step">
+            <h2>💳 Payment</h2>
+            <div id="statusMessage" class="status-box"></div>
+            <div class="payment-summary">
+                <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
+                <div class="row"><span class="label">Purpose</span><span class="value" id="summaryPurpose">-</span></div>
+                <div class="row"><span class="label">Amount</span><span class="value" id="summaryAmount" style="font-size:24px;color:#22c55e;font-weight:bold;">KES 0</span></div>
+            </div>
+            <form id="paymentForm">
+                <div class="form-group"><label>M-Pesa Phone Number</label><input type="tel" id="mpesaPhone" placeholder="0712345678" required></div>
+                <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(3)">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
             </form>
         </div>
 
         <div class="result-box" id="resultBox">
-            <h3 style="color: #eab308; margin-bottom: 15px;">Service Result</h3>
+            <h3 style="color:#eab308;margin-bottom:15px;">Service Result</h3>
             <div id="resultContent"></div>
         </div>
     </div>
 
     <script>
-        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Use window.autoV directly
+        const { supabase } = window.autoV;
+        
+        // State
+        let selectedService = null;
+        let selectedPurpose = null;
+        let serviceFee = 0;
+        let clientDetails = {};
 
-        const API_BASE = 'https://auto-v.onrender.com/api'; // Your backend URL
-
-        const SERVICES = {
-            'valuation': { name: 'Vehicle Valuation', fee: 2500 },
-            'instant-value-check': { name: 'Instant Value Check', fee: 500 },
-            'inspection': { name: 'Vehicle Inspection', fee: 3500 },
-            'assessment': { name: 'Vehicle Assessment', fee: 3000 },
-            'mileage-rate': { name: 'Mileage Rate Report', fee: 1500 },
-            'fleet': { name: 'Fleet Services', fee: 4000 },
+        const SERVICE_FEES = {
+            'valuation': 2500,
+            'instant-value-check': 500,
+            'inspection': 3500,
+            'assessment': 3000,
+            'mileage-rate': 1500,
+            'fleet': 4000
         };
 
-        let serviceId = null;
-        let serviceFee = 0;
+        const SERVICE_PAGES = {
+            'valuation': 'valuation.html',
+            'instant-value-check': 'valuation.html',
+            'inspection': 'inspection.html',
+            'assessment': 'assessment.html',
+            'mileage-rate': 'mileage.html',
+            'fleet': 'fleet.html'
+        };
 
-        function getServiceFromUrl() {
-            const params = new URLSearchParams(window.location.search);
-            const s = params.get('service');
-            return SERVICES[s] ? s : null;
+        const SERVICE_PURPOSES = {
+            'valuation': ["Insurance Valuation", "Bank Loan", "Legal Proceedings", "Market Value Certificate"],
+            'instant-value-check': ["Quick Market Estimate", "Selling Price Guide", "Buying Price Check"],
+            'inspection': ["Pre-Purchase Inspection", "Mechanical Check", "Roadworthiness Test"],
+            'assessment': ["Accident Damage", "Insurance Claim", "Repair Cost Estimate"],
+            'mileage-rate': ["Travel Reimbursement", "Running Cost Analysis", "Fleet Budgeting"],
+            'fleet': ["Full Fleet Valuation", "Fleet Condition Audit", "Asset Management"]
+        };
+
+        function showStep(step) {
+            ['step1', 'step2', 'step3', 'step4'].forEach(id => document.getElementById(id).classList.remove('active'));
+            ['step1Prog', 'step2Prog', 'step3Prog', 'step4Prog'].forEach(id => document.getElementById(id).classList.remove('active', 'completed'));
+            
+            document.getElementById(`step${step}`).classList.add('active');
+            for(let i=1; i<step; i++) document.getElementById(`step${i}Prog`).classList.add('completed');
+            document.getElementById(`step${step}Prog`).classList.add('active');
         }
 
-        function formatKES(amount) {
-            return 'KES ' + Number(amount).toLocaleString('en-KE');
+        // Step 1: Client Details
+        document.getElementById('clientForm').onsubmit = function(e) {
+            e.preventDefault();
+            clientDetails = {
+                name: document.getElementById('custName').value,
+                email: document.getElementById('custEmail').value,
+                phone: document.getElementById('custPhone').value
+            };
+            renderServices();
+            showStep(2);
+        };
+
+        function renderServices() {
+            const container = document.getElementById('serviceCards');
+            container.innerHTML = Object.keys(SERVICE_FEES).map(key => `
+                <div class="service-card" onclick="selectService('${key}')">
+                    <span class="service-icon">${getIcon(key)}</span>
+                    <h4>${formatName(key)}</h4>
+                    <small style="color:#22c55e;">KES ${SERVICE_FEES[key].toLocaleString()}</small>
+                </div>
+            `).join('');
         }
 
-        function showStatus(msg, type) {
-            const box = document.getElementById('statusMessage');
-            box.className = `status-box status-${type}`;
-            box.textContent = msg;
-            box.style.display = 'block';
-            setTimeout(() => box.style.display = 'none', 5000);
+        function selectService(key) {
+            document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+            document.querySelector(`.service-card[onclick="selectService('${key}')"]`).classList.add('selected');
+            selectedService = key;
+            serviceFee = SERVICE_FEES[key];
+            document.getElementById('selectedServiceMsg').textContent = `✅ Selected: ${formatName(key)}`;
         }
 
-        async function init() {
-            const { data: { user }, error } = await supabase.auth.getUser();
-            if (error || !user) {
-                window.location.href = 'login.html';
-                return;
-            }
-
-            const s = getServiceFromUrl();
-            if (!s) {
-                document.getElementById('serviceTitle').textContent = 'Invalid Service';
-                document.getElementById('submitBtn').disabled = true;
-                return;
-            }
-
-            serviceId = s;
-            serviceFee = SERVICES[s].fee;
-
-            document.getElementById('serviceTitle').textContent = '💰 ' + SERVICES[s].name;
-            document.getElementById('serviceDescription').textContent = 'Service Fee: ' + formatKES(serviceFee);
-            document.getElementById('priceDisplay').textContent = formatKES(serviceFee);
-            document.getElementById('submitBtn').textContent = `💳 Pay Now (${formatKES(serviceFee)})`;
+        function confirmService() {
+            if (!selectedService) return alert('Please select a service.');
+            renderPurposes();
+            showStep(3);
         }
 
-        document.getElementById('serviceForm').onsubmit = async function(e) {
+        function renderPurposes() {
+            const container = document.getElementById('purposeList');
+            const purposes = SERVICE_PURPOSES[selectedService] || ["General Purpose"];
+            container.innerHTML = purposes.map(p => `
+                <div class="purpose-item" onclick="selectPurpose('${p}')">${p}</div>
+            `).join('');
+        }
+
+        function selectPurpose(p) {
+            document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
+            document.querySelector(`.purpose-item[onclick="selectPurpose('${p}')"]`).classList.add('selected');
+            selectedPurpose = p;
+        }
+
+        function confirmPurpose() {
+            if (!selectedPurpose) return alert('Please select a purpose.');
+            document.getElementById('summaryService').textContent = formatName(selectedService);
+            document.getElementById('summaryPurpose').textContent = selectedPurpose;
+            document.getElementById('summaryAmount').textContent = `KES ${serviceFee.toLocaleString()}`;
+            showStep(4);
+        }
+
+        // Step 4: Payment
+        document.getElementById('paymentForm').onsubmit = async function(e) {
             e.preventDefault();
             
-            const btn = document.getElementById('submitBtn');
+            const phone = document.getElementById('mpesaPhone').value.trim();
+            const btn = document.getElementById('payBtn');
+            const statusBox = document.getElementById('statusMessage');
+
             btn.disabled = true;
             btn.textContent = 'Processing...';
-
-            const reg = document.getElementById('regNumber').value;
-            const make = document.getElementById('make').value;
-            const model = document.getElementById('model').value;
-            const year = document.getElementById('year').value;
-            const purpose = document.getElementById('purpose').value;
-            const phone = document.getElementById('phone').value;
+            statusBox.style.display = 'none';
 
             try {
-                const { data: { user }, error: authError } = await supabase.auth.getUser();
-                if (authError || !user) {
-                    showStatus('Please login again.', 'error');
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    alert('Please login again.');
                     window.location.href = 'login.html';
                     return;
                 }
 
-                // ✅ Backend-enforced security: The backend will use Supabase RLS to verify the user's role
-                const response = await fetch(`${API_BASE}/mpesa/initiate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        phone: phone,
-                        amount: serviceFee,
-                        service: serviceId,
-                        purpose: purpose,
-                        reference: 'AUTO-' + Date.now().toString(36).toUpperCase(),
+                // Create service request in Supabase
+                const { data: request, error } = await supabase
+                    .from('service_requests')
+                    .insert({
                         user_id: user.id,
-                        vehicle: { reg, make, model, year }
+                        service_type: selectedService,
+                        purpose: selectedPurpose,
+                        amount: serviceFee,
+                        phone: phone,
+                        client_name: clientDetails.name,
+                        client_email: clientDetails.email,
+                        payment_status: 'pending',
+                        status: 'awaiting_payment'
                     })
-                });
+                    .select()
+                    .single();
 
-                const result = await response.json();
+                if (error) throw error;
 
-                if (!response.ok) {
-                    throw new Error(result.error || 'Payment initiation failed');
-                }
+                // Simulate successful payment (In production, call your M-Pesa API here)
+                setTimeout(async () => {
+                    // Update status to paid
+                    await supabase
+                        .from('service_requests')
+                        .update({ payment_status: 'paid', status: 'completed' })
+                        .eq('id', request.id);
 
-                showStatus('✅ Payment initiated! Check your phone for the M-Pesa STK Push.', 'success');
-                btn.textContent = '✅ Waiting for confirmation...';
-                
-                // Poll for status using Realtime subscriptions or simple polling
-                // For production, use Realtime subscription on the service_requests table
-                // For simplicity, we will poll here
-                const checkoutId = result.checkout_request_id;
-                let attempts = 0;
-                const interval = setInterval(async () => {
-                    attempts++;
-                    const statusRes = await fetch(`${API_BASE}/mpesa/status/${checkoutId}`);
-                    const statusData = await statusRes.json();
+                    statusBox.className = 'status-box status-success';
+                    statusBox.textContent = '✅ Payment successful! Redirecting to service...';
+                    statusBox.style.display = 'block';
 
-                    if (statusData.status === 'completed') {
-                        clearInterval(interval);
-                        btn.textContent = '✅ Completed';
-                        btn.disabled = true;
-                        showStatus('✅ Payment confirmed! Generating result...', 'success');
-                        displayResult(statusData.data);
-                    } else if (attempts > 30) { // Timeout after 90 seconds (30 * 3s)
-                        clearInterval(interval);
-                        btn.textContent = '💳 Pay Now';
-                        btn.disabled = false;
-                        showStatus('⏰ Payment timed out. Please try again.', 'error');
-                    }
+                    btn.textContent = '✅ Completed';
+                    btn.disabled = true;
+
+                    // Redirect to the specific service page
+                    setTimeout(() => {
+                        const page = SERVICE_PAGES[selectedService] || 'valuation.html';
+                        window.location.href = page;
+                    }, 2000);
+
                 }, 3000);
 
             } catch (err) {
-                showStatus('❌ Error: ' + err.message, 'error');
-                btn.textContent = '💳 Pay Now';
+                statusBox.className = 'status-box status-error';
+                statusBox.textContent = '❌ Error: ' + err.message;
+                statusBox.style.display = 'block';
                 btn.disabled = false;
+                btn.textContent = '💳 Pay Now';
             }
         };
 
-        function displayResult(data) {
-            const box = document.getElementById('resultBox');
-            const content = document.getElementById('resultContent');
-            box.style.display = 'block';
-            
-            if (serviceId === 'valuation' || serviceId === 'instant-value-check') {
-                content.innerHTML = `
-                    <p><strong>Market Value:</strong> <span class="result-value">${formatKES(data.market_value)}</span></p>
-                    <p><strong>Certificate:</strong> ${data.certificate_number}</p>
-                    <p><strong>Condition:</strong> ${data.condition}</p>
-                `;
-            } else if (serviceId === 'inspection' || serviceId === 'assessment') {
-                content.innerHTML = `
-                    <p><strong>Overall Score:</strong> <span class="result-value">${data.overall_score}%</span></p>
-                    <p><strong>Verdict:</strong> ${data.final_verdict}</p>
-                    <p><strong>Certificate:</strong> ${data.certificate_number}</p>
-                `;
-            } else {
-                content.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
-            }
+        // Helpers
+        function formatName(key) {
+            return key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         }
 
-        async function logout() {
-            await supabase.auth.signOut();
-            localStorage.clear();
-            sessionStorage.clear();
-            window.location.href = 'login.html';
+        function getIcon(key) {
+            const icons = { 'valuation': '💰', 'instant-value-check': '💡', 'inspection': '🔍', 'assessment': '⚠️', 'mileage-rate': '📏', 'fleet': '🚛' };
+            return icons[key] || '📄';
+        }
+
+        // Initialize
+        async function init() {
+            const user = await window.autoV.requireAuth();
+            if (!user) return;
+
+            const role = await window.autoV.getUserRole(user.id);
+            
+            // Filter services by role
+            const ALLOWED_SERVICES = {
+                'individual': ['valuation', 'instant-value-check'],
+                'corporate': ['valuation', 'instant-value-check'],
+                'valuer': ['valuation', 'instant-value-check', 'inspection', 'assessment', 'mileage-rate', 'fleet']
+            };
+
+            const allowed = ALLOWED_SERVICES[role] || [];
+            Object.keys(SERVICE_FEES).forEach(key => {
+                if (!allowed.includes(key)) delete SERVICE_FEES[key];
+            });
+
+            // Pre-fill client details
+            const { data: profile } = await supabase.from('user_profiles').select('full_name, phone').eq('id', user.id).single();
+            if (profile) {
+                document.getElementById('custName').value = profile.full_name || '';
+                document.getElementById('custPhone').value = profile.phone || '';
+                document.getElementById('custEmail').value = user.email;
+            }
+
+            showStep(1);
         }
 
         init();
