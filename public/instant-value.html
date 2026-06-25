@@ -343,7 +343,7 @@
         const client = window.autoV.supabase;
         const SERVICE_FEE = 500;
 
-        // ─── Base Market Prices (in KES) ─────────────────────────────
+        // ─── BASE PRICES BY MAKE (in KES) ─────────────────────────────
         const BASE_PRICES = {
             'Toyota': 2800000,
             'Nissan': 2300000,
@@ -358,22 +358,65 @@
             'Other': 2000000
         };
 
-        // ─── AI Valuation Engine ──────────────────────────────────────
+        // ─── MODEL MULTIPLIERS (Specific model adjustments) ────────────
+        const MODEL_MULTIPLIERS = {
+            // Toyota
+            'land cruiser': 1.45,
+            'prado': 1.35,
+            'hilux': 1.20,
+            'corolla': 0.90,
+            'axio': 0.90,
+            'fielder': 0.95,
+            'voxy': 1.05,
+            'noah': 1.05,
+            'hiace': 1.10,
+            // Nissan
+            'x-trail': 1.15,
+            'patrol': 1.30,
+            'navara': 1.10,
+            'note': 0.80,
+            // BMW
+            'x5': 1.25,
+            'x3': 1.15,
+            '3 series': 1.10,
+            // Mercedes
+            'c-class': 1.10,
+            'e-class': 1.25,
+            'g-class': 1.50,
+            // Honda
+            'cr-v': 1.15,
+            'accord': 1.10,
+            'fit': 0.85,
+            // Mazda
+            'cx-5': 1.15,
+            'demio': 0.85,
+            // Subaru
+            'forester': 1.10,
+            'outback': 1.15,
+            'legacy': 1.10
+        };
+
+        // ─── AI VALUATION ENGINE ──────────────────────────────────────
         function calculateValuation(data) {
-            // 1. Start with Base Price
+            // 1. Start with Base Price (Make)
             let value = BASE_PRICES[data.make] || 2000000;
 
-            // 2. Age Factor (Depreciation)
+            // 2. Apply Model Multiplier (if known)
+            const modelKey = data.model.toLowerCase().trim();
+            const modelMultiplier = MODEL_MULTIPLIERS[modelKey] || 1.0;
+            value = value * modelMultiplier;
+
+            // 3. Age Factor (Depreciation)
             const currentYear = new Date().getFullYear();
             const age = Math.max(0, currentYear - data.year);
             let ageFactor = 1 - (age * 0.07);
             ageFactor = Math.max(0.35, Math.min(1.0, ageFactor)); // Clamp between 0.35 and 1.0
 
-            // 3. Mileage Factor
+            // 4. Mileage Factor
             let mileageFactor = 1 - (data.mileage / 300000);
             mileageFactor = Math.max(0.45, Math.min(1.0, mileageFactor));
 
-            // 4. Condition Factor
+            // 5. Condition Factor
             const conditionFactors = {
                 'Excellent': 1.15,
                 'Good': 1.0,
@@ -382,7 +425,7 @@
             };
             const conditionFactor = conditionFactors[data.condition] || 1.0;
 
-            // 5. Accident Factor
+            // 6. Accident Factor
             const accidentFactors = {
                 'None': 1.0,
                 'Minor': 0.9,
@@ -391,7 +434,7 @@
             };
             const accidentFactor = accidentFactors[data.accidentHistory] || 1.0;
 
-            // 6. Location Factor (Market Demand)
+            // 7. Location Factor (Market Demand)
             const locationFactors = {
                 'Nairobi': 1.1,
                 'Mombasa': 1.05,
@@ -404,7 +447,7 @@
             };
             const locationFactor = locationFactors[data.location] || 1.0;
 
-            // 7. Fuel Type Factor (Hybrid/Electric have premium demand)
+            // 8. Fuel Type Factor (Hybrid/Electric have premium demand)
             const fuelFactors = {
                 'Petrol': 1.0,
                 'Diesel': 0.95,
@@ -413,7 +456,7 @@
             };
             const fuelFactor = fuelFactors[data.fuelType] || 1.0;
 
-            // 8. Transmission Factor
+            // 9. Transmission Factor
             const transmissionFactors = {
                 'Automatic': 1.05,
                 'Manual': 1.0,
@@ -451,7 +494,7 @@
             };
         }
 
-        // ─── Form Submission ──────────────────────────────────────────
+        // ─── FORM SUBMISSION ──────────────────────────────────────────
         document.getElementById('instantForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
