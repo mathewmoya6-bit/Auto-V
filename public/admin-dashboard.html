@@ -264,18 +264,34 @@
             </div>
         </div>
 
-        <!-- ─── PRICE MANAGEMENT TAB (Uses system_settings) ─── -->
+        <!-- ─── PRICE MANAGEMENT & FEE MANAGER TAB ─── -->
         <div id="tab-prices" class="tab-content">
-            <div class="search-bar">
-                <input type="text" id="priceSearch" placeholder="🔍 Search price settings..." oninput="filterPrices()">
-                <button class="action-btn view" onclick="openModal('addPrice')">➕ Add Price Setting</button>
+            
+            <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:24px;">
+                <!-- Standard System Settings Price Table -->
+                <div style="flex:1;min-width:300px;">
+                    <div class="search-bar">
+                        <input type="text" id="priceSearch" placeholder="🔍 Search price settings..." oninput="filterPrices()">
+                        <button class="action-btn view" onclick="openModal('addPrice')">➕ Add Price Setting</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead><tr><th>Service</th><th>Setting Key</th><th>Current Price (KES)</th><th>Actions</th></tr></thead>
+                            <tbody id="pricesTableBody"><tr><td colspan="4" style="text-align:center;padding:40px;color:#64748b;"><div class="spinner"></div> Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ✅ Real-time Fee Manager -->
+                <div style="flex:1;min-width:300px;background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:20px;">
+                    <h2 style="color:#eab308;font-size:18px;margin-bottom:16px;">💰 Real-time Fee Manager</h2>
+                    <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">Update pricing instantly. Changes apply to all users in real-time without refresh.</p>
+                    <div id="feeList">
+                        <div style="text-align:center;padding:20px;color:#64748b;"><div class="spinner"></div> Loading fees...</div>
+                    </div>
+                </div>
             </div>
-            <div class="table-wrapper">
-                <table>
-                    <thead><tr><th>Service</th><th>Setting Key</th><th>Current Price (KES)</th><th>Actions</th></tr></thead>
-                    <tbody id="pricesTableBody"><tr><td colspan="4" style="text-align:center;padding:40px;color:#64748b;"><div class="spinner"></div> Loading...</td></tr></tbody>
-                </table>
-            </div>
+
         </div>
 
         <div id="tab-analytics" class="tab-content">
@@ -623,10 +639,10 @@
                     } catch (err) { console.error('Stats error:', err); }
                 }
                 
-                // ─── LOAD SERVICES FROM service_fees ─────────────────
+                // ─── LOAD SERVICES FROM system_fees (NOT service_fees) ──
                 async function loadServices() {
                     try {
-                        const { data, error } = await supabase.from('service_fees').select('*').order('service_name');
+                        const { data, error } = await supabase.from('system_fees').select('*').order('service_name');
                         if (error) throw error;
                         allServices = data || [];
                         renderServices(allServices);
@@ -677,7 +693,7 @@
                 window.deleteService = async function(id) {
                     if (!confirm('Delete this service?')) return;
                     try {
-                        await supabase.from('service_fees').delete().eq('id', id);
+                        await supabase.from('system_fees').delete().eq('id', id);
                         showToast('✅ Service deleted', 'success');
                         loadServices();
                     } catch (err) { showToast('Error: ' + err.message, 'error'); }
@@ -694,7 +710,7 @@
                     if (!name || !price) { showToast('Name and price required', 'error'); return; }
                     
                     try {
-                        await supabase.from('service_fees').insert({
+                        await supabase.from('system_fees').insert({
                             service_name: name,
                             service_type: type,
                             fee: price,
@@ -721,7 +737,7 @@
                     if (!name || !price) { showToast('Name and price required', 'error'); return; }
                     
                     try {
-                        await supabase.from('service_fees').update({
+                        await supabase.from('system_fees').update({
                             service_name: name,
                             service_type: type,
                             fee: price,
@@ -832,6 +848,47 @@
                         loadPrices();
                     } catch (err) { showToast('Error: ' + err.message, 'error'); }
                 });
+
+                // ─── ✅ REAL-TIME FEE MANAGER ──────────────────────────
+                async function loadAdminFees() {
+                    try {
+                        const { data, error } = await supabase.from('system_fees').select('*');
+                        if (error) throw error;
+                        
+                        const container = document.getElementById('feeList');
+                        if (!data || data.length === 0) {
+                            container.innerHTML = `<div style="text-align:center;padding:20px;color:#64748b;">No fees configured</div>`;
+                            return;
+                        }
+                        container.innerHTML = data.map(row => `
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1e293b;flex-wrap:wrap;gap:8px;">
+                                <span style="flex:1;font-weight:500;">${row.service_name}</span>
+                                <input type="number" value="${row.fee}" id="fee_${row.id}" style="width:100px;padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#fff;font-size:14px;">
+                                <button onclick="updateFee('${row.id}')" class="action-btn save" style="padding:6px 16px;">Update</button>
+                            </div>
+                        `).join('');
+                    } catch (err) {
+                        console.error('Fee Manager error:', err);
+                        document.getElementById('feeList').innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;">Error loading fees</div>`;
+                    }
+                }
+
+                window.updateFee = async function(id) {
+                    const input = document.getElementById(`fee_${id}`);
+                    const amount = parseInt(input.value);
+                    if (!amount || amount <= 0) {
+                        showToast('Please enter a valid amount', 'error');
+                        return;
+                    }
+                    try {
+                        const { error } = await supabase.from('system_fees').update({ fee: amount }).eq('id', id);
+                        if (error) throw error;
+                        showToast('✅ Fee updated! Real-time sync active.', 'success');
+                        loadAdminFees();
+                    } catch (err) {
+                        showToast('Error updating fee: ' + err.message, 'error');
+                    }
+                };
                 
                 // ─── LOAD REQUESTS ────────────────────────────────────
                 async function loadRequests() {
@@ -1178,6 +1235,7 @@
                             loadPayments();
                             loadServices();
                             loadPrices();
+                            loadAdminFees();
                         });
                     }
                     if (autoV.subscribeToChanges) {
@@ -1192,7 +1250,7 @@
                         const isAdmin = await checkSession();
                         if (!isAdmin) return;
                         
-                        await Promise.all([loadStats(), loadRequests(), loadUsers(), loadPayments(), loadServices(), loadPrices()]);
+                        await Promise.all([loadStats(), loadRequests(), loadUsers(), loadPayments(), loadServices(), loadPrices(), loadAdminFees()]);
                         initCharts();
                         setupRealtime();
                         
