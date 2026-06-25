@@ -221,18 +221,16 @@ if (window.autoV && window.autoV._initialized) {
             `;
         }
 
-        // ============================================
-        // GLOBAL AUTO-V NAMESPACE
-        // ============================================
-        
-        // ✅ CRITICAL: Build the full object first
+        // ================================================================
+        // 🔥 CRITICAL FIX: Build the complete object inside the scope
+        // ================================================================
         const autoVInstance = {
             // Core
             supabase: supabase,
             SUPABASE_URL: SUPABASE_URL,
             SUPABASE_ANON_KEY: SUPABASE_ANON_KEY,
             state: state,
-            _initialized: true, // ✅ Marker to prevent double init
+            _initialized: true,
             
             // ─── Data Functions ──────────────────────────────────────────
             fetchFees: fetchFees,
