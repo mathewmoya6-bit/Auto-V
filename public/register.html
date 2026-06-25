@@ -5,278 +5,164 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Register</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- ✅ Embedded Favicon (No 404 errors) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    
+    <!-- ✅ Load Supabase UMD & Single Source of Truth -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase.js"></script>
 
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #0a0a0a;
-            color: white;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-        }
+        body{font-family:Arial,sans-serif;background:#0a0a0a;color:white;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}
+        .card{width:400px;max-width:95%;background:#111;padding:30px;border-radius:12px;border:1px solid #333;}
+        h2{text-align:center;color:#eab308;margin-bottom:20px;}
+        
+        /* ✅ Toggle Buttons */
+        .role-selector{display:flex;gap:10px;margin-bottom:20px;background:#1a1a1a;border-radius:8px;padding:5px;}
+        .role-btn{flex:1;padding:10px;border:none;border-radius:6px;background:transparent;color:#94a3b8;font-weight:bold;cursor:pointer;transition:all 0.3s;}
+        .role-btn.active{background:#eab308;color:#000;}
+        
+        .form-section{display:none;animation:fadeIn 0.3s ease;}
+        .form-section.active{display:block;}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
 
-        .card {
-            width: 400px;
-            max-width: 95%;
-            background: #111;
-            padding: 30px;
-            border-radius: 12px;
-            border: 1px solid #333;
-        }
-
-        h2 {
-            text-align: center;
-            color: #eab308;
-            margin-bottom: 25px;
-        }
-
-        /* Client Type Toggle */
-        .client-type-selector {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            background: #1a1a1a;
-            border-radius: 8px;
-            padding: 5px;
-        }
-
-        .client-type-btn {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 6px;
-            background: transparent;
-            color: #94a3b8;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .client-type-btn.active {
-            background: #eab308;
-            color: #000;
-        }
-
-        .client-type-btn:hover:not(.active) {
-            color: #fff;
-        }
-
-        /* Forms */
-        .form-section {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .form-section.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 15px;
-            border: 1px solid #333;
-            border-radius: 8px;
-            background: #1a1a1a;
-            color: white;
-            box-sizing: border-box;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: #eab308;
-        }
-
-        button.submit-btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            background: #eab308;
-            color: black;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        button.submit-btn:hover {
-            background: #ca8a04;
-        }
-
-        a {
-            color: #eab308;
-            text-decoration: none;
-        }
-
-        p {
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .error {
-            color: #ef4444;
-            font-size: 14px;
-            margin-top: -10px;
-            margin-bottom: 15px;
-            display: none;
-            background: #2a0a0a;
-            padding: 10px;
-            border-radius: 6px;
-            border-left: 4px solid #ef4444;
-        }
+        input{width:100%;padding:12px;margin-bottom:15px;border:1px solid #333;border-radius:8px;background:#1a1a1a;color:white;box-sizing:border-box;}
+        input:focus{outline:none;border-color:#eab308;}
+        
+        button.submit-btn{width:100%;padding:12px;border:none;border-radius:8px;background:#eab308;color:black;font-weight:bold;cursor:pointer;margin-top:10px;}
+        button.submit-btn:hover{background:#ca8a04;}
+        
+        .error{color:#ef4444;font-size:14px;margin-bottom:15px;display:none;background:#2a0a0a;padding:10px;border-radius:6px;border-left:4px solid #ef4444;}
+        .link{text-align:center;margin-top:15px;color:#94a3b8;}
+        .link a{color:#eab308;text-decoration:none;}
     </style>
 </head>
 <body>
 
 <div class="card">
+    <h2>🚗 Create Account</h2>
 
-    <h2>Create Account</h2>
-
-    <!-- Client Type Selector -->
-    <div class="client-type-selector">
-        <button type="button" class="client-type-btn active" data-type="individual" onclick="switchClientType('individual')">
-            👤 Individual
-        </button>
-        <button type="button" class="client-type-btn" data-type="corporate" onclick="switchClientType('corporate')">
-            🏢 Corporate
-        </button>
+    <!-- ✅ Selector -->
+    <div class="role-selector">
+        <button type="button" class="role-btn active" data-type="individual">👤 Individual</button>
+        <button type="button" class="role-btn" data-type="corporate">🏢 Corporate</button>
     </div>
 
-    <form onsubmit="register(event)">
+    <div class="error" id="errorMsg"></div>
 
-        <!-- Shared Fields -->
+    <form id="signupForm">
+        <!-- ✅ SHARED FIELDS -->
         <input type="email" id="email" placeholder="Email Address" required>
-        <input type="password" id="password" placeholder="Password" required>
+        <input type="password" id="password" placeholder="Password (min 6 chars)" required minlength="6">
         <input type="tel" id="phone" placeholder="Phone Number (Optional)">
 
-        <!-- Individual Fields -->
+        <!-- ✅ INDIVIDUAL FIELDS -->
         <div id="individual-fields" class="form-section active">
             <input type="text" id="full_name" placeholder="Full Name" required>
             <input type="text" id="id_passport" placeholder="ID / Passport Number" required>
         </div>
 
-        <!-- Corporate Fields -->
+        <!-- ✅ CORPORATE FIELDS -->
         <div id="corporate-fields" class="form-section">
             <input type="text" id="company_name" placeholder="Company Name" required>
             <input type="text" id="company_reg" placeholder="Company Registration Number" required>
         </div>
 
-        <div class="error" id="error-message"></div>
-
-        <button type="submit" class="submit-btn">
-            Create Account
-        </button>
-
+        <button type="submit" class="submit-btn">Create Account</button>
     </form>
 
-    <p>
-        Already have an account?
-        <a href="login.html">Login</a>
-    </p>
-
+    <div class="link">Already have an account? <a href="login.html">Login</a></div>
 </div>
 
 <script>
+    // 🔥 Use the Single Source of Truth
+    const { supabase } = window.autoV;
 
-// Supabase Config
-const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+    let currentType = 'individual';
 
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Switch logic
+    document.querySelectorAll('.role-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            currentType = this.dataset.type;
 
-// State
-let currentClientType = 'individual';
+            // Toggle visibility AND remove 'required' attribute from hidden fields to fix the browser error
+            const indFields = document.getElementById('individual-fields');
+            const corpFields = document.getElementById('corporate-fields');
 
-// Switch between Individual and Corporate fields
-function switchClientType(type) {
-    currentClientType = type;
-
-    // Update active button styles
-    document.querySelectorAll('.client-type-btn').forEach(btn => {
-        btn.classList.remove('active');
+            if (currentType === 'individual') {
+                indFields.classList.add('active');
+                corpFields.classList.remove('active');
+                // Remove required from corporate fields
+                document.getElementById('company_name').removeAttribute('required');
+                document.getElementById('company_reg').removeAttribute('required');
+                // Add required to individual fields
+                document.getElementById('full_name').setAttribute('required', '');
+                document.getElementById('id_passport').setAttribute('required', '');
+            } else {
+                indFields.classList.remove('active');
+                corpFields.classList.add('active');
+                // Remove required from individual fields
+                document.getElementById('full_name').removeAttribute('required');
+                document.getElementById('id_passport').removeAttribute('required');
+                // Add required to corporate fields
+                document.getElementById('company_name').setAttribute('required', '');
+                document.getElementById('company_reg').setAttribute('required', '');
+            }
+        });
     });
-    document.querySelector(`.client-type-btn[data-type="${type}"]`).classList.add('active');
 
-    // Toggle fields
-    document.getElementById('individual-fields').classList.toggle('active', type === 'individual');
-    document.getElementById('corporate-fields').classList.toggle('active', type === 'corporate');
-}
+    // Signup Handler
+    document.getElementById('signupForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
 
-async function register(event) {
-    event.preventDefault();
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const phone = document.getElementById('phone').value;
+        const errorDiv = document.getElementById('errorMsg');
 
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-    const phone = document.getElementById("phone").value;
-    const errorDiv = document.getElementById("error-message");
+        errorDiv.style.display = 'none';
 
-    // Hide previous error
-    errorDiv.style.display = "none";
-    errorDiv.textContent = "";
+        let metadata = {
+            phone: phone || '',
+            client_type: currentType
+        };
 
-    // Collect specific fields based on client type
-    let metadata = {
-        client_type: currentClientType,
-        phone: phone || ''
-    };
+        // Collect specific fields based on selection
+        if (currentType === 'individual') {
+            metadata.full_name = document.getElementById('full_name').value;
+            metadata.id_passport = document.getElementById('id_passport').value;
+        } else {
+            metadata.company_name = document.getElementById('company_name').value;
+            metadata.company_reg = document.getElementById('company_reg').value;
+        }
 
-    if (currentClientType === 'individual') {
-        const full_name = document.getElementById("full_name").value;
-        const id_passport = document.getElementById("id_passport").value;
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: { data: metadata }
+        });
 
-        if (!full_name || !id_passport) {
-            errorDiv.textContent = "Please fill in your Full Name and ID/Passport.";
-            errorDiv.style.display = "block";
+        if (error) {
+            errorDiv.textContent = error.message;
+            errorDiv.style.display = 'block';
             return;
         }
 
-        metadata.full_name = full_name;
-        metadata.id_passport = id_passport;
-    } else { // Corporate
-        const company_name = document.getElementById("company_name").value;
-        const company_reg = document.getElementById("company_reg").value;
+        if (data.user) {
+            // Store the chosen role in user_profiles immediately
+            await supabase.from('user_profiles').upsert({
+                id: data.user.id,
+                email: email,
+                role: currentType, // Store individual/corporate as role for dashboard logic
+                full_name: metadata.full_name || metadata.company_name || email.split('@')[0]
+            }, { onConflict: 'id' });
 
-        if (!company_name || !company_reg) {
-            errorDiv.textContent = "Please fill in the Company Name and Registration Number.";
-            errorDiv.style.display = "block";
-            return;
-        }
-
-        metadata.company_name = company_name;
-        metadata.company_reg = company_reg;
-    }
-
-    // Send to Supabase Auth
-    const { data, error } = await supabaseClient.auth.signUp({
-        email,
-        password,
-        options: {
-            data: metadata
+            alert('Account created successfully! Please check your email to verify.');
+            window.location.href = 'login.html';
         }
     });
-
-    if (error) {
-        errorDiv.textContent = error.message;
-        errorDiv.style.display = "block";
-        return;
-    }
-
-    if (data.user) {
-        alert("Account created successfully! Please check your email for verification.");
-        window.location.href = "login.html";
-    }
-}
-
 </script>
-
 </body>
 </html>
