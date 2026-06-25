@@ -1,6 +1,4 @@
-# ============================================================
 # services/mpesa.py - M-Pesa Service Logic (REAL API)
-# ============================================================
 
 import os
 import base64
@@ -10,7 +8,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
-# Import Supabase client
+# Import Supabase client functions
 from services.supabase_client import (
     create_payment,
     get_payment_by_checkout_request_id,
@@ -31,7 +29,6 @@ MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
 MPESA_ENV = os.getenv("MPESA_ENV", "sandbox").lower().strip()
 
 # ─── Callback URL ──────────────────────────────────────────
-# IMPORTANT: Use your Render URL here
 MPESA_CALLBACK_URL = os.getenv(
     "MPESA_CALLBACK_URL",
     "https://auto-v.onrender.com/api/mpesa/callback"
@@ -125,7 +122,7 @@ def initiate_stk_push(
             "PartyA": phone,
             "PartyB": MPESA_SHORTCODE,
             "PhoneNumber": phone,
-            "CallBackURL": MPESA_CALLBACK_URL,  # Use the variable
+            "CallBackURL": MPESA_CALLBACK_URL,
             "AccountReference": reference or f"AUTO-{payment_id[-8:]}",
             "TransactionDesc": f"Payment {payment_id}"
         }
@@ -178,11 +175,14 @@ def initiate_stk_push(
                         "created_at": datetime.utcnow().isoformat()
                     }
                     
+                    # 🔍 LOG THE DATA BEFORE SAVING
+                    logger.info(f"💰 Payment data before saving: {payment_data}")
+                    
                     create_payment(payment_data)
                     logger.info(f"💾 Payment record created in database: {payment_id}")
                     
                 except Exception as db_error:
-                    logger.error(f"❌ Failed to save payment to database: {db_error}")
+                    logger.error(f"❌ Failed to save payment to database: {db_error}", exc_info=True)
                     # Continue - we still want to return the STK response
                 
                 return result
@@ -249,6 +249,7 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         # ─── UPDATE DATABASE ──────────────────────────────────────────
+        updated = False
         if checkout_request_id:
             try:
                 # Find the payment by checkout_request_id
@@ -276,6 +277,7 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
                     
                     update_payment_status(payment["payment_id"], update_data)
                     logger.info(f"💾 Payment updated in database: {payment['payment_id']} → {status}")
+                    updated = True
                     
                 else:
                     logger.warning(f"⚠️ Payment not found for checkout_request_id: {checkout_request_id}")
@@ -293,13 +295,50 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
                                 "amount": meta_dict.get("Amount"),
                                 "updated_at": datetime.utcnow().isoformat()
                             })
+                            updated = True
+                        else:
+                            logger.warning(f"⚠️ Payment not found by merchant_request_id either.")
                     
+                    # ─── FALLBACK: CREATE A NEW PAYMENT RECORD ───
+                    # If still not found, create a record from callback data
+                    if not updated:
+                        logger.info("🔄 Attempting to create fallback payment record from callback data...")
+                        try:
+                            fallback_data = {
+                                "payment_id": f"CB-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                                "user_id": None,  # We don't have it; could extract from AccountReference if stored
+                                "phone": meta_dict.get("PhoneNumber"),
+                                "amount": meta_dict.get("Amount", 0),
+                                "status": "completed" if status == "completed" else "failed",
+                                "reference": "CALLBACK-FALLBACK",
+                                "checkout_request_id": checkout_request_id,
+                                "merchant_request_id": merchant_request_id,
+                                "mpesa_receipt": meta_dict.get("MpesaReceiptNumber"),
+                                "transaction_date": meta_dict.get("TransactionDate"),
+                                "result_code": result_code,
+                                "result_desc": result_desc,
+                                "created_at": datetime.utcnow().isoformat(),
+                                "updated_at": datetime.utcnow().isoformat()
+                            }
+                            # Log the fallback data
+                            logger.info(f"📦 Fallback payment data: {fallback_data}")
+                            
+                            created = create_payment(fallback_data)
+                            if created:
+                                logger.info(f"✅ Created fallback payment record: {fallback_data['payment_id']}")
+                                updated = True
+                            else:
+                                logger.error("❌ Failed to create fallback payment record.")
+                        except Exception as e:
+                            logger.error(f"❌ Fallback creation error: {e}", exc_info=True)
+                            
             except Exception as db_error:
-                logger.error(f"❌ Failed to update payment in database: {db_error}")
+                logger.error(f"❌ Failed to update payment in database: {db_error}", exc_info=True)
                 # Continue - we still want to return success to Safaricom
         else:
             logger.warning("⚠️ No checkout_request_id in callback")
 
+        # Return success to Safaricom regardless of DB update (they expect 0)
         return {
             "ResultCode": 0,
             "ResultDesc": "Success",
@@ -311,14 +350,13 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
                 "result_desc": result_desc,
                 "mpesa_code": meta_dict.get("MpesaReceiptNumber"),
                 "amount": meta_dict.get("Amount"),
-                "transaction_date": meta_dict.get("TransactionDate")
+                "transaction_date": meta_dict.get("TransactionDate"),
+                "db_updated": updated
             }
         }
 
     except Exception as e:
-        logger.error(f"❌ Callback handling error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"❌ Callback handling error: {e}", exc_info=True)
         return {"ResultCode": 1, "ResultDesc": f"Error: {str(e)}"}
 
 
