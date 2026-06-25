@@ -892,31 +892,42 @@
                     
                     const data = await response.json();
                     console.log('📊 Status check:', data);
-                    
-                    // CRITICAL: Only 'completed' with result_code '0' means success
-                    const status = data.status || data.payment_status;
-                    const resultCode = data.result_code || data.mpesa_result_code;
-                    const merchantRequestId = data.merchant_request_id || data.MerchantRequestID;
-                    
-                    // Check if payment is actually completed by M-Pesa
-                    if (status === 'completed' && resultCode === '0') {
-                        return { status: 'completed', data };
+
+                    // ✅ CRITICAL FIX: Extract all possible fields from M-Pesa response
+                    const rawStatus = data.status || data.payment_status || 'pending';
+                    const resultCode = data.result_code || data.mpesa_result_code || data.data?.result_code;
+                    const merchantRequestId = data.merchant_request_id || data.MerchantRequestID || data.checkout_request_id;
+
+                    // ✅ 1. SUCCESS: M-Pesa result_code '0' means payment was successfully processed
+                    if (resultCode === '0' || resultCode === '000') {
+                        // If we have a successful result_code, payment is confirmed regardless of status string
+                        return {
+                            status: 'completed',
+                            data: data.data || data,
+                            resultCode: resultCode
+                        };
                     }
-                    
-                    // Check if STK was sent (pending user PIN entry)
-                    if (status === 'pending' || status === 'stk_sent' || status === 'processing') {
-                        // If we have a merchant request ID, STK was sent
-                        if (merchantRequestId || data.checkout_request_id) {
-                            return { status: 'stk_sent', data };
+
+                    // ✅ 2. STK SENT: Waiting for user to enter PIN
+                    if (merchantRequestId) {
+                        if (rawStatus === 'pending' || rawStatus === 'stk_sent') {
+                            return { status: 'stk_sent', data, merchantRequestId };
                         }
+                    }
+
+                    // ✅ 3. PROCESSING: User entered PIN, M-Pesa is processing
+                    if (rawStatus === 'processing' || rawStatus === 'pending') {
                         return { status: 'pending', data };
                     }
-                    
-                    if (status === 'failed' || resultCode === '1' || resultCode === '1037' || resultCode === '1032') {
+
+                    // ✅ 4. FAILED: M-Pesa failure codes
+                    const failureCodes = ['1', '1037', '1032', '2001', '2002', '1031'];
+                    if (failureCodes.includes(String(resultCode))) {
                         return { status: 'failed', data, resultCode };
                     }
-                    
-                    return { status: status || 'pending', data };
+
+                    // ✅ 5. DEFAULT: Fallback
+                    return { status: rawStatus || 'pending', data };
                     
                 } catch (err) {
                     if (err.name === 'AbortError') {
@@ -1006,9 +1017,11 @@
                         pollTimeoutId = setTimeout(performPoll, delay);
                         return;
                     }
-                    
-                    // ✅ CORRECT: Only 'completed' with result_code '0' means success
-                    if (result.status === 'completed') {
+
+                    // ✅ CRITICAL FIX: Check result_code '0' for success, NOT just status string
+                    if (result.status === 'completed' && result.resultCode === '0') {
+                        // Wait 1 second to ensure Supabase has been updated
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                         handlePaymentSuccess(result.data);
                         return;
                     }
@@ -1017,7 +1030,6 @@
                     if (result.status === 'stk_sent') {
                         setPaymentStatus('stk_sent', '📲 STK Push sent! Please enter your PIN on your phone.');
                         state.stkSent = true;
-                        // Continue polling - user needs to enter PIN
                     } else if (result.status === 'pending' || result.status === 'processing') {
                         setPaymentStatus('pending', '⏳ Waiting for M-Pesa to process your payment...');
                         state.pinEntered = true;
@@ -1081,12 +1093,19 @@
                     
                     const result = await response.json();
                     console.log('✅ Auto-confirm result:', result);
-                    
-                    // ✅ Only confirm if result_code is '0' (success)
-                    if (result.success && (result.result_code === '0' || result.data?.result_code === '0')) {
-                        handlePaymentSuccess(result.data || result);
+
+                    // ✅ CRITICAL FIX: Extract result_code properly
+                    const resultCode = result.result_code || result.data?.result_code;
+                    const fullData = result.data || result;
+
+                    // ✅ Success only if result_code is '0'
+                    if (result.success && (resultCode === '0' || resultCode === '000')) {
+                        // Ensure we have all required data
+                        state.paymentReference = fullData.reference || state.paymentReference;
+                        state.paymentAmount = fullData.amount || state.paymentAmount;
+                        
+                        handlePaymentSuccess(fullData);
                     } else {
-                        const resultCode = result.result_code || result.data?.result_code;
                         if (resultCode === '1037' || resultCode === '1032') {
                             showMessage('⏳ Payment is still pending. Please check your M-Pesa and enter your PIN.', 'info');
                         } else {
