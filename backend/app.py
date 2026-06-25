@@ -1,6 +1,6 @@
 # app.py
 # AUTO-V Backend - M-Pesa + AI Valuation Engine
-# Flask version - Production ready for Render
+# Fully aligned with AUTO-V Platform (index.html, instant-value.html, dashboard.html)
 
 import os
 import base64
@@ -47,7 +47,6 @@ CORS(
 )
 
 # ✅ GLOBAL AFTER REQUEST HEADER HANDLER
-# This guarantees CORS headers on every single response
 @app.after_request
 def after_request(response):
     response.headers["Access-Control-Allow-Origin"] = request.headers.get('Origin', '*')
@@ -57,18 +56,14 @@ def after_request(response):
 
 # ============================================================
 # SECURE ENVIRONMENT VARIABLE LOADING
-# ✅ Keys must be set in Render Environment Variables
 # ============================================================
 
-# 1. Supabase (Must be set in Render ENV)
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     logger.critical("❌ SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set in environment!")
-    # App will still run but Supabase features will fail
 
-# 2. M-Pesa (Must be set in Render ENV)
 MPESA_CONSUMER_KEY = os.environ.get("MPESA_CONSUMER_KEY")
 MPESA_CONSUMER_SECRET = os.environ.get("MPESA_CONSUMER_SECRET")
 MPESA_PASSKEY = os.environ.get("MPESA_PASSKEY")
@@ -77,13 +72,11 @@ MPESA_ENVIRONMENT = os.environ.get("MPESA_ENVIRONMENT", "sandbox")
 
 if not MPESA_CONSUMER_KEY or not MPESA_CONSUMER_SECRET or not MPESA_PASSKEY:
     logger.critical("❌ M-Pesa credentials missing from environment variables!")
-    # App will still run but M-Pesa features will fail
 
 # ============================================================
 # INITIALIZE CLIENTS
 # ============================================================
 
-# Create Supabase client safely
 supabase = None
 if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
     try:
@@ -93,7 +86,6 @@ if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
         logger.error(f"❌ Supabase connection error: {e}")
         supabase = None
 
-# Base URL for M-Pesa API
 MPESA_API_BASE = "https://api.safaricom.co.ke" if MPESA_ENVIRONMENT == "production" else "https://sandbox.safaricom.co.ke"
 
 # ============================================================
@@ -162,10 +154,8 @@ TRICYCLE_BASE_PRICES = {
     'Other Tricycle': 300000
 }
 
-# Consolidated Base Prices
 BASE_PRICES = {**CAR_BASE_PRICES, **BIKE_BASE_PRICES, **TRICYCLE_BASE_PRICES}
 
-# Model Multipliers
 CAR_MODEL_MULTIPLIERS = {
     'land cruiser': 1.45, 'prado': 1.35, 'hilux': 1.20, 'corolla': 0.90,
     'axio': 0.90, 'fielder': 0.95, 'voxy': 1.05, 'noah': 1.05, 'hiace': 1.10,
@@ -206,7 +196,6 @@ TRICYCLE_MODEL_MULTIPLIERS = {'ape': 1.10, 'auto': 1.00, 'tuk tuk': 1.00}
 
 MODEL_MULTIPLIERS = {**CAR_MODEL_MULTIPLIERS, **BIKE_MODEL_MULTIPLIERS, **TRICYCLE_MODEL_MULTIPLIERS}
 
-# Factor Tables
 CONDITION_FACTORS = {'Excellent': 1.15, 'Good': 1.0, 'Fair': 0.85, 'Poor': 0.65}
 ACCIDENT_FACTORS = {'None': 1.0, 'Minor': 0.9, 'Major': 0.65, 'WriteOff': 0.4}
 LOCATION_FACTORS = {'Nairobi': 1.10, 'Mombasa': 1.05, 'Kisumu': 0.95, 'Nakuru': 0.95, 'Eldoret': 0.95, 'Thika': 1.00, 'Malindi': 0.90, 'Other': 1.00}
@@ -487,22 +476,28 @@ def mpesa_callback():
         return jsonify({"status": "OK"})
 
 # ============================================================
-# ROUTES: AI VALUATION ENGINE
+# ROUTES: AI VALUATION ENGINE (ALIGNED WITH instant-value.html)
 # ============================================================
 
 @app.route('/instant-check/valuate', methods=['POST'])
 def calculate_instant_value():
+    """
+    Receives vehicle data from instant-value.html.
+    Calculates AI valuation and returns JSON.
+    The frontend saves the result to Supabase.
+    """
     try:
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "No JSON data provided"}), 400
 
+        # Extract ALL fields sent by instant-value.html
         make = data.get('make')
         model = data.get('model')
         year = data.get('year')
-        mileage = data.get('mileage')
         fuel_type = data.get('fuel_type')
         transmission = data.get('transmission')
+        mileage = data.get('mileage')
         condition = data.get('condition')
         accident_history = data.get('accident_history')
         location = data.get('location')
@@ -510,22 +505,16 @@ def calculate_instant_value():
         usage_type = data.get('usage_type', 'Personal')
         vehicle_type = data.get('vehicle_type', 'Car')
 
-        if not all([make, model, year, mileage, fuel_type, transmission, condition, accident_history, location]):
+        # ✅ NEW FIELDS (Aligned with instant-value.html)
+        engine_capacity = data.get('engine_capacity', 0)
+        body_type = data.get('body_type', '')
+        body_color = data.get('body_color', '')
+
+        # Validate minimum required fields
+        if not all([make, model, year, fuel_type, transmission, mileage, condition, accident_history, location]):
             return jsonify({"success": False, "error": "Missing required parameters"}), 400
 
-        try:
-            year = int(year)
-            mileage = int(mileage)
-            previous_owners = int(previous_owners)
-        except (ValueError, TypeError):
-            return jsonify({"success": False, "error": "Year, mileage, and previous_owners must be integers"}), 400
-
-        current_year = datetime.datetime.now().year
-        if year < 1990 or year > current_year + 1:
-            return jsonify({"success": False, "error": f"Invalid year: {year}"}), 400
-        if mileage < 0:
-            return jsonify({"success": False, "error": "Mileage cannot be negative"}), 400
-
+        # 1. Determine Base Price
         base_price_key = make
         if vehicle_type.lower() == "bike" and "Bike" not in base_price_key:
             base_price_key = f"{make} Bike"
@@ -533,21 +522,40 @@ def calculate_instant_value():
             base_price_key = f"{make} Tricycle"
         
         value = BASE_PRICES.get(base_price_key, 2000000)
+
+        # 2. Apply Model Multiplier
         model_key = model.lower().strip()
         model_multiplier = MODEL_MULTIPLIERS.get(model_key, 1.0)
         value = value * model_multiplier
 
+        # 3. Age Factor
+        current_year = datetime.datetime.now().year
         age = max(0, current_year - year)
         age_factor = max(0.35, min(1.0, 1 - (age * 0.07)))
+
+        # 4. Mileage Factor
         mileage_factor = max(0.45, min(1.0, 1 - (mileage / 300000)))
+
+        # 5. Condition Factor
         condition_factor = CONDITION_FACTORS.get(condition, 1.0)
+
+        # 6. Accident Factor
         accident_factor = ACCIDENT_FACTORS.get(accident_history, 1.0)
+
+        # 7. Location Factor
         location_factor = LOCATION_FACTORS.get(location, 1.0)
+
+        # 8. Fuel & Transmission Factors
         fuel_factor = FUEL_FACTORS.get(fuel_type, 1.0)
         transmission_factor = TRANSMISSION_FACTORS.get(transmission, 1.0)
+
+        # 9. Usage Factor
         usage_factor = USAGE_FACTORS.get(usage_type, 1.0)
+
+        # 10. Ownership History Factor
         ownership_factor = get_ownership_factor(previous_owners)
 
+        # Final Calculation
         final_value = (
             value
             * age_factor
@@ -564,6 +572,7 @@ def calculate_instant_value():
         final_value = round(final_value / 1000) * 1000
         final_value = max(150000, min(final_value, 8000000))
 
+        # Return JSON (Frontend handles the Supabase insert)
         return jsonify({
             "success": True,
             "value": int(final_value),
