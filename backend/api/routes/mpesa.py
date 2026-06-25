@@ -88,18 +88,30 @@ def initiate_payment():
 
 @mpesa_bp.route("/status/<payment_id>", methods=["GET", "OPTIONS"])
 def get_payment_status(payment_id):
-    """Get payment status by ID."""
+    """Get payment status by ID from database."""
     if request.method == "OPTIONS":
         return response(True, {"status": "ok"})
 
     try:
-        # For now, return a mock status
-        # In production, you would query the database or Safaricom
-        return response(True, {
-            "payment_id": payment_id,
-            "status": "pending",
-            "message": "Payment status retrieved"
-        })
+        from services.supabase_client import get_payment_by_payment_id
+        payment = get_payment_by_payment_id(payment_id)
+        
+        if payment:
+            return response(True, {
+                "payment_id": payment.get("payment_id"),
+                "status": payment.get("status", "pending"),
+                "amount": payment.get("amount"),
+                "phone": payment.get("phone"),
+                "mpesa_receipt": payment.get("mpesa_receipt"),
+                "reference": payment.get("reference"),
+                "checkout_request_id": payment.get("checkout_request_id"),
+                "merchant_request_id": payment.get("merchant_request_id"),
+                "created_at": payment.get("created_at"),
+                "updated_at": payment.get("updated_at")
+            })
+        else:
+            return response(False, error="Payment not found", status=404)
+            
     except Exception as e:
         logger.error(f"status error: {e}", exc_info=True)
         return response(False, error=str(e), status=500)
@@ -195,14 +207,17 @@ def auto_confirm(payment_id):
 def user_payments(user_id):
     """Get all payments for a user."""
     try:
+        from services.supabase_client import get_user_payments
         limit = request.args.get("limit", 50, type=int)
-        # In production, query the database
+        payments = get_user_payments(user_id, limit)
+        
         return response(True, {
             "user_id": user_id,
-            "payments": [],
-            "total": 0
+            "payments": payments,
+            "total": len(payments)
         })
     except Exception as e:
+        logger.error(f"user payments error: {e}", exc_info=True)
         return response(False, error=str(e), status=500)
 
 
@@ -226,6 +241,26 @@ def test():
         "shortcode": os.getenv("MPESA_SHORTCODE", "4095377"),
         "configured": is_mpesa_configured()
     })
+
+
+@mpesa_bp.route("/test-db", methods=["GET"])
+def test_db():
+    """Test Supabase database connection."""
+    try:
+        from services.supabase_client import get_supabase_client, get_all_payments
+        client = get_supabase_client()
+        
+        # Try to get payments
+        payments = get_all_payments(limit=5)
+        
+        return response(True, {
+            "supabase_connected": True,
+            "payments_count": len(payments),
+            "payments": payments
+        })
+    except Exception as e:
+        logger.error(f"test-db error: {e}", exc_info=True)
+        return response(False, error=str(e))
 
 
 @mpesa_bp.route("/health", methods=["GET"])
@@ -252,10 +287,11 @@ def list_routes():
             {"path": "/api/mpesa/auto-confirm/{payment_id}", "method": "POST"},
             {"path": "/api/mpesa/user/{user_id}", "method": "GET"},
             {"path": "/api/mpesa/query/{checkout_request_id}", "method": "GET"},
-            {"path": "/api/mpesa/health", "method": "GET"},
             {"path": "/api/mpesa/test", "method": "GET"},
+            {"path": "/api/mpesa/test-db", "method": "GET"},
+            {"path": "/api/mpesa/health", "method": "GET"},
             {"path": "/api/mpesa/routes", "method": "GET"}
         ],
-        "total": 9,
+        "total": 10,
         "base_url": "/api/mpesa"
     })
