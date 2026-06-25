@@ -152,9 +152,31 @@
     </div>
 
     <script>
-        // 🔥 USE THE SINGLE SOURCE OF TRUTH
-        // We assume supabase.js has already loaded window.autoV
-        
+        // ✅ Wait for the Single Source of Truth to load
+        function waitForAutoV(retries = 50) {
+            if (window.autoV && typeof window.autoV.getCurrentUser === 'function') {
+                initDashboard();
+                return;
+            }
+            
+            if (retries > 0) {
+                console.log(`⏳ Waiting for autoV... (${50 - retries} attempts)`);
+                setTimeout(() => waitForAutoV(retries - 1), 100);
+            } else {
+                document.getElementById('serviceGrid').innerHTML = `
+                    <div class="error" style="grid-column: 1/-1;">
+                        <strong>⚠️ Connection Error</strong><br><br>
+                        Could not connect to the server. Please refresh the page.
+                        <br><br>
+                        <button onclick="window.location.reload()" style="background:#eab308;color:#000;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold;">
+                            Refresh Page
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // ─── Main Dashboard Logic ──────────────────────────────────────
         const ALL_SERVICES = [
             { 
                 id: 'valuation', 
@@ -206,61 +228,53 @@
             },
         ];
 
-        async function init() {
+        function initDashboard() {
             try {
-                // 1. Validate that the shared source loaded correctly
-                if (!window.autoV || typeof window.autoV.getCurrentUser !== 'function') {
-                    throw new Error('Supabase source of truth not loaded. Make sure supabase.js is in the same folder.');
-                }
-
-                // 2. Destructure the required functions from the single source
                 const { requireAuth, getUserRole, logout } = window.autoV;
 
-                // 3. Check Auth - redirects to login.html if unauthenticated
-                const user = await requireAuth();
-                if (!user) return;
+                // 1. Check Auth - redirects to login.html if unauthenticated
+                requireAuth().then(async (user) => {
+                    if (!user) return;
 
-                // 4. Fetch the user's role from the database
-                let role = 'individual';
-                try {
-                    const userRole = await getUserRole(user.id);
-                    if (userRole) role = userRole;
-                } catch (err) {
-                    console.warn('Could not fetch role, defaulting to individual:', err);
-                }
-                
-                // 5. Update the profile card
-                document.getElementById('profileCard').style.display = 'block';
-                document.getElementById('userName').textContent = user.email || 'User';
-                document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
+                    // 2. Fetch the user's role
+                    let role = 'individual';
+                    try {
+                        const userRole = await getUserRole(user.id);
+                        if (userRole) role = userRole;
+                    } catch (err) {
+                        console.warn('Could not fetch role, defaulting to individual:', err);
+                    }
+                    
+                    // 3. Update the profile card
+                    document.getElementById('profileCard').style.display = 'block';
+                    document.getElementById('userName').textContent = user.email || 'User';
+                    document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
 
-                // 6. Filter services based on the validated role
-                const allowedServices = ALL_SERVICES.filter(s => s.roles.includes(role));
+                    // 4. Filter services
+                    const allowedServices = ALL_SERVICES.filter(s => s.roles.includes(role));
+                    const grid = document.getElementById('serviceGrid');
+                    
+                    if (allowedServices.length === 0) {
+                        grid.innerHTML = `
+                            <div class="card" style="grid-column: 1/-1; text-align: center; padding: 40px;">
+                                <h3 style="color: #94a3b8;">No services available for your role.</h3>
+                                <p style="color: #64748b; margin-top: 10px;">Contact admin to update your permissions.</p>
+                            </div>
+                        `;
+                        return;
+                    }
 
-                // 7. Render the grid
-                const grid = document.getElementById('serviceGrid');
-                
-                if (allowedServices.length === 0) {
-                    grid.innerHTML = `
-                        <div class="card" style="grid-column: 1/-1; text-align: center; padding: 40px;">
-                            <h3 style="color: #94a3b8;">No services available for your role.</h3>
-                            <p style="color: #64748b; margin-top: 10px;">Contact admin to update your permissions.</p>
+                    grid.innerHTML = allowedServices.map(s => `
+                        <div class="service-card">
+                            <div class="service-icon">${s.icon}</div>
+                            <h3>${s.name}</h3>
+                            <p>${s.desc}</p>
+                            <button class="btn" onclick="window.location.href='${s.page}'">
+                                Start Service →
+                            </button>
                         </div>
-                    `;
-                    return;
-                }
-
-                grid.innerHTML = allowedServices.map(s => `
-                    <div class="service-card">
-                        <div class="service-icon">${s.icon}</div>
-                        <h3>${s.name}</h3>
-                        <p>${s.desc}</p>
-                        <button class="btn" onclick="window.location.href='${s.page}'">
-                            Start Service →
-                        </button>
-                    </div>
-                `).join('');
-                
+                    `).join('');
+                });
             } catch (err) {
                 console.error('Dashboard init error:', err);
                 const grid = document.getElementById('serviceGrid');
@@ -276,18 +290,17 @@
             }
         }
 
-        // Logout handler using the single source of truth
+        // 5. Logout handler
         document.getElementById('logoutBtn').addEventListener('click', async function() {
             if (window.autoV && typeof window.autoV.logout === 'function') {
                 await window.autoV.logout();
             } else {
-                // Fallback redirect
                 window.location.href = 'login.html';
             }
         });
 
-        // Initialize the dashboard
-        init();
+        // 6. Start waiting for AutoV
+        waitForAutoV();
     </script>
 </body>
 </html>
