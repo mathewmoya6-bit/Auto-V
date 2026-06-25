@@ -1,6 +1,6 @@
 # app.py
-# AUTO-V Backend - M-Pesa + AI Valuation Engine
-# Fully aligned with AUTO-V Platform (index.html, instant-value.html, dashboard.html)
+# AUTO-V Backend - M-Pesa + AI Valuation Engine + Certificate Generator
+# Fully aligned with AUTO-V Platform
 
 import os
 import base64
@@ -8,10 +8,19 @@ import json
 import datetime
 import logging
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
+
+# ─── PDF Generation Libraries ───────────────────────────────────────
+import io
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.units import inch
 
 # ============================================================
 # LOAD ENVIRONMENT VARIABLES
@@ -209,6 +218,110 @@ def get_ownership_factor(owners: int) -> float:
     if owners <= 3: return 0.90
     if owners <= 5: return 0.80
     return 0.65
+
+# ============================================================
+# HELPER FUNCTIONS (Certificates & Reports)
+# ============================================================
+
+def format_name(key: str) -> str:
+    """Convert service_type to readable format"""
+    if not key: return 'N/A'
+    return key.replace('-', ' ').title()
+
+def generate_certificate_pdf(data: dict) -> io.BytesIO:
+    """
+    data = {
+        'certificate_number': 'AUTO-V-2026-000123',
+        'vehicle_make': 'Toyota',
+        'vehicle_model': 'Prado',
+        'vehicle_reg': 'KCA 123A',
+        'service_type': 'Valuation',
+        'result': {'market_value': 4800000, 'condition': 'Good'},
+        'issued_at': datetime
+    }
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=0.5*inch, rightMargin=0.5*inch)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # ─── Title ───────────────────────────────────────────────────
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#eab308'),
+        alignment=1,
+        spaceAfter=20
+    )
+    story.append(Paragraph("AUTO-V CERTIFIED REPORT", title_style))
+
+    # ─── Subtitle ────────────────────────────────────────────────
+    story.append(Spacer(1, 0.2*inch))
+    story.append(Paragraph(f"Certificate No: {data['certificate_number']}", styles['Normal']))
+    story.append(Paragraph(f"Date Issued: {data['issued_at'].strftime('%d %B %Y')}", styles['Normal']))
+    story.append(Spacer(1, 0.3*inch))
+
+    # ─── Vehicle Details ────────────────────────────────────────
+    vehicle_data = [
+        ["Make", data['vehicle_make']],
+        ["Model", data['vehicle_model']],
+        ["Registration", data['vehicle_reg']],
+        ["Service", data['service_type']]
+    ]
+    vehicle_table = Table(vehicle_data, colWidths=[1.5*inch, 3*inch])
+    vehicle_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#1e293b')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.white),
+        ('BACKGROUND', (1, 0), (1, -1), colors.HexColor('#111827')),
+        ('TEXTCOLOR', (1, 0), (1, -1), colors.white),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (1, -1), 10),
+        ('GRID', (0, 0), (1, -1), 1, colors.HexColor('#334155'))
+    ]))
+    story.append(vehicle_table)
+    story.append(Spacer(1, 0.3*inch))
+
+    # ─── Results ──────────────────────────────────────────────────
+    story.append(Paragraph("<b>Valuation Results</b>", styles['Heading2']))
+    story.append(Spacer(1, 0.1*inch))
+
+    result_data = []
+    for key, value in data['result'].items():
+        if isinstance(value, (int, float)):
+            result_data.append([key.replace('_', ' ').title(), f"KES {value:,.0f}"])
+        else:
+            result_data.append([key.replace('_', ' ').title(), str(value)])
+
+    result_table = Table(result_data, colWidths=[2*inch, 3*inch])
+    result_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#2d3a4e')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.white),
+        ('BACKGROUND', (1, 0), (1, -1), colors.HexColor('#1e293b')),
+        ('TEXTCOLOR', (1, 0), (1, -1), colors.white),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (1, -1), 11),
+        ('GRID', (0, 0), (1, -1), 1, colors.HexColor('#334155'))
+    ]))
+    story.append(result_table)
+    story.append(Spacer(1, 0.4*inch))
+
+    # ─── Footer ──────────────────────────────────────────────────
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.grey,
+        alignment=1
+    )
+    story.append(Paragraph("This certificate is issued by AUTO-V Vehicle Intelligence Platform.", footer_style))
+    story.append(Paragraph("Valid for 90 days from the date of issue.", footer_style))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 # ============================================================
 # ROUTES: M-PESA
@@ -476,22 +589,16 @@ def mpesa_callback():
         return jsonify({"status": "OK"})
 
 # ============================================================
-# ROUTES: AI VALUATION ENGINE (ALIGNED WITH instant-value.html)
+# ROUTES: AI VALUATION ENGINE
 # ============================================================
 
 @app.route('/instant-check/valuate', methods=['POST'])
 def calculate_instant_value():
-    """
-    Receives vehicle data from instant-value.html.
-    Calculates AI valuation and returns JSON.
-    The frontend saves the result to Supabase.
-    """
     try:
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "No JSON data provided"}), 400
 
-        # Extract ALL fields sent by instant-value.html
         make = data.get('make')
         model = data.get('model')
         year = data.get('year')
@@ -504,17 +611,13 @@ def calculate_instant_value():
         previous_owners = data.get('previous_owners', 0)
         usage_type = data.get('usage_type', 'Personal')
         vehicle_type = data.get('vehicle_type', 'Car')
-
-        # ✅ NEW FIELDS (Aligned with instant-value.html)
         engine_capacity = data.get('engine_capacity', 0)
         body_type = data.get('body_type', '')
         body_color = data.get('body_color', '')
 
-        # Validate minimum required fields
         if not all([make, model, year, fuel_type, transmission, mileage, condition, accident_history, location]):
             return jsonify({"success": False, "error": "Missing required parameters"}), 400
 
-        # 1. Determine Base Price
         base_price_key = make
         if vehicle_type.lower() == "bike" and "Bike" not in base_price_key:
             base_price_key = f"{make} Bike"
@@ -522,40 +625,22 @@ def calculate_instant_value():
             base_price_key = f"{make} Tricycle"
         
         value = BASE_PRICES.get(base_price_key, 2000000)
-
-        # 2. Apply Model Multiplier
         model_key = model.lower().strip()
         model_multiplier = MODEL_MULTIPLIERS.get(model_key, 1.0)
         value = value * model_multiplier
 
-        # 3. Age Factor
         current_year = datetime.datetime.now().year
         age = max(0, current_year - year)
         age_factor = max(0.35, min(1.0, 1 - (age * 0.07)))
-
-        # 4. Mileage Factor
         mileage_factor = max(0.45, min(1.0, 1 - (mileage / 300000)))
-
-        # 5. Condition Factor
         condition_factor = CONDITION_FACTORS.get(condition, 1.0)
-
-        # 6. Accident Factor
         accident_factor = ACCIDENT_FACTORS.get(accident_history, 1.0)
-
-        # 7. Location Factor
         location_factor = LOCATION_FACTORS.get(location, 1.0)
-
-        # 8. Fuel & Transmission Factors
         fuel_factor = FUEL_FACTORS.get(fuel_type, 1.0)
         transmission_factor = TRANSMISSION_FACTORS.get(transmission, 1.0)
-
-        # 9. Usage Factor
         usage_factor = USAGE_FACTORS.get(usage_type, 1.0)
-
-        # 10. Ownership History Factor
         ownership_factor = get_ownership_factor(previous_owners)
 
-        # Final Calculation
         final_value = (
             value
             * age_factor
@@ -572,7 +657,6 @@ def calculate_instant_value():
         final_value = round(final_value / 1000) * 1000
         final_value = max(150000, min(final_value, 8000000))
 
-        # Return JSON (Frontend handles the Supabase insert)
         return jsonify({
             "success": True,
             "value": int(final_value),
@@ -593,6 +677,119 @@ def calculate_instant_value():
 
     except Exception as e:
         return jsonify({"success": False, "error": f"Valuation engine error: {str(e)}"}), 500
+
+# ============================================================
+# ROUTES: CERTIFICATES & REPORTS
+# ============================================================
+
+@app.route('/api/certificates', methods=['GET'])
+def get_user_certificates():
+    """Get all certificates for the logged-in user"""
+    try:
+        # Identify the user (Using the Authorization header)
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        token = auth_header.split(' ')[1]
+        user_response = supabase.auth.get_user(token)
+        user = user_response.user if user_response and hasattr(user_response, 'user') else None
+
+        if not user:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        result = supabase.table('certificates').select('*').eq('user_id', user.id).order('issued_at', ascending=False).execute()
+        certs = result.data if hasattr(result, 'data') else result
+
+        return jsonify({'success': True, 'certificates': certs})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/certificates/issue/<request_id>', methods=['POST'])
+def issue_certificate(request_id):
+    """Issue a certificate from a completed service request"""
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        token = auth_header.split(' ')[1]
+        user_response = supabase.auth.get_user(token)
+        user = user_response.user if user_response and hasattr(user_response, 'user') else None
+
+        if not user:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        result = supabase.table('service_requests').select('*').eq('id', request_id).eq('user_id', user.id).single().execute()
+        req = result.data if hasattr(result, 'data') else result
+
+        if not req:
+            return jsonify({'error': 'Request not found'}), 404
+
+        if req.get('status') != 'completed':
+            return jsonify({'error': 'Service request is not completed yet'}), 400
+
+        # Generate a unique certificate number
+        cert_number = f"AUTO-V-{datetime.datetime.now().strftime('%Y%m%d')}-{str(user.id)[:4].upper()}"
+
+        insert_result = supabase.table('certificates').insert({
+            'user_id': user.id,
+            'service_request_id': req['id'],
+            'certificate_number': cert_number,
+            'vehicle_make': req.get('vehicle_make'),
+            'vehicle_model': req.get('vehicle_model'),
+            'vehicle_reg': req.get('vehicle_reg'),
+            'service_type': req.get('service_type'),
+            'result': req.get('result'),
+            'status': 'active'
+        }).execute()
+
+        return jsonify({
+            'success': True,
+            'certificate_number': cert_number,
+            'message': 'Certificate issued successfully'
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reports/generate/<request_id>', methods=['GET'])
+def generate_report(request_id):
+    """Generate PDF report for a specific service request"""
+    try:
+        # If you want to protect this route, you can check the Authorization header here
+        # For simplicity, we'll just generate the report from the request_id
+
+        result = supabase.table('service_requests').select('*').eq('id', request_id).single().execute()
+        req = result.data if hasattr(result, 'data') else result
+
+        if not req:
+            return jsonify({'error': 'Request not found'}), 404
+
+        # Prepare data for the PDF
+        data = {
+            'certificate_number': req.get('certificate_number') or f"AUTO-V-{datetime.datetime.now().strftime('%Y%m%d')}-{str(request_id)[:4].upper()}",
+            'vehicle_make': req.get('vehicle_make', 'N/A'),
+            'vehicle_model': req.get('vehicle_model', 'N/A'),
+            'vehicle_reg': req.get('vehicle_reg', 'N/A'),
+            'service_type': format_name(req.get('service_type', 'N/A')),
+            'result': req.get('result', {'value': 0}),
+            'issued_at': datetime.datetime.now()
+        }
+
+        # Generate PDF
+        pdf_buffer = generate_certificate_pdf(data)
+
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=f"{data['certificate_number']}.pdf",
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        return jsonify({'error': f'Report generation failed: {str(e)}'}), 500
 
 # ============================================================
 # ENTRY POINT
