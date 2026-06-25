@@ -48,22 +48,23 @@
 
     <div class="error" id="errorMsg"></div>
 
-    <form id="signupForm" novalidate> <!-- ✅ novalidate completely disables browser validation errors -->
+    <!-- ✅ Form uses manual validation (no HTML5 required validation) -->
+    <form id="signupForm">
         <!-- SHARED FIELDS -->
-        <input type="email" id="email" placeholder="Email Address" required>
-        <input type="password" id="password" placeholder="Password (min 6 chars)" required minlength="6">
+        <input type="email" id="email" placeholder="Email Address">
+        <input type="password" id="password" placeholder="Password (min 6 chars)">
         <input type="tel" id="phone" placeholder="Phone Number (Optional)">
 
         <!-- INDIVIDUAL FIELDS -->
         <div id="individual-fields" class="form-section active">
-            <input type="text" id="full_name" placeholder="Full Name" required>
-            <input type="text" id="id_passport" placeholder="ID / Passport Number" required>
+            <input type="text" id="full_name" placeholder="Full Name">
+            <input type="text" id="id_passport" placeholder="ID / Passport Number">
         </div>
 
         <!-- CORPORATE FIELDS -->
         <div id="corporate-fields" class="form-section">
-            <input type="text" id="company_name" placeholder="Company Name" required>
-            <input type="text" id="company_reg" placeholder="Company Registration Number" required>
+            <input type="text" id="company_name" placeholder="Company Name">
+            <input type="text" id="company_reg" placeholder="Company Registration Number">
         </div>
 
         <button type="submit" class="submit-btn">Create Account</button>
@@ -73,6 +74,7 @@
 </div>
 
 <script>
+    // 🔥 USE THE SINGLE SOURCE OF TRUTH
     const { supabase } = window.autoV;
 
     let currentType = 'individual';
@@ -97,21 +99,30 @@
     });
 
     document.getElementById('signupForm').addEventListener('submit', async function(e) {
-        e.preventDefault(); // ✅ Prevents default browser validation entirely
+        e.preventDefault(); // ✅ Prevents native browser validation
 
-        // ✅ MANUAL VALIDATION (Bypasses the hidden field bug)
         const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
+        const password = document.getElementById('password').value.trim();
         const errorDiv = document.getElementById('errorMsg');
         errorDiv.style.display = 'none';
 
+        // ✅ MANUAL VALIDATION
         if (!email || !password) {
             errorDiv.textContent = "Please fill in Email and Password.";
             errorDiv.style.display = 'block';
             return;
         }
 
-        let metadata = { phone: document.getElementById('phone').value || '', client_type: currentType };
+        if (password.length < 6) {
+            errorDiv.textContent = "Password must be at least 6 characters.";
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        let metadata = { 
+            phone: document.getElementById('phone').value.trim() || '', 
+            client_type: currentType 
+        };
 
         if (currentType === 'individual') {
             const name = document.getElementById('full_name').value.trim();
@@ -135,6 +146,7 @@
             metadata.company_reg = cReg;
         }
 
+        // ✅ Sign up using Supabase (from supabase.js)
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
@@ -148,6 +160,7 @@
         }
 
         if (data.user) {
+            // Store role and profile in Supabase
             await supabase.from('user_profiles').upsert({
                 id: data.user.id,
                 email: email,
