@@ -263,6 +263,27 @@ def test_db():
         return response(False, error=str(e))
 
 
+@mpesa_bp.route("/versions", methods=["GET"])
+def versions():
+    """Get version information for debugging."""
+    try:
+        import supabase
+        import httpx
+        import sys
+        
+        return jsonify({
+            "python": sys.version,
+            "supabase": getattr(supabase, "__version__", "unknown"),
+            "httpx": getattr(httpx, "__version__", "unknown")
+        })
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "supabase": "failed to import",
+            "httpx": "failed to import"
+        })
+
+
 @mpesa_bp.route("/health", methods=["GET"])
 def health():
     """Health check for M-Pesa service."""
@@ -289,9 +310,10 @@ def list_routes():
             {"path": "/api/mpesa/query/{checkout_request_id}", "method": "GET"},
             {"path": "/api/mpesa/test", "method": "GET"},
             {"path": "/api/mpesa/test-db", "method": "GET"},
+            {"path": "/api/mpesa/versions", "method": "GET"},
             {"path": "/api/mpesa/health", "method": "GET"},
             {"path": "/api/mpesa/routes", "method": "GET"}
         ],
-        "total": 10,
+        "total": 11,
         "base_url": "/api/mpesa"
     })
