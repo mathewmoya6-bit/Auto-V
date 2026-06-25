@@ -238,20 +238,24 @@
                     return;
                 }
 
+                // Create the payload
+                const requestPayload = {
+                    user_id: user.id,
+                    service_type: selectedService,
+                    purpose: selectedPurpose,
+                    amount: serviceFee,
+                    phone: phone,
+                    payment_status: 'pending',
+                    status: 'awaiting_payment'
+                };
+
+                if (clientDetails.name) requestPayload.client_name = clientDetails.name;
+                if (clientDetails.email) requestPayload.client_email = clientDetails.email;
+
                 // Create service request in Supabase
                 const { data: request, error } = await client
                     .from('service_requests')
-                    .insert({
-                        user_id: user.id,
-                        service_type: selectedService,
-                        purpose: selectedPurpose,
-                        amount: serviceFee,
-                        phone: phone,
-                        client_name: clientDetails.name,
-                        client_email: clientDetails.email,
-                        payment_status: 'pending',
-                        status: 'awaiting_payment'
-                    })
+                    .insert(requestPayload)
                     .select()
                     .single();
 
@@ -307,9 +311,10 @@
             const role = await window.autoV.getUserRole(user.id);
             
             // Filter services by role
+            // ✅ UPDATED: Added 'mileage-rate' and 'instant-value-check' to individual and corporate
             const ALLOWED_SERVICES = {
-                'individual': ['valuation', 'instant-value-check'],
-                'corporate': ['valuation', 'instant-value-check'],
+                'individual': ['valuation', 'instant-value-check', 'mileage-rate'],
+                'corporate': ['valuation', 'instant-value-check', 'mileage-rate'],
                 'valuer': ['valuation', 'instant-value-check', 'inspection', 'assessment', 'mileage-rate', 'fleet']
             };
 
