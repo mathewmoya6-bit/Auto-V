@@ -152,15 +152,15 @@
     </div>
 
     <script>
-        // ✅ Wait for the Single Source of Truth to load
-        function waitForAutoV(retries = 50) {
+        // ✅ Wait for the single source of truth
+        function waitForAutoV(retries = 30) {
             if (window.autoV && typeof window.autoV.getCurrentUser === 'function') {
                 initDashboard();
                 return;
             }
             
             if (retries > 0) {
-                console.log(`⏳ Waiting for autoV... (${50 - retries} attempts)`);
+                console.log(`⏳ Waiting for autoV... (${30 - retries} attempts)`);
                 setTimeout(() => waitForAutoV(retries - 1), 100);
             } else {
                 document.getElementById('serviceGrid').innerHTML = `
@@ -230,27 +230,28 @@
 
         function initDashboard() {
             try {
-                const { requireAuth, getUserRole, logout } = window.autoV;
+                // 🔥 FIX: Access methods directly from window.autoV to preserve 'this' context
+                const user = window.autoV.requireAuth();
+                if (!user) return;
 
-                // 1. Check Auth - redirects to login.html if unauthenticated
-                requireAuth().then(async (user) => {
-                    if (!user) return;
+                user.then(async (userObj) => {
+                    if (!userObj) return;
 
-                    // 2. Fetch the user's role
+                    // Fetch the user's role
                     let role = 'individual';
                     try {
-                        const userRole = await getUserRole(user.id);
+                        const userRole = await window.autoV.getUserRole(userObj.id);
                         if (userRole) role = userRole;
                     } catch (err) {
                         console.warn('Could not fetch role, defaulting to individual:', err);
                     }
                     
-                    // 3. Update the profile card
+                    // Update the profile card
                     document.getElementById('profileCard').style.display = 'block';
-                    document.getElementById('userName').textContent = user.email || 'User';
+                    document.getElementById('userName').textContent = userObj.email || 'User';
                     document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
 
-                    // 4. Filter services
+                    // Filter services
                     const allowedServices = ALL_SERVICES.filter(s => s.roles.includes(role));
                     const grid = document.getElementById('serviceGrid');
                     
