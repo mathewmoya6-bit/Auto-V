@@ -38,12 +38,6 @@
         .service-card { background: #1e293b; padding: 15px; border-radius: 8px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: 0.3s; }
         .service-card:hover, .service-card.selected { border-color: #eab308; background: #2d3a4e; }
         .service-icon { font-size: 36px; display: block; margin-bottom: 5px; }
-        .purpose-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-        .purpose-item { padding: 10px; background: #0f172a; border-radius: 8px; cursor: pointer; text-align: center; transition: 0.2s; }
-        .purpose-item:hover, .purpose-item.selected { background: #eab308; color: #000; }
-        .payment-summary { background: #1e293b; border-radius: 12px; padding: 15px; margin: 15px 0; }
-        .payment-summary .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #2d3a4e; }
-        .payment-summary .row:last-child { border-bottom: none; }
         .result-box { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 20px; display: none; }
         .result-value { font-size: 32px; color: #22c55e; font-weight: bold; text-align: center; }
         .logout-btn { background: #dc2626; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
@@ -57,53 +51,68 @@
 
     <div class="container">
         <div class="progress-bar">
-            <div class="progress-step active" id="step1Prog">1. Client</div>
-            <div class="progress-step" id="step2Prog">2. Service</div>
-            <div class="progress-step" id="step3Prog">3. Purpose</div>
-            <div class="progress-step" id="step4Prog">4. Payment</div>
+            <div class="progress-step active" id="step1Prog">1. Service</div>
+            <div class="progress-step" id="step2Prog">2. Details</div>
+            <div class="progress-step" id="step3Prog">3. Pay</div>
         </div>
 
-        <!-- STEP 1: CLIENT DETAILS -->
+        <!-- STEP 1: CHOOSE SERVICE -->
         <div id="step1" class="card step active">
-            <h2>👤 Client Details</h2>
-            <form id="clientForm">
-                <div class="form-group"><label>Full Name</label><input type="text" id="custName" required></div>
-                <div class="form-group"><label>Email</label><input type="email" id="custEmail" required></div>
-                <div class="form-group"><label>Phone Number</label><input type="tel" id="custPhone" required></div>
+            <h2>🔧 Choose Service</h2>
+            <div class="service-cards" id="serviceCards"></div>
+            <div id="selectedServiceMsg" style="text-align:center;margin-top:10px;color:#eab308;font-weight:500;"></div>
+            <div class="nav-buttons">
+                <button class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
+                <button class="btn btn-primary" onclick="confirmService()">Next →</button>
+            </div>
+        </div>
+
+        <!-- STEP 2: DETAILS (Adapts based on service) -->
+        <div id="step2" class="card step">
+            <h2 id="step2Title">📝 Enter Details</h2>
+            <form id="detailsForm">
+                <!-- STANDARD FIELDS FOR EVERYONE -->
+                <div class="form-group"><label>Registration Number</label><input type="text" id="regNumber" placeholder="KCA 123A" required></div>
+                <div class="form-group"><label>Make</label><input type="text" id="make" placeholder="Toyota" required></div>
+                <div class="form-group"><label>Model</label><input type="text" id="model" placeholder="Axio" required></div>
+                <div class="form-group"><label>Year</label><input type="number" id="year" placeholder="2020" required></div>
+                
+                <!-- EXTRA FIELD: Mileage (Only for Mileage Rate Report & Inspections) -->
+                <div class="form-group" id="mileageGroup" style="display:none;">
+                    <label>Mileage (km)</label>
+                    <input type="number" id="mileage" placeholder="50000">
+                </div>
+
+                <!-- EXTRA FIELD: Condition (Only for Valuation & Inspection) -->
+                <div class="form-group" id="conditionGroup" style="display:none;">
+                    <label>Condition</label>
+                    <select id="condition">
+                        <option value="Excellent">Excellent</option>
+                        <option value="Good" selected>Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
+                </div>
+
                 <div class="nav-buttons">
-                    <button type="button" class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
-                    <button type="submit" class="btn btn-primary">Next →</button>
+                    <button type="button" class="btn btn-secondary" onclick="showStep(1)">← Back</button>
+                    <button type="submit" class="btn btn-primary">Pay Now →</button>
                 </div>
             </form>
         </div>
 
-        <!-- STEP 2: CHOOSE SERVICE -->
-        <div id="step2" class="card step">
-            <h2>🔧 Choose Service</h2>
-            <div class="service-cards" id="serviceCards"></div>
-            <div id="selectedServiceMsg" style="text-align:center;margin-top:10px;color:#eab308;font-weight:500;"></div>
-            <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(1)">← Back</button><button class="btn btn-primary" onclick="confirmService()">Next →</button></div>
-        </div>
-
-        <!-- STEP 3: PURPOSE -->
+        <!-- STEP 3: PAYMENT -->
         <div id="step3" class="card step">
-            <h2>🎯 Service Purpose</h2>
-            <div class="purpose-list" id="purposeList"></div>
-            <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(2)">← Back</button><button class="btn btn-primary" onclick="confirmPurpose()">Next →</button></div>
-        </div>
-
-        <!-- STEP 4: PAYMENT -->
-        <div id="step4" class="card step">
             <h2>💳 Payment</h2>
             <div id="statusMessage" class="status-box"></div>
             <div class="payment-summary">
                 <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
-                <div class="row"><span class="label">Purpose</span><span class="value" id="summaryPurpose">-</span></div>
+                <div class="row"><span class="label">Vehicle</span><span class="value" id="summaryVehicle">-</span></div>
                 <div class="row"><span class="label">Amount</span><span class="value" id="summaryAmount" style="font-size:24px;color:#22c55e;font-weight:bold;">KES 0</span></div>
             </div>
             <form id="paymentForm">
                 <div class="form-group"><label>M-Pesa Phone Number</label><input type="tel" id="mpesaPhone" placeholder="0712345678" required></div>
-                <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(3)">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
+                <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(2)">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
             </form>
         </div>
 
@@ -114,62 +123,39 @@
     </div>
 
     <script>
-        // ✅ FIXED: Renamed to 'client' to avoid conflict with the UMD global 'window.supabase'
         const client = window.autoV.supabase;
         
         // State
         let selectedService = null;
-        let selectedPurpose = null;
         let serviceFee = 0;
-        let clientDetails = {};
+        let vehicleDetails = {};
 
         const SERVICE_FEES = {
-            'valuation': 2500,
             'instant-value-check': 500,
+            'mileage-rate': 1500,
+            'valuation': 2500,
             'inspection': 3500,
             'assessment': 3000,
-            'mileage-rate': 1500,
             'fleet': 4000
         };
 
         const SERVICE_PAGES = {
-            'valuation': 'valuation.html',
             'instant-value-check': 'valuation.html',
+            'mileage-rate': 'mileage.html',
+            'valuation': 'valuation.html',
             'inspection': 'inspection.html',
             'assessment': 'assessment.html',
-            'mileage-rate': 'mileage.html',
             'fleet': 'fleet.html'
         };
 
-        const SERVICE_PURPOSES = {
-            'valuation': ["Insurance Valuation", "Bank Loan", "Legal Proceedings", "Market Value Certificate"],
-            'instant-value-check': ["Quick Market Estimate", "Selling Price Guide", "Buying Price Check"],
-            'inspection': ["Pre-Purchase Inspection", "Mechanical Check", "Roadworthiness Test"],
-            'assessment': ["Accident Damage", "Insurance Claim", "Repair Cost Estimate"],
-            'mileage-rate': ["Travel Reimbursement", "Running Cost Analysis", "Fleet Budgeting"],
-            'fleet': ["Full Fleet Valuation", "Fleet Condition Audit", "Asset Management"]
-        };
-
         function showStep(step) {
-            ['step1', 'step2', 'step3', 'step4'].forEach(id => document.getElementById(id).classList.remove('active'));
-            ['step1Prog', 'step2Prog', 'step3Prog', 'step4Prog'].forEach(id => document.getElementById(id).classList.remove('active', 'completed'));
+            ['step1', 'step2', 'step3'].forEach(id => document.getElementById(id).classList.remove('active'));
+            ['step1Prog', 'step2Prog', 'step3Prog'].forEach(id => document.getElementById(id).classList.remove('active', 'completed'));
             
             document.getElementById(`step${step}`).classList.add('active');
             for(let i=1; i<step; i++) document.getElementById(`step${i}Prog`).classList.add('completed');
             document.getElementById(`step${step}Prog`).classList.add('active');
         }
-
-        // Step 1: Client Details
-        document.getElementById('clientForm').onsubmit = function(e) {
-            e.preventDefault();
-            clientDetails = {
-                name: document.getElementById('custName').value,
-                email: document.getElementById('custEmail').value,
-                phone: document.getElementById('custPhone').value
-            };
-            renderServices();
-            showStep(2);
-        };
 
         function renderServices() {
             const container = document.getElementById('serviceCards');
@@ -192,33 +178,43 @@
 
         function confirmService() {
             if (!selectedService) return alert('Please select a service.');
-            renderPurposes();
-            showStep(3);
+            
+            // SHOW/HIDE EXTRA FIELDS BASED ON SERVICE TYPE
+            const mileageGroup = document.getElementById('mileageGroup');
+            const conditionGroup = document.getElementById('conditionGroup');
+
+            mileageGroup.style.display = 'none';
+            conditionGroup.style.display = 'none';
+
+            if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
+                mileageGroup.style.display = 'block';
+            }
+            if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
+                conditionGroup.style.display = 'block';
+            }
+
+            document.getElementById('step2Title').textContent = `📝 ${formatName(selectedService)} Details`;
+            showStep(2);
         }
 
-        function renderPurposes() {
-            const container = document.getElementById('purposeList');
-            const purposes = SERVICE_PURPOSES[selectedService] || ["General Purpose"];
-            container.innerHTML = purposes.map(p => `
-                <div class="purpose-item" onclick="selectPurpose('${p}')">${p}</div>
-            `).join('');
-        }
-
-        function selectPurpose(p) {
-            document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-            document.querySelector(`.purpose-item[onclick="selectPurpose('${p}')"]`).classList.add('selected');
-            selectedPurpose = p;
-        }
-
-        function confirmPurpose() {
-            if (!selectedPurpose) return alert('Please select a purpose.');
+        document.getElementById('detailsForm').onsubmit = function(e) {
+            e.preventDefault();
+            vehicleDetails = {
+                reg: document.getElementById('regNumber').value,
+                make: document.getElementById('make').value,
+                model: document.getElementById('model').value,
+                year: document.getElementById('year').value,
+                mileage: document.getElementById('mileage').value || 0,
+                condition: document.getElementById('condition').value || 'Good'
+            };
+            
             document.getElementById('summaryService').textContent = formatName(selectedService);
-            document.getElementById('summaryPurpose').textContent = selectedPurpose;
+            document.getElementById('summaryVehicle').textContent = `${vehicleDetails.make} ${vehicleDetails.model} (${vehicleDetails.year})`;
             document.getElementById('summaryAmount').textContent = `KES ${serviceFee.toLocaleString()}`;
-            showStep(4);
-        }
+            showStep(3);
+        };
 
-        // Step 4: Payment
+        // Step 3: Payment
         document.getElementById('paymentForm').onsubmit = async function(e) {
             e.preventDefault();
             
@@ -238,21 +234,26 @@
                     return;
                 }
 
-                // Create the payload
                 const requestPayload = {
                     user_id: user.id,
                     service_type: selectedService,
-                    purpose: selectedPurpose,
                     amount: serviceFee,
                     phone: phone,
+                    vehicle_reg: vehicleDetails.reg,
+                    vehicle_make: vehicleDetails.make,
+                    vehicle_model: vehicleDetails.model,
+                    vehicle_year: parseInt(vehicleDetails.year),
                     payment_status: 'pending',
                     status: 'awaiting_payment'
                 };
 
-                if (clientDetails.name) requestPayload.client_name = clientDetails.name;
-                if (clientDetails.email) requestPayload.client_email = clientDetails.email;
+                if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
+                    requestPayload.vehicle_mileage = parseInt(vehicleDetails.mileage);
+                }
+                if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
+                    requestPayload.vehicle_condition = vehicleDetails.condition;
+                }
 
-                // Create service request in Supabase
                 const { data: request, error } = await client
                     .from('service_requests')
                     .insert(requestPayload)
@@ -263,7 +264,6 @@
 
                 // Simulate successful payment (In production, call your M-Pesa API here)
                 setTimeout(async () => {
-                    // Update status to paid
                     await client
                         .from('service_requests')
                         .update({ payment_status: 'paid', status: 'completed' })
@@ -276,7 +276,6 @@
                     btn.textContent = '✅ Completed';
                     btn.disabled = true;
 
-                    // Redirect to the specific service page
                     setTimeout(() => {
                         const page = SERVICE_PAGES[selectedService] || 'valuation.html';
                         window.location.href = page;
@@ -299,7 +298,7 @@
         }
 
         function getIcon(key) {
-            const icons = { 'valuation': '💰', 'instant-value-check': '💡', 'inspection': '🔍', 'assessment': '⚠️', 'mileage-rate': '📏', 'fleet': '🚛' };
+            const icons = { 'instant-value-check': '💡', 'mileage-rate': '📏', 'valuation': '💰', 'inspection': '🔍', 'assessment': '⚠️', 'fleet': '🚛' };
             return icons[key] || '📄';
         }
 
@@ -310,12 +309,11 @@
 
             const role = await window.autoV.getUserRole(user.id);
             
-            // Filter services by role
-            // ✅ UPDATED: Added 'mileage-rate' and 'instant-value-check' to individual and corporate
+            // ⚡ SEPARATE ACCESS: Use strict role filtering
             const ALLOWED_SERVICES = {
-                'individual': ['valuation', 'instant-value-check', 'mileage-rate'],
-                'corporate': ['valuation', 'instant-value-check', 'mileage-rate'],
-                'valuer': ['valuation', 'instant-value-check', 'inspection', 'assessment', 'mileage-rate', 'fleet']
+                'individual': ['instant-value-check', 'mileage-rate'],
+                'corporate': ['instant-value-check', 'mileage-rate'],
+                'valuer': ['valuation', 'inspection', 'assessment', 'fleet']
             };
 
             const allowed = ALLOWED_SERVICES[role] || [];
@@ -323,14 +321,7 @@
                 if (!allowed.includes(key)) delete SERVICE_FEES[key];
             });
 
-            // Pre-fill client details
-            const { data: profile } = await client.from('user_profiles').select('full_name, phone').eq('id', user.id).single();
-            if (profile) {
-                document.getElementById('custName').value = profile.full_name || '';
-                document.getElementById('custPhone').value = profile.phone || '';
-                document.getElementById('custEmail').value = user.email;
-            }
-
+            renderServices();
             showStep(1);
         }
 
