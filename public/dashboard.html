@@ -2,637 +2,107 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>AUTO-V | Dashboard</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0a0c15; color: #fff; min-height: 100vh; }
-        
-        .header { background: #111827; border-bottom: 2px solid #eab308; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; position: sticky; top: 0; z-index: 100; }
-        .logo { font-size: 24px; font-weight: 800; color: #eab308; }
-        .logo small { font-size: 10px; color: #64748b; margin-left: 8px; }
-        .user-info { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-        .user-avatar { width: 36px; height: 36px; background: #eab308; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000; }
-        .live-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #22c55e; background: rgba(34, 197, 94, 0.12); padding: 2px 12px; border-radius: 20px; }
-        .live-indicator .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .logout-btn { background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 40px; cursor: pointer; font-weight: 600; transition: all .2s; }
-        .logout-btn:hover { background: #b91c1c; transform: translateY(-1px); }
-        
-        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-        
-        .welcome-banner { 
-            background: linear-gradient(135deg, #1e293b, #0f172a); 
-            border-radius: 20px; 
-            padding: 32px 40px; 
-            margin-bottom: 24px; 
-            border: 1px solid #334155; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            flex-wrap: wrap; 
-            gap: 20px;
-        }
-        .welcome-banner .text { flex: 1; }
-        .welcome-banner h3 { color: #eab308; font-size: 24px; margin-bottom: 8px; }
-        .welcome-banner p { color: #94a3b8; font-size: 15px; }
-        
-        .btn-cta { 
-            padding: 12px 32px; 
-            border-radius: 40px; 
-            font-weight: 700; 
-            font-size: 14px; 
-            border: none; 
-            cursor: pointer; 
-            transition: all .3s; 
-            text-decoration: none; 
-            display: inline-block;
-            text-align: center;
-        }
-        .btn-cta-primary { background: #eab308; color: #0a0c15; }
-        .btn-cta-primary:hover { background: #facc15; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(234, 179, 8, 0.3); }
-        .btn-cta-secondary { background: transparent; color: #eab308; border: 2px solid #eab308; }
-        .btn-cta-secondary:hover { background: rgba(234, 179, 8, 0.1); transform: translateY(-2px); }
-        
-        .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
-        .action-card { 
-            background: #1e293b; 
-            border-radius: 16px; 
-            padding: 24px 20px; 
-            text-align: center; 
-            cursor: pointer; 
-            border: 1px solid #334155; 
-            transition: all .3s; 
-            text-decoration: none; 
-            color: inherit; 
-            position: relative;
-            overflow: hidden;
-        }
-        .action-card:hover { border-color: #eab308; transform: translateY(-6px); box-shadow: 0 12px 30px rgba(234, 179, 8, 0.1); }
-        .action-card .icon { font-size: 40px; margin-bottom: 10px; display: block; }
-        .action-card h4 { color: #eab308; font-size: 15px; margin-bottom: 4px; }
-        .action-card p { color: #94a3b8; font-size: 12px; margin-top: 4px; }
-        .action-card .price { color: #22c55e; font-weight: 700; font-size: 16px; margin-top: 10px; }
-        .action-card .start-btn {
-            display: inline-block;
-            margin-top: 14px;
-            padding: 8px 24px;
-            border-radius: 30px;
-            font-size: 12px;
-            font-weight: 700;
-            background: #eab308;
-            color: #0a0c15;
-            border: none;
-            cursor: pointer;
-            transition: all .3s;
-            text-decoration: none;
-        }
-        .action-card .start-btn:hover { background: #facc15; transform: scale(1.05); }
-        .action-card .popular-badge {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: #22c55e;
-            color: #000;
-            font-size: 9px;
-            font-weight: 700;
-            padding: 2px 12px;
-            border-radius: 20px;
-            text-transform: uppercase;
-        }
-        
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: #0f172a; border-radius: 16px; padding: 20px; border: 1px solid #1e293b; text-align: center; }
-        .stat-card h4 { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-        .stat-card .number { font-size: 28px; font-weight: 800; color: #22c55e; }
-        
-        .card { background: #0f172a; border-radius: 20px; padding: 24px; border: 1px solid #1e293b; margin-bottom: 24px; }
-        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
-        .card-header h2 { color: #eab308; font-size: 18px; border-left: 4px solid #eab308; padding-left: 12px; }
-        .card-header .view-all { color: #eab308; font-size: 13px; text-decoration: none; transition: all .2s; cursor: pointer; }
-        .card-header .view-all:hover { color: #facc15; }
-        
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { color: #eab308; text-align: left; padding: 10px 12px; border-bottom: 1px solid #1e293b; }
-        td { padding: 10px 12px; border-bottom: 1px solid #1e293b; color: #94a3b8; }
-        .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
-        .badge-pending { background: #f59e0b; color: #000; }
-        .badge-completed { background: #22c55e; color: #000; }
-        .badge-paid { background: #8b5cf6; color: #fff; }
-        .badge-failed { background: #ef4444; color: #fff; }
-        .badge-processing { background: #3b82f6; color: #fff; }
-        
-        .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #1e293b; border-top-color: #eab308; border-radius: 50%; animation: spin .8s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
-        .text-center { text-align: center; padding: 40px; color: #64748b; }
-        
-        .empty-state { text-align: center; padding: 40px; }
-        .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; }
-        .empty-state h4 { color: #94a3b8; margin-bottom: 8px; }
-        .empty-state p { color: #64748b; font-size: 14px; }
-        .empty-state .btn-cta-small { 
-            display: inline-block; 
-            margin-top: 16px; 
-            padding: 10px 28px; 
-            background: #eab308; 
-            color: #0a0c15; 
-            border-radius: 40px; 
-            font-weight: 700; 
-            text-decoration: none; 
-            transition: all .3s; 
-            cursor: pointer;
-            border: none;
-        }
-        .empty-state .btn-cta-small:hover { background: #facc15; transform: translateY(-2px); }
-        
-        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; z-index: 9999; font-weight: 500; animation: slideIn .3s ease; max-width: 400px; }
-        .toast-success { background: #22c55e; color: #000; }
-        .toast-error { background: #ef4444; color: #fff; }
-        .toast-warning { background: #eab308; color: #000; }
-        @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
-        
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(10, 12, 21, 0.95);
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        .loading-overlay .spinner-big {
-            width: 48px;
-            height: 48px;
-            border: 4px solid #1e293b;
-            border-top-color: #eab308;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        .loading-overlay p {
-            margin-top: 20px;
-            color: #94a3b8;
-            font-size: 14px;
-        }
-        
-        @media (max-width: 768px) {
-            .container { padding: 16px; }
-            .quick-actions { grid-template-columns: 1fr 1fr; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .welcome-banner { padding: 24px 20px; flex-direction: column; text-align: center; }
-            .welcome-banner .cta-group { justify-content: center; }
-            .action-card .start-btn { font-size: 11px; padding: 6px 18px; }
-        }
-        @media (max-width: 480px) {
-            .quick-actions { grid-template-columns: 1fr; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
+        header { display: flex; justify-content: space-between; padding: 15px 30px; background: #111827; border-bottom: 2px solid #eab308; }
+        .logo { font-size: 24px; color: #eab308; font-weight: bold; }
+        .container { max-width: 1100px; margin: auto; padding: 24px; }
+        .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .service-card { background: #1e293b; padding: 20px; border-radius: 12px; text-align: center; transition: 0.3s; border: 1px solid transparent; }
+        .service-card:hover { border-color: #eab308; }
+        .btn { background: #eab308; color: black; padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; width: 100%; }
+        .btn:disabled { background: #555; cursor: not-allowed; }
+        .logout-btn { background: #dc2626; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
+        .logout-btn:hover { background: #b91c1c; }
+        .error { color: #ef4444; text-align: center; padding: 20px; }
     </style>
 </head>
 <body>
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="spinner-big"></div>
-        <p>Loading AUTO-V Dashboard...</p>
-    </div>
-
-    <div class="header">
-        <div class="logo">🚗 AUTO-V <small>| Dashboard</small></div>
-        <div class="user-info">
-            <span class="live-indicator"><span class="dot"></span> Live</span>
-            <div class="user-avatar" id="userAvatar">U</div>
-            <span id="userEmail" style="color:#94a3b8;font-size:13px;">Loading...</span>
-            <button class="logout-btn" id="logoutBtn">Logout</button>
-        </div>
-    </div>
+    <header>
+        <div class="logo">🚗 AUTO-V Dashboard</div>
+        <button class="logout-btn" id="logoutBtn">Logout</button>
+    </header>
 
     <div class="container">
-        <div class="welcome-banner">
-            <div class="text">
-                <h3 id="welcomeMsg">🚀 Welcome to AUTO-V</h3>
-                <p>Your complete vehicle intelligence platform. Get instant valuations, inspections, and more.</p>
-            </div>
-            <div class="cta-group">
-                <button class="btn-cta btn-cta-primary" id="startServiceBtn">🚗 Start New Service</button>
-                <button class="btn-cta btn-cta-secondary" id="browseServicesBtn">Browse All Services</button>
-            </div>
+        <div id="profileCard" class="card" style="display:none;">
+            <h2>Welcome, <span id="userName">User</span></h2>
+            <p>Role: <span id="userRole" style="color:#eab308;">Loading...</span></p>
         </div>
 
-        <div class="quick-actions" id="quickActions">
-            <!-- Dynamically populated from system_settings -->
-        </div>
-
-        <div class="stats-grid" id="statsGrid">
-            <div class="stat-card"><h4>Total Requests</h4><div class="number" id="totalRequests">0</div></div>
-            <div class="stat-card"><h4>Completed</h4><div class="number" id="completedRequests">0</div></div>
-            <div class="stat-card"><h4>Pending</h4><div class="number" id="pendingRequests">0</div></div>
-            <div class="stat-card"><h4>Total Spent</h4><div class="number" id="totalSpent">KES 0</div></div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h2>📋 Recent Activity</h2>
-                <span class="view-all" id="viewAllBtn">View All →</span>
-            </div>
-            <div id="recentActivity"><div class="text-center"><div class="spinner"></div></div></div>
+        <div id="serviceGrid" class="grid">
+            <div class="card" style="grid-column: 1/-1; text-align: center;">Loading services...</div>
         </div>
     </div>
 
     <script>
-        // ============================================================
-        // AUTO-V DASHBOARD - REAL-TIME SYNC
-        // Uses shared autoV client from supabase.js
-        // ============================================================
-        
-        (function() {
-            'use strict';
-            
-            // ─── Wait for autoV ──────────────────────────────────────
-            function waitForAutoV(callback, retries = 20) {
-                if (window.autoV && window.autoV.supabase) {
-                    callback();
-                    return;
-                }
-                if (retries <= 0) {
-                    console.error('❌ autoV failed to initialize');
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    return;
-                }
-                setTimeout(() => waitForAutoV(callback, retries - 1), 300);
+        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const ALL_SERVICES = [
+            { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', page: 'customer-portal.html?service=valuation', roles: ['individual', 'corporate', 'valuer'] },
+            { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', page: 'customer-portal.html?service=instant-value-check', roles: ['individual', 'corporate', 'valuer'] },
+            { id: 'inspection', icon: '🔍', name: 'Vehicle Inspection', page: 'customer-portal.html?service=inspection', roles: ['valuer'] },
+            { id: 'assessment', icon: '⚠️', name: 'Vehicle Assessment', page: 'customer-portal.html?service=assessment', roles: ['valuer'] },
+            { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', page: 'customer-portal.html?service=mileage-rate', roles: ['valuer'] },
+            { id: 'fleet', icon: '🚛', name: 'Fleet Services', page: 'customer-portal.html?service=fleet', roles: ['valuer'] },
+        ];
+
+        async function init() {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error || !user) {
+                window.location.href = 'login.html';
+                return;
             }
+
+            // Fetch role directly from the database (Server-side enforced)
+            const { data: profile, error: profileError } = await supabase
+                .from('user_profiles')
+                .select('role, full_name')
+                .eq('id', user.id)
+                .single();
+
+            if (profileError) {
+                document.getElementById('serviceGrid').innerHTML = `<div class="error">Error loading profile. Please contact support.</div>`;
+                return;
+            }
+
+            const role = profile.role || 'individual';
             
-            waitForAutoV(function() {
-                // ─── Get shared utilities ────────────────────────────
-                const autoV = window.autoV;
-                const supabase = autoV.supabase;
-                const formatKES = autoV.formatKES;
-                const formatDate = autoV.formatDate;
-                const getServiceName = autoV.getServiceName;
-                const showToast = autoV.showToast;
-                
-                let currentUser = null;
-                let userProfile = null;
-                let allRequests = [];
-                let allPayments = [];
-                let isInitialized = false;
-                
-                // ─── Service Icons ──────────────────────────────────────
-                const serviceIcons = {
-                    'instant': '💡',
-                    'instant-value-check': '💡',
-                    'valuation': '💰',
-                    'inspection': '🔍',
-                    'assessment': '⚠️',
-                    'mileage': '📏',
-                    'mileage-rate': '📏',
-                    'fleet': '🚛',
-                    'verification': '✅',
-                    'report-verification': '✅'
-                };
-                
-                // ─── Hide Loading Overlay ──────────────────────────────
-                function hideLoading() {
-                    const overlay = document.getElementById('loadingOverlay');
-                    if (overlay) {
-                        overlay.style.opacity = '0';
-                        setTimeout(() => {
-                            overlay.style.display = 'none';
-                        }, 500);
-                    }
-                }
-                
-                // ─── Navigate to Customer Portal ──────────────────────
-                window.goToService = function(service) {
-                    let url = 'customer-portal.html';
-                    if (service) {
-                        url += `?service=${service}`;
-                    }
-                    window.location.href = url;
-                };
-                
-                window.goToCustomerPortal = function() {
-                    window.location.href = 'customer-portal.html';
-                };
-                
-                // ─── Load Quick Actions ──────────────────────────────
-                async function loadQuickActions() {
-                    try {
-                        const { data: settings, error } = await supabase
-                            .from('system_settings')
-                            .select('setting_key, setting_value')
-                            .in('setting_key', [
-                                'instant_fee', 'valuation_fee', 'inspection_fee',
-                                'assessment_fee', 'mileage_fee', 'fleet_fee', 'verification_fee'
-                            ]);
-                        
-                        if (error) throw error;
-                        
-                        const fees = {};
-                        const feeMap = {
-                            'instant_fee': 'instant',
-                            'valuation_fee': 'valuation',
-                            'inspection_fee': 'inspection',
-                            'assessment_fee': 'assessment',
-                            'mileage_fee': 'mileage',
-                            'fleet_fee': 'fleet',
-                            'verification_fee': 'verification'
-                        };
-                        
-                        settings.forEach(row => {
-                            const key = feeMap[row.setting_key];
-                            if (key) {
-                                fees[key] = parseInt(row.setting_value) || 0;
-                            }
-                        });
-                        
-                        // Default fees if not found
-                        const defaultFees = {
-                            'instant': fees.instant || 500,
-                            'valuation': fees.valuation || 2500,
-                            'inspection': fees.inspection || 3500,
-                            'assessment': fees.assessment || 3000,
-                            'mileage': fees.mileage || 1500,
-                            'fleet': fees.fleet || 4000,
-                            'verification': fees.verification || 1000
-                        };
-                        
-                        const services = [
-                            { id: 'instant', icon: '💡', name: 'Instant Value Check', desc: 'AI estimate in seconds', popular: true },
-                            { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', desc: 'Formal certified valuation', popular: false },
-                            { id: 'inspection', icon: '🔍', name: 'Vehicle Inspection', desc: 'Professional inspection report', popular: false },
-                            { id: 'mileage', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per km analysis', popular: false },
-                            { id: 'assessment', icon: '⚠️', name: 'Vehicle Assessment', desc: 'Accident, claim, total loss', popular: false },
-                            { id: 'fleet', icon: '🚛', name: 'Fleet Services', desc: 'Fleet valuation & inspection', popular: false },
-                            { id: 'verification', icon: '✅', name: 'Report Verification', desc: 'Download certificates with QR', popular: false }
-                        ];
-                        
-                        const container = document.getElementById('quickActions');
-                        container.innerHTML = services.map(s => `
-                            <div class="action-card" data-service="${s.id}" onclick="window.goToService('${s.id}')">
-                                ${s.popular ? '<span class="popular-badge">🔥 Popular</span>' : ''}
-                                <span class="icon">${s.icon}</span>
-                                <h4>${s.name}</h4>
-                                <p>${s.desc}</p>
-                                <div class="price">${formatKES(defaultFees[s.id] || 0)}</div>
-                                <span class="start-btn">Start Now →</span>
-                            </div>
-                        `).join('');
-                        
-                    } catch (err) {
-                        console.warn('Could not load quick actions:', err.message);
-                    }
-                }
-                
-                // ─── Load Dashboard Data ──────────────────────────────
-                async function loadDashboard() {
-                    try {
-                        const { data: { user }, error: authError } = await supabase.auth.getUser();
-                        
-                        if (authError || !user) {
-                            console.log('No user found, redirecting to login...');
-                            window.location.href = "login.html";
-                            return;
-                        }
-                        
-                        currentUser = user;
-                        
-                        // Get profile
-                        const { data: profile, error: profileError } = await supabase
-                            .from('user_profiles')
-                            .select('*')
-                            .eq('id', user.id)
-                            .maybeSingle();
-                        
-                        if (!profileError) {
-                            userProfile = profile;
-                        }
-                        
-                        const userEmail = user.email;
-                        const userName = profile?.full_name || user.user_metadata?.full_name || userEmail?.split('@')[0] || 'User';
-                        
-                        document.getElementById('userAvatar').textContent = userEmail ? userEmail.charAt(0).toUpperCase() : 'U';
-                        document.getElementById('userEmail').textContent = userEmail || 'user@email.com';
-                        document.getElementById('welcomeMsg').textContent = `🚀 Welcome back, ${userName}!`;
-                        
-                        // Load requests
-                        const { data: requests, error: reqError } = await supabase
-                            .from('service_requests')
-                            .select('*')
-                            .eq('user_id', user.id)
-                            .order('created_at', { ascending: false });
-                        
-                        if (!reqError) {
-                            allRequests = requests || [];
-                        }
-                        
-                        // Load payments
-                        const { data: payments, error: payError } = await supabase
-                            .from('payments')
-                            .select('*')
-                            .eq('user_id', user.id);
-                        
-                        if (!payError) {
-                            allPayments = payments || [];
-                        }
-                        
-                        // Update stats
-                        const totalRequests = allRequests.length;
-                        const completed = allRequests.filter(r => 
-                            r.status === 'completed' || r.payment_status === 'paid'
-                        ).length;
-                        const pending = allRequests.filter(r => 
-                            r.status === 'pending' || r.payment_status === 'pending'
-                        ).length;
-                        const spent = allPayments
-                            .filter(p => p.status === 'completed' || p.status === 'paid')
-                            .reduce((s, p) => s + (p.amount || 0), 0);
-                        
-                        document.getElementById('totalRequests').textContent = totalRequests;
-                        document.getElementById('completedRequests').textContent = completed;
-                        document.getElementById('pendingRequests').textContent = pending;
-                        document.getElementById('totalSpent').innerHTML = formatKES(spent);
-                        
-                        // Render recent activity
-                        renderRecentActivity(allRequests);
-                        
-                        if (!isInitialized) {
-                            hideLoading();
-                            isInitialized = true;
-                        }
-                        
-                    } catch (err) {
-                        console.error('Error loading dashboard:', err);
-                        hideLoading();
-                    }
-                }
-                
-                // ─── Render Recent Activity ────────────────────────────
-                function renderRecentActivity(requests) {
-                    const container = document.getElementById('recentActivity');
-                    
-                    if (!requests || requests.length === 0) {
-                        container.innerHTML = `
-                            <div class="empty-state">
-                                <div class="empty-icon">🚀</div>
-                                <h4>No activity yet</h4>
-                                <p>Start your first service and see your activity here.</p>
-                                <button class="btn-cta-small" onclick="window.goToCustomerPortal()">Start Now →</button>
-                            </div>
-                        `;
-                        return;
-                    }
-                    
-                    const recent = requests.slice(0, 5);
-                    container.innerHTML = `
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Service</th>
-                                    <th>Amount</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${recent.map(r => {
-                                    const status = r.payment_status || r.status || 'pending';
-                                    const badgeClass = getBadgeClass(status);
-                                    const serviceName = getServiceName(r.service_type);
-                                    const icon = serviceIcons[r.service_type] || '📋';
-                                    return `<tr>
-                                        <td>${formatDate(r.created_at)}</td>
-                                        <td>${icon} ${serviceName}</td>
-                                        <td>${formatKES(r.amount || 0)}</td>
-                                        <td><span class="badge badge-${badgeClass}">${badgeClass.charAt(0).toUpperCase() + badgeClass.slice(1)}</span></td>
-                                    </tr>`;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                }
-                
-                // ─── Get Badge Class ────────────────────────────────────
-                function getBadgeClass(status) {
-                    const map = {
-                        'completed': 'completed',
-                        'paid': 'paid',
-                        'pending': 'pending',
-                        'processing': 'processing',
-                        'failed': 'failed',
-                        'cancelled': 'cancelled',
-                        'active': 'active',
-                        'inactive': 'inactive',
-                        'refunded': 'cancelled'
-                    };
-                    return map[status] || 'pending';
-                }
-                
-                // ─── Logout ──────────────────────────────────────────────
-                async function handleLogout() {
-                    try {
-                        await supabase.auth.signOut();
-                        showToast('✅ Logged out successfully', 'success');
-                        setTimeout(() => {
-                            window.location.href = "login.html";
-                        }, 500);
-                    } catch (err) {
-                        console.error('Logout error:', err);
-                        showToast('❌ Error logging out', 'error');
-                    }
-                }
-                
-                // ─── Check Existing Session ──────────────────────────────
-                async function checkSession() {
-                    try {
-                        const { data: { user }, error } = await supabase.auth.getUser();
-                        
-                        if (error || !user) {
-                            console.log('No user found, redirecting to login...');
-                            window.location.href = "login.html";
-                            return false;
-                        }
-                        return true;
-                    } catch (err) {
-                        console.error('Session check error:', err);
-                        window.location.href = "login.html";
-                        return false;
-                    }
-                }
-                
-                // ─── Real-time Listener ──────────────────────────────
-                function setupRealtime() {
-                    // Listen for changes and refresh data
-                    autoV.addListener(function(data) {
-                        console.log('🔄 Real-time update received in Dashboard');
-                        loadDashboard();
-                    });
-                    
-                    // Subscribe to real-time changes
-                    autoV.subscribeToChanges();
-                }
-                
-                // ─── Initialize ─────────────────────────────────────────
-                async function init() {
-                    try {
-                        const isLoggedIn = await checkSession();
-                        if (!isLoggedIn) return;
-                        
-                        // Load quick actions
-                        await loadQuickActions();
-                        
-                        // Load dashboard data
-                        await loadDashboard();
-                        
-                        // Set up real-time sync
-                        setupRealtime();
-                        
-                        // Event listeners
-                        document.getElementById('logoutBtn').addEventListener('click', handleLogout);
-                        
-                        document.getElementById('startServiceBtn')?.addEventListener('click', function() {
-                            window.goToCustomerPortal();
-                        });
-                        
-                        document.getElementById('browseServicesBtn')?.addEventListener('click', function() {
-                            window.goToCustomerPortal();
-                        });
-                        
-                        document.getElementById('viewAllBtn')?.addEventListener('click', function() {
-                            window.goToCustomerPortal();
-                        });
-                        
-                        console.log('✅ AUTO-V Dashboard initialized with real-time sync');
-                        
-                    } catch (err) {
-                        console.error('Init error:', err);
-                        showToast('❌ Failed to initialize dashboard', 'error');
-                        hideLoading();
-                    }
-                }
-                
-                // ─── Auto-refresh (fallback) ──────────────────────────
-                setInterval(() => {
-                    if (isInitialized) {
-                        loadDashboard();
-                    }
-                }, 60000);
-                
-                // ─── Start ──────────────────────────────────────────────
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', init);
-                } else {
-                    init();
-                }
-                
-            }); // end waitForAutoV
-        })();
+            document.getElementById('profileCard').style.display = 'block';
+            document.getElementById('userName').textContent = profile.full_name || user.email;
+            document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
+
+            // Filter services based on database role
+            const allowedServices = ALL_SERVICES.filter(s => s.roles.includes(role));
+
+            if (allowedServices.length === 0) {
+                document.getElementById('serviceGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;">No services available for your role.</div>`;
+                return;
+            }
+
+            document.getElementById('serviceGrid').innerHTML = allowedServices.map(s => `
+                <div class="service-card">
+                    <div style="font-size: 40px;">${s.icon}</div>
+                    <h3 style="color: #eab308; margin: 10px 0;">${s.name}</h3>
+                    <button class="btn" onclick="window.location.href='${s.page}'">Start →</button>
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('logoutBtn').onclick = async function() {
+            await supabase.auth.signOut();
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        };
+
+        init();
     </script>
 </body>
 </html>
