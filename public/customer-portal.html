@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>AUTO-V | Customer Portal v8.1</title>
+    <title>AUTO-V | Customer Portal v8.2</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -176,7 +176,7 @@
     </div>
 
     <header>
-        <div class="logo">🚗 AUTO-V <span>| Customer Portal v8.1</span></div>
+        <div class="logo">🚗 AUTO-V <span>| Customer Portal v8.2</span></div>
         <div style="display: flex; gap: 10px; align-items: center;">
             <span class="live-indicator"><span class="dot"></span> Live</span>
             <button class="logout-btn" id="logoutBtn">Logout</button>
@@ -197,7 +197,7 @@
             <div class="progress-step" id="step5Prog" data-step="5">4. Payment</div>
         </div>
 
-        <!-- STEP 1 (Formerly 2): CLIENT DETAIL -->
+        <!-- STEP 1: CLIENT DETAIL -->
         <div id="step2" class="card step active">
             <h2>👤 Client Details</h2>
             <div class="client-type-selector">
@@ -220,7 +220,7 @@
             </form>
         </div>
 
-        <!-- STEP 2 (Formerly 3): CHOOSE SERVICE -->
+        <!-- STEP 2: CHOOSE SERVICE -->
         <div id="step3" class="card step">
             <h2>🔧 Choose Service</h2>
             <div class="service-cards" id="serviceCards"></div>
@@ -228,7 +228,7 @@
             <div class="nav-buttons"><button class="btn btn-secondary" id="backToClient">← Back</button><button class="btn btn-primary" id="nextStep3Btn">Next →</button></div>
         </div>
 
-        <!-- STEP 3 (Formerly 4): PURPOSE -->
+        <!-- STEP 3: PURPOSE -->
         <div id="step4" class="card step">
             <h2>🎯 Service Purpose</h2>
             <p style="color:#94a3b8; margin-bottom:15px; font-size:14px;">Select the purpose for this service:</p>
@@ -236,7 +236,7 @@
             <div class="nav-buttons"><button class="btn btn-secondary" id="backToService">← Back</button><button class="btn btn-primary" id="nextStep4Btn">Next →</button></div>
         </div>
 
-        <!-- STEP 4 (Formerly 5): PAYMENT -->
+        <!-- STEP 4: PAYMENT -->
         <div id="step5" class="card step">
             <h2>💳 Payment</h2>
             
@@ -323,9 +323,9 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL v8.1 - AUTH PROTECTED VERSION
-        // Uses M-Pesa CheckoutRequestID for all status checks
+        // AUTO-V CUSTOMER PORTAL v8.2 - ROLE PROTECTED
         // ============================================================
+
         (function() {
             'use strict';
 
@@ -345,22 +345,33 @@
                 MAX_RATE_LIMIT_RETRIES: 5
             };
 
-            console.log('🚀 AUTO-V Customer Portal v8.1 - Auth Protected');
+            console.log('🚀 AUTO-V Customer Portal v8.2 - Role Protected');
             console.log(`📡 API: ${CONFIG.API_BASE}`);
-            console.log('⚠️ Using M-Pesa CheckoutRequestID for status checks');
 
             const supabase = window.supabase.createClient(
                 CONFIG.SUPABASE_URL,
                 CONFIG.SUPABASE_ANON_KEY
             );
 
+            // ─── Role-Based Access Control ──────────────────────────────
+            const ALLOWED_SERVICES = {
+                'valuation': ['individual', 'corporate', 'valuer'],
+                'instant-value-check': ['individual', 'corporate', 'valuer'],
+                'inspection': ['valuer'],
+                'assessment': ['valuer'],
+                'mileage-rate': ['valuer'],
+                'fleet': ['valuer'],
+                'report-verification': ['valuer'],
+            };
+
             // ─── State Management ──────────────────────────────────────
             const state = {
                 currentUser: null,
+                userRole: 'individual',
                 selectedService: null,
                 selectedPurpose: null,
                 clientType: 'individual',
-                checkoutRequestId: null, // ✅ Stores M-Pesa CheckoutRequestID
+                checkoutRequestId: null,
                 isPaymentConfirmed: false,
                 isPaymentInProgress: false,
                 isPollingActive: false,
@@ -1505,12 +1516,47 @@
                 summaryAmount.textContent = state.selectedService ? formatKES(getServicePrice(state.selectedService)) : 'KES 0';
             }
 
-            // ─── Init ──────────────────────────────────────────────────
+            // ─── ROLE-BASED ACCESS CONTROL ──────────────────────────────
+            async function checkRoleAccess() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const service = urlParams.get('service');
+
+                // If no service is specified in URL, allow access (user hasn't selected yet)
+                if (!service) return true;
+
+                // Fetch user role
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    window.location.href = 'login.html';
+                    return false;
+                }
+
+                const { data: profile } = await supabase
+                    .from('user_profiles')
+                    .select('role')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                state.userRole = profile?.role || 'individual';
+
+                // Check permissions
+                if (ALLOWED_SERVICES[service]) {
+                    if (!ALLOWED_SERVICES[service].includes(state.userRole)) {
+                        alert('⛔ Access Denied: You do not have permission to access this service.');
+                        window.location.href = 'dashboard.html';
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            // ─── INIT ──────────────────────────────────────────────────
             async function init() {
-                console.log('🚀 Initializing AUTO-V Customer Portal v8.1 (Auth Protected)...');
+                console.log('🚀 Initializing AUTO-V Customer Portal v8.2 (Role Protected)...');
                 console.log('📡 Connected to: ' + CONFIG.API_BASE);
                 
-                // 1. Check if user is authenticated
+                // 1. Check authentication
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) {
                     console.warn('No user logged in. Redirecting to login...');
@@ -1518,16 +1564,40 @@
                     return;
                 }
                 state.currentUser = user;
-                console.log('✅ User authenticated:', user.email);
 
-                // 2. Pre-fill Client Details
-                document.getElementById('custName').value = user.user_metadata?.full_name || '';
+                // 2. Check role-based access
+                const access = await checkRoleAccess();
+                if (!access) return;
+
+                // 3. Fetch profile to get role and client type
+                const { data: profile } = await supabase
+                    .from('user_profiles')
+                    .select('role, client_type, full_name, id_passport, company_name, company_reg')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                if (profile) {
+                    state.userRole = profile.role || 'individual';
+                    state.clientType = profile.client_type || 'individual';
+                }
+
+                // 4. Pre-fill Client Details (Step 2)
+                if (state.clientType === 'corporate') {
+                    document.querySelector('.client-type-btn[data-type="corporate"]').click();
+                    if (profile?.company_name) document.getElementById('companyName').value = profile.company_name;
+                    if (profile?.company_reg) document.getElementById('companyReg').value = profile.company_reg;
+                } else {
+                    document.querySelector('.client-type-btn[data-type="individual"]').click();
+                    if (profile?.full_name) document.getElementById('custName').value = profile.full_name;
+                    if (profile?.id_passport) document.getElementById('custId').value = profile.id_passport;
+                }
                 document.getElementById('custEmail').value = user.email;
-                
-                // 3. Load fees and start the flow
+                if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
+
+                // 5. Load fees and start the flow
                 await loadFees();
                 showStep(2);
-                console.log('✅ Customer Portal ready');
+                console.log('✅ Customer Portal ready. Role:', state.userRole);
             }
 
             // ─── Event Listeners ──────────────────────────────────────
