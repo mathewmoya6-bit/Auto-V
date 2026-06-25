@@ -2,1683 +2,260 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>AUTO-V | Customer Portal v8.2</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V Service Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        /* CSS - Keep your existing CSS, no changes needed */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0a0c15; color: #fff; min-height: 100vh; }
-        header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #111827; border-bottom: 2px solid #eab308; position: sticky; top: 0; z-index: 100; }
-        .logo { font-size: 24px; font-weight: 800; color: #eab308; display: flex; align-items: center; gap: 10px; }
-        .logo span { font-size: 12px; color: #94a3b8; }
-        .logout-btn { background: #dc2626; color: #fff; padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; transition: all 0.3s; }
-        .logout-btn:hover { background: #b91c1c; transform: scale(1.02); }
-        .live-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #22c55e; background: rgba(34, 197, 94, 0.12); padding: 2px 12px; border-radius: 20px; }
-        .live-indicator .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .container { max-width: 900px; margin: 0 auto; padding: 24px; }
-        .card { background: #0f172a; border-radius: 20px; padding: 30px; margin-bottom: 20px; border: 1px solid #1e293b; transition: all 0.3s; }
-        .card:hover { border-color: #2d3a4e; }
-        h2 { color: #eab308; margin-bottom: 20px; font-size: 22px; border-left: 4px solid #eab308; padding-left: 15px; }
-        .step { display: none; animation: fadeIn 0.4s ease; }
-        .step.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .progress-bar { display: flex; justify-content: space-between; margin-bottom: 30px; background: #1e293b; border-radius: 40px; padding: 5px; flex-wrap: wrap; }
-        .progress-step { flex:1; text-align:center; padding:10px; border-radius:40px; color:#94a3b8; font-size:12px; font-weight:600; transition: all 0.3s; }
-        .progress-step.active { background:#eab308; color:#000; transform: scale(1.02); }
-        .progress-step.completed { background:#22c55e; color:#000; }
-        .form-group { margin-bottom:15px; }
-        label { display:block; margin-bottom:8px; color:#94a3b8; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
-        label.required:after { content:" *"; color:#ef4444; }
-        input, select, textarea { width:100%; padding:12px 16px; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:12px; font-size:14px; transition:all 0.3s; }
-        input:focus, select:focus, textarea:focus { outline:none; border-color:#eab308; box-shadow:0 0 0 4px rgba(234,179,8,0.15); }
-        .btn { padding:12px 28px; border:none; border-radius:40px; font-weight:700; cursor:pointer; transition:all .3s; position:relative; overflow:hidden; }
-        .btn:active { transform: scale(0.97); }
-        .btn-primary { background:#eab308; color:#0a0c10; }
-        .btn-primary:hover { background:#facc15; transform:translateY(-2px); box-shadow:0 8px 25px rgba(234,179,8,0.3); }
-        .btn-secondary { background:#334155; color:#fff; }
-        .btn-secondary:hover { background:#475569; transform:translateY(-2px); }
-        .btn-success { background:#22c55e; color:#fff; }
-        .btn-success:hover { background:#16a34a; transform:translateY(-2px); box-shadow:0 8px 25px rgba(34,197,94,0.3); }
-        .btn-success:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .btn-retry { background:#f59e0b; color:#000; }
-        .btn-retry:hover { background:#d97706; transform:translateY(-2px); }
-        .btn-danger { background:#ef4444; color:#fff; }
-        .btn-danger:hover { background:#dc2626; transform:translateY(-2px); }
-        .btn-warning { background:#f59e0b; color:#000; }
-        .btn-warning:hover { background:#d97706; transform:translateY(-2px); }
-        .nav-buttons { display:flex; justify-content:space-between; margin-top:30px; gap:10px; flex-wrap:wrap; }
-        .service-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:20px; margin-top:20px; }
-        .service-card { background:#1e293b; border-radius:16px; padding:20px; text-align:center; cursor:pointer; border:2px solid transparent; transition:all .3s; }
-        .service-card:hover { border-color:#eab308; transform:translateY(-5px); box-shadow:0 8px 30px rgba(234,179,8,0.1); }
-        .service-card.selected { border-color:#eab308; background:#2d3a4e; box-shadow:0 0 30px rgba(234,179,8,0.15); }
-        .service-icon { font-size:40px; margin-bottom:8px; }
-        .service-card h3 { color:#eab308; font-size:15px; margin-bottom:6px; }
-        .service-price { font-size:18px; font-weight:700; color:#22c55e; margin:6px 0; }
-        .service-card p { font-size:11px; color:#94a3b8; }
-        .purpose-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; max-height:300px; overflow-y:auto; padding:10px; background:#1e293b; border-radius:12px; }
-        .purpose-item { padding:10px 15px; background:#0f172a; border-radius:8px; cursor:pointer; text-align:center; transition:all .2s; }
-        .purpose-item:hover { background:#334155; transform:scale(1.02); }
-        .purpose-item.selected { background:#eab308; color:#000; font-weight:600; box-shadow:0 0 20px rgba(234,179,8,0.2); }
-        .payment-summary { background:#1e293b; border-radius:16px; padding:20px; margin:20px 0; }
-        .payment-summary .row { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #2d3a4e; }
-        .payment-summary .row:last-child { border-bottom:none; }
-        .payment-summary .label { color:#94a3b8; }
-        .payment-summary .value { font-weight:700; color:#eab308; }
-        .payment-summary .amount { font-size:24px; color:#22c55e; font-weight:800; }
-        .payment-status { background:#1e293b; border-radius:12px; padding:12px; text-align:center; font-weight:600; display:none; margin-bottom:15px; animation: slideDown 0.3s ease; }
-        @keyframes slideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
-        .payment-status.stk-sent { display:block; background:#3b82f6; color:#fff; }
-        .payment-status.pending { display:block; background:#f59e0b; color:#000; }
-        .payment-status.processing { display:block; background:#8b5cf6; color:#fff; }
-        .payment-status.completed { display:block; background:#22c55e; color:#000; animation: pulseGlow 1s ease; }
-        @keyframes pulseGlow { 0%,100% { box-shadow:0 0 20px rgba(34,197,94,0.3); } 50% { box-shadow:0 0 40px rgba(34,197,94,0.6); } }
-        .payment-status.failed { display:block; background:#ef4444; color:#fff; }
-        .payment-status.timeout { display:block; background:#f59e0b; color:#000; }
-        .row { display:grid; grid-template-columns:1fr 1fr; gap:15px; }
-        .client-type-selector { display: flex; gap: 10px; margin-bottom: 20px; }
-        .client-type-btn { padding: 10px 20px; border: 2px solid #334155; border-radius: 12px; background: transparent; color: #94a3b8; cursor: pointer; font-weight: 600; transition: all 0.3s; flex: 1; }
-        .client-type-btn.active { border-color: #eab308; background: rgba(234,179,8,0.15); color: #eab308; box-shadow:0 0 20px rgba(234,179,8,0.1); }
-        .client-type-btn:hover { border-color: #eab308; transform:scale(1.02); }
-        .corporate-fields { display: none; }
-        .corporate-fields.show { display: block; animation: fadeIn 0.3s ease; }
-        .spinner { display:inline-block; width:20px; height:20px; border:3px solid rgba(255,255,255,0.3); border-radius:50%; border-top-color:#eab308; animation:spin .6s linear infinite; margin-right:8px; vertical-align:middle; }
-        @keyframes spin { to { transform:rotate(360deg); } }
-        .error, .success, .info { padding:12px 16px; border-radius:12px; margin-bottom:15px; display:none; animation: slideDown 0.3s ease; }
-        .error { background:#7f1d1d; color:#fecaca; border-left:4px solid #ef4444; }
-        .success { background:#14532d; color:#bbf7d0; border-left:4px solid #22c55e; }
-        .info { background:#1e3a5f; color:#93c5fd; border-left:4px solid #3b82f6; }
-        .manual-check-btn { margin-top: 10px; width: 100%; padding: 10px; border-radius: 40px; background: #334155; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
-        .manual-check-btn:hover { background: #475569; transform:translateY(-2px); }
-        .manual-check-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .force-refresh-btn { margin-top: 5px; width: 100%; padding: 10px; border-radius: 40px; background: #3b82f6; color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
-        .force-refresh-btn:hover { background: #2563eb; transform:translateY(-2px); }
-        .force-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .welcome-banner { background: linear-gradient(135deg, #1e293b, #2d3a4e); border: 2px solid #eab308; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px; text-align: center; display: none; animation: fadeIn 0.5s ease; }
-        .welcome-banner h3 { color: #eab308; font-size: 20px; margin-bottom: 8px; }
-        .welcome-banner p { color: #94a3b8; font-size: 14px; }
-        .rate-limit-warning { background: #7c3a1e; color: #fbbf24; padding: 8px 12px; border-radius: 8px; font-size: 12px; display: none; margin-top: 10px; animation: fadeIn 0.3s ease; }
-        .help-text { background: #1e293b; border-radius: 12px; padding: 15px; margin: 15px 0; border-left: 4px solid #eab308; }
-        .help-text h4 { color: #eab308; margin-bottom: 8px; font-size: 14px; }
-        .help-text p { color: #94a3b8; font-size: 13px; line-height: 1.6; }
-        .help-text .step-indicator { display:flex; gap:10px; margin:10px 0; flex-wrap:wrap; }
-        .help-text .step-indicator .step-badge { background:#1e293b; padding:4px 12px; border-radius:20px; font-size:11px; color:#94a3b8; border:1px solid #334155; }
-        .help-text .step-indicator .step-badge.active { background:#eab308; color:#000; border-color:#eab308; }
-        .auto-confirm-btn { margin-top: 5px; width: 100%; padding: 10px; border-radius: 40px; background: #22c55e; color: #000; border: none; font-weight: 600; cursor: pointer; transition: all .3s; display: none; }
-        .auto-confirm-btn:hover { background: #16a34a; transform:translateY(-2px); box-shadow:0 8px 25px rgba(34,197,94,0.3); }
-        .auto-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        @media (max-width:768px) { .service-cards { grid-template-columns:1fr 1fr; } .purpose-list { grid-template-columns:1fr; } .nav-buttons { flex-direction:column; gap:10px; } .nav-buttons button { width:100%; } .progress-step { font-size:10px; padding:8px; } .row { grid-template-columns:1fr; } }
-        .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; max-width: 400px; width: 100%; pointer-events: none; }
-        .toast { padding: 14px 20px; border-radius: 12px; font-weight: 500; font-size: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); animation: slideIn 0.3s ease; pointer-events: all; display: flex; align-items: center; gap: 10px; border:1px solid rgba(255,255,255,0.05); }
-        .toast-success { background: #065f46; color: #a7f3d0; border-left: 4px solid #22c55e; }
-        .toast-error { background: #7f1d1d; color: #fecaca; border-left: 4px solid #ef4444; }
-        .toast-info { background: #1e3a5f; color: #93c5fd; border-left: 4px solid #3b82f6; }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .toast-close { background: none; border: none; color: inherit; font-size: 18px; cursor: pointer; margin-left: auto; opacity: 0.6; padding: 0 4px; transition: opacity 0.2s; }
-        .toast-close:hover { opacity: 1; }
-        .polling-indicator { display: none; align-items: center; gap: 8px; margin: 10px 0; padding: 8px 12px; background: #1e293b; border-radius: 8px; font-size: 12px; color: #94a3b8; border:1px solid #2d3a4e; }
-        .polling-indicator.active { display: flex; animation: fadeIn 0.3s ease; }
-        .polling-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 1s infinite; }
-        .polling-count { color: #eab308; font-weight: 600; }
-        .polling-timer { color: #3b82f6; font-weight: 600; }
-        .payment-actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
-        .payment-actions button { flex: 1; min-width: 120px; }
-        .payment-success-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(8px); }
-        .payment-success-overlay.active { display: flex; animation: fadeIn 0.5s ease; }
-        .payment-success-box { background: #0f172a; border: 2px solid #22c55e; border-radius: 24px; padding: 40px; text-align: center; max-width: 500px; width: 90%; animation: popIn 0.5s ease; box-shadow:0 20px 60px rgba(34,197,94,0.2); }
-        @keyframes popIn { from { transform: scale(0.8) rotate(-3deg); opacity: 0; } to { transform: scale(1) rotate(0deg); opacity: 1; } }
-        .payment-success-box .icon { font-size: 72px; margin-bottom: 16px; animation: bounce 1s ease infinite; }
-        @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-        .payment-success-box h2 { color: #22c55e; border: none; padding: 0; margin-bottom: 8px; font-size:28px; }
-        .payment-success-box p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
-        .payment-success-box .redirect-timer { color: #eab308; font-size: 24px; font-weight: 700; }
-        .payment-success-box .btn { margin-top: 16px; }
-        .payment-details-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:16px 0; text-align:left; }
-        .payment-details-grid .detail-item { background:#1e293b; padding:8px 12px; border-radius:8px; }
-        .payment-details-grid .detail-label { color:#94a3b8; font-size:11px; text-transform:uppercase; }
-        .payment-details-grid .detail-value { color:#eab308; font-weight:600; font-size:14px; }
-        .session-recovery { background:#1e293b; border-radius:12px; padding:12px 16px; margin:10px 0; border-left:4px solid #3b82f6; display:none; }
-        .session-recovery.show { display:block; animation: fadeIn 0.3s ease; }
-        .session-recovery p { color:#94a3b8; font-size:13px; }
-        .session-recovery .btn { margin-top:8px; padding:8px 16px; font-size:12px; }
-        .payment-timer { font-size:13px; color:#94a3b8; margin-top:5px; }
-        .payment-timer span { color:#eab308; font-weight:600; }
-        .payment-flow-steps { display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; justify-content:center; }
-        .payment-flow-steps .flow-step { background:#1e293b; padding:6px 14px; border-radius:20px; font-size:11px; color:#64748b; border:1px solid #334155; display:flex; align-items:center; gap:6px; }
-        .payment-flow-steps .flow-step.active { background:#eab308; color:#000; border-color:#eab308; }
-        .payment-flow-steps .flow-step.done { background:#22c55e; color:#000; border-color:#22c55e; }
-        @media (max-width:480px) { .payment-details-grid { grid-template-columns:1fr; } }
+        body { font-family: Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
+        header { display: flex; justify-content: space-between; padding: 15px 30px; background: #111827; border-bottom: 2px solid #eab308; }
+        .logo { font-size: 24px; color: #eab308; font-weight: bold; }
+        .container { max-width: 800px; margin: auto; padding: 24px; }
+        .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; color: #94a3b8; margin-bottom: 5px; font-weight: 600; }
+        input, select { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: white; }
+        input:focus { border-color: #eab308; outline: none; }
+        .btn-primary { background: #eab308; color: black; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; }
+        .btn-primary:disabled { background: #555; }
+        .btn-secondary { background: #475569; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
+        .status-box { padding: 15px; border-radius: 8px; margin-bottom: 15px; display: none; }
+        .status-success { background: #14532d; color: #bbf7d0; border-left: 4px solid #22c55e; }
+        .status-error { background: #7f1d1d; color: #fecaca; border-left: 4px solid #ef4444; }
+        .back-btn { display: inline-block; margin-bottom: 20px; color: #94a3b8; text-decoration: none; }
+        .back-btn:hover { color: #eab308; }
+        .result-box { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 20px; display: none; }
+        .result-value { font-size: 32px; color: #22c55e; font-weight: bold; text-align: center; margin: 10px 0; }
+        .price-display { font-size: 24px; color: #22c55e; text-align: center; margin: 15px 0; }
     </style>
 </head>
 <body>
-    <!-- Payment Success Overlay -->
-    <div id="paymentSuccessOverlay" class="payment-success-overlay">
-        <div class="payment-success-box">
-            <div class="icon">✅</div>
-            <h2>Payment Successful!</h2>
-            <p>Your payment has been confirmed and verified by M-Pesa.</p>
-            <div class="payment-details-grid" id="successDetails">
-                <div class="detail-item"><div class="detail-label">Service</div><div class="detail-value" id="successService">-</div></div>
-                <div class="detail-item"><div class="detail-label">Amount</div><div class="detail-value" id="successAmount">KES 0</div></div>
-                <div class="detail-item"><div class="detail-label">Reference</div><div class="detail-value" id="successReference">-</div></div>
-                <div class="detail-item"><div class="detail-label">Status</div><div class="detail-value" style="color:#22c55e;">Confirmed ✅</div></div>
-            </div>
-            <div style="margin: 16px 0;">
-                <span style="color:#94a3b8;">Redirecting in </span>
-                <span class="redirect-timer" id="redirectTimer">5</span>
-                <span style="color:#94a3b8;"> seconds</span>
-            </div>
-            <button class="btn btn-primary" id="redirectNowBtn" style="font-size:16px;padding:14px 40px;">Go to Service →</button>
-        </div>
-    </div>
-
     <header>
-        <div class="logo">🚗 AUTO-V <span>| Customer Portal v8.2</span></div>
-        <div style="display: flex; gap: 10px; align-items: center;">
-            <span class="live-indicator"><span class="dot"></span> Live</span>
-            <button class="logout-btn" id="logoutBtn">Logout</button>
-        </div>
+        <div class="logo">🚗 AUTO-V Service Portal</div>
+        <button onclick="logout()" style="background:#dc2626;color:white;padding:8px 16px;border:none;border-radius:8px;cursor:pointer;">Logout</button>
     </header>
+
     <div class="container">
-        <div id="toastContainer" class="toast-container"></div>
+        <a href="dashboard.html" class="back-btn">← Back to Dashboard</a>
 
-        <div id="welcomeBanner" class="welcome-banner">
-            <h3>👋 Welcome to AUTO-V!</h3>
-            <p>Africa's leading vehicle intelligence platform. Let's get started.</p>
+        <div class="card">
+            <h2 id="serviceTitle" style="color: #eab308;">Loading Service...</h2>
+            <div id="serviceDescription" style="color: #94a3b8; margin-bottom: 20px;"></div>
+            <div class="price-display" id="priceDisplay">KES 0</div>
         </div>
 
-        <div class="progress-bar" id="progressBar">
-            <div class="progress-step" id="step2Prog" data-step="2">1. Client Detail</div>
-            <div class="progress-step" id="step3Prog" data-step="3">2. Service</div>
-            <div class="progress-step" id="step4Prog" data-step="4">3. Purpose</div>
-            <div class="progress-step" id="step5Prog" data-step="5">4. Payment</div>
-        </div>
+        <div id="statusMessage" class="status-box"></div>
 
-        <!-- STEP 1: CLIENT DETAIL -->
-        <div id="step2" class="card step active">
-            <h2>👤 Client Details</h2>
-            <div class="client-type-selector">
-                <button type="button" class="client-type-btn active" data-type="individual">👤 Individual</button>
-                <button type="button" class="client-type-btn" data-type="corporate">🏢 Corporate</button>
-            </div>
-            <form id="clientForm">
-                <div id="individualFields">
-                    <div class="form-group"><label class="required">Full Name</label><input type="text" id="custName" placeholder="John Doe" autocomplete="name" required></div>
-                    <div class="form-group"><label class="required">ID / Passport</label><input type="text" id="custId" placeholder="ID number" required></div>
+        <div class="card">
+            <form id="serviceForm">
+                <div class="form-group">
+                    <label>Vehicle Registration Number</label>
+                    <input type="text" id="regNumber" placeholder="KCA 123A" required>
                 </div>
-                <div id="corporateFields" class="corporate-fields">
-                    <div class="form-group"><label class="required">Company Name</label><input type="text" id="companyName" placeholder="ABC Motors Ltd" required></div>
-                    <div class="form-group"><label class="required">Company Registration</label><input type="text" id="companyReg" placeholder="CP/2025/12345" required></div>
-                    <div class="form-group"><label>Contact Person</label><input type="text" id="contactPerson" placeholder="Contact person name"></div>
+                <div class="form-group">
+                    <label>Make</label>
+                    <input type="text" id="make" placeholder="Toyota" required>
                 </div>
-                <div class="form-group"><label class="required">Phone Number</label><input type="tel" id="custPhone" placeholder="0712345678" autocomplete="tel" required></div>
-                <div class="form-group"><label class="required">Email Address</label><input type="email" id="custEmail" placeholder="john@example.com" autocomplete="email" required></div>
-                <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToDashboard" onclick="window.location.href='dashboard.html'">← Back to Dashboard</button><button type="submit" class="btn btn-primary" id="clientNextBtn">Next →</button></div>
+                <div class="form-group">
+                    <label>Model</label>
+                    <input type="text" id="model" placeholder="Axio" required>
+                </div>
+                <div class="form-group">
+                    <label>Year</label>
+                    <input type="number" id="year" placeholder="2020" required>
+                </div>
+                <div class="form-group">
+                    <label>Purpose</label>
+                    <select id="purpose">
+                        <option value="Insurance">Insurance</option>
+                        <option value="Sale">Sale</option>
+                        <option value="Bank Loan">Bank Loan</option>
+                        <option value="Transfer">Transfer</option>
+                        <option value="Import">Import</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>M-Pesa Phone Number</label>
+                    <input type="tel" id="phone" placeholder="0712345678" required>
+                </div>
+                <button type="submit" class="btn-primary" id="submitBtn">💳 Pay Now (KES 2,500)</button>
             </form>
         </div>
 
-        <!-- STEP 2: CHOOSE SERVICE -->
-        <div id="step3" class="card step">
-            <h2>🔧 Choose Service</h2>
-            <div class="service-cards" id="serviceCards"></div>
-            <div id="selectedServiceMsg" style="margin-top:15px;text-align:center;color:#eab308;font-weight:500;"></div>
-            <div class="nav-buttons"><button class="btn btn-secondary" id="backToClient">← Back</button><button class="btn btn-primary" id="nextStep3Btn">Next →</button></div>
-        </div>
-
-        <!-- STEP 3: PURPOSE -->
-        <div id="step4" class="card step">
-            <h2>🎯 Service Purpose</h2>
-            <p style="color:#94a3b8; margin-bottom:15px; font-size:14px;">Select the purpose for this service:</p>
-            <div class="purpose-list" id="purposeList"></div>
-            <div class="nav-buttons"><button class="btn btn-secondary" id="backToService">← Back</button><button class="btn btn-primary" id="nextStep4Btn">Next →</button></div>
-        </div>
-
-        <!-- STEP 4: PAYMENT -->
-        <div id="step5" class="card step">
-            <h2>💳 Payment</h2>
-            
-            <!-- Payment Flow Steps -->
-            <div class="payment-flow-steps" id="paymentFlowSteps">
-                <span class="flow-step" id="flowStep1">📱 1. Send STK</span>
-                <span class="flow-step" id="flowStep2">🔐 2. Enter PIN</span>
-                <span class="flow-step" id="flowStep3">✅ 3. Confirm</span>
-            </div>
-            
-            <!-- Session Recovery -->
-            <div id="sessionRecovery" class="session-recovery">
-                <p>🔄 We detected an incomplete payment session. Would you like to continue?</p>
-                <button class="btn btn-primary" id="recoverSessionBtn">Continue Payment</button>
-                <button class="btn btn-secondary" id="clearSessionBtn">Start Fresh</button>
-            </div>
-            
-            <div id="paymentStatus" class="payment-status"></div>
-            
-            <!-- Polling Indicator -->
-            <div id="pollingIndicator" class="polling-indicator">
-                <span class="polling-dot"></span>
-                <span>Verifying payment with M-Pesa...</span>
-                <span class="polling-count" id="pollingCount">0</span>
-                <span>attempts</span>
-                <span class="polling-timer" id="pollingTimer">0s</span>
-            </div>
-
-            <div id="paymentRetry" style="display:none;text-align:center;margin-bottom:15px;">
-                <button class="btn btn-retry" id="retryPaymentBtn">🔄 Retry Payment</button>
-                <button class="btn btn-secondary" id="cancelPaymentBtn" style="margin-left:10px;">❌ Cancel</button>
-            </div>
-            <div id="rateLimitWarning" class="rate-limit-warning">⏳ Too many requests. Please wait a moment before trying again...</div>
-            
-            <div class="help-text">
-                <h4>📌 How to complete your payment</h4>
-                <div class="step-indicator">
-                    <span class="step-badge" id="helpStep1">1️⃣ STK Push Sent</span>
-                    <span class="step-badge" id="helpStep2">2️⃣ Enter PIN on Phone</span>
-                    <span class="step-badge" id="helpStep3">3️⃣ System Verifies</span>
-                </div>
-                <p>
-                    1. Enter your M-Pesa phone number below<br>
-                    2. Click <strong>"Pay Now"</strong> - you'll receive an STK Push on your phone<br>
-                    3. <strong>IMPORTANT:</strong> Open your phone and enter your M-Pesa PIN<br>
-                    4. Wait for the system to verify the transaction<br>
-                    5. You'll be redirected automatically after confirmation
-                </p>
-                <p style="margin-top:8px;color:#f59e0b;font-weight:500;background:#1e293b;padding:8px 12px;border-radius:8px;">
-                    ⚠️ Payment is only confirmed after you enter your PIN and M-Pesa processes the transaction
-                </p>
-            </div>
-
-            <form id="paymentForm">
-                <div class="form-group"><label class="required">M-Pesa Phone Number</label>
-                    <input type="tel" id="mpesaPhone" placeholder="0712345678" autocomplete="tel" required>
-                    <small style="color:#64748b;font-size:11px;">Enter the phone number registered with M-Pesa</small>
-                </div>
-                <div class="payment-summary">
-                    <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
-                    <div class="row"><span class="label">Purpose</span><span class="value" id="summaryPurpose">-</span></div>
-                    <div class="row"><span class="label">Amount</span><span class="amount" id="summaryAmount">KES 0</span></div>
-                </div>
-                <div style="background:#1e293b;border-radius:12px;padding:15px;margin-bottom:20px;">
-                    <p style="color:#94a3b8;font-size:12px;">💡 M-Pesa Paybill: <strong style="color:#eab308;">4095377</strong> | Account: <strong style="color:#eab308;">AUTO-V</strong></p>
-                    <p style="color:#64748b;font-size:11px;margin-top:8px;">You will receive an STK Push on your phone to confirm payment.</p>
-                </div>
-                <div class="nav-buttons"><button type="button" class="btn btn-secondary" id="backToPurpose">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
-            </form>
-            
-            <div class="payment-actions">
-                <button class="manual-check-btn" id="manualCheckBtn">🔄 Check Payment Status</button>
-                <button class="force-refresh-btn" id="forceRefreshBtn">🔄 Refresh Status</button>
-                <button class="auto-confirm-btn" id="autoConfirmBtn">✅ Auto-Confirm Payment</button>
-            </div>
-            
-            <div class="payment-timer" id="paymentTimer">⏱️ Payment window: <span id="timeRemaining">5:00</span></div>
-        </div>
-
-        <div style="text-align:center;margin-top:20px;color:#94a3b8;font-size:14px;">
-            After successful payment verification, you will be redirected to your service page.
+        <div class="result-box" id="resultBox">
+            <h3 style="color: #eab308; margin-bottom: 15px;">Service Result</h3>
+            <div id="resultContent"></div>
         </div>
     </div>
 
     <script>
-        // ============================================================
-        // AUTO-V CUSTOMER PORTAL v8.2 - ROLE PROTECTED
-        // ============================================================
+        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        (function() {
-            'use strict';
+        const API_BASE = 'https://auto-v.onrender.com/api'; // Your backend URL
 
-            const CONFIG = {
-                SUPABASE_URL: 'https://tsvejnzxrxrrecgquxbq.supabase.co',
-                SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ',
-                API_BASE: 'https://auto-v.onrender.com/api',
-                MPESA_SHORTCODE: '4095377',
-                ENV: 'production',
-                MAX_POLL_ATTEMPTS: 40,
-                POLL_TIMEOUT: 180000,
-                MIN_CHECK_INTERVAL: 3000,
-                INITIAL_POLL_DELAY: 5000,
-                MAX_POLL_DELAY: 15000,
-                PAYMENT_WINDOW: 300000,
-                RETRY_BACKOFF: 1.3,
-                MAX_RATE_LIMIT_RETRIES: 5
-            };
+        const SERVICES = {
+            'valuation': { name: 'Vehicle Valuation', fee: 2500 },
+            'instant-value-check': { name: 'Instant Value Check', fee: 500 },
+            'inspection': { name: 'Vehicle Inspection', fee: 3500 },
+            'assessment': { name: 'Vehicle Assessment', fee: 3000 },
+            'mileage-rate': { name: 'Mileage Rate Report', fee: 1500 },
+            'fleet': { name: 'Fleet Services', fee: 4000 },
+        };
 
-            console.log('🚀 AUTO-V Customer Portal v8.2 - Role Protected');
-            console.log(`📡 API: ${CONFIG.API_BASE}`);
+        let serviceId = null;
+        let serviceFee = 0;
 
-            const supabase = window.supabase.createClient(
-                CONFIG.SUPABASE_URL,
-                CONFIG.SUPABASE_ANON_KEY
-            );
+        function getServiceFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const s = params.get('service');
+            return SERVICES[s] ? s : null;
+        }
 
-            // ─── Role-Based Access Control ──────────────────────────────
-            const ALLOWED_SERVICES = {
-                'valuation': ['individual', 'corporate', 'valuer'],
-                'instant-value-check': ['individual', 'corporate', 'valuer'],
-                'inspection': ['valuer'],
-                'assessment': ['valuer'],
-                'mileage-rate': ['valuer'],
-                'fleet': ['valuer'],
-                'report-verification': ['valuer'],
-            };
+        function formatKES(amount) {
+            return 'KES ' + Number(amount).toLocaleString('en-KE');
+        }
 
-            // ─── State Management ──────────────────────────────────────
-            const state = {
-                currentUser: null,
-                userRole: 'individual',
-                selectedService: null,
-                selectedPurpose: null,
-                clientType: 'individual',
-                checkoutRequestId: null,
-                isPaymentConfirmed: false,
-                isPaymentInProgress: false,
-                isPollingActive: false,
-                pollAttempts: 0,
-                pollStartTime: null,
-                lastStatusCheck: 0,
-                consecutiveRateLimits: 0,
-                paymentStartTime: null,
-                paymentWindowTimer: null,
-                redirectTimer: null,
-                redirectCountdown: 5,
-                sessionRecoveryData: null,
-                paymentReference: null,
-                paymentAmount: 0,
-                statusCheckAbortController: null,
-                stkSent: false,
-                pinEntered: false,
-                verificationComplete: false
-            };
+        function showStatus(msg, type) {
+            const box = document.getElementById('statusMessage');
+            box.className = `status-box status-${type}`;
+            box.textContent = msg;
+            box.style.display = 'block';
+            setTimeout(() => box.style.display = 'none', 5000);
+        }
 
-            let fees = {
-                instant: 500,
-                valuation: 2500,
-                inspection: 3500,
-                assessment: 3000,
-                mileage: 1500,
-                fleet: 4000,
-                verification: 1000
-            };
-
-            const serviceDefinitions = [
-                { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', desc: 'Quick AI market estimate', key: 'instant' },
-                { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', desc: 'Formal certified valuation', key: 'valuation' },
-                { id: 'inspection', icon: '🔍', name: 'Vehicle Inspection', desc: '150+ point condition report', key: 'inspection' },
-                { id: 'assessment', icon: '⚠️', name: 'Vehicle Assessment', desc: 'Accident & repair evaluation', key: 'assessment' },
-                { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per kilometre analysis', key: 'mileage' },
-                { id: 'fleet', icon: '🚛', name: 'Fleet Services', desc: 'Full fleet management', key: 'fleet' },
-                { id: 'report-verification', icon: '✅', name: 'Report Verification', desc: 'QR code verification', key: 'verification' }
-            ];
-
-            const servicePurposes = {
-                'instant-value-check': {
-                    title: '💡 Instant Value Check Purposes',
-                    purposes: ["Quick Market Estimate", "Selling Price Guide", "Buying Price Check", "Trade-In Value", "Just Curious"]
-                },
-                'valuation': {
-                    title: '💰 Vehicle Valuation Purposes',
-                    purposes: ["Insurance Valuation", "Bank Loan / Security", "Legal Proceedings", "Estate / Probate", "Divorce Settlement", "Import Duty", "Tax Assessment", "Fleet Accounting", "Court Evidence", "Market Value Certificate"]
-                },
-                'inspection': {
-                    title: '🔍 Vehicle Inspection Purposes',
-                    purposes: ["Pre-Purchase Inspection", "Mechanical Check", "Roadworthiness Test", "Insurance Claim Assessment", "Fleet Condition Report", "Safety Compliance", "Accident Damage Report", "Maintenance Planning"]
-                },
-                'assessment': {
-                    title: '⚠️ Vehicle Assessment Purposes',
-                    purposes: ["Accident Damage Evaluation", "Insurance Claim Assessment", "Repair Cost Estimate", "Total Loss Determination", "Salvage Value Assessment", "Pre-Repair Inspection", "Post-Repair Verification"]
-                },
-                'mileage-rate': {
-                    title: '📏 Mileage Rate Report Purposes',
-                    purposes: ["Travel Reimbursement", "Running Cost Analysis", "Fleet Budgeting", "Tax Deduction", "Fuel Efficiency Audit", "Cost Per Kilometre", "Vehicle Operating Cost"]
-                },
-                'fleet': {
-                    title: '🚛 Fleet Services Purposes',
-                    purposes: ["Full Fleet Valuation", "Fleet Condition Audit", "Running Cost Management", "Fleet Performance Review", "Asset Management", "Fleet Insurance", "Disposal Planning", "Fleet Expansion"]
-                },
-                'report-verification': {
-                    title: '✅ Report Verification Purposes',
-                    purposes: ["Verify Valuation Certificate", "Inspection Report Check", "Assessment Document Confirmation", "QR Code Verification", "Document Authenticity", "Third-Party Verification"]
-                }
-            };
-
-            const SERVICE_PAGES = {
-                'valuation': 'valuation.html',
-                'instant-value-check': 'valuation.html',
-                'inspection': 'inspection.html',
-                'mileage-rate': 'mileage.html',
-                'assessment': 'assessment.html',
-                'fleet': 'fleet.html',
-                'report-verification': 'verify.html'
-            };
-
-            // ─── DOM References ──────────────────────────────────────
-            const $ = (id) => document.getElementById(id);
-            const serviceCardsContainer = $('serviceCards');
-            const purposeList = $('purposeList');
-            const summaryService = $('summaryService');
-            const summaryPurpose = $('summaryPurpose');
-            const summaryAmount = $('summaryAmount');
-            const manualCheckBtn = $('manualCheckBtn');
-            const forceRefreshBtn = $('forceRefreshBtn');
-            const autoConfirmBtn = $('autoConfirmBtn');
-            const rateLimitWarning = $('rateLimitWarning');
-            const toastContainer = $('toastContainer');
-            const pollingIndicator = $('pollingIndicator');
-            const pollingCount = $('pollingCount');
-            const pollingTimer = $('pollingTimer');
-            const paymentSuccessOverlay = $('paymentSuccessOverlay');
-            const redirectTimerEl = $('redirectTimer');
-            const redirectNowBtn = $('redirectNowBtn');
-            const paymentStatus = $('paymentStatus');
-            const paymentRetry = $('paymentRetry');
-            const payBtn = $('payBtn');
-            const sessionRecovery = $('sessionRecovery');
-            const paymentTimer = $('paymentTimer');
-            const timeRemaining = $('timeRemaining');
-
-            // ─── Toast System ──────────────────────────────────────────
-            function showToast(message, type = 'success', duration = 5000) {
-                const toast = document.createElement('div');
-                toast.className = `toast toast-${type}`;
-                const icons = { success: '✅', error: '❌', info: 'ℹ️' };
-                toast.innerHTML = `
-                    <span>${icons[type] || 'ℹ️'}</span>
-                    <span style="flex:1;">${message}</span>
-                    <button class="toast-close">&times;</button>
-                `;
-                toast.querySelector('.toast-close').onclick = () => toast.remove();
-                toastContainer.appendChild(toast);
-                setTimeout(() => { if (toast.parentNode) toast.remove(); }, duration);
-                return toast;
+        async function init() {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error || !user) {
+                window.location.href = 'login.html';
+                return;
             }
 
-            function showMessage(msg, type = 'success') {
-                showToast(msg, type);
+            const s = getServiceFromUrl();
+            if (!s) {
+                document.getElementById('serviceTitle').textContent = 'Invalid Service';
+                document.getElementById('submitBtn').disabled = true;
+                return;
             }
 
-            // ─── Helpers ──────────────────────────────────────────────
-            function formatKES(amount) {
-                if (amount === undefined || amount === null) return 'KES 0';
-                return 'KES ' + Number(amount).toLocaleString('en-KE');
-            }
+            serviceId = s;
+            serviceFee = SERVICES[s].fee;
 
-            function getServicePrice(serviceId) {
-                const def = serviceDefinitions.find(s => s.id === serviceId);
-                return def ? fees[def.key] || 0 : 0;
-            }
+            document.getElementById('serviceTitle').textContent = '💰 ' + SERVICES[s].name;
+            document.getElementById('serviceDescription').textContent = 'Service Fee: ' + formatKES(serviceFee);
+            document.getElementById('priceDisplay').textContent = formatKES(serviceFee);
+            document.getElementById('submitBtn').textContent = `💳 Pay Now (${formatKES(serviceFee)})`;
+        }
 
-            function getServiceName(serviceId) {
-                const def = serviceDefinitions.find(s => s.id === serviceId);
-                return def ? def.name : 'Service';
-            }
+        document.getElementById('serviceForm').onsubmit = async function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
 
-            function generateReference() {
-                const timestamp = Date.now().toString(36).toUpperCase();
-                const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-                const serviceCode = state.selectedService ? state.selectedService.substring(0, 3).toUpperCase() : 'SRV';
-                return `${serviceCode}-${timestamp}-${random}`;
-            }
+            const reg = document.getElementById('regNumber').value;
+            const make = document.getElementById('make').value;
+            const model = document.getElementById('model').value;
+            const year = document.getElementById('year').value;
+            const purpose = document.getElementById('purpose').value;
+            const phone = document.getElementById('phone').value;
 
-            function validatePhone(phone) {
-                let cleaned = phone.replace(/[\s\-+()]/g, '');
-                if (cleaned.startsWith('0')) cleaned = '254' + cleaned.substring(1);
-                else if (cleaned.startsWith('7') && cleaned.length === 9) cleaned = '254' + cleaned;
-                else if (cleaned.startsWith('254') && cleaned.length === 12) cleaned = cleaned;
-                else if (cleaned.length === 10 && cleaned.startsWith('07')) cleaned = '254' + cleaned.substring(1);
-                return cleaned;
-            }
-
-            function getStatusMessage(status, resultCode) {
-                const messages = {
-                    'stk_sent': '📲 STK Push sent to your phone. Please enter your PIN.',
-                    'pending': '⏳ Waiting for M-Pesa confirmation...',
-                    'processing': '🔄 Processing your payment...',
-                    'completed': '✅ Payment confirmed by M-Pesa!',
-                    'failed': '❌ Payment failed. Please try again.',
-                    'timeout': '⏰ Payment taking too long. Please check your M-Pesa.',
-                    '1037': '⏳ Payment pending. Please wait...',
-                    '1032': '❌ Request cancelled by user',
-                    '2001': '❌ Insufficient balance',
-                    '2002': '❌ Transaction limit exceeded',
-                    'rate_limited': '⏳ Too many requests. Please wait a moment.'
-                };
-                if (resultCode && messages[resultCode]) return messages[resultCode];
-                return messages[status] || `Status: ${status}`;
-            }
-
-            // ─── Payment Flow UI Updates ─────────────────────────────
-            function updatePaymentFlow(step) {
-                const steps = ['flowStep1', 'flowStep2', 'flowStep3'];
-                const helpSteps = ['helpStep1', 'helpStep2', 'helpStep3'];
-                
-                steps.forEach((id, index) => {
-                    const el = $(id);
-                    if (el) {
-                        el.className = 'flow-step';
-                        if (index + 1 < step) el.classList.add('done');
-                        else if (index + 1 === step) el.classList.add('active');
-                    }
-                });
-                
-                helpSteps.forEach((id, index) => {
-                    const el = $(id);
-                    if (el) {
-                        el.className = 'step-badge';
-                        if (index + 1 < step) el.style.borderColor = '#22c55e';
-                        else if (index + 1 === step) {
-                            el.classList.add('active');
-                            el.style.borderColor = '#eab308';
-                        } else {
-                            el.style.borderColor = '#334155';
-                        }
-                    }
-                });
-            }
-
-            // ─── Step Navigation ─────────────────────────────────────
-            function showStep(step) {
-                for (let i = 2; i <= 5; i++) {
-                    const el = $(`step${i}`);
-                    if (el) el.classList.remove('active');
-                    const prog = $(`step${i}Prog`);
-                    if (prog) {
-                        prog.classList.remove('active', 'completed');
-                        if (i < step) prog.classList.add('completed');
-                        if (i === step) prog.classList.add('active');
-                    }
-                }
-                const target = $(`step${step}`);
-                if (target) target.classList.add('active');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-
-            // ─── Payment Status UI ────────────────────────────────────
-            function setPaymentStatus(status, message = '') {
-                if (!paymentStatus) return;
-                
-                const statusMap = {
-                    'stk_sent': 'stk-sent',
-                    'pending': 'pending',
-                    'processing': 'processing',
-                    'completed': 'completed',
-                    'failed': 'failed',
-                    'timeout': 'timeout'
-                };
-                
-                paymentStatus.className = 'payment-status ' + (statusMap[status] || '');
-                paymentStatus.textContent = message || getStatusMessage(status);
-                paymentStatus.style.display = 'block';
-                
-                if (status === 'stk_sent') {
-                    updatePaymentFlow(2);
-                    state.stkSent = true;
-                } else if (status === 'pending' || status === 'processing') {
-                    updatePaymentFlow(3);
-                    state.pinEntered = true;
-                } else if (status === 'completed') {
-                    updatePaymentFlow(4);
-                    state.verificationComplete = true;
-                }
-                
-                if (paymentRetry) {
-                    paymentRetry.style.display = (status === 'failed' || status === 'timeout') ? 'block' : 'none';
-                }
-                
-                const showControls = status === 'processing' || status === 'pending' || status === 'stk_sent';
-                if (manualCheckBtn) manualCheckBtn.style.display = showControls ? 'block' : 'none';
-                if (forceRefreshBtn) forceRefreshBtn.style.display = showControls ? 'block' : 'none';
-                if (autoConfirmBtn) autoConfirmBtn.style.display = showControls ? 'block' : 'none';
-            }
-
-            function showPollingIndicator(show) {
-                if (show) {
-                    pollingIndicator.classList.add('active');
-                    state.pollStartTime = Date.now();
-                    state.pollAttempts = 0;
-                    state.isPollingActive = true;
-                    updatePollingDisplay();
-                } else {
-                    pollingIndicator.classList.remove('active');
-                    state.isPollingActive = false;
-                }
-            }
-
-            function updatePollingDisplay() {
-                if (pollingCount) pollingCount.textContent = state.pollAttempts;
-                if (pollingTimer && state.pollStartTime) {
-                    const elapsed = Math.floor((Date.now() - state.pollStartTime) / 1000);
-                    pollingTimer.textContent = elapsed + 's';
-                }
-            }
-
-            function incrementPollAttempts() {
-                state.pollAttempts++;
-                updatePollingDisplay();
-            }
-
-            // ─── Success Overlay ──────────────────────────────────────
-            function showSuccessOverlay() {
-                $('successService').textContent = getServiceName(state.selectedService);
-                $('successAmount').textContent = formatKES(state.paymentAmount || getServicePrice(state.selectedService));
-                $('successReference').textContent = state.paymentReference || 'N/A';
-                
-                paymentSuccessOverlay.classList.add('active');
-                state.redirectCountdown = 5;
-                redirectTimerEl.textContent = state.redirectCountdown;
-                
-                if (state.redirectTimer) clearInterval(state.redirectTimer);
-                state.redirectTimer = setInterval(() => {
-                    state.redirectCountdown--;
-                    redirectTimerEl.textContent = state.redirectCountdown;
-                    if (state.redirectCountdown <= 0) {
-                        clearInterval(state.redirectTimer);
-                        state.redirectTimer = null;
-                        redirectToServicePage();
-                    }
-                }, 1000);
-            }
-
-            function hideSuccessOverlay() {
-                paymentSuccessOverlay.classList.remove('active');
-                if (state.redirectTimer) {
-                    clearInterval(state.redirectTimer);
-                    state.redirectTimer = null;
-                }
-            }
-
-            // ─── Redirect ─────────────────────────────────────────────
-            function redirectToServicePage() {
-                if (!state.selectedService) {
-                    showMessage('No service selected', 'error');
+            try {
+                const { data: { user }, error: authError } = await supabase.auth.getUser();
+                if (authError || !user) {
+                    showStatus('Please login again.', 'error');
+                    window.location.href = 'login.html';
                     return;
                 }
-                if (!state.isPaymentConfirmed) {
-                    showMessage('Payment not confirmed. Please complete payment first.', 'error');
-                    return;
-                }
-                
-                const page = SERVICE_PAGES[state.selectedService];
-                if (!page) {
-                    showMessage('Service page not found', 'error');
-                    return;
-                }
-                
-                const serviceData = {
-                    service: state.selectedService,
-                    purpose: state.selectedPurpose,
-                    clientType: state.clientType,
-                    checkoutRequestId: state.checkoutRequestId,
-                    userId: state.currentUser?.id,
-                    userEmail: state.currentUser?.email,
-                    reference: state.paymentReference || generateReference(),
-                    paymentAmount: state.paymentAmount || getServicePrice(state.selectedService),
-                    confirmedAt: new Date().toISOString()
-                };
-                sessionStorage.setItem('autoV_service_data', JSON.stringify(serviceData));
-                
-                console.log('📤 Redirecting to:', page);
-                console.log('📤 Service Data:', serviceData);
-                
-                sessionStorage.removeItem('autoV_payment_session');
-                window.location.href = page;
-            }
 
-            // ─── Payment Timer ────────────────────────────────────────
-            function startPaymentTimer() {
-                if (state.paymentWindowTimer) clearInterval(state.paymentWindowTimer);
-                state.paymentStartTime = Date.now();
-                
-                state.paymentWindowTimer = setInterval(() => {
-                    const elapsed = Date.now() - state.paymentStartTime;
-                    const remaining = Math.max(0, CONFIG.PAYMENT_WINDOW - elapsed);
-                    const minutes = Math.floor(remaining / 60000);
-                    const seconds = Math.floor((remaining % 60000) / 1000);
-                    if (timeRemaining) {
-                        timeRemaining.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                    }
-                    
-                    if (remaining <= 0) {
-                        clearInterval(state.paymentWindowTimer);
-                        state.paymentWindowTimer = null;
-                        if (!state.isPaymentConfirmed) {
-                            setPaymentStatus('timeout', '⏰ Payment window expired. Please try again.');
-                            showMessage('Payment window expired. Please try again.', 'error');
-                            if (paymentRetry) paymentRetry.style.display = 'block';
-                            state.isPaymentInProgress = false;
-                            if (payBtn) { payBtn.disabled = false; payBtn.innerHTML = '💳 Pay Now'; }
-                            stopPolling();
-                        }
-                    }
-                }, 1000);
-            }
-
-            function stopPaymentTimer() {
-                if (state.paymentWindowTimer) {
-                    clearInterval(state.paymentWindowTimer);
-                    state.paymentWindowTimer = null;
-                }
-            }
-
-            // ─── Session Recovery ─────────────────────────────────────
-            function savePaymentSession() {
-                const sessionData = {
-                    checkoutRequestId: state.checkoutRequestId,
-                    service: state.selectedService,
-                    purpose: state.selectedPurpose,
-                    clientType: state.clientType,
-                    reference: state.paymentReference,
-                    amount: state.paymentAmount,
-                    userId: state.currentUser?.id,
-                    startedAt: Date.now(),
-                    stkSent: state.stkSent,
-                    pinEntered: state.pinEntered
-                };
-                sessionStorage.setItem('autoV_payment_session', JSON.stringify(sessionData));
-            }
-
-            function checkPaymentSession() {
-                const saved = sessionStorage.getItem('autoV_payment_session');
-                if (saved) {
-                    try {
-                        const data = JSON.parse(saved);
-                        const age = Date.now() - data.startedAt;
-                        if (age < CONFIG.PAYMENT_WINDOW && data.checkoutRequestId) {
-                            state.sessionRecoveryData = data;
-                            sessionRecovery.classList.add('show');
-                            return true;
-                        } else {
-                            sessionStorage.removeItem('autoV_payment_session');
-                        }
-                    } catch (e) {}
-                }
-                return false;
-            }
-
-            function recoverSession() {
-                if (!state.sessionRecoveryData) return;
-                const data = state.sessionRecoveryData;
-                state.checkoutRequestId = data.checkoutRequestId;
-                state.selectedService = data.service;
-                state.selectedPurpose = data.purpose;
-                state.clientType = data.clientType;
-                state.paymentReference = data.reference;
-                state.paymentAmount = data.amount;
-                state.stkSent = data.stkSent || false;
-                state.pinEntered = data.pinEntered || false;
-                
-                sessionRecovery.classList.remove('show');
-                sessionStorage.removeItem('autoV_payment_session');
-                
-                showStep(5);
-                updateSummary();
-                setPaymentStatus('processing', '📲 Resuming payment verification...');
-                showMessage('Resuming payment verification...', 'info');
-                
-                startPolling();
-            }
-
-            function clearSession() {
-                sessionStorage.removeItem('autoV_payment_session');
-                sessionRecovery.classList.remove('show');
-                state.sessionRecoveryData = null;
-                showMessage('Session cleared. Start fresh.', 'info');
-            }
-
-            // ─── Payment Status Check ──────────────────────────────────
-            async function checkPaymentStatus() {
-                if (!state.checkoutRequestId) {
-                    console.warn('No CheckoutRequestId available for status check');
-                    return { status: 'unknown', error: 'No CheckoutRequestId' };
-                }
-                
-                const now = Date.now();
-                const timeSinceLastCheck = now - state.lastStatusCheck;
-                
-                if (timeSinceLastCheck < CONFIG.MIN_CHECK_INTERVAL) {
-                    state.consecutiveRateLimits++;
-                    if (state.consecutiveRateLimits > 3) showRateLimitWarning(true);
-                    return { 
-                        status: 'rate_limited', 
-                        retryAfter: CONFIG.MIN_CHECK_INTERVAL - timeSinceLastCheck 
-                    };
-                }
-                
-                state.consecutiveRateLimits = 0;
-                showRateLimitWarning(false);
-                state.lastStatusCheck = now;
-                
-                if (state.statusCheckAbortController) {
-                    state.statusCheckAbortController.abort();
-                }
-                state.statusCheckAbortController = new AbortController();
-                
-                try {
-                    const { data: sessionData } = await supabase.auth.getSession();
-                    const token = sessionData?.session?.access_token;
-                    if (!token) return { status: 'unknown', error: 'No token' };
-                    
-                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/status/${state.checkoutRequestId}`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        signal: state.statusCheckAbortController.signal
-                    });
-                    
-                    if (response.status === 429) {
-                        const retryAfter = parseInt(response.headers.get('Retry-After') || '10');
-                        showRateLimitWarning(true);
-                        return { status: 'rate_limited', retryAfter: retryAfter * 1000 };
-                    }
-                    
-                    if (response.status === 404) return { status: 'not_found' };
-                    if (!response.ok) return { status: 'error', code: response.status };
-                    
-                    const data = await response.json();
-                    console.log('📊 Status check for CheckoutRequestId:', state.checkoutRequestId, data);
-
-                    const rawStatus = data.status || data.payment_status || 'pending';
-                    const resultCode = data.result_code || data.mpesa_result_code || data.data?.result_code;
-                    const merchantRequestId = data.merchant_request_id || data.MerchantRequestID || data.checkout_request_id;
-
-                    if (resultCode === '0' || resultCode === '000') {
-                        return {
-                            status: 'completed',
-                            data: data.data || data,
-                            resultCode: resultCode
-                        };
-                    }
-
-                    if (merchantRequestId) {
-                        if (rawStatus === 'pending' || rawStatus === 'stk_sent') {
-                            return { status: 'stk_sent', data, merchantRequestId };
-                        }
-                    }
-
-                    if (rawStatus === 'processing' || rawStatus === 'pending') {
-                        return { status: 'pending', data };
-                    }
-
-                    const failureCodes = ['1', '1037', '1032', '2001', '2002', '1031'];
-                    if (failureCodes.includes(String(resultCode))) {
-                        return { status: 'failed', data, resultCode };
-                    }
-
-                    return { status: rawStatus || 'pending', data };
-                    
-                } catch (err) {
-                    if (err.name === 'AbortError') {
-                        return { status: 'aborted', error: 'Request cancelled' };
-                    }
-                    console.error('Status check error:', err);
-                    return { status: 'error', error: err.message };
-                }
-            }
-
-            function showRateLimitWarning(show) {
-                if (rateLimitWarning) {
-                    rateLimitWarning.style.display = show ? 'block' : 'none';
-                }
-                if (show) {
-                    setTimeout(() => {
-                        if (rateLimitWarning) rateLimitWarning.style.display = 'none';
-                    }, 8000);
-                }
-            }
-
-            // ─── Polling System ──────────────────────────────────────
-            let pollTimeoutId = null;
-            let pollRetryCount = 0;
-
-            function startPolling() {
-                stopPolling();
-                showPollingIndicator(true);
-                state.isPaymentInProgress = true;
-                state.isPollingActive = true;
-                state.pollAttempts = 0;
-                state.pollStartTime = Date.now();
-                pollRetryCount = 0;
-                
-                startPaymentTimer();
-                
-                setTimeout(performPoll, CONFIG.INITIAL_POLL_DELAY);
-            }
-
-            function stopPolling() {
-                state.isPollingActive = false;
-                state.isPaymentInProgress = false;
-                showPollingIndicator(false);
-                if (pollTimeoutId) {
-                    clearTimeout(pollTimeoutId);
-                    pollTimeoutId = null;
-                }
-                if (state.statusCheckAbortController) {
-                    state.statusCheckAbortController.abort();
-                    state.statusCheckAbortController = null;
-                }
-                stopPaymentTimer();
-            }
-
-            async function performPoll() {
-                if (!state.isPollingActive || state.isPaymentConfirmed) {
-                    return;
-                }
-                
-                incrementPollAttempts();
-                
-                const elapsed = Date.now() - state.pollStartTime;
-                if (elapsed > CONFIG.POLL_TIMEOUT) {
-                    stopPolling();
-                    setPaymentStatus('timeout', '⏰ Timeout. Please check your M-Pesa.');
-                    showMessage('Payment taking too long. Click "Auto-Confirm" to verify.', 'info');
-                    if (payBtn) { payBtn.disabled = false; payBtn.innerHTML = '💳 Pay Now'; }
-                    showRetryOption();
-                    return;
-                }
-                
-                if (state.pollAttempts > CONFIG.MAX_POLL_ATTEMPTS) {
-                    stopPolling();
-                    setPaymentStatus('timeout', '⏰ Max attempts reached. Please check manually.');
-                    showMessage('Maximum polling attempts reached. Click "Check Payment Status".', 'info');
-                    if (payBtn) { payBtn.disabled = false; payBtn.innerHTML = '💳 Pay Now'; }
-                    showRetryOption();
-                    return;
-                }
-                
-                try {
-                    const result = await checkPaymentStatus();
-                    
-                    if (result.status === 'rate_limited') {
-                        const delay = Math.min((result.retryAfter || 3000) + 1000, CONFIG.MAX_POLL_DELAY);
-                        pollTimeoutId = setTimeout(performPoll, delay);
-                        return;
-                    }
-
-                    if (result.status === 'completed' && result.resultCode === '0') {
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        handlePaymentSuccess(result.data);
-                        return;
-                    }
-                    
-                    if (result.status === 'stk_sent') {
-                        setPaymentStatus('stk_sent', '📲 STK Push sent! Please enter your PIN on your phone.');
-                        state.stkSent = true;
-                    } else if (result.status === 'pending' || result.status === 'processing') {
-                        setPaymentStatus('pending', '⏳ Waiting for M-Pesa to process your payment...');
-                        state.pinEntered = true;
-                    }
-                    
-                    if (result.status === 'failed') {
-                        stopPolling();
-                        setPaymentStatus('failed', `❌ ${getStatusMessage('failed', result.resultCode)}`);
-                        showMessage('Payment failed. Please try again.', 'error');
-                        if (payBtn) { payBtn.disabled = false; payBtn.innerHTML = '💳 Pay Now'; }
-                        showRetryOption();
-                        return;
-                    }
-                    
-                    const baseDelay = Math.min(
-                        CONFIG.INITIAL_POLL_DELAY * Math.pow(CONFIG.RETRY_BACKOFF, Math.min(state.pollAttempts, 10)),
-                        CONFIG.MAX_POLL_DELAY
-                    );
-                    const jitter = Math.random() * 1000;
-                    const delay = Math.min(baseDelay + jitter, CONFIG.MAX_POLL_DELAY);
-                    
-                    pollTimeoutId = setTimeout(performPoll, delay);
-                    
-                } catch (err) {
-                    console.error('Poll error:', err);
-                    const delay = Math.min(
-                        CONFIG.INITIAL_POLL_DELAY * Math.pow(CONFIG.RETRY_BACKOFF, pollRetryCount + 1),
-                        CONFIG.MAX_POLL_DELAY
-                    );
-                    pollRetryCount++;
-                    pollTimeoutId = setTimeout(performPoll, delay);
-                }
-            }
-
-            // ─── Auto-Confirm ──────────────────────────────────────────
-            async function autoConfirmPayment() {
-                if (!state.checkoutRequestId) {
-                    showMessage('No payment in progress', 'error');
-                    return;
-                }
-                
-                autoConfirmBtn.disabled = true;
-                autoConfirmBtn.innerHTML = '<span class="spinner"></span> Verifying with M-Pesa...';
-                
-                try {
-                    const { data: sessionData } = await supabase.auth.getSession();
-                    const token = sessionData?.session?.access_token;
-                    if (!token) {
-                        showMessage('Please login again', 'error');
-                        return;
-                    }
-                    
-                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/auto-confirm/${state.checkoutRequestId}`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    
-                    const result = await response.json();
-                    console.log('✅ Auto-confirm result:', result);
-
-                    const resultCode = result.result_code || result.data?.result_code;
-                    const fullData = result.data || result;
-
-                    if (result.success && (resultCode === '0' || resultCode === '000')) {
-                        state.paymentReference = fullData.reference || state.paymentReference;
-                        state.paymentAmount = fullData.amount || state.paymentAmount;
-                        
-                        handlePaymentSuccess(fullData);
-                    } else {
-                        if (resultCode === '1037' || resultCode === '1032') {
-                            showMessage('⏳ Payment is still pending. Please check your M-Pesa and enter your PIN.', 'info');
-                        } else {
-                            showMessage(`❌ ${result.details || result.error || 'Verification failed'}`, 'error');
-                        }
-                        autoConfirmBtn.disabled = false;
-                        autoConfirmBtn.innerHTML = '✅ Auto-Confirm Payment';
-                    }
-                } catch (err) {
-                    console.error('Auto-confirm error:', err);
-                    showMessage('Error verifying payment: ' + err.message, 'error');
-                    autoConfirmBtn.disabled = false;
-                    autoConfirmBtn.innerHTML = '✅ Auto-Confirm Payment';
-                }
-            }
-
-            // ─── Handle Payment Success ──────────────────────────────
-            function handlePaymentSuccess(data) {
-                state.isPaymentConfirmed = true;
-                state.isPaymentInProgress = false;
-                state.isPollingActive = false;
-                state.verificationComplete = true;
-                
-                stopPolling();
-                stopPaymentTimer();
-                
-                setPaymentStatus('completed', '✅ Payment confirmed by M-Pesa!');
-                
-                if (payBtn) {
-                    payBtn.disabled = false;
-                    payBtn.innerHTML = '✅ Payment Complete';
-                }
-                
-                manualCheckBtn.style.display = 'none';
-                forceRefreshBtn.style.display = 'none';
-                autoConfirmBtn.style.display = 'none';
-                if (paymentRetry) paymentRetry.style.display = 'none';
-                
-                if (data?.reference) state.paymentReference = data.reference;
-                if (data?.amount) state.paymentAmount = data.amount;
-                
-                savePaymentSession();
-                
-                showMessage('✅ Payment successful! Redirecting...', 'success');
-                showSuccessOverlay();
-            }
-
-            function showRetryOption() {
-                if (paymentRetry) paymentRetry.style.display = 'block';
-                if (manualCheckBtn) manualCheckBtn.style.display = 'block';
-                if (forceRefreshBtn) forceRefreshBtn.style.display = 'block';
-                if (autoConfirmBtn) autoConfirmBtn.style.display = 'block';
-            }
-
-            // ─── Process Payment ──────────────────────────────────────
-            async function processPayment(e) {
-                e.preventDefault();
-                
-                if (state.isPaymentInProgress) {
-                    showMessage('Payment already in progress. Please wait.', 'info');
-                    return;
-                }
-                
-                if (state.isPaymentConfirmed) {
-                    showMessage('Payment already confirmed. Redirecting...', 'info');
-                    showSuccessOverlay();
-                    return;
-                }
-                
-                hideSuccessOverlay();
-                resetFlowSteps();
-                
-                const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
-                const formattedPhone = validatePhone(mpesaPhone);
-                
-                if (!formattedPhone || formattedPhone.length < 10) {
-                    showMessage('Enter a valid M-Pesa phone number (e.g., 0712345678)', 'error');
-                    return;
-                }
-                if (!state.selectedService) {
-                    showMessage('Select a service first', 'error');
-                    return;
-                }
-                if (!state.selectedPurpose) {
-                    showMessage('Select a purpose first', 'error');
-                    return;
-                }
-                
-                const originalText = payBtn.innerHTML;
-                payBtn.disabled = true;
-                payBtn.innerHTML = '<span class="spinner"></span> Initiating Payment...';
-                setPaymentStatus('pending', '⏳ Initiating payment...');
-                if (paymentRetry) paymentRetry.style.display = 'none';
-                
-                updatePaymentFlow(1);
-                state.stkSent = false;
-                state.pinEntered = false;
-                state.verificationComplete = false;
-                
-                try {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) {
-                        showMessage('Please login again', 'error');
-                        window.location.href = "login.html";
-                        return;
-                    }
-                    
-                    state.currentUser = user;
-                    const price = getServicePrice(state.selectedService);
-                    state.paymentAmount = price;
-                    
-                    const { data: sessionData } = await supabase.auth.getSession();
-                    const token = sessionData?.session?.access_token;
-                    if (!token) throw new Error('No authentication token');
-                    
-                    const reference = generateReference();
-                    state.paymentReference = reference;
-                    
-                    const payload = {
-                        phone: formattedPhone,
-                        amount: price,
-                        service: state.selectedService,
-                        purpose: state.selectedPurpose,
-                        client_type: state.clientType,
-                        reference: reference,
+                // ✅ Backend-enforced security: The backend will use Supabase RLS to verify the user's role
+                const response = await fetch(`${API_BASE}/mpesa/initiate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone: phone,
+                        amount: serviceFee,
+                        service: serviceId,
+                        purpose: purpose,
+                        reference: 'AUTO-' + Date.now().toString(36).toUpperCase(),
                         user_id: user.id,
-                        callback_url: `${window.location.origin}/payment-callback`
-                    };
-                    
-                    console.log('📦 PAYLOAD:', payload);
-                    
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 30000);
-                    
-                    const response = await fetch(`${CONFIG.API_BASE}/mpesa/initiate`, {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify(payload),
-                        signal: controller.signal
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (!response.ok) {
-                        let errorMsg = 'Payment initiation failed';
-                        try {
-                            const err = await response.json();
-                            errorMsg = err.error || err.details || errorMsg;
-                        } catch (e) {}
-                        throw new Error(errorMsg);
-                    }
-                    
-                    const result = await response.json();
-                    console.log('✅ Payment initiated:', result);
-
-                    const checkoutRequestId = result.data?.checkout_request_id || 
-                                           result.data?.MerchantRequestID ||
-                                           result.checkout_request_id ||
-                                           result.MerchantRequestID ||
-                                           result.data?.CheckoutRequestID ||
-                                           result.CheckoutRequestID;
-
-                    if (!checkoutRequestId) {
-                        throw new Error('No CheckoutRequestID returned from M-Pesa');
-                    }
-
-                    state.checkoutRequestId = checkoutRequestId;
-                    state.stkSent = true;
-
-                    console.log('✅ M-Pesa CheckoutRequestID:', checkoutRequestId);
-                    console.log('📲 STK Push sent. Waiting for user PIN entry...');
-                    
-                    setPaymentStatus('stk_sent', '📲 STK Push sent! Please enter your PIN on your phone.');
-                    payBtn.innerHTML = '<span class="spinner"></span> Waiting for PIN entry...';
-                    
-                    savePaymentSession();
-                    startPolling();
-                    
-                } catch (err) {
-                    console.error('Payment error:', err);
-                    if (err.name === 'AbortError') {
-                        setPaymentStatus('failed', '❌ Request timed out. Please try again.');
-                        showMessage('Request timed out. Please try again.', 'error');
-                    } else {
-                        setPaymentStatus('failed', '❌ ' + err.message);
-                        showMessage('Payment failed: ' + err.message, 'error');
-                    }
-                    payBtn.disabled = false;
-                    payBtn.innerHTML = originalText;
-                    state.isPaymentInProgress = false;
-                    showRetryOption();
-                }
-            }
-
-            function resetFlowSteps() {
-                const steps = ['flowStep1', 'flowStep2', 'flowStep3'];
-                steps.forEach(id => {
-                    const el = $(id);
-                    if (el) {
-                        el.className = 'flow-step';
-                        el.style.borderColor = '#334155';
-                    }
+                        vehicle: { reg, make, model, year }
+                    })
                 });
-                const helpSteps = ['helpStep1', 'helpStep2', 'helpStep3'];
-                helpSteps.forEach(id => {
-                    const el = $(id);
-                    if (el) {
-                        el.className = 'step-badge';
-                        el.style.borderColor = '#334155';
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Payment initiation failed');
+                }
+
+                showStatus('✅ Payment initiated! Check your phone for the M-Pesa STK Push.', 'success');
+                btn.textContent = '✅ Waiting for confirmation...';
+                
+                // Poll for status using Realtime subscriptions or simple polling
+                // For production, use Realtime subscription on the service_requests table
+                // For simplicity, we will poll here
+                const checkoutId = result.checkout_request_id;
+                let attempts = 0;
+                const interval = setInterval(async () => {
+                    attempts++;
+                    const statusRes = await fetch(`${API_BASE}/mpesa/status/${checkoutId}`);
+                    const statusData = await statusRes.json();
+
+                    if (statusData.status === 'completed') {
+                        clearInterval(interval);
+                        btn.textContent = '✅ Completed';
+                        btn.disabled = true;
+                        showStatus('✅ Payment confirmed! Generating result...', 'success');
+                        displayResult(statusData.data);
+                    } else if (attempts > 30) { // Timeout after 90 seconds (30 * 3s)
+                        clearInterval(interval);
+                        btn.textContent = '💳 Pay Now';
+                        btn.disabled = false;
+                        showStatus('⏰ Payment timed out. Please try again.', 'error');
                     }
-                });
+                }, 3000);
+
+            } catch (err) {
+                showStatus('❌ Error: ' + err.message, 'error');
+                btn.textContent = '💳 Pay Now';
+                btn.disabled = false;
             }
+        };
 
-            // ─── Manual Check ──────────────────────────────────────────
-            async function manualCheckPayment() {
-                if (!state.checkoutRequestId) {
-                    showMessage('No payment in progress', 'error');
-                    return;
-                }
-                
-                manualCheckBtn.disabled = true;
-                manualCheckBtn.innerHTML = '<span class="spinner"></span> Checking...';
-                
-                try {
-                    const result = await checkPaymentStatus();
-                    console.log('📊 Manual check:', result);
-                    
-                    if (result.status === 'rate_limited') {
-                        const waitTime = Math.ceil((result.retryAfter || 3000) / 1000);
-                        showMessage(`⏳ Rate limited. Please wait ${waitTime} seconds.`, 'info');
-                        showRateLimitWarning(true);
-                        manualCheckBtn.disabled = false;
-                        manualCheckBtn.innerHTML = '🔄 Check Payment Status';
-                        return;
-                    }
-                    
-                    if (result.status === 'completed') {
-                        handlePaymentSuccess(result.data);
-                    } else if (result.status === 'failed') {
-                        setPaymentStatus('failed', '❌ Payment failed.');
-                        showMessage('Payment failed. Please retry.', 'error');
-                        showRetryOption();
-                    } else if (result.status === 'stk_sent') {
-                        setPaymentStatus('stk_sent', '📲 STK Push sent! Please enter your PIN on your phone.');
-                        showMessage('📲 Check your phone and enter your M-Pesa PIN.', 'info');
-                    } else if (result.status === 'pending') {
-                        setPaymentStatus('pending', '⏳ Waiting for M-Pesa confirmation...');
-                        showMessage('⏳ Payment is being processed. Please wait.', 'info');
-                    } else {
-                        showMessage(`Payment status: ${result.status || 'unknown'}`, 'info');
-                    }
-                } catch (err) {
-                    console.error('Manual check error:', err);
-                    showMessage('Error checking status. Please try again.', 'error');
-                } finally {
-                    manualCheckBtn.disabled = false;
-                    manualCheckBtn.innerHTML = '🔄 Check Payment Status';
-                }
-            }
-
-            // ─── Force Refresh ──────────────────────────────────────────
-            async function forceRefreshStatus() {
-                if (!state.checkoutRequestId) {
-                    showMessage('No payment in progress', 'error');
-                    return;
-                }
-                
-                forceRefreshBtn.disabled = true;
-                forceRefreshBtn.innerHTML = '<span class="spinner"></span> Refreshing...';
-                
-                state.lastStatusCheck = 0;
-                state.consecutiveRateLimits = 0;
-                
-                try {
-                    const result = await checkPaymentStatus();
-                    console.log('📊 Refresh result:', result);
-                    
-                    if (result.status === 'rate_limited') {
-                        const waitTime = Math.ceil((result.retryAfter || 3000) / 1000);
-                        showMessage(`⏳ Rate limited. Please wait ${waitTime} seconds.`, 'info');
-                        showRateLimitWarning(true);
-                    } else if (result.status === 'completed') {
-                        handlePaymentSuccess(result.data);
-                    } else if (result.status === 'failed') {
-                        setPaymentStatus('failed', '❌ Payment failed.');
-                        showMessage('Payment failed. Please retry.', 'error');
-                        showRetryOption();
-                    } else if (result.status === 'stk_sent') {
-                        setPaymentStatus('stk_sent', '📲 STK Push sent! Please enter your PIN.');
-                        showMessage('📲 Check your phone and enter your M-Pesa PIN.', 'info');
-                        if (!state.isPollingActive) startPolling();
-                    } else {
-                        setPaymentStatus('pending', `⏳ ${result.status || 'Pending...'}`);
-                        showMessage(`Status: ${result.status || 'pending'}`, 'info');
-                        if (!state.isPollingActive && !state.isPaymentConfirmed) {
-                            startPolling();
-                        }
-                    }
-                } catch (err) {
-                    console.error('Refresh error:', err);
-                    showMessage('Error refreshing status. Please try again.', 'error');
-                } finally {
-                    forceRefreshBtn.disabled = false;
-                    forceRefreshBtn.innerHTML = '🔄 Refresh Status';
-                }
-            }
-
-            // ─── Cancel Payment ──────────────────────────────────────
-            function cancelPayment() {
-                stopPolling();
-                state.isPaymentInProgress = false;
-                state.checkoutRequestId = null;
-                state.isPaymentConfirmed = false;
-                state.stkSent = false;
-                state.pinEntered = false;
-                state.verificationComplete = false;
-                if (paymentRetry) paymentRetry.style.display = 'none';
-                if (manualCheckBtn) manualCheckBtn.style.display = 'none';
-                if (forceRefreshBtn) forceRefreshBtn.style.display = 'none';
-                if (autoConfirmBtn) autoConfirmBtn.style.display = 'none';
-                setPaymentStatus('failed', '❌ Payment cancelled');
-                showMessage('Payment cancelled. Please try again if needed.', 'info');
-                if (payBtn) {
-                    payBtn.disabled = false;
-                    payBtn.innerHTML = '💳 Pay Now';
-                }
-                resetFlowSteps();
-                sessionStorage.removeItem('autoV_payment_session');
-            }
-
-            // ─── Retry Payment ────────────────────────────────────────
-            function retryPayment() {
-                if (paymentStatus) paymentStatus.style.display = 'none';
-                if (paymentRetry) paymentRetry.style.display = 'none';
-                if (manualCheckBtn) manualCheckBtn.style.display = 'none';
-                if (forceRefreshBtn) forceRefreshBtn.style.display = 'none';
-                if (autoConfirmBtn) autoConfirmBtn.style.display = 'none';
-                stopPolling();
-                state.isPaymentInProgress = false;
-                state.isPaymentConfirmed = false;
-                state.stkSent = false;
-                state.pinEntered = false;
-                state.verificationComplete = false;
-                resetFlowSteps();
-                processPayment(new Event('submit'));
-            }
-
-            // ─── Load Fees ─────────────────────────────────────────────
-            async function loadFees() {
-                try {
-                    const { data, error } = await supabase
-                        .from('system_settings')
-                        .select('setting_key, setting_value')
-                        .in('setting_key', ['instant_fee', 'valuation_fee', 'inspection_fee', 'assessment_fee', 'mileage_fee', 'fleet_fee', 'verification_fee']);
-                    
-                    if (error) throw error;
-                    
-                    const feeMap = {
-                        'instant_fee': 'instant',
-                        'valuation_fee': 'valuation',
-                        'inspection_fee': 'inspection',
-                        'assessment_fee': 'assessment',
-                        'mileage_fee': 'mileage',
-                        'fleet_fee': 'fleet',
-                        'verification_fee': 'verification'
-                    };
-                    
-                    data.forEach(row => {
-                        const key = feeMap[row.setting_key];
-                        if (key) fees[key] = parseInt(row.setting_value) || fees[key];
-                    });
-                    
-                    renderServices();
-                    console.log('✅ Fees loaded:', fees);
-                } catch (err) {
-                    console.warn('Could not load fees, using defaults:', err);
-                    renderServices();
-                }
-            }
-
-            function renderServices() {
-                serviceCardsContainer.innerHTML = serviceDefinitions.map(s => `
-                    <div class="service-card" data-service="${s.id}">
-                        <div class="service-icon">${s.icon}</div>
-                        <h3>${s.name}</h3>
-                        <div class="service-price">${formatKES(fees[s.key] || 0)}</div>
-                        <p>${s.desc}</p>
-                    </div>
-                `).join('');
-
-                document.querySelectorAll('.service-card').forEach(card => {
-                    card.onclick = () => {
-                        document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
-                        card.classList.add('selected');
-                        state.selectedService = card.dataset.service;
-                        state.selectedPurpose = null;
-                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-                        updateSummary();
-                        document.getElementById('selectedServiceMsg').innerHTML = 
-                            `✅ Selected: ${getServiceName(state.selectedService)} - ${formatKES(getServicePrice(state.selectedService))}`;
-                        populatePurposes();
-                    };
-                });
-            }
-
-            function populatePurposes() {
-                if (!state.selectedService || !servicePurposes[state.selectedService]) {
-                    purposeList.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Please select a service first</div>';
-                    return;
-                }
-
-                const serviceData = servicePurposes[state.selectedService];
-                purposeList.innerHTML = `
-                    <div style="grid-column:1/-1;text-align:center;color:#eab308;font-weight:600;margin-bottom:5px;">
-                        ${serviceData.title}
-                    </div>
-                    ${serviceData.purposes.map(p => 
-                        `<div class="purpose-item" data-purpose="${p}">${p}</div>`
-                    ).join('')}
+        function displayResult(data) {
+            const box = document.getElementById('resultBox');
+            const content = document.getElementById('resultContent');
+            box.style.display = 'block';
+            
+            if (serviceId === 'valuation' || serviceId === 'instant-value-check') {
+                content.innerHTML = `
+                    <p><strong>Market Value:</strong> <span class="result-value">${formatKES(data.market_value)}</span></p>
+                    <p><strong>Certificate:</strong> ${data.certificate_number}</p>
+                    <p><strong>Condition:</strong> ${data.condition}</p>
                 `;
-                
-                document.querySelectorAll('.purpose-item').forEach(item => {
-                    item.onclick = () => {
-                        document.querySelectorAll('.purpose-item').forEach(i => i.classList.remove('selected'));
-                        item.classList.add('selected');
-                        state.selectedPurpose = item.dataset.purpose;
-                    };
-                });
+            } else if (serviceId === 'inspection' || serviceId === 'assessment') {
+                content.innerHTML = `
+                    <p><strong>Overall Score:</strong> <span class="result-value">${data.overall_score}%</span></p>
+                    <p><strong>Verdict:</strong> ${data.final_verdict}</p>
+                    <p><strong>Certificate:</strong> ${data.certificate_number}</p>
+                `;
+            } else {
+                content.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
             }
+        }
 
-            function updateSummary() {
-                summaryService.textContent = state.selectedService ? getServiceName(state.selectedService) : '-';
-                summaryPurpose.textContent = state.selectedPurpose || 'Not selected';
-                summaryAmount.textContent = state.selectedService ? formatKES(getServicePrice(state.selectedService)) : 'KES 0';
-            }
+        async function logout() {
+            await supabase.auth.signOut();
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        }
 
-            // ─── ROLE-BASED ACCESS CONTROL ──────────────────────────────
-            async function checkRoleAccess() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const service = urlParams.get('service');
-
-                // If no service is specified in URL, allow access (user hasn't selected yet)
-                if (!service) return true;
-
-                // Fetch user role
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                    window.location.href = 'login.html';
-                    return false;
-                }
-
-                const { data: profile } = await supabase
-                    .from('user_profiles')
-                    .select('role')
-                    .eq('id', user.id)
-                    .maybeSingle();
-
-                state.userRole = profile?.role || 'individual';
-
-                // Check permissions
-                if (ALLOWED_SERVICES[service]) {
-                    if (!ALLOWED_SERVICES[service].includes(state.userRole)) {
-                        alert('⛔ Access Denied: You do not have permission to access this service.');
-                        window.location.href = 'dashboard.html';
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            // ─── INIT ──────────────────────────────────────────────────
-            async function init() {
-                console.log('🚀 Initializing AUTO-V Customer Portal v8.2 (Role Protected)...');
-                console.log('📡 Connected to: ' + CONFIG.API_BASE);
-                
-                // 1. Check authentication
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                    console.warn('No user logged in. Redirecting to login...');
-                    window.location.href = 'login.html';
-                    return;
-                }
-                state.currentUser = user;
-
-                // 2. Check role-based access
-                const access = await checkRoleAccess();
-                if (!access) return;
-
-                // 3. Fetch profile to get role and client type
-                const { data: profile } = await supabase
-                    .from('user_profiles')
-                    .select('role, client_type, full_name, id_passport, company_name, company_reg')
-                    .eq('id', user.id)
-                    .maybeSingle();
-
-                if (profile) {
-                    state.userRole = profile.role || 'individual';
-                    state.clientType = profile.client_type || 'individual';
-                }
-
-                // 4. Pre-fill Client Details (Step 2)
-                if (state.clientType === 'corporate') {
-                    document.querySelector('.client-type-btn[data-type="corporate"]').click();
-                    if (profile?.company_name) document.getElementById('companyName').value = profile.company_name;
-                    if (profile?.company_reg) document.getElementById('companyReg').value = profile.company_reg;
-                } else {
-                    document.querySelector('.client-type-btn[data-type="individual"]').click();
-                    if (profile?.full_name) document.getElementById('custName').value = profile.full_name;
-                    if (profile?.id_passport) document.getElementById('custId').value = profile.id_passport;
-                }
-                document.getElementById('custEmail').value = user.email;
-                if (user.user_metadata?.phone) document.getElementById('custPhone').value = user.user_metadata.phone;
-
-                // 5. Load fees and start the flow
-                await loadFees();
-                showStep(2);
-                console.log('✅ Customer Portal ready. Role:', state.userRole);
-            }
-
-            // ─── Event Listeners ──────────────────────────────────────
-            document.getElementById('clientForm')?.addEventListener('submit', (e) => { e.preventDefault(); showStep(3); });
-            document.getElementById('paymentForm')?.addEventListener('submit', processPayment);
-            
-            document.getElementById('backToClient')?.addEventListener('click', () => showStep(2));
-            document.getElementById('backToService')?.addEventListener('click', () => showStep(3));
-            document.getElementById('backToPurpose')?.addEventListener('click', () => showStep(4));
-            
-            document.getElementById('nextStep3Btn')?.addEventListener('click', () => { 
-                if(state.selectedService) {
-                    populatePurposes();
-                    showStep(4); 
-                } else showMessage('Select a service', 'error'); 
-            });
-            document.getElementById('nextStep4Btn')?.addEventListener('click', () => { 
-                if(state.selectedPurpose) {
-                    updateSummary();
-                    showStep(5); 
-                } else showMessage('Select a purpose', 'error'); 
-            });
-            
-            document.getElementById('logoutBtn')?.addEventListener('click', async () => { 
-                await supabase.auth.signOut(); 
-                localStorage.clear(); 
-                sessionStorage.clear();
-                window.location.href = 'login.html'; 
-            });
-            
-            document.getElementById('retryPaymentBtn')?.addEventListener('click', retryPayment);
-            document.getElementById('cancelPaymentBtn')?.addEventListener('click', cancelPayment);
-            document.getElementById('recoverSessionBtn')?.addEventListener('click', recoverSession);
-            document.getElementById('clearSessionBtn')?.addEventListener('click', clearSession);
-            
-            redirectNowBtn?.addEventListener('click', () => {
-                if (state.isPaymentConfirmed) {
-                    clearInterval(state.redirectTimer);
-                    state.redirectTimer = null;
-                    redirectToServicePage();
-                } else {
-                    showMessage('Payment not confirmed yet.', 'error');
-                }
-            });
-
-            if (manualCheckBtn) manualCheckBtn.addEventListener('click', manualCheckPayment);
-            if (forceRefreshBtn) forceRefreshBtn.addEventListener('click', forceRefreshStatus);
-            if (autoConfirmBtn) autoConfirmBtn.addEventListener('click', autoConfirmPayment);
-
-            document.querySelectorAll('.client-type-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.client-type-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    state.clientType = this.dataset.type;
-                    
-                    if (state.clientType === 'corporate') {
-                        document.getElementById('corporateFields').classList.add('show');
-                        document.getElementById('individualFields').style.display = 'none';
-                    } else {
-                        document.getElementById('corporateFields').classList.remove('show');
-                        document.getElementById('individualFields').style.display = 'block';
-                    }
-                });
-            });
-
-            window.addEventListener('beforeunload', () => {
-                if (state.isPaymentInProgress && state.checkoutRequestId) {
-                    savePaymentSession();
-                }
-                stopPolling();
-            });
-
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden && state.isPaymentInProgress) {
-                    savePaymentSession();
-                }
-            });
-
-            init();
-
-        })();
+        init();
     </script>
 </body>
 </html>
