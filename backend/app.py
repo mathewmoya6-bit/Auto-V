@@ -1,16 +1,16 @@
 # app.py
 # AUTO-V M-Pesa Backend - Flask version
-# Fixed for Render deployment
+# Production ready for Render - Uses 'requests' for network stability
 
 import os
 import base64
 import json
 import datetime
 import logging
+import requests  # ✅ Changed from httpx to requests for Render compatibility
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-import httpx
 from supabase import create_client, Client
 
 # ============================================================
@@ -31,16 +31,16 @@ logger = logging.getLogger(__name__)
 # CONFIG
 # ============================================================
 app = Flask(__name__)
-CORS(app, origins=["*"])  # For development
+CORS(app, origins=["*"])  # Allow all origins (for development)
 
-# Supabase
+# Supabase - SINGLE SOURCE OF TRUTH
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://tsvejnzxrxrrecgquxbq.supabase.co")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get(
     "SUPABASE_SERVICE_ROLE_KEY",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTE4NzM2OCwiZXhwIjoyMDk2NzYzMzY4fQ.LdF2qU2J4PZ_XGmNUnK7Bs33C3P1_SFyo1Jh6sQ2Fjo"
 )
 
-# ✅ FIX: Create Supabase client safely
+# Create Supabase client safely
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     logger.info("✅ Supabase connected successfully")
@@ -48,13 +48,14 @@ except Exception as e:
     logger.error(f"❌ Supabase connection error: {e}")
     supabase = None
 
-# M-Pesa Credentials
+# M-Pesa Credentials (from environment or hardcoded defaults)
 MPESA_CONSUMER_KEY = os.environ.get("MPESA_CONSUMER_KEY", "LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv")
 MPESA_CONSUMER_SECRET = os.environ.get("MPESA_CONSUMER_SECRET", "aGGo8AuPJVpsZLcs")
 MPESA_PASSKEY = os.environ.get("MPESA_PASSKEY", "7eb17a031bdfd5b4251863a1ddb72c5b9cd14f3385aa6a258c1442a0116e8277")
 MPESA_SHORTCODE = os.environ.get("MPESA_SHORTCODE", "4095377")
 MPESA_ENVIRONMENT = os.environ.get("MPESA_ENVIRONMENT", "sandbox")
 
+# Base URL for M-Pesa API
 MPESA_API_BASE = "https://api.safaricom.co.ke" if MPESA_ENVIRONMENT == "production" else "https://sandbox.safaricom.co.ke"
 
 # ============================================================
@@ -62,13 +63,16 @@ MPESA_API_BASE = "https://api.safaricom.co.ke" if MPESA_ENVIRONMENT == "producti
 # ============================================================
 
 def generate_timestamp() -> str:
+    """Generate timestamp in M-Pesa format (YYYYMMDDHHmmss)"""
     return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 def generate_password(timestamp: str) -> str:
+    """Generate M-Pesa password (Base64 encoded)"""
     data = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
     return base64.b64encode(data.encode()).decode()
 
 def format_phone(phone: str) -> str:
+    """Validate and format phone number to international format"""
     cleaned = ''.join(c for c in phone if c.isdigit())
     if cleaned.startswith('0'):
         cleaned = '254' + cleaned[1:]
@@ -79,19 +83,22 @@ def format_phone(phone: str) -> str:
     return cleaned
 
 def get_mpesa_access_token() -> str:
+    """Get M-Pesa OAuth Access Token using requests"""
     auth_str = f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}"
     auth_bytes = auth_str.encode()
     auth_b64 = base64.b64encode(auth_bytes).decode()
     
-    with httpx.Client() as client:
-        response = client.get(
-            f"{MPESA_API_BASE}/oauth/v1/generate?grant_type=client_credentials",
-            headers={"Authorization": f"Basic {auth_b64}"}
-        )
-        if response.status_code != 200:
-            logger.error(f"Failed to get M-Pesa access token: {response.text}")
-            raise Exception("M-Pesa authentication failed")
-        return response.json()["access_token"]
+    response = requests.get(
+        f"{MPESA_API_BASE}/oauth/v1/generate?grant_type=client_credentials",
+        headers={"Authorization": f"Basic {auth_b64}"},
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        logger.error(f"Failed to get M-Pesa access token: {response.text}")
+        raise Exception("M-Pesa authentication failed")
+    
+    return response.json()["access_token"]
 
 # ============================================================
 # ROUTES
@@ -110,6 +117,10 @@ def health():
 
 @app.route('/api/mpesa/initiate', methods=['POST'])
 def initiate_payment():
+    """
+    Initiate M-Pesa STK Push
+    Returns CheckoutRequestID to the frontend
+    """
     try:
         data = request.json
         logger.info(f"📥 Initiate request: {data}")
@@ -150,65 +161,73 @@ def initiate_payment():
         
         logger.info(f"📤 Sending STK Push: {stk_push_payload}")
         
-        with httpx.Client() as client:
-            response = client.post(
-                f"{MPESA_API_BASE}/mpesa/stkpush/v1/processrequest",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json"
-                },
-                json=stk_push_payload
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"M-Pesa STK Push error: {response.text}")
-                return jsonify({
-                    "success": False,
-                    "error": "M-Pesa STK Push failed"
-                }), 500
-            
-            result = response.json()
-            logger.info(f"📥 M-Pesa STK Response: {result}")
-            
-            checkout_request_id = result.get("CheckoutRequestID") or result.get("MerchantRequestID")
-            if not checkout_request_id:
-                return jsonify({
-                    "success": False,
-                    "error": "No CheckoutRequestID returned from M-Pesa"
-                }), 500
-            
-            # ✅ FIX: Handle supabase safely
-            if supabase:
-                transaction_data = {
-                    "checkout_request_id": checkout_request_id,
-                    "phone": formatted_phone,
-                    "amount": int(amount),
-                    "service": service,
-                    "purpose": purpose,
-                    "client_type": client_type,
-                    "reference": reference,
-                    "user_id": user_id,
-                    "status": "pending",
-                    "mpesa_response": result,
-                    "created_at": datetime.datetime.now().isoformat()
-                }
-                supabase.table("mpesa_transactions").insert(transaction_data).execute()
-            else:
-                logger.warning("⚠️ Supabase not available - skipping transaction save")
-            
+        response = requests.post(
+            f"{MPESA_API_BASE}/mpesa/stkpush/v1/processrequest",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json"
+            },
+            json=stk_push_payload,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"M-Pesa STK Push error: {response.text}")
             return jsonify({
-                "success": True,
+                "success": False,
+                "error": f"M-Pesa STK Push failed: {response.text}"
+            }), 500
+        
+        result = response.json()
+        logger.info(f"📥 M-Pesa STK Response: {result}")
+        
+        # ✅ CRITICAL: Extract CheckoutRequestID
+        checkout_request_id = result.get("CheckoutRequestID") or result.get("MerchantRequestID")
+        if not checkout_request_id:
+            return jsonify({
+                "success": False,
+                "error": "No CheckoutRequestID returned from M-Pesa"
+            }), 500
+        
+        # Save transaction to Supabase
+        if supabase:
+            transaction_data = {
                 "checkout_request_id": checkout_request_id,
-                "MerchantRequestID": result.get("MerchantRequestID"),
-                "ResponseCode": result.get("ResponseCode"),
-                "ResponseDescription": result.get("ResponseDescription"),
-                "data": {
-                    "checkout_request_id": checkout_request_id,
-                    "reference": reference,
-                    "amount": int(amount)
-                }
-            })
-            
+                "phone": formatted_phone,
+                "amount": int(amount),
+                "service": service,
+                "purpose": purpose,
+                "client_type": client_type,
+                "reference": reference,
+                "user_id": user_id,
+                "status": "pending",
+                "mpesa_response": result,
+                "created_at": datetime.datetime.now().isoformat()
+            }
+            supabase.table("mpesa_transactions").insert(transaction_data).execute()
+        else:
+            logger.warning("⚠️ Supabase not available - skipping transaction save")
+        
+        # ✅ CRITICAL: Return CheckoutRequestID to frontend
+        return jsonify({
+            "success": True,
+            "checkout_request_id": checkout_request_id,
+            "MerchantRequestID": result.get("MerchantRequestID"),
+            "ResponseCode": result.get("ResponseCode"),
+            "ResponseDescription": result.get("ResponseDescription"),
+            "data": {
+                "checkout_request_id": checkout_request_id,
+                "reference": reference,
+                "amount": int(amount)
+            }
+        })
+        
+    except requests.exceptions.Timeout:
+        logger.error("❌ M-Pesa request timed out")
+        return jsonify({
+            "success": False,
+            "error": "M-Pesa request timed out. Please try again later."
+        }), 504
     except Exception as e:
         logger.error(f"❌ M-Pesa initiate error: {str(e)}")
         return jsonify({
@@ -218,6 +237,9 @@ def initiate_payment():
 
 @app.route('/api/mpesa/status/<checkout_request_id>', methods=['GET'])
 def check_payment_status(checkout_request_id):
+    """
+    Check payment status using CheckoutRequestID
+    """
     try:
         if not checkout_request_id:
             return jsonify({
@@ -282,6 +304,9 @@ def check_payment_status(checkout_request_id):
 
 @app.route('/api/mpesa/auto-confirm/<checkout_request_id>', methods=['POST'])
 def auto_confirm_payment(checkout_request_id):
+    """
+    Auto-confirm payment by querying M-Pesa directly
+    """
     try:
         if not checkout_request_id:
             return jsonify({
@@ -335,69 +360,84 @@ def auto_confirm_payment(checkout_request_id):
                 "CheckoutRequestID": checkout_request_id
             }
             
-            with httpx.Client() as client:
-                response = client.post(
-                    f"{MPESA_API_BASE}/mpesa/stkpushquery/v1/query",
-                    headers={
-                        "Authorization": f"Bearer {access_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json=query_payload
-                )
-                
-                if response.status_code != 200:
-                    logger.error(f"M-Pesa Query error: {response.text}")
-                    return jsonify({
-                        "success": True,
-                        "status": tx.get("status"),
-                        "result_code": tx.get("mpesa_result_code"),
-                        "result_desc": tx.get("mpesa_result_desc", "Unable to query M-Pesa"),
-                        "data": {
-                            "checkout_request_id": checkout_request_id,
-                            "status": tx.get("status"),
-                            "result_code": tx.get("mpesa_result_code"),
-                            "amount": tx.get("amount"),
-                            "reference": tx.get("reference")
-                        }
-                    })
-                
-                result = response.json()
-                logger.info(f"📥 M-Pesa Query Response: {result}")
-                
-                result_code = result.get("ResultCode") or result.get("ResponseCode")
-                result_desc = result.get("ResultDesc") or result.get("ResponseDescription")
-                
-                new_status = tx.get("status")
-                if result_code == "0" or result_code == "000":
-                    new_status = "completed"
-                elif str(result_code) in ["1", "1037", "1032", "2001", "2002"]:
-                    new_status = "failed"
-                
-                if new_status != tx.get("status"):
-                    supabase.table("mpesa_transactions") \
-                        .update({
-                            "status": new_status,
-                            "mpesa_result_code": str(result_code),
-                            "mpesa_result_desc": result_desc,
-                            "updated_at": datetime.datetime.now().isoformat()
-                        }) \
-                        .eq("checkout_request_id", checkout_request_id) \
-                        .execute()
-                
+            response = requests.post(
+                f"{MPESA_API_BASE}/mpesa/stkpushquery/v1/query",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=query_payload,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"M-Pesa Query error: {response.text}")
                 return jsonify({
                     "success": True,
-                    "result_code": result_code,
-                    "result_desc": result_desc,
-                    "status": new_status,
+                    "status": tx.get("status"),
+                    "result_code": tx.get("mpesa_result_code"),
+                    "result_desc": tx.get("mpesa_result_desc", "Unable to query M-Pesa"),
                     "data": {
                         "checkout_request_id": checkout_request_id,
-                        "status": new_status,
-                        "result_code": result_code,
+                        "status": tx.get("status"),
+                        "result_code": tx.get("mpesa_result_code"),
                         "amount": tx.get("amount"),
                         "reference": tx.get("reference")
                     }
                 })
-                
+            
+            result = response.json()
+            logger.info(f"📥 M-Pesa Query Response: {result}")
+            
+            result_code = result.get("ResultCode") or result.get("ResponseCode")
+            result_desc = result.get("ResultDesc") or result.get("ResponseDescription")
+            
+            new_status = tx.get("status")
+            if result_code == "0" or result_code == "000":
+                new_status = "completed"
+            elif str(result_code) in ["1", "1037", "1032", "2001", "2002"]:
+                new_status = "failed"
+            
+            if new_status != tx.get("status"):
+                supabase.table("mpesa_transactions") \
+                    .update({
+                        "status": new_status,
+                        "mpesa_result_code": str(result_code),
+                        "mpesa_result_desc": result_desc,
+                        "updated_at": datetime.datetime.now().isoformat()
+                    }) \
+                    .eq("checkout_request_id", checkout_request_id) \
+                    .execute()
+            
+            return jsonify({
+                "success": True,
+                "result_code": result_code,
+                "result_desc": result_desc,
+                "status": new_status,
+                "data": {
+                    "checkout_request_id": checkout_request_id,
+                    "status": new_status,
+                    "result_code": result_code,
+                    "amount": tx.get("amount"),
+                    "reference": tx.get("reference")
+                }
+            })
+            
+        except requests.exceptions.Timeout:
+            logger.error("❌ M-Pesa Query timed out")
+            return jsonify({
+                "success": True,
+                "status": tx.get("status"),
+                "result_code": tx.get("mpesa_result_code"),
+                "result_desc": tx.get("mpesa_result_desc", "Query timed out"),
+                "data": {
+                    "checkout_request_id": checkout_request_id,
+                    "status": tx.get("status"),
+                    "result_code": tx.get("mpesa_result_code"),
+                    "amount": tx.get("amount"),
+                    "reference": tx.get("reference")
+                }
+            })
         except Exception as mpesa_error:
             logger.error(f"❌ M-Pesa query error: {str(mpesa_error)}")
             return jsonify({
@@ -423,6 +463,9 @@ def auto_confirm_payment(checkout_request_id):
 
 @app.route('/api/mpesa/callback', methods=['POST'])
 def mpesa_callback():
+    """
+    M-Pesa Callback endpoint - receives payment confirmation
+    """
     try:
         body = request.json
         logger.info("📥 M-Pesa Callback Received")
@@ -484,4 +527,5 @@ def mpesa_callback():
 # ============================================================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    # Use Gunicorn in production, this fallback is for local testing
     app.run(host='0.0.0.0', port=port, debug=False)
