@@ -6,6 +6,7 @@
     <title>AUTO-V Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
+    <!-- Load UMD & Source of Truth -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="supabase.js"></script>
 
@@ -42,9 +43,9 @@
     </div>
 
     <script>
-        // 🔥 Use the Single Source of Truth
-        const { supabase, requireAuth, logout, getUserRole } = window.autoV;
-
+        // 🔥 USE THE SINGLE SOURCE OF TRUTH
+        // NO 'const supabase' or 'const sb' declarations here. We use window.autoV directly.
+        
         const ALL_SERVICES = [
             { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', page: 'customer-portal.html?service=valuation', roles: ['individual', 'corporate', 'valuer'] },
             { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', page: 'customer-portal.html?service=instant-value-check', roles: ['individual', 'corporate', 'valuer'] },
@@ -55,18 +56,27 @@
         ];
 
         async function init() {
-            // 1. Auth Check using the shared source
+            // 1. Check if the shared source is available
+            if (!window.autoV) {
+                document.getElementById('serviceGrid').innerHTML = `<div class="error">Supabase failed to load.</div>`;
+                return;
+            }
+
+            // 2. Use the shared functions from the source of truth
+            const { requireAuth, getUserRole, logout } = window.autoV;
+
+            // 3. Auth Check
             const user = await requireAuth();
             if (!user) return;
 
-            // 2. Get Role from the shared source
+            // 4. Get Role
             const role = await getUserRole(user.id);
             
             document.getElementById('profileCard').style.display = 'block';
             document.getElementById('userName').textContent = user.email;
             document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
 
-            // 3. Filter services
+            // 5. Filter services
             const allowedServices = ALL_SERVICES.filter(s => s.roles.includes(role));
 
             if (allowedServices.length === 0) {
@@ -84,7 +94,11 @@
         }
 
         document.getElementById('logoutBtn').onclick = async function() {
-            await logout(); // Uses the shared logout function
+            if (window.autoV) {
+                await window.autoV.logout(); // Uses the shared logout function
+            } else {
+                window.location.href = 'login.html';
+            }
         };
 
         init();
