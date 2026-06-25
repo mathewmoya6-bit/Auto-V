@@ -10,6 +10,15 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
+# Import Supabase client
+from services.supabase_client import (
+    create_payment,
+    get_payment_by_checkout_request_id,
+    get_payment_by_payment_id,
+    update_payment_status,
+    get_payment_status
+)
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -21,6 +30,13 @@ MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
 MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
 MPESA_ENV = os.getenv("MPESA_ENV", "sandbox").lower().strip()
 
+# ─── Callback URL ──────────────────────────────────────────
+# IMPORTANT: Use your Render URL here
+MPESA_CALLBACK_URL = os.getenv(
+    "MPESA_CALLBACK_URL",
+    "https://auto-v.onrender.com/api/mpesa/callback"
+)
+
 # ─── Base URLs ─────────────────────────────────────────────
 BASE_URLS = {
     "production": "https://api.safaricom.co.ke",
@@ -31,6 +47,7 @@ BASE_URL = BASE_URLS.get(MPESA_ENV, BASE_URLS["sandbox"])
 logger.info(f"🔧 M-Pesa Environment: {MPESA_ENV}")
 logger.info(f"🔧 M-Pesa Base URL: {BASE_URL}")
 logger.info(f"🔧 M-Pesa Shortcode: {MPESA_SHORTCODE}")
+logger.info(f"🔧 M-Pesa Callback URL: {MPESA_CALLBACK_URL}")
 
 
 def get_mpesa_token() -> Optional[str]:
@@ -108,7 +125,7 @@ def initiate_stk_push(
             "PartyA": phone,
             "PartyB": MPESA_SHORTCODE,
             "PhoneNumber": phone,
-            "CallBackURL": os.getenv("MPESA_CALLBACK_URL", "https://auto-v.meipressgroup.com/api/mpesa/callback"),
+            "CallBackURL": MPESA_CALLBACK_URL,  # Use the variable
             "AccountReference": reference or f"AUTO-{payment_id[-8:]}",
             "TransactionDesc": f"Payment {payment_id}"
         }
@@ -139,8 +156,35 @@ def initiate_stk_push(
 
             # Check if the request was successful
             if result.get("ResponseCode") == "0":
+                checkout_request_id = result.get("CheckoutRequestID")
+                merchant_request_id = result.get("MerchantRequestID")
+                
                 logger.info(f"✅ STK Push initiated successfully for {phone}")
-                logger.info(f"   CheckoutRequestID: {result.get('CheckoutRequestID')}")
+                logger.info(f"   CheckoutRequestID: {checkout_request_id}")
+                logger.info(f"   MerchantRequestID: {merchant_request_id}")
+                
+                # ─── SAVE TO DATABASE ──────────────────────────────────
+                # Create payment record in Supabase
+                try:
+                    payment_data = {
+                        "payment_id": payment_id,
+                        "user_id": user_id,
+                        "phone": phone,
+                        "amount": float(amount),
+                        "status": "pending",
+                        "reference": reference or f"AUTO-{payment_id[-8:]}",
+                        "checkout_request_id": checkout_request_id,
+                        "merchant_request_id": merchant_request_id,
+                        "created_at": datetime.utcnow().isoformat()
+                    }
+                    
+                    create_payment(payment_data)
+                    logger.info(f"💾 Payment record created in database: {payment_id}")
+                    
+                except Exception as db_error:
+                    logger.error(f"❌ Failed to save payment to database: {db_error}")
+                    # Continue - we still want to return the STK response
+                
                 return result
             else:
                 error_msg = result.get("ResponseDescription", "Unknown error")
@@ -184,7 +228,15 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
             if name:
                 meta_dict[name] = value
 
-        status = "completed" if result_code == 0 else "failed"
+        # Determine status
+        if result_code == 0:
+            status = "completed"
+        elif result_code == 1037:
+            status = "cancelled"  # User cancelled the transaction
+        elif result_code == 1032:
+            status = "failed"  # Transaction failed
+        else:
+            status = "failed"
 
         logger.info(
             f"📩 Callback: {checkout_request_id} → {status}",
@@ -195,6 +247,58 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
                 "amount": meta_dict.get("Amount")
             }
         )
+
+        # ─── UPDATE DATABASE ──────────────────────────────────────────
+        if checkout_request_id:
+            try:
+                # Find the payment by checkout_request_id
+                payment = get_payment_by_checkout_request_id(checkout_request_id)
+                
+                if payment:
+                    logger.info(f"💾 Found payment: {payment.get('payment_id')}")
+                    
+                    # Update payment status and details
+                    update_data = {
+                        "status": status,
+                        "result_code": result_code,
+                        "result_desc": result_desc,
+                        "mpesa_receipt": meta_dict.get("MpesaReceiptNumber"),
+                        "transaction_date": meta_dict.get("TransactionDate"),
+                        "amount": meta_dict.get("Amount"),
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                    
+                    # If completed, also store the receipt number
+                    if status == "completed":
+                        update_data["mpesa_receipt"] = meta_dict.get("MpesaReceiptNumber")
+                        update_data["transaction_date"] = meta_dict.get("TransactionDate")
+                        logger.info(f"✅ Payment completed! Receipt: {meta_dict.get('MpesaReceiptNumber')}")
+                    
+                    update_payment_status(payment["payment_id"], update_data)
+                    logger.info(f"💾 Payment updated in database: {payment['payment_id']} → {status}")
+                    
+                else:
+                    logger.warning(f"⚠️ Payment not found for checkout_request_id: {checkout_request_id}")
+                    # Try to find by merchant_request_id as fallback
+                    if merchant_request_id:
+                        payment = get_payment_by_checkout_request_id(merchant_request_id)
+                        if payment:
+                            logger.info(f"💾 Found payment by merchant_request_id: {payment.get('payment_id')}")
+                            update_payment_status(payment["payment_id"], {
+                                "status": status,
+                                "result_code": result_code,
+                                "result_desc": result_desc,
+                                "mpesa_receipt": meta_dict.get("MpesaReceiptNumber"),
+                                "transaction_date": meta_dict.get("TransactionDate"),
+                                "amount": meta_dict.get("Amount"),
+                                "updated_at": datetime.utcnow().isoformat()
+                            })
+                    
+            except Exception as db_error:
+                logger.error(f"❌ Failed to update payment in database: {db_error}")
+                # Continue - we still want to return success to Safaricom
+        else:
+            logger.warning("⚠️ No checkout_request_id in callback")
 
         return {
             "ResultCode": 0,
@@ -213,6 +317,8 @@ def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"❌ Callback handling error: {e}")
+        import traceback
+        traceback.print_exc()
         return {"ResultCode": 1, "ResultDesc": f"Error: {str(e)}"}
 
 
@@ -245,7 +351,27 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
         )
 
         if response.status_code == 200:
-            return response.json()
+            result = response.json()
+            
+            # Also update database with the query result
+            try:
+                payment = get_payment_by_checkout_request_id(checkout_request_id)
+                if payment:
+                    result_code = result.get("ResultCode")
+                    if result_code == 0:
+                        update_payment_status(payment["payment_id"], {
+                            "status": "completed",
+                            "updated_at": datetime.utcnow().isoformat()
+                        })
+                    elif result_code in [1037, 1032]:
+                        update_payment_status(payment["payment_id"], {
+                            "status": "failed",
+                            "updated_at": datetime.utcnow().isoformat()
+                        })
+            except Exception as db_error:
+                logger.error(f"❌ Failed to update payment from query: {db_error}")
+            
+            return result
         else:
             logger.error(f"Query failed: {response.status_code}")
             raise ValueError(f"Query failed: {response.text}")
@@ -258,10 +384,26 @@ def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
 def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
     """Auto-confirm a pending payment (admin override)."""
     try:
+        # Check if payment exists
+        payment = get_payment_by_payment_id(payment_id)
+        if not payment:
+            raise ValueError(f"Payment {payment_id} not found")
+        
+        # Update status to completed
+        update_data = {
+            "status": "completed",
+            "result_code": 0,
+            "result_desc": "Auto-confirmed by admin",
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        update_payment_status(payment_id, update_data)
+        
         return {
             "success": True,
             "message": "Payment auto-confirmed",
-            "payment_id": payment_id
+            "payment_id": payment_id,
+            "status": "completed"
         }
     except Exception as e:
         logger.error(f"Auto-confirm error: {e}")
@@ -286,3 +428,24 @@ def get_mpesa_token_public() -> Optional[Dict[str, Any]]:
     if token:
         return {"token": token, "expires_in": 3600}
     return None
+
+
+def get_payment_status_by_id(payment_id: str) -> Dict[str, Any]:
+    """Get payment status from database by payment_id."""
+    try:
+        payment = get_payment_by_payment_id(payment_id)
+        if payment:
+            return {
+                "payment_id": payment.get("payment_id"),
+                "status": payment.get("status", "pending"),
+                "amount": payment.get("amount"),
+                "phone": payment.get("phone"),
+                "mpesa_receipt": payment.get("mpesa_receipt"),
+                "created_at": payment.get("created_at"),
+                "updated_at": payment.get("updated_at")
+            }
+        else:
+            return {"payment_id": payment_id, "status": "not_found"}
+    except Exception as e:
+        logger.error(f"Error getting payment status: {e}")
+        return {"payment_id": payment_id, "status": "error", "error": str(e)}
