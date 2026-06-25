@@ -322,7 +322,7 @@ if (window.autoV && window.autoV._initialized) {
                 window.location.href = "login.html";
             },
             
-            // ─── USER PROFILE ──────────────────────────────────────────
+            // ─── ✅ ADDED: USER PROFILE UPSERT ─────────────────────────
             async upsertUserProfile(userId, email, role) {
                 try {
                     const { data, error } = await supabase
@@ -334,6 +334,7 @@ if (window.autoV && window.autoV._initialized) {
                             updated_at: new Date().toISOString()
                         }, { onConflict: 'id' })
                         .select();
+                    
                     if (error) {
                         console.warn('Error upserting user profile:', error.message);
                         return { data: null, error: error };
