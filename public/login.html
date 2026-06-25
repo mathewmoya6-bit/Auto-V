@@ -45,46 +45,67 @@
     </div>
 
     <script>
-        // Use window.autoV directly
-        const { supabase, upsertUserProfile } = window.autoV;
-
-        let selectedRole = 'individual';
-        document.querySelectorAll('.role-btn').forEach(btn => {
-            btn.onclick = function() {
-                document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                selectedRole = this.dataset.role;
-            };
-        });
-
-        document.getElementById('loginForm').onsubmit = async function(e) {
-            e.preventDefault();
-            
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-            const errorMsg = document.getElementById('errorMsg');
-            const loginBtn = document.getElementById('loginBtn');
-
-            errorMsg.style.display = 'none';
-            loginBtn.disabled = true;
-            loginBtn.textContent = 'Logging in...';
-
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-            
-            if (error) {
-                errorMsg.textContent = error.message;
-                errorMsg.style.display = 'block';
-                loginBtn.disabled = false;
-                loginBtn.textContent = 'Login';
+        // ✅ CRITICAL: Ensure window.autoV is fully loaded before using it
+        function waitForAutoV(retries = 30) {
+            if (window.autoV && typeof window.autoV.supabase !== 'undefined') {
+                initLogin();
                 return;
             }
+            if (retries > 0) {
+                console.log(`⏳ Waiting for autoV... (${30 - retries} attempts)`);
+                setTimeout(() => waitForAutoV(retries - 1), 100);
+            } else {
+                document.getElementById('errorMsg').textContent = '❌ Failed to load Supabase. Please refresh.';
+                document.getElementById('errorMsg').style.display = 'block';
+            }
+        }
 
-            // Store the selected role in the profile
-            await upsertUserProfile(data.user.id, data.user.email, selectedRole);
+        function initLogin() {
+            // ✅ Use window.autoV directly - NO destructuring error
+            const supabase = window.autoV.supabase;
+            const upsertUserProfile = window.autoV.upsertUserProfile;
 
-            // Redirect to dashboard
-            window.location.href = 'dashboard.html';
-        };
+            let selectedRole = 'individual';
+            document.querySelectorAll('.role-btn').forEach(btn => {
+                btn.onclick = function() {
+                    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    selectedRole = this.dataset.role;
+                };
+            });
+
+            document.getElementById('loginForm').onsubmit = async function(e) {
+                e.preventDefault();
+                
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+                const errorMsg = document.getElementById('errorMsg');
+                const loginBtn = document.getElementById('loginBtn');
+
+                errorMsg.style.display = 'none';
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Logging in...';
+
+                const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                
+                if (error) {
+                    errorMsg.textContent = error.message;
+                    errorMsg.style.display = 'block';
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login';
+                    return;
+                }
+
+                // Store the selected role in the profile
+                await upsertUserProfile(data.user.id, data.user.email, selectedRole);
+
+                // Redirect to dashboard
+                window.location.href = 'dashboard.html';
+            };
+        }
+
+        // Start the wait loop
+        waitForAutoV();
     </script>
 </body>
 </html>
