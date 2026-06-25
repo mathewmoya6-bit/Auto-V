@@ -24,6 +24,7 @@
         .btn:disabled { background: #555; cursor: not-allowed; }
         .logout-btn { background: #dc2626; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
         .logout-btn:hover { background: #b91c1c; }
+        .error { color: #ef4444; text-align: center; padding: 20px; background: #2a0a0a; border-left: 4px solid #ef4444; border-radius: 6px; }
     </style>
 </head>
 <body>
@@ -44,7 +45,7 @@
 
     <script>
         // 🔥 USE THE SINGLE SOURCE OF TRUTH
-        // NO 'const supabase' or 'const sb' declarations here. We use window.autoV directly.
+        // NO 'const supabase' declarations. We use window.autoV directly.
         
         const ALL_SERVICES = [
             { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', page: 'customer-portal.html?service=valuation', roles: ['individual', 'corporate', 'valuer'] },
@@ -56,41 +57,51 @@
         ];
 
         async function init() {
-            // 1. Check if the shared source is available
-            if (!window.autoV) {
-                document.getElementById('serviceGrid').innerHTML = `<div class="error">Supabase failed to load.</div>`;
-                return;
+            try {
+                // 1. Check if the shared source is available
+                if (!window.autoV) {
+                    throw new Error('Supabase failed to load. Please refresh the page.');
+                }
+
+                // 2. Use the shared functions from the source of truth
+                const { requireAuth, getUserRole, logout } = window.autoV;
+
+                // 3. Auth Check (Redirects to login if not logged in)
+                const user = await requireAuth();
+                if (!user) return;
+
+                // 4. Get Role with error fallback
+                let role = 'individual';
+                try {
+                    role = await getUserRole(user.id);
+                    if (!role) role = 'individual'; // Fallback if profile is missing
+                } catch (err) {
+                    console.warn('Could not fetch role, using default:', err);
+                }
+                
+                document.getElementById('profileCard').style.display = 'block';
+                document.getElementById('userName').textContent = user.email;
+                document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
+
+                // 5. Filter services
+                const allowedServices = ALL_SERVICES.filter(s => s.roles.includes(role));
+
+                if (allowedServices.length === 0) {
+                    document.getElementById('serviceGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;">No services available for your role.</div>`;
+                    return;
+                }
+
+                document.getElementById('serviceGrid').innerHTML = allowedServices.map(s => `
+                    <div class="service-card">
+                        <div style="font-size: 40px;">${s.icon}</div>
+                        <h3 style="color: #eab308; margin: 10px 0;">${s.name}</h3>
+                        <button class="btn" onclick="window.location.href='${s.page}'">Start →</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Dashboard init error:', err);
+                document.getElementById('serviceGrid').innerHTML = `<div class="error">${err.message}</div>`;
             }
-
-            // 2. Use the shared functions from the source of truth
-            const { requireAuth, getUserRole, logout } = window.autoV;
-
-            // 3. Auth Check
-            const user = await requireAuth();
-            if (!user) return;
-
-            // 4. Get Role
-            const role = await getUserRole(user.id);
-            
-            document.getElementById('profileCard').style.display = 'block';
-            document.getElementById('userName').textContent = user.email;
-            document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
-
-            // 5. Filter services
-            const allowedServices = ALL_SERVICES.filter(s => s.roles.includes(role));
-
-            if (allowedServices.length === 0) {
-                document.getElementById('serviceGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;">No services available for your role.</div>`;
-                return;
-            }
-
-            document.getElementById('serviceGrid').innerHTML = allowedServices.map(s => `
-                <div class="service-card">
-                    <div style="font-size: 40px;">${s.icon}</div>
-                    <h3 style="color: #eab308; margin: 10px 0;">${s.name}</h3>
-                    <button class="btn" onclick="window.location.href='${s.page}'">Start →</button>
-                </div>
-            `).join('');
         }
 
         document.getElementById('logoutBtn').onclick = async function() {
