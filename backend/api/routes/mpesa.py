@@ -4,6 +4,7 @@
 
 import os
 import uuid
+import json
 import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify
@@ -108,18 +109,71 @@ def get_payment_status(payment_id):
 def mpesa_callback():
     """Handle M-Pesa callback from Safaricom."""
     try:
+        # Get raw data first for logging
+        raw_data = request.get_data(as_text=True)
+        print("=" * 60)
+        print("M-PESA CALLBACK RECEIVED")
+        print(f"Raw data: {raw_data}")
+        print("=" * 60)
+        
+        # Parse JSON
         data = request.get_json(silent=True)
         if not data:
+            logger.warning("No JSON data in callback")
+            print("❌ No JSON data received")
             return jsonify({"ResultCode": 1, "ResultDesc": "No data"}), 200
 
+        # Log the full callback data beautifully
         logger.info(f"📩 Callback received")
+        print("📩 Parsed callback data:")
+        print(json.dumps(data, indent=2))
 
+        # Extract key information for quick debugging
+        try:
+            stk_callback = data.get("Body", {}).get("stkCallback", {})
+            result_code = stk_callback.get("ResultCode")
+            result_desc = stk_callback.get("ResultDesc")
+            checkout_id = stk_callback.get("CheckoutRequestID")
+            merchant_id = stk_callback.get("MerchantRequestID")
+            
+            print(f"🔑 ResultCode: {result_code}")
+            print(f"📝 ResultDesc: {result_desc}")
+            print(f"🆔 CheckoutRequestID: {checkout_id}")
+            print(f"🆔 MerchantRequestID: {merchant_id}")
+            
+            # Extract metadata if available
+            metadata = stk_callback.get("CallbackMetadata", {})
+            if metadata:
+                items = metadata.get("Item", [])
+                for item in items:
+                    print(f"📊 {item.get('Name')}: {item.get('Value')}")
+        except Exception as e:
+            print(f"⚠️ Error extracting callback details: {e}")
+
+        # Process the callback
+        print("🔄 Processing callback...")
         result = handle_mpesa_callback(data)
-        return jsonify(result), 200
+        
+        # Log the result
+        logger.info(f"Callback processing result: {result}")
+        print(f"✅ CALLBACK RESULT: {result}")
+
+        # Always return success to Safaricom
+        return jsonify({
+            "ResultCode": 0,
+            "ResultDesc": "Success"
+        }), 200
 
     except Exception as e:
         logger.error(f"callback error: {e}", exc_info=True)
-        return jsonify({"ResultCode": 1, "ResultDesc": "System error"}), 200
+        print(f"❌ CALLBACK ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Still return success to Safaricom to prevent retries
+        return jsonify({
+            "ResultCode": 0,
+            "ResultDesc": "Received"
+        }), 200
 
 
 @mpesa_bp.route("/auto-confirm/<payment_id>", methods=["POST", "OPTIONS"])
