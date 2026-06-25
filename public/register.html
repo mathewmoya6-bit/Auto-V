@@ -32,6 +32,20 @@
         .error { color: #ef4444; display: none; background: #2a0a0a; padding: 10px; border-radius: 6px; border-left: 4px solid #ef4444; margin-bottom: 15px; }
         .link { text-align: center; margin-top: 15px; color: #94a3b8; }
         .link a { color: #eab308; text-decoration: none; }
+
+        /* Valuer Restricted Message */
+        .restricted-message {
+            display: none;
+            background: #2a0a0a;
+            border: 1px solid #ef4444;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            color: #fecaca;
+            margin-bottom: 20px;
+        }
+        .restricted-message strong { color: #ef4444; display: block; font-size: 18px; margin-bottom: 10px; }
+        .restricted-message .contact-email { color: #eab308; font-weight: bold; text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -43,6 +57,16 @@
             <button type="button" class="role-btn active" data-type="individual">👤 Individual</button>
             <button type="button" class="role-btn" data-type="corporate">🏢 Corporate</button>
             <button type="button" class="role-btn" data-type="valuer">🔍 Valuer</button>
+        </div>
+
+        <!-- 🔒 Restricted Message for Valuer -->
+        <div id="valuerRestrictedMsg" class="restricted-message">
+            <strong>🔒 Valuer Registration Restricted</strong>
+            Valuer accounts are managed internally by the AUTO-V administration team.
+            <br><br>
+            If you are a certified valuer, please contact our admin team to set up your account:
+            <br><br>
+            <span class="contact-email">📧 admin@auto-v.meipressgroup.com</span>
         </div>
 
         <div class="error" id="errorMsg"></div>
@@ -65,17 +89,9 @@
                 <input type="text" id="company_reg" placeholder="Company Registration Number">
             </div>
 
-            <!-- Valuer Fields (Hidden by default) -->
-            <div id="valuer-fields" class="form-section">
-                <input type="text" id="valuer_name" placeholder="Full Name">
-                <input type="text" id="valuer_license" placeholder="License Number / ID">
-                <input type="text" id="specialization" placeholder="Specialization (e.g. Mechanical, Auto)">
-                
-                <!-- 🔒 ADMIN SECRET CODE FIELD -->
-                <input type="password" id="admin_secret" placeholder="Enter Admin Secret Code" style="border-color: #eab308; background: #1a2a0a;">
-                <small style="color: #94a3b8; display: block; margin-top: -10px; margin-bottom: 10px;">
-                    🔒 Valuer registration requires an admin code.
-                </small>
+            <!-- Valuer Fields (Hidden and Blocked) -->
+            <div id="valuer-fields" class="form-section" style="display: none !important;">
+                <!-- The fields are intentionally hidden; the message above handles this case -->
             </div>
 
             <button type="submit" class="submit-btn">Create Account</button>
@@ -95,9 +111,6 @@
 
         const { supabase: sb } = window.autoV; 
 
-        // 🔐 ADMIN SECRET CODE (Change this to whatever you want)
-        const ADMIN_SECRET_CODE = "AUTO-V-ADMIN-2026";
-
         let currentType = 'individual';
 
         // 2. Tab Click Listeners
@@ -107,16 +120,19 @@
                 this.classList.add('active');
                 currentType = this.dataset.type;
 
+                // Hide all sections
                 document.getElementById('individual-fields').classList.remove('active');
                 document.getElementById('corporate-fields').classList.remove('active');
                 document.getElementById('valuer-fields').classList.remove('active');
+                document.getElementById('valuerRestrictedMsg').style.display = 'none';
 
                 if (currentType === 'individual') {
                     document.getElementById('individual-fields').classList.add('active');
                 } else if (currentType === 'corporate') {
                     document.getElementById('corporate-fields').classList.add('active');
                 } else if (currentType === 'valuer') {
-                    document.getElementById('valuer-fields').classList.add('active');
+                    // 🔒 Instead of showing fields, show the restricted message
+                    document.getElementById('valuerRestrictedMsg').style.display = 'block';
                 }
             });
         });
@@ -142,14 +158,11 @@
                 return;
             }
 
-            // 🔐 VALIDATE ADMIN CODE IF VALUER
+            // 🔐 STRICT CHECK: Block Valuer registration entirely
             if (currentType === 'valuer') {
-                const secret = document.getElementById('admin_secret').value.trim();
-                if (secret !== ADMIN_SECRET_CODE) {
-                    errorDiv.textContent = "❌ Invalid Admin Secret Code. Valuer registration is restricted.";
-                    errorDiv.style.display = 'block';
-                    return;
-                }
+                errorDiv.textContent = "❌ Valuer registration is restricted. Please contact admin@auto-v.meipressgroup.com to set up an account.";
+                errorDiv.style.display = 'block';
+                return;
             }
 
             // Collect metadata for Auth (for login and session)
@@ -167,10 +180,7 @@
                 full_name: null,
                 // Corporate Fields
                 company_name: null,
-                company_reg: null,
-                // Valuer Fields
-                valuer_license: null,
-                specialization: null
+                company_reg: null
             };
 
             // Validate and assign correct fields based on selection
@@ -197,22 +207,6 @@
                 metadata.company_reg = cReg;
                 profileData.company_name = cName;
                 profileData.company_reg = cReg;
-            } else if (currentType === 'valuer') {
-                const vName = document.getElementById('valuer_name').value.trim();
-                const vLicense = document.getElementById('valuer_license').value.trim();
-                const vSpec = document.getElementById('specialization').value.trim();
-                if (!vName || !vLicense) {
-                    errorDiv.textContent = "Please fill in your Full Name and License Number.";
-                    errorDiv.style.display = 'block';
-                    return;
-                }
-                metadata.full_name = vName;
-                metadata.valuer_license = vLicense;
-                metadata.specialization = vSpec || 'General';
-                
-                profileData.full_name = vName;
-                profileData.valuer_license = vLicense;
-                profileData.specialization = vSpec || 'General';
             }
 
             // 4. Create Auth User
