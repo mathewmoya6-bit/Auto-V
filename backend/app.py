@@ -1,6 +1,6 @@
 # app.py
 # AUTO-V M-Pesa Backend - Flask version
-# Entry point fixed: env loading, CORS, port handling
+# Fixed for Render deployment
 
 import os
 import base64
@@ -14,9 +14,9 @@ import httpx
 from supabase import create_client, Client
 
 # ============================================================
-# LOAD ENVIRONMENT VARIABLES (FIXED ENTRY)
+# LOAD ENVIRONMENT VARIABLES
 # ============================================================
-load_dotenv()  # ← This is critical
+load_dotenv()
 
 # ============================================================
 # LOGGING SETUP
@@ -31,18 +31,22 @@ logger = logging.getLogger(__name__)
 # CONFIG
 # ============================================================
 app = Flask(__name__)
-
-# ✅ CORS - Allow frontend domain (change in production)
 CORS(app, origins=["*"])  # For development
 
-# Supabase - SINGLE SOURCE OF TRUTH
+# Supabase
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://tsvejnzxrxrrecgquxbq.supabase.co")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get(
     "SUPABASE_SERVICE_ROLE_KEY",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTE4NzM2OCwiZXhwIjoyMDk2NzYzMzY4fQ.LdF2qU2J4PZ_XGmNUnK7Bs33C3P1_SFyo1Jh6sQ2Fjo"
 )
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+# ✅ FIX: Create Supabase client safely
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    logger.info("✅ Supabase connected successfully")
+except Exception as e:
+    logger.error(f"❌ Supabase connection error: {e}")
+    supabase = None
 
 # M-Pesa Credentials
 MPESA_CONSUMER_KEY = os.environ.get("MPESA_CONSUMER_KEY", "LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv")
@@ -51,7 +55,6 @@ MPESA_PASSKEY = os.environ.get("MPESA_PASSKEY", "7eb17a031bdfd5b4251863a1ddb72c5
 MPESA_SHORTCODE = os.environ.get("MPESA_SHORTCODE", "4095377")
 MPESA_ENVIRONMENT = os.environ.get("MPESA_ENVIRONMENT", "sandbox")
 
-# Base URL for M-Pesa API
 MPESA_API_BASE = "https://api.safaricom.co.ke" if MPESA_ENVIRONMENT == "production" else "https://sandbox.safaricom.co.ke"
 
 # ============================================================
@@ -59,16 +62,13 @@ MPESA_API_BASE = "https://api.safaricom.co.ke" if MPESA_ENVIRONMENT == "producti
 # ============================================================
 
 def generate_timestamp() -> str:
-    """Generate timestamp in M-Pesa format (YYYYMMDDHHmmss)"""
     return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 def generate_password(timestamp: str) -> str:
-    """Generate M-Pesa password (Base64 encoded)"""
     data = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
     return base64.b64encode(data.encode()).decode()
 
 def format_phone(phone: str) -> str:
-    """Validate and format phone number to international format"""
     cleaned = ''.join(c for c in phone if c.isdigit())
     if cleaned.startswith('0'):
         cleaned = '254' + cleaned[1:]
@@ -79,7 +79,6 @@ def format_phone(phone: str) -> str:
     return cleaned
 
 def get_mpesa_access_token() -> str:
-    """Get M-Pesa OAuth Access Token"""
     auth_str = f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}"
     auth_bytes = auth_str.encode()
     auth_b64 = base64.b64encode(auth_bytes).decode()
@@ -92,12 +91,10 @@ def get_mpesa_access_token() -> str:
         if response.status_code != 200:
             logger.error(f"Failed to get M-Pesa access token: {response.text}")
             raise Exception("M-Pesa authentication failed")
-        
-        data = response.json()
-        return data["access_token"]
+        return response.json()["access_token"]
 
 # ============================================================
-# ROUTES (ALREADY CORRECT - NO CHANGES NEEDED)
+# ROUTES
 # ============================================================
 
 @app.route('/', methods=['GET'])
@@ -113,9 +110,6 @@ def health():
 
 @app.route('/api/mpesa/initiate', methods=['POST'])
 def initiate_payment():
-    """
-    Initiate M-Pesa STK Push
-    """
     try:
         data = request.json
         logger.info(f"📥 Initiate request: {data}")
@@ -183,21 +177,24 @@ def initiate_payment():
                     "error": "No CheckoutRequestID returned from M-Pesa"
                 }), 500
             
-            transaction_data = {
-                "checkout_request_id": checkout_request_id,
-                "phone": formatted_phone,
-                "amount": int(amount),
-                "service": service,
-                "purpose": purpose,
-                "client_type": client_type,
-                "reference": reference,
-                "user_id": user_id,
-                "status": "pending",
-                "mpesa_response": result,
-                "created_at": datetime.datetime.now().isoformat()
-            }
-            
-            supabase.table("mpesa_transactions").insert(transaction_data).execute()
+            # ✅ FIX: Handle supabase safely
+            if supabase:
+                transaction_data = {
+                    "checkout_request_id": checkout_request_id,
+                    "phone": formatted_phone,
+                    "amount": int(amount),
+                    "service": service,
+                    "purpose": purpose,
+                    "client_type": client_type,
+                    "reference": reference,
+                    "user_id": user_id,
+                    "status": "pending",
+                    "mpesa_response": result,
+                    "created_at": datetime.datetime.now().isoformat()
+                }
+                supabase.table("mpesa_transactions").insert(transaction_data).execute()
+            else:
+                logger.warning("⚠️ Supabase not available - skipping transaction save")
             
             return jsonify({
                 "success": True,
@@ -221,13 +218,18 @@ def initiate_payment():
 
 @app.route('/api/mpesa/status/<checkout_request_id>', methods=['GET'])
 def check_payment_status(checkout_request_id):
-    """Check payment status by CheckoutRequestID"""
     try:
         if not checkout_request_id:
             return jsonify({
                 "success": False,
                 "error": "Missing checkout_request_id"
             }), 400
+        
+        if not supabase:
+            return jsonify({
+                "success": False,
+                "error": "Supabase not available"
+            }), 500
         
         result_data = supabase.table("mpesa_transactions") \
             .select("*") \
@@ -238,7 +240,6 @@ def check_payment_status(checkout_request_id):
         tx = result_data.data if hasattr(result_data, 'data') else result_data
         
         if not tx:
-            logger.warning(f"⚠️ Transaction not found: {checkout_request_id}")
             return jsonify({
                 "success": False,
                 "error": "Transaction not found"
@@ -281,13 +282,18 @@ def check_payment_status(checkout_request_id):
 
 @app.route('/api/mpesa/auto-confirm/<checkout_request_id>', methods=['POST'])
 def auto_confirm_payment(checkout_request_id):
-    """Auto-confirm payment by querying M-Pesa directly"""
     try:
         if not checkout_request_id:
             return jsonify({
                 "success": False,
                 "error": "Missing checkout_request_id"
             }), 400
+        
+        if not supabase:
+            return jsonify({
+                "success": False,
+                "error": "Supabase not available"
+            }), 500
         
         result_data = supabase.table("mpesa_transactions") \
             .select("*") \
@@ -417,10 +423,9 @@ def auto_confirm_payment(checkout_request_id):
 
 @app.route('/api/mpesa/callback', methods=['POST'])
 def mpesa_callback():
-    """M-Pesa Callback endpoint - receives payment confirmation"""
     try:
         body = request.json
-        logger.info(f"📥 M-Pesa Callback Received")
+        logger.info("📥 M-Pesa Callback Received")
         
         stk_callback = body.get("Body", {}).get("stkCallback")
         if not stk_callback:
@@ -452,18 +457,17 @@ def mpesa_callback():
         elif str(result_code) in ["1", "1037", "1032", "2001", "2002"]:
             status = "failed"
         
-        update_data = {
-            "status": status,
-            "mpesa_result_code": str(result_code),
-            "mpesa_result_desc": result_desc,
-            "mpesa_receipt": mpesa_receipt,
-            "mpesa_phone": phone,
-            "mpesa_amount": amount,
-            "callback_data": stk_callback,
-            "updated_at": datetime.datetime.now().isoformat()
-        }
-        
-        if checkout_request_id:
+        if supabase and checkout_request_id:
+            update_data = {
+                "status": status,
+                "mpesa_result_code": str(result_code),
+                "mpesa_result_desc": result_desc,
+                "mpesa_receipt": mpesa_receipt,
+                "mpesa_phone": phone,
+                "mpesa_amount": amount,
+                "callback_data": stk_callback,
+                "updated_at": datetime.datetime.now().isoformat()
+            }
             supabase.table("mpesa_transactions") \
                 .update(update_data) \
                 .eq("checkout_request_id", checkout_request_id) \
@@ -476,9 +480,8 @@ def mpesa_callback():
         return jsonify({"status": "OK"})
 
 # ============================================================
-# ENTRY POINT (FIXED)
+# ENTRY POINT
 # ============================================================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    # ✅ Important: host='0.0.0.0' allows external access
     app.run(host='0.0.0.0', port=port, debug=False)
