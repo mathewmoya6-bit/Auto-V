@@ -17,7 +17,6 @@
         .card{width:400px;max-width:95%;background:#111;padding:30px;border-radius:12px;border:1px solid #333;}
         h2{text-align:center;color:#eab308;margin-bottom:20px;}
         
-        /* ✅ Toggle Buttons */
         .role-selector{display:flex;gap:10px;margin-bottom:20px;background:#1a1a1a;border-radius:8px;padding:5px;}
         .role-btn{flex:1;padding:10px;border:none;border-radius:6px;background:transparent;color:#94a3b8;font-weight:bold;cursor:pointer;transition:all 0.3s;}
         .role-btn.active{background:#eab308;color:#000;}
@@ -42,7 +41,6 @@
 <div class="card">
     <h2>🚗 Create Account</h2>
 
-    <!-- ✅ Selector -->
     <div class="role-selector">
         <button type="button" class="role-btn active" data-type="individual">👤 Individual</button>
         <button type="button" class="role-btn" data-type="corporate">🏢 Corporate</button>
@@ -50,19 +48,19 @@
 
     <div class="error" id="errorMsg"></div>
 
-    <form id="signupForm">
-        <!-- ✅ SHARED FIELDS -->
+    <form id="signupForm" novalidate> <!-- ✅ novalidate completely disables browser validation errors -->
+        <!-- SHARED FIELDS -->
         <input type="email" id="email" placeholder="Email Address" required>
         <input type="password" id="password" placeholder="Password (min 6 chars)" required minlength="6">
         <input type="tel" id="phone" placeholder="Phone Number (Optional)">
 
-        <!-- ✅ INDIVIDUAL FIELDS -->
+        <!-- INDIVIDUAL FIELDS -->
         <div id="individual-fields" class="form-section active">
             <input type="text" id="full_name" placeholder="Full Name" required>
             <input type="text" id="id_passport" placeholder="ID / Passport Number" required>
         </div>
 
-        <!-- ✅ CORPORATE FIELDS -->
+        <!-- CORPORATE FIELDS -->
         <div id="corporate-fields" class="form-section">
             <input type="text" id="company_name" placeholder="Company Name" required>
             <input type="text" id="company_reg" placeholder="Company Registration Number" required>
@@ -75,67 +73,66 @@
 </div>
 
 <script>
-    // 🔥 Use the Single Source of Truth
     const { supabase } = window.autoV;
 
     let currentType = 'individual';
 
-    // Switch logic
     document.querySelectorAll('.role-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             currentType = this.dataset.type;
 
-            // Toggle visibility AND remove 'required' attribute from hidden fields to fix the browser error
             const indFields = document.getElementById('individual-fields');
             const corpFields = document.getElementById('corporate-fields');
 
             if (currentType === 'individual') {
                 indFields.classList.add('active');
                 corpFields.classList.remove('active');
-                // Remove required from corporate fields
-                document.getElementById('company_name').removeAttribute('required');
-                document.getElementById('company_reg').removeAttribute('required');
-                // Add required to individual fields
-                document.getElementById('full_name').setAttribute('required', '');
-                document.getElementById('id_passport').setAttribute('required', '');
             } else {
                 indFields.classList.remove('active');
                 corpFields.classList.add('active');
-                // Remove required from individual fields
-                document.getElementById('full_name').removeAttribute('required');
-                document.getElementById('id_passport').removeAttribute('required');
-                // Add required to corporate fields
-                document.getElementById('company_name').setAttribute('required', '');
-                document.getElementById('company_reg').setAttribute('required', '');
             }
         });
     });
 
-    // Signup Handler
     document.getElementById('signupForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
+        e.preventDefault(); // ✅ Prevents default browser validation entirely
 
-        const email = document.getElementById('email').value;
+        // ✅ MANUAL VALIDATION (Bypasses the hidden field bug)
+        const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
-        const phone = document.getElementById('phone').value;
         const errorDiv = document.getElementById('errorMsg');
-
         errorDiv.style.display = 'none';
 
-        let metadata = {
-            phone: phone || '',
-            client_type: currentType
-        };
+        if (!email || !password) {
+            errorDiv.textContent = "Please fill in Email and Password.";
+            errorDiv.style.display = 'block';
+            return;
+        }
 
-        // Collect specific fields based on selection
+        let metadata = { phone: document.getElementById('phone').value || '', client_type: currentType };
+
         if (currentType === 'individual') {
-            metadata.full_name = document.getElementById('full_name').value;
-            metadata.id_passport = document.getElementById('id_passport').value;
+            const name = document.getElementById('full_name').value.trim();
+            const id = document.getElementById('id_passport').value.trim();
+            if (!name || !id) {
+                errorDiv.textContent = "Please fill in Full Name and ID/Passport.";
+                errorDiv.style.display = 'block';
+                return;
+            }
+            metadata.full_name = name;
+            metadata.id_passport = id;
         } else {
-            metadata.company_name = document.getElementById('company_name').value;
-            metadata.company_reg = document.getElementById('company_reg').value;
+            const cName = document.getElementById('company_name').value.trim();
+            const cReg = document.getElementById('company_reg').value.trim();
+            if (!cName || !cReg) {
+                errorDiv.textContent = "Please fill in Company Name and Registration Number.";
+                errorDiv.style.display = 'block';
+                return;
+            }
+            metadata.company_name = cName;
+            metadata.company_reg = cReg;
         }
 
         const { data, error } = await supabase.auth.signUp({
@@ -151,15 +148,14 @@
         }
 
         if (data.user) {
-            // Store the chosen role in user_profiles immediately
             await supabase.from('user_profiles').upsert({
                 id: data.user.id,
                 email: email,
-                role: currentType, // Store individual/corporate as role for dashboard logic
+                role: currentType,
                 full_name: metadata.full_name || metadata.company_name || email.split('@')[0]
             }, { onConflict: 'id' });
 
-            alert('Account created successfully! Please check your email to verify.');
+            alert('Account created! Please check your email to verify.');
             window.location.href = 'login.html';
         }
     });
