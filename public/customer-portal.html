@@ -71,33 +71,13 @@
         <div id="step2" class="card step">
             <h2 id="step2Title">📝 Enter Details</h2>
             <form id="detailsForm">
-                <!-- STANDARD FIELDS FOR EVERYONE -->
                 <div class="form-group"><label>Registration Number</label><input type="text" id="regNumber" placeholder="KCA 123A" required></div>
                 <div class="form-group"><label>Make</label><input type="text" id="make" placeholder="Toyota" required></div>
                 <div class="form-group"><label>Model</label><input type="text" id="model" placeholder="Axio" required></div>
                 <div class="form-group"><label>Year</label><input type="number" id="year" placeholder="2020" required></div>
-                
-                <!-- EXTRA FIELD: Mileage (Only for Mileage Rate Report & Inspections) -->
-                <div class="form-group" id="mileageGroup" style="display:none;">
-                    <label>Mileage (km)</label>
-                    <input type="number" id="mileage" placeholder="50000">
-                </div>
-
-                <!-- EXTRA FIELD: Condition (Only for Valuation & Inspection) -->
-                <div class="form-group" id="conditionGroup" style="display:none;">
-                    <label>Condition</label>
-                    <select id="condition">
-                        <option value="Excellent">Excellent</option>
-                        <option value="Good" selected>Good</option>
-                        <option value="Fair">Fair</option>
-                        <option value="Poor">Poor</option>
-                    </select>
-                </div>
-
-                <div class="nav-buttons">
-                    <button type="button" class="btn btn-secondary" onclick="showStep(1)">← Back</button>
-                    <button type="submit" class="btn btn-primary">Pay Now →</button>
-                </div>
+                <div class="form-group" id="mileageGroup" style="display:none;"><label>Mileage (km)</label><input type="number" id="mileage" placeholder="50000"></div>
+                <div class="form-group" id="conditionGroup" style="display:none;"><label>Condition</label><select id="condition"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select></div>
+                <div class="nav-buttons"><button type="button" class="btn btn-secondary" onclick="showStep(1)">← Back</button><button type="submit" class="btn btn-primary">Pay Now →</button></div>
             </form>
         </div>
 
@@ -124,23 +104,23 @@
 
     <script>
         const client = window.autoV.supabase;
-        
-        // State
         let selectedService = null;
         let serviceFee = 0;
         let vehicleDetails = {};
+        let feesChannel = null;
 
-        const SERVICE_FEES = {
-            'instant-value-check': 500,
-            'mileage-rate': 1500,
-            'valuation': 2500,
-            'inspection': 3500,
-            'assessment': 3000,
-            'fleet': 4000
+        // ─── Dynamic Fees from Supabase ──────────────────────────────
+        const SERVICE_KEYS = {
+            'instant-value-check': 'instant',
+            'mileage-rate': 'mileage',
+            'valuation': 'valuation',
+            'inspection': 'inspection',
+            'assessment': 'assessment',
+            'fleet': 'fleet'
         };
 
         const SERVICE_PAGES = {
-            'instant-value-check': 'instant-value.html', /* ✅ Instant Redirect */
+            'instant-value-check': 'instant-value.html',
             'mileage-rate': 'mileage.html',
             'valuation': 'valuation.html',
             'inspection': 'inspection.html',
@@ -148,10 +128,29 @@
             'fleet': 'fleet.html'
         };
 
+        async function loadFees() {
+            const { data, error } = await client.from('system_fees').select('*');
+            if (error) return;
+            
+            data.forEach(row => {
+                const key = SERVICE_KEYS[row.service_type];
+                if (key) SERVICE_FEES[row.service_type] = row.amount;
+            });
+            renderServices();
+        }
+
+        function subscribeToFees() {
+            if (feesChannel) client.removeChannel(feesChannel);
+            feesChannel = client.channel('system_fees_changes')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'system_fees' }, () => loadFees())
+                .subscribe();
+        }
+
+        const SERVICE_FEES = {};
+
         function showStep(step) {
             ['step1', 'step2', 'step3'].forEach(id => document.getElementById(id).classList.remove('active'));
             ['step1Prog', 'step2Prog', 'step3Prog'].forEach(id => document.getElementById(id).classList.remove('active', 'completed'));
-            
             document.getElementById(`step${step}`).classList.add('active');
             for(let i=1; i<step; i++) document.getElementById(`step${i}Prog`).classList.add('completed');
             document.getElementById(`step${step}Prog`).classList.add('active');
@@ -178,27 +177,16 @@
 
         function confirmService() {
             if (!selectedService) return alert('Please select a service.');
-
-            // ✅ FOR INSTANT VALUE CHECK: Redirect immediately
             if (selectedService === 'instant-value-check') {
                 window.location.href = SERVICE_PAGES[selectedService];
                 return;
             }
-            
-            // SHOW/HIDE EXTRA FIELDS BASED ON SERVICE TYPE
             const mileageGroup = document.getElementById('mileageGroup');
             const conditionGroup = document.getElementById('conditionGroup');
-
             mileageGroup.style.display = 'none';
             conditionGroup.style.display = 'none';
-
-            if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
-                mileageGroup.style.display = 'block';
-            }
-            if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
-                conditionGroup.style.display = 'block';
-            }
-
+            if (selectedService === 'mileage-rate' || selectedService === 'inspection') mileageGroup.style.display = 'block';
+            if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') conditionGroup.style.display = 'block';
             document.getElementById('step2Title').textContent = `📝 ${formatName(selectedService)} Details`;
             showStep(2);
         }
@@ -213,17 +201,14 @@
                 mileage: document.getElementById('mileage').value || 0,
                 condition: document.getElementById('condition').value || 'Good'
             };
-            
             document.getElementById('summaryService').textContent = formatName(selectedService);
             document.getElementById('summaryVehicle').textContent = `${vehicleDetails.make} ${vehicleDetails.model} (${vehicleDetails.year})`;
             document.getElementById('summaryAmount').textContent = `KES ${serviceFee.toLocaleString()}`;
             showStep(3);
         };
 
-        // Step 3: Payment
         document.getElementById('paymentForm').onsubmit = async function(e) {
             e.preventDefault();
-            
             const phone = document.getElementById('mpesaPhone').value.trim();
             const btn = document.getElementById('payBtn');
             const statusBox = document.getElementById('statusMessage');
@@ -234,11 +219,7 @@
 
             try {
                 const { data: { user } } = await client.auth.getUser();
-                if (!user) {
-                    alert('Please login again.');
-                    window.location.href = 'login.html';
-                    return;
-                }
+                if (!user) { alert('Please login again.'); window.location.href = 'login.html'; return; }
 
                 const requestPayload = {
                     user_id: user.id,
@@ -253,42 +234,24 @@
                     status: 'awaiting_payment'
                 };
 
-                if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
-                    requestPayload.vehicle_mileage = parseInt(vehicleDetails.mileage);
-                }
-                if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
-                    requestPayload.vehicle_condition = vehicleDetails.condition;
-                }
+                if (selectedService === 'mileage-rate' || selectedService === 'inspection') requestPayload.vehicle_mileage = parseInt(vehicleDetails.mileage);
+                if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') requestPayload.vehicle_condition = vehicleDetails.condition;
 
-                const { data: request, error } = await client
-                    .from('service_requests')
-                    .insert(requestPayload)
-                    .select()
-                    .single();
-
+                const { data: request, error } = await client.from('service_requests').insert(requestPayload).select().single();
                 if (error) throw error;
 
-                // Simulate successful payment (In production, call your M-Pesa API here)
                 setTimeout(async () => {
-                    await client
-                        .from('service_requests')
-                        .update({ payment_status: 'paid', status: 'completed' })
-                        .eq('id', request.id);
-
+                    await client.from('service_requests').update({ payment_status: 'paid', status: 'completed' }).eq('id', request.id);
                     statusBox.className = 'status-box status-success';
                     statusBox.textContent = '✅ Payment successful! Redirecting to service...';
                     statusBox.style.display = 'block';
-
                     btn.textContent = '✅ Completed';
                     btn.disabled = true;
-
                     setTimeout(() => {
                         const page = SERVICE_PAGES[selectedService] || 'valuation.html';
                         window.location.href = page;
                     }, 2000);
-
                 }, 3000);
-
             } catch (err) {
                 statusBox.className = 'status-box status-error';
                 statusBox.textContent = '❌ Error: ' + err.message;
@@ -298,39 +261,25 @@
             }
         };
 
-        // Helpers
-        function formatName(key) {
-            return key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        }
+        function formatName(key) { return key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); }
+        function getIcon(key) { const icons = { 'instant-value-check': '💡', 'mileage-rate': '📏', 'valuation': '💰', 'inspection': '🔍', 'assessment': '⚠️', 'fleet': '🚛' }; return icons[key] || '📄'; }
 
-        function getIcon(key) {
-            const icons = { 'instant-value-check': '💡', 'mileage-rate': '📏', 'valuation': '💰', 'inspection': '🔍', 'assessment': '⚠️', 'fleet': '🚛' };
-            return icons[key] || '📄';
-        }
-
-        // Initialize
         async function init() {
             const user = await window.autoV.requireAuth();
             if (!user) return;
-
             const role = await window.autoV.getUserRole(user.id);
-            
-            // ⚡ SEPARATE ACCESS: Use strict role filtering
             const ALLOWED_SERVICES = {
                 'individual': ['instant-value-check', 'mileage-rate'],
                 'corporate': ['instant-value-check', 'mileage-rate'],
                 'valuer': ['valuation', 'inspection', 'assessment', 'fleet']
             };
-
             const allowed = ALLOWED_SERVICES[role] || [];
-            Object.keys(SERVICE_FEES).forEach(key => {
-                if (!allowed.includes(key)) delete SERVICE_FEES[key];
-            });
-
+            Object.keys(SERVICE_FEES).forEach(key => { if (!allowed.includes(key)) delete SERVICE_FEES[key]; });
+            await loadFees();
+            subscribeToFees();
             renderServices();
             showStep(1);
         }
-
         init();
     </script>
 </body>
