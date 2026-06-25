@@ -450,7 +450,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V ADMIN DASHBOARD - SERVICES & PRICE MANAGEMENT
+        // AUTO-V ADMIN DASHBOARD - FULLY FIXED (NO JOINS)
         // ============================================================
         
         (function() {
@@ -890,15 +890,43 @@
                     }
                 };
                 
-                // ─── LOAD REQUESTS ────────────────────────────────────
+                // ─── LOAD REQUESTS (FIXED: NO JOIN) ──────────────────
                 async function loadRequests() {
                     try {
-                        const { data, error } = await supabase.from('service_requests').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false });
-                        if (error) throw error;
-                        allRequests = data || [];
+                        // 1. Fetch requests only (NO JOIN)
+                        const { data: requests, error: reqError } = await supabase
+                            .from('service_requests')
+                            .select('*')
+                            .order('created_at', { ascending: false });
+                        
+                        if (reqError) throw reqError;
+                        
+                        // 2. Fetch user profiles separately
+                        const userIds = [...new Set(requests.map(r => r.user_id).filter(Boolean))];
+                        let profiles = [];
+                        if (userIds.length > 0) {
+                            const { data: profData, error: profError } = await supabase
+                                .from('user_profiles')
+                                .select('*')
+                                .in('id', userIds);
+                            if (profError) throw profError;
+                            profiles = profData || [];
+                        }
+                        
+                        // 3. Merge manually in JavaScript
+                        const profileMap = {};
+                        profiles.forEach(p => profileMap[p.id] = p);
+                        
+                        allRequests = requests.map(r => ({
+                            ...r,
+                            user_profiles: profileMap[r.user_id] || {}
+                        }));
+                        
                         renderRequests(allRequests);
                         document.getElementById('requestsCount').textContent = `${allRequests.length} requests`;
-                    } catch (err) { console.error('Requests error:', err); }
+                    } catch (err) {
+                        console.error('Requests error:', err);
+                    }
                 }
                 
                 function renderRequests(requests) {
@@ -953,6 +981,78 @@
                         showToast('✅ Request deleted', 'success');
                         loadRequests();
                     } catch (err) { showToast('Error: ' + err.message, 'error'); }
+                };
+                
+                // ─── LOAD PAYMENTS (FIXED: NO JOIN) ──────────────────
+                async function loadPayments() {
+                    try {
+                        // 1. Fetch payments only (NO JOIN)
+                        const { data: payments, error: payError } = await supabase
+                            .from('payments')
+                            .select('*')
+                            .order('created_at', { ascending: false });
+                        
+                        if (payError) throw payError;
+                        
+                        // 2. Fetch user profiles separately
+                        const userIds = [...new Set(payments.map(p => p.user_id).filter(Boolean))];
+                        let profiles = [];
+                        if (userIds.length > 0) {
+                            const { data: profData, error: profError } = await supabase
+                                .from('user_profiles')
+                                .select('*')
+                                .in('id', userIds);
+                            if (profError) throw profError;
+                            profiles = profData || [];
+                        }
+                        
+                        // 3. Merge manually in JavaScript
+                        const profileMap = {};
+                        profiles.forEach(p => profileMap[p.id] = p);
+                        
+                        allPayments = payments.map(p => ({
+                            ...p,
+                            user_profiles: profileMap[p.user_id] || {}
+                        }));
+                        
+                        renderPayments(allPayments);
+                        document.getElementById('paymentsCount').textContent = `${allPayments.length} payments`;
+                    } catch (err) {
+                        console.error('Payments error:', err);
+                    }
+                }
+                
+                function renderPayments(payments) {
+                    const tbody = document.getElementById('paymentsTableBody');
+                    if (!payments || payments.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No payments found</td></tr>`;
+                        return;
+                    }
+                    tbody.innerHTML = payments.slice(0, 50).map(p => {
+                        const status = p.status || 'pending';
+                        const badge = getStatusBadge(status);
+                        const user = p.user_profiles?.full_name || p.user_profiles?.email || 'Unknown';
+                        return `<tr>
+                            <td>${user}</td>
+                            <td style="font-weight:600;color:#22c55e;">${formatKES(p.amount || 0)}</td>
+                            <td style="color:#94a3b8;">${p.payment_method || '—'}</td>
+                            <td><span class="badge badge-${badge}">${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
+                            <td style="font-size:12px;color:#64748b;">${formatDate(p.created_at)}</td>
+                            <td style="font-size:12px;color:#64748b;">${p.transaction_id || p.mpesa_code || '—'}</td>
+                        </tr>`;
+                    }).join('');
+                }
+                
+                window.filterPayments = function() {
+                    const search = document.getElementById('paymentSearch').value.toLowerCase();
+                    const filter = document.getElementById('paymentFilter').value;
+                    let filtered = allPayments;
+                    if (search) filtered = filtered.filter(p => 
+                        (p.user_profiles?.full_name || '').toLowerCase().includes(search) ||
+                        (p.user_profiles?.email || '').toLowerCase().includes(search)
+                    );
+                    if (filter !== 'all') filtered = filtered.filter(p => p.status === filter);
+                    renderPayments(filtered);
                 };
                 
                 // ─── LOAD USERS ──────────────────────────────────────
@@ -1016,50 +1116,6 @@
                         showToast('✅ User deleted', 'success');
                         loadUsers();
                     } catch (err) { showToast('Error: ' + err.message, 'error'); }
-                };
-                
-                // ─── LOAD PAYMENTS ──────────────────────────────────
-                async function loadPayments() {
-                    try {
-                        const { data, error } = await supabase.from('payments').select('*, user_profiles(full_name, email)').order('created_at', { ascending: false });
-                        if (error) throw error;
-                        allPayments = data || [];
-                        renderPayments(allPayments);
-                        document.getElementById('paymentsCount').textContent = `${allPayments.length} payments`;
-                    } catch (err) { console.error('Payments error:', err); }
-                }
-                
-                function renderPayments(payments) {
-                    const tbody = document.getElementById('paymentsTableBody');
-                    if (!payments || payments.length === 0) {
-                        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#64748b;">No payments found</td></tr>`;
-                        return;
-                    }
-                    tbody.innerHTML = payments.slice(0, 50).map(p => {
-                        const status = p.status || 'pending';
-                        const badge = getStatusBadge(status);
-                        const user = p.user_profiles?.full_name || p.user_profiles?.email || 'Unknown';
-                        return `<tr>
-                            <td>${user}</td>
-                            <td style="font-weight:600;color:#22c55e;">${formatKES(p.amount || 0)}</td>
-                            <td style="color:#94a3b8;">${p.payment_method || '—'}</td>
-                            <td><span class="badge badge-${badge}">${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
-                            <td style="font-size:12px;color:#64748b;">${formatDate(p.created_at)}</td>
-                            <td style="font-size:12px;color:#64748b;">${p.transaction_id || p.mpesa_code || '—'}</td>
-                        </tr>`;
-                    }).join('');
-                }
-                
-                window.filterPayments = function() {
-                    const search = document.getElementById('paymentSearch').value.toLowerCase();
-                    const filter = document.getElementById('paymentFilter').value;
-                    let filtered = allPayments;
-                    if (search) filtered = filtered.filter(p => 
-                        (p.user_profiles?.full_name || '').toLowerCase().includes(search) ||
-                        (p.user_profiles?.email || '').toLowerCase().includes(search)
-                    );
-                    if (filter !== 'all') filtered = filtered.filter(p => p.status === filter);
-                    renderPayments(filtered);
                 };
                 
                 // ─── MODAL FUNCTIONS ──────────────────────────────────
