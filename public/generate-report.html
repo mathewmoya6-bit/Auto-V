@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V | Instant Report & Certificate</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0a0a0a; color: white; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #333; }
+        .logo { font-size: 28px; font-weight: bold; color: #eab308; }
+        .logo span { font-size: 12px; color: #888; display: block; }
+        .back-btn { background: #333; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; }
+        
+        .card { background: #111; padding: 25px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
+        h2 { color: #eab308; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        
+        button { background: #eab308; color: black; padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s; }
+        button:hover { background: #ca8a04; }
+        
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; border-top-color: #eab308; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .error { color: #ef4444; background: #7f1d1d; padding: 10px; border-radius: 6px; margin-bottom: 15px; display: none; }
+        .success { color: #22c55e; background: #14532d; padding: 10px; border-radius: 6px; margin-bottom: 15px; display: none; }
+
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #1a1a1a; padding: 15px; border-radius: 12px; text-align: center; }
+        .stat-number { font-size: 24px; font-weight: bold; color: #eab308; }
+        .stat-label { font-size: 12px; color: #888; margin-top: 5px; }
+
+        /* Certificate */
+        .certificate { background: white; color: black; padding: 40px; margin-top: 20px; border-radius: 12px; display: none; font-family: 'Times New Roman', serif; position: relative; }
+        .certificate-header { text-align: center; border-bottom: 2px solid #eab308; padding-bottom: 15px; margin-bottom: 15px; }
+        .cert-title { font-size: 22px; font-weight: bold; text-transform: uppercase; color: #333; letter-spacing: 2px; }
+        .cert-body { padding: 15px 0; }
+        .cert-field { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .cert-label { font-weight: bold; color: #333; width: 40%; }
+        .cert-value { color: #555; width: 60%; }
+        .qr-section { text-align: center; margin: 15px 0; }
+        .signature-box { width: 45%; text-align: center; margin-top: 20px; }
+        .signature-line { border-top: 1px solid #333; width: 100%; margin-top: 30px; padding-top: 5px; }
+        .stamp { width: 70px; height: 70px; border: 2px solid #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; color: #dc2626; font-size: 10px; font-weight: bold; text-align: center; }
+        
+        .action-buttons { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+        .btn-pdf { background: #dc2626; color: white; }
+        .btn-pdf:hover { background: #b91c1c; }
+        
+        @media print {
+            body { background: white; padding: 0; margin: 0; }
+            .header, .card, .back-btn, .action-buttons, button { display: none !important; }
+            .certificate { display: block !important; margin: 0; padding: 20px; box-shadow: none; border-radius: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="logo">
+            📊 AUTO-V Generator
+            <span>Instant Reports & Certificates</span>
+        </div>
+        <a href="dashboard.html" class="back-btn">← Dashboard</a>
+    </div>
+
+    <div class="error" id="errorMsg"></div>
+    <div class="success" id="successMsg"></div>
+
+    <!-- LOADING & OPTIONS -->
+    <div class="card" id="configCard">
+        <h2>⚡ Generate from Last Calculation</h2>
+        <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:center;">
+            <div style="flex:1; min-width:150px;">
+                <label style="display:block; margin-bottom:8px; color:#ccc;">Select Calculation Type:</label>
+                <select id="calcType" style="width:100%; padding:10px; background:#1a1a1a; color:white; border:1px solid #333; border-radius:8px;">
+                    <option value="valuation">💰 Valuation</option>
+                    <option value="inspection">🔍 Inspection</option>
+                    <option value="assessment">📈 Assessment</option>
+                    <option value="mileage">📏 Mileage Rate</option>
+                </select>
+            </div>
+            <button onclick="generateFromLastCalculation()" style="margin-top: 22px;">➡️ Generate Report & Certificate</button>
+        </div>
+    </div>
+
+    <!-- INSTANT REPORT STATS -->
+    <div id="reportSection" style="display:none;">
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><div class="stat-number" id="calcId">-</div><div class="stat-label">Calculation ID</div></div>
+            <div class="stat-card"><div class="stat-number" id="resultValue">-</div><div class="stat-label">Result / Value</div></div>
+            <div class="stat-card"><div class="stat-number" id="calcDate">-</div><div class="stat-label">Date Generated</div></div>
+            <div class="stat-card"><div class="stat-number" id="vehicleName">-</div><div class="stat-label">Vehicle</div></div>
+        </div>
+
+        <!-- Instant Certificate -->
+        <div id="certificate" class="certificate">
+            <div class="certificate-header">
+                <h1 style="color:#eab308; font-size:28px; margin:0;">AUTO-V</h1>
+                <p style="margin:5px 0; color:#666; font-size:12px;">Vehicle Assessment & Verification Authority</p>
+                <div class="cert-title" id="certTitle">CERTIFICATE OF VALUATION</div>
+            </div>
+            
+            <div class="cert-body">
+                <div class="cert-field"><div class="cert-label">Reference ID:</div><div class="cert-value" id="certRef">-</div></div>
+                <div class="cert-field"><div class="cert-label">Calculation Type:</div><div class="cert-value" id="certType">-</div></div>
+                <div class="cert-field"><div class="cert-label">Issue Date:</div><div class="cert-value" id="certDate">-</div></div>
+                <div class="cert-field"><div class="cert-label">Vehicle:</div><div class="cert-value" id="certVehicle">-</div></div>
+                <div class="cert-field"><div class="cert-label">Final Result:</div><div class="cert-value" id="certResult" style="color:#eab308; font-weight:bold; font-size:18px;">-</div></div>
+                <div class="cert-field"><div class="cert-label">Assessment Status:</div><div class="cert-value" id="certStatus">Approved</div></div>
+            </div>
+            
+            <div class="qr-section">
+                <canvas id="qrCanvas"></canvas>
+                <p style="font-size: 11px; margin-top: 10px;">Scan to verify</p>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; margin-top:20px; border-top:1px solid #ddd; padding-top:20px;">
+                <div class="signature-box">
+                    <div class="stamp"><div>AUTHORIZED</div><div>SEAL</div><div>AUTO-V</div></div>
+                    <p style="font-size:11px; color:#666; margin-top:5px;">Digital Stamp</p>
+                </div>
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <p style="font-size:11px; color:#666;">Issued by AUTO-V System</p>
+                </div>
+            </div>
+            <div style="text-align:center; font-size:9px; color:#999; margin-top:20px; border-top:1px solid #eee; padding-top:15px;">
+                © 2024 AUTO-V Kenya Limited. Electronically generated certificate.
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button onclick="downloadPDFCertificate()" class="btn-pdf">📄 Download PDF</button>
+            <button onclick="window.print()">🖨️ Print</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================
+// SUPABASE SETUP
+// ============================================
+const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+
+// ============================================
+// AUTH & URL PARAMETERS
+// ============================================
+async function checkAuth() {
+    const { data: { user }, error } = await sb.auth.getUser();
+    if (error || !user) {
+        window.location.href = "login.html";
+        return false;
+    }
+    currentUser = user;
+    return true;
+}
+
+// ============================================
+// THE CORE GENERATOR
+// ============================================
+async function generateFromLastCalculation() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Processing...';
+
+    try {
+        const calcType = document.getElementById('calcType').value;
+        let tableName, dateColumn, valueColumn, vehicleIdColumn, resultLabel;
+
+        // Map selection to database table and columns
+        if (calcType === 'valuation') {
+            tableName = 'valuations';
+            dateColumn = 'valuation_date';
+            valueColumn = 'valuation_amount';
+            vehicleIdColumn = 'vehicle_id';
+            resultLabel = 'Valuation Amount';
+        } else if (calcType === 'inspection') {
+            tableName = 'inspections';
+            dateColumn = 'inspection_date';
+            valueColumn = 'overall_score';
+            vehicleIdColumn = 'vehicle_id';
+            resultLabel = 'Overall Score';
+        } else if (calcType === 'assessment') {
+            tableName = 'inspections'; // Assuming assessments are in inspections
+            dateColumn = 'created_at';
+            valueColumn = 'final_verdict';
+            vehicleIdColumn = 'vehicle_id';
+            resultLabel = 'Assessment Verdict';
+        } else if (calcType === 'mileage') {
+            tableName = 'vehicles'; // Mileage is stored in vehicles table
+            dateColumn = 'updated_at';
+            valueColumn = 'mileage';
+            vehicleIdColumn = 'id';
+            resultLabel = 'Current Mileage (km)';
+        }
+
+        // Fetch the LATEST record for this user of this specific type
+        const query = sb.from(tableName)
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order(dateColumn, { ascending: false })
+            .limit(1);
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            document.getElementById('errorMsg').innerHTML = `No recent ${calcType} found. Please complete a calculation first.`;
+            document.getElementById('errorMsg').style.display = 'block';
+            btn.disabled = false; btn.innerHTML = '➡️ Generate Report & Certificate';
+            return;
+        }
+
+        const latestRecord = data[0];
+        
+        // Fetch Vehicle Details if we have an ID
+        let vehicleData = { registration: 'N/A', make: 'N/A', model: 'N/A' };
+        if (latestRecord[vehicleIdColumn]) {
+            const { data: vData } = await sb.from('vehicles')
+                .select('registration_number, make, model')
+                .eq('id', latestRecord[vehicleIdColumn])
+                .single();
+            if (vData) vehicleData = vData;
+        }
+
+        // ---- 1. UPDATE REPORT STATS ----
+        document.getElementById('calcId').innerText = latestRecord.id.slice(0, 8) + '...';
+        
+        let displayValue = latestRecord[valueColumn];
+        if (calcType === 'valuation') displayValue = `KES ${Number(displayValue).toLocaleString()}`;
+        else if (calcType === 'mileage') displayValue = `${Number(displayValue).toLocaleString()} km`;
+        document.getElementById('resultValue').innerText = displayValue;
+        
+        document.getElementById('calcDate').innerText = new Date(latestRecord[dateColumn]).toLocaleDateString();
+        document.getElementById('vehicleName').innerText = `${vehicleData.registration_number || 'N/A'}`;
+
+        // ---- 2. GENERATE CERTIFICATE ----
+        const certRef = `AUTOV-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+        
+        let certTitle = `CERTIFICATE OF ${calcType.toUpperCase()}`;
+        if (calcType === 'valuation') certTitle = 'CERTIFICATE OF VALUATION';
+        else if (calcType === 'inspection') certTitle = 'CERTIFICATE OF INSPECTION';
+        else if (calcType === 'assessment') certTitle = 'OFFICIAL ASSESSMENT REPORT';
+        else if (calcType === 'mileage') certTitle = 'MILEAGE VERIFICATION CERTIFICATE';
+
+        document.getElementById('certTitle').innerText = certTitle;
+        document.getElementById('certRef').innerText = certRef;
+        document.getElementById('certType').innerText = calcType.toUpperCase();
+        document.getElementById('certDate').innerText = new Date().toLocaleDateString();
+        document.getElementById('certVehicle').innerText = `${vehicleData.make || 'N/A'} ${vehicleData.model || 'N/A'} (${vehicleData.registration_number || 'N/A'})`;
+        document.getElementById('certResult').innerText = displayValue;
+
+        // Generate QR Code
+        const verifyUrl = `https://autov.vercel.app/verify?ref=${certRef}`;
+        await QRCode.toCanvas(document.getElementById('qrCanvas'), verifyUrl, { width: 120, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+
+        // ---- 3. SAVE THIS GENERATION TO DB ----
+        await sb.from('certificates').insert([{
+            user_id: currentUser.id,
+            vehicle_id: latestRecord[vehicleIdColumn],
+            certificate_number: certRef,
+            certificate_type: calcType,
+            issued_at: new Date().toISOString(),
+            status: 'active'
+        }]);
+
+        // ---- 4. SHOW RESULTS ----
+        document.getElementById('reportSection').style.display = 'block';
+        document.getElementById('configCard').style.display = 'none';
+        document.getElementById('successMsg').innerHTML = `✅ ${calcType} Report & Certificate generated from your latest calculation!`;
+        document.getElementById('successMsg').style.display = 'block';
+        document.getElementById('certificate').scrollIntoView({ behavior: 'smooth' });
+
+    } catch (err) {
+        document.getElementById('errorMsg').innerHTML = 'Error: ' + err.message;
+        document.getElementById('errorMsg').style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '➡️ Generate Report & Certificate';
+    }
+}
+
+// ============================================
+// DOWNLOAD PDF
+// ============================================
+async function downloadPDFCertificate() {
+    const { jsPDF } = window.jspdf;
+    const certificate = document.getElementById('certificate');
+    const btn = event.target;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>...';
+
+    try {
+        const canvas = await html2canvas(certificate, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+        const imgWidth = 210; const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+        pdf.save(`AUTO-V_Certificate_${document.getElementById('certRef').innerText}.pdf`);
+    } catch (err) {
+        alert('PDF Error: ' + err.message);
+    } finally {
+        btn.disabled = false; btn.innerHTML = '📄 Download PDF';
+    }
+}
+
+// ============================================
+// INIT
+// ============================================
+document.addEventListener('DOMContentLoaded', async () => {
+    const isAuth = await checkAuth();
+    if (!isAuth) return;
+});
+</script>
+
+</body>
+</html>
