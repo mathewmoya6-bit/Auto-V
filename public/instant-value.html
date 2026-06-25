@@ -203,11 +203,20 @@
         <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
         
         <h1>💡 Instant Value Check</h1>
-        <p class="subtitle">AI-powered market estimate for Cars & Motorcycles.</p>
+        <p class="subtitle">AI-powered market estimate for Cars, Bikes, and Tricycles.</p>
 
         <form id="instantForm">
             <div class="form-grid">
                 <!-- 1. Vehicle Identification -->
+                <div class="form-group full-width">
+                    <label>Vehicle Type</label>
+                    <select id="vehicleType">
+                        <option value="Car">🚗 Car</option>
+                        <option value="Bike">🏍️ Motorcycle</option>
+                        <option value="Tricycle">🛺 Tricycle</option>
+                    </select>
+                </div>
+
                 <div class="form-group">
                     <label>Make</label>
                     <select id="make">
@@ -222,17 +231,37 @@
                             <option value="Mitsubishi">Mitsubishi</option>
                             <option value="Subaru">Subaru</option>
                             <option value="Ford">Ford</option>
+                            <option value="Chevrolet">Chevrolet</option>
+                            <option value="Jeep">Jeep</option>
+                            <option value="Land Rover">Land Rover</option>
+                            <option value="Hyundai">Hyundai</option>
+                            <option value="Kia">Kia</option>
+                            <option value="Peugeot">Peugeot</option>
+                            <option value="Suzuki Car">Suzuki</option>
+                            <option value="Isuzu">Isuzu</option>
+                            <option value="Daihatsu">Daihatsu</option>
                         </optgroup>
-                        <optgroup label="Bikes / Motorcycles">
+                        <optgroup label="Bikes">
                             <option value="Honda Bike">Honda</option>
                             <option value="Yamaha">Yamaha</option>
-                            <option value="Suzuki">Suzuki</option>
+                            <option value="Suzuki Bike">Suzuki</option>
                             <option value="Kawasaki">Kawasaki</option>
                             <option value="TVS">TVS</option>
                             <option value="Bajaj">Bajaj</option>
                             <option value="Hero">Hero</option>
                             <option value="Royal Enfield">Royal Enfield</option>
                             <option value="KTM">KTM</option>
+                            <option value="Aprilia">Aprilia</option>
+                            <option value="BMW Motorrad">BMW Motorrad</option>
+                            <option value="Ducati">Ducati</option>
+                            <option value="Triumph">Triumph</option>
+                            <option value="Harley Davidson">Harley Davidson</option>
+                            <option value="MV Agusta">MV Agusta</option>
+                        </optgroup>
+                        <optgroup label="Tricycles">
+                            <option value="Piaggio">Piaggio</option>
+                            <option value="TVS Tricycle">TVS</option>
+                            <option value="Bajaj Tricycle">Bajaj</option>
                         </optgroup>
                         <option value="Other">Other</option>
                     </select>
@@ -240,7 +269,9 @@
 
                 <div class="form-group">
                     <label>Model</label>
-                    <input type="text" id="model" placeholder="Axio, CBR, Ninja..." required>
+                    <select id="model">
+                        <option value="">-- Select Model --</option>
+                    </select>
                 </div>
 
                 <div class="form-group">
@@ -375,15 +406,226 @@
 
         const client = window.autoV.supabase;
         const SERVICE_FEE = 500;
-        const API_BASE = 'https://auto-v.onrender.com'; // Change to your Python backend URL
+        const API_BASE = 'https://auto-v.onrender.com'; // Change to your Flask server URL
+
+        // ─── ✅ FULL MAKE TO MODEL DATABASE ──────────────────────────
+        const MODEL_MAP = {
+            // ==========================
+            // CARS
+            // ==========================
+            'Toyota': [
+                'Corolla', 'Axio', 'Fielder', 'Voxy', 'Noah', 'Hiace', 'Land Cruiser', 
+                'Land Cruiser Prado', 'Hilux', 'Rav4', 'Harrier', 'C-HR', 'Yaris', 
+                'Sienta', 'Alphard', 'Vellfire', 'Camry', 'Crown', 'Mark X', 
+                'Premio', 'Allion', 'Estima', 'Granvia', 'Tank', 'Rush', 'Fortuner'
+            ],
+            'Nissan': [
+                'X-Trail', 'Patrol', 'Navara', 'Note', 'Juke', 'Qashqai', 
+                'Pathfinder', 'Armada', 'Murano', '370Z', 'GTR', 'Skyline', 
+                'Terrano', 'Dualis', 'Serena'
+            ],
+            'BMW': [
+                'X5', 'X3', 'X1', 'X7', '3 Series', '5 Series', '7 Series', 
+                '1 Series', 'M3', 'M5', 'X6', 'Z4', 'X4', '4 Series', '6 Series'
+            ],
+            'Mercedes': [
+                'C-Class', 'E-Class', 'G-Class', 'GLC', 'GLE', 'S-Class', 
+                'A-Class', 'B-Class', 'CLA', 'GLA', 'GLB', 'V-Class', 'Sprinter'
+            ],
+            'Honda': [
+                'CR-V', 'Accord', 'Fit', 'Civic', 'HR-V', 'City', 
+                'Odyssey', 'Stepwagon', 'Freed', 'Vezel', 'Pilot'
+            ],
+            'Mazda': [
+                'CX-5', 'Demio', 'Atenza', 'CX-3', 'CX-9', 'BT-50', 
+                'Mazda 3', 'Mazda 6', 'RX-8'
+            ],
+            'Volkswagen': [
+                'Golf', 'Polo', 'Tiguan', 'Passat', 'Jetta', 'Touareg', 
+                'Amarok', 'Beetle', 'CC', 'Eos'
+            ],
+            'Mitsubishi': [
+                'Pajero', 'Lancer', 'ASX', 'Outlander', 'Eclipse Cross', 
+                'Triton', 'Galant', 'L200', 'Montero'
+            ],
+            'Subaru': [
+                'Forester', 'Outback', 'Legacy', 'Impreza', 'WRX', 
+                'XV', 'Tribeca', 'Levorg'
+            ],
+            'Ford': [
+                'Ranger', 'Mustang', 'Everest', 'Focus', 'Fiesta', 
+                'Fusion', 'Edge', 'Explorer', 'Transit', 'Kuga', 'Raptor'
+            ],
+            'Chevrolet': [
+                'Silverado', 'Tahoe', 'Suburban', 'Traverse', 'Equinox', 
+                'Malibu', 'Impala', 'Camaro', 'Corvette'
+            ],
+            'Jeep': [
+                'Wrangler', 'Grand Cherokee', 'Cherokee', 'Compass', 
+                'Renegade', 'Gladiator'
+            ],
+            'Land Rover': [
+                'Range Rover', 'Range Rover Sport', 'Discovery', 'Defender', 
+                'Discovery Sport', 'Range Rover Evoque'
+            ],
+            'Hyundai': [
+                'Santa Fe', 'Tucson', 'Creta', 'Palisade', 'Elantra', 
+                'Sonata', 'Accent', 'Kona', 'Venue'
+            ],
+            'Kia': [
+                'Sportage', 'Sorento', 'Telluride', 'Optima', 'Forte', 
+                'Soul', 'Rio', 'Stinger', 'Carnival'
+            ],
+            'Peugeot': [
+                '3008', '5008', '208', '308', '508', '2008', 
+                '4007', 'Partner', 'Expert'
+            ],
+            'Suzuki Car': [
+                'Swift', 'Vitara', 'Jimny', 'SX4', 'Grand Vitara', 
+                'Celerio', 'Alto', 'Across'
+            ],
+            'Isuzu': [
+                'D-Max', 'KBX', 'Trooper', 'Bighorn', 'Elf', 'N-Series'
+            ],
+            'Daihatsu': [
+                'Terios', 'Be-go', 'Sirion', 'Mira', 'Boon', 'Cuore', 'Taft'
+            ],
+
+            // ==========================
+            // BIKES / MOTORCYCLES
+            // ==========================
+            'Honda Bike': [
+                'CBR', 'CB500', 'Africa Twin', 'CBX', 'CRF', 'XR', 
+                'Shadow', 'Rebel', 'NC750', 'Gold Wing'
+            ],
+            'Yamaha': [
+                'R1', 'R6', 'MT-07', 'Tenere', 'YZF', 'FZ', 'Tracer', 
+                'XSR', 'V-Max', 'Bolt', 'NMAX', 'TMAX'
+            ],
+            'Suzuki Bike': [
+                'GSX-R', 'V-Strom', 'Hayabusa', 'GSX', 'DL', 
+                'Burgman', 'Intruder', 'Svartpilen'
+            ],
+            'Kawasaki': [
+                'Ninja', 'Z900', 'Versys', 'KLR', 'Z', 'Vulcan', 
+                'Concours', 'KX'
+            ],
+            'TVS': [
+                'Apache', 'Sport', 'Star', 'Victor', 'Phoenix', 
+                'Radeon', 'XL', 'Scooty'
+            ],
+            'Bajaj': [
+                'Pulsar', 'Dominor', 'Boxer', 'CT', 'NS', 'RS', 
+                'Platina', 'Avenger', 'Chetak'
+            ],
+            'Hero': [
+                'Splendor', 'Super Splendor', 'Passion', 'HF Deluxe', 
+                'Xtreme', 'Karizma', 'Hunk', 'Glamour', 'Xpulse'
+            ],
+            'Royal Enfield': [
+                'Classic 350', 'Himalayan', 'Continental GT', 'Interceptor 650', 
+                'Meteor 350', 'Bullet', 'Scram 411', 'Shotgun'
+            ],
+            'KTM': [
+                'Duke', 'RC', 'Adventure', 'KTM 390', 'KTM 250', 
+                'KTM 125', 'KTM 690', 'SX-F', 'XC'
+            ],
+            'Aprilia': [
+                'RS', 'Tuono', 'RSV4', 'SX', 'RX', 'SR', 'Atlantic'
+            ],
+            'BMW Motorrad': [
+                'G 310', 'F 750', 'R 1250', 'S 1000', 'K 1600', 
+                'R nineT', 'C 600', 'CE 04'
+            ],
+            'Ducati': [
+                'Panigale', 'Monster', 'Multistrada', 'Supersport', 
+                'Diavel', 'Streetfighter', 'Scrambler'
+            ],
+            'Triumph': [
+                'Bonneville', 'Thruxton', 'Rocket 3', 'Tiger', 
+                'Trident', 'Speed Triple', 'Street Triple'
+            ],
+            'Harley Davidson': [
+                'Sportster', 'Softail', 'Touring', 'Street', 'V-Rod', 
+                'Pan America', 'LiveWire'
+            ],
+            'MV Agusta': [
+                'F4', 'Brutale', 'Dragster', 'Superveloce', 'Turismo Veloce'
+            ],
+
+            // ==========================
+            // TRICYCLES
+            // ==========================
+            'Piaggio': [
+                'Ape', 'Auto', 'City', 'Ape City', 'Ape Classic', 
+                'Ape Calessino', 'Mp3', 'Beverly'
+            ],
+            'TVS Tricycle': [
+                'King', 'TVS Auto', 'TVS Ape', 'TVS XL', 'NTV'
+            ],
+            'Bajaj Tricycle': [
+                'RE', 'Bajaj Auto', 'Bajaj RE', 'Bajaj Maxima', 
+                'Compact', 'Qute', 'Tuk Tuk'
+            ],
+
+            // Fallback
+            'Other': ['Other']
+        };
+
+        // ─── DOM Elements ─────────────────────────────────────────────
+        const vehicleTypeSelect = document.getElementById('vehicleType');
+        const makeSelect = document.getElementById('make');
+        const modelSelect = document.getElementById('model');
+
+        // ─── Update Models when Make changes ──────────────────────────
+        function updateModelDropdown() {
+            const selectedMake = makeSelect.value;
+            const models = MODEL_MAP[selectedMake] || ['Other'];
+            
+            // Clear current options
+            modelSelect.innerHTML = '';
+            
+            // Add default placeholder
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '-- Select Model --';
+            modelSelect.appendChild(placeholder);
+
+            // Add models
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                modelSelect.appendChild(opt);
+            });
+        }
+
+        // ─── Event Listeners ──────────────────────────────────────────
+        vehicleTypeSelect.addEventListener('change', function() {
+            // When vehicle type changes, reset the Make dropdown to the first option of that group
+            const firstMake = makeSelect.querySelector('optgroup[label="Cars"] option') ||
+                              makeSelect.querySelector('optgroup[label="Bikes"] option') ||
+                              makeSelect.querySelector('optgroup[label="Tricycles"] option');
+            
+            if (firstMake) {
+                makeSelect.value = firstMake.value;
+                updateModelDropdown();
+            }
+        });
+
+        makeSelect.addEventListener('change', updateModelDropdown);
+
+        // ─── Initialize ──────────────────────────────────────────────
+        // Set the initial Model list based on the default Make
+        updateModelDropdown();
 
         // ─── Form Submission ──────────────────────────────────────────
         document.getElementById('instantForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
-            // Gather 10 parameters
-            const make = document.getElementById('make').value;
-            const model = document.getElementById('model').value.trim();
+            const vehicleType = vehicleTypeSelect.value;
+            const make = makeSelect.value;
+            const model = modelSelect.value;
             const year = parseInt(document.getElementById('year').value);
             const fuelType = document.getElementById('fuelType').value;
             const transmission = document.getElementById('transmission').value;
@@ -394,6 +636,11 @@
             const previousOwners = parseInt(document.getElementById('previousOwners').value);
             const usageType = document.getElementById('usageType').value;
             const phone = document.getElementById('mpesaPhone').value.trim();
+
+            if (!model) {
+                alert('Please select a valid model.');
+                return;
+            }
 
             const statusBox = document.getElementById('statusBox');
             const resultBox = document.getElementById('resultBox');
@@ -418,14 +665,15 @@
                 }
 
                 // 2. Call the Python AI Valuation Engine
-                const response = await fetch(`${API_BASE}/api/valuate`, {
+                const response = await fetch(`${API_BASE}/instant-check/valuate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         make, model, year, fuel_type: fuelType,
                         transmission, mileage, condition,
                         accident_history: accidentHistory, location,
-                        previous_owners: previousOwners, usage_type: usageType
+                        previous_owners: previousOwners, usage_type: usageType,
+                        vehicle_type: vehicleType
                     })
                 });
 
