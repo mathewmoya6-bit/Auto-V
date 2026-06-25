@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V | Instant Value Check</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #0b1120; 
+            color: white; 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 20px; 
+        }
+        
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 32px;
+            position: relative;
+        }
+        
+        .back-link {
+            display: inline-block;
+            color: #94a3b8;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+        .back-link:hover { color: #eab308; }
+
+        h1 {
+            color: #eab308;
+            font-size: 24px;
+            margin-bottom: 6px;
+        }
+        
+        .subtitle {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        
+        .form-group { margin-bottom: 16px; }
+        .full-width { grid-column: 1 / -1; }
+        
+        label {
+            display: block;
+            color: #94a3b8;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: white;
+            font-size: 15px;
+            box-sizing: border-box;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #eab308;
+        }
+
+        .price-banner {
+            background: #1e293b;
+            border-left: 4px solid #22c55e;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .price-banner span:first-child { color: #94a3b8; font-size: 14px; }
+        .price-banner span:last-child { color: #22c55e; font-size: 22px; font-weight: bold; }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-top: 10px;
+        }
+        
+        .btn-primary {
+            background: #eab308;
+            color: black;
+        }
+        
+        .btn-primary:hover {
+            background: #facc15;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #475569;
+            color: white;
+            margin-top: 10px;
+        }
+        
+        .btn-secondary:hover { background: #5a6a7a; }
+
+        .status-box {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        .status-success {
+            background: #14532d;
+            color: #bbf7d0;
+            border-left: 4px solid #22c55e;
+        }
+        .status-error {
+            background: #7f1d1d;
+            color: #fecaca;
+            border-left: 4px solid #ef4444;
+        }
+        
+        .result-box {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            display: none;
+        }
+        .result-value {
+            font-size: 36px;
+            color: #22c55e;
+            font-weight: bold;
+            text-align: center;
+        }
+        .result-detail {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #2d3a4e;
+            font-size: 14px;
+        }
+        .result-detail:last-child { border-bottom: none; }
+        .result-detail span:first-child { color: #94a3b8; }
+        .result-detail span:last-child { color: #eab308; }
+
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #1e293b;
+            border-top-color: #eab308;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 480px) {
+            .form-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+        
+        <h1>💡 Instant Value Check</h1>
+        <p class="subtitle">Enter 9 key vehicle parameters for an AI-powered market estimate.</p>
+
+        <form id="instantForm">
+            <div class="form-grid">
+                <!-- Vehicle Identification -->
+                <div class="form-group">
+                    <label>Make</label>
+                    <select id="make">
+                        <option value="Toyota">Toyota</option>
+                        <option value="Nissan">Nissan</option>
+                        <option value="BMW">BMW</option>
+                        <option value="Mercedes">Mercedes</option>
+                        <option value="Honda">Honda</option>
+                        <option value="Mazda">Mazda</option>
+                        <option value="Volkswagen">Volkswagen</option>
+                        <option value="Mitsubishi">Mitsubishi</option>
+                        <option value="Subaru">Subaru</option>
+                        <option value="Ford">Ford</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Model</label>
+                    <input type="text" id="model" placeholder="Axio, Corolla, X-Trail..." required>
+                </div>
+
+                <div class="form-group">
+                    <label>Year of Manufacture</label>
+                    <input type="number" id="year" placeholder="2020" min="1990" max="2026" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Fuel Type</label>
+                    <select id="fuelType">
+                        <option value="Petrol">Petrol</option>
+                        <option value="Diesel">Diesel</option>
+                        <option value="Hybrid">Hybrid</option>
+                        <option value="Electric">Electric</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Transmission</label>
+                    <select id="transmission">
+                        <option value="Automatic">Automatic</option>
+                        <option value="Manual">Manual</option>
+                        <option value="CVT">CVT</option>
+                    </select>
+                </div>
+
+                <!-- Usage -->
+                <div class="form-group">
+                    <label>Odometer (km)</label>
+                    <input type="number" id="mileage" placeholder="50000" required>
+                </div>
+
+                <!-- Condition -->
+                <div class="form-group full-width">
+                    <label>Overall Condition</label>
+                    <select id="condition">
+                        <option value="Excellent">Excellent</option>
+                        <option value="Good" selected>Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
+                </div>
+
+                <!-- Accident & Repair History -->
+                <div class="form-group full-width">
+                    <label>Accident History</label>
+                    <select id="accidentHistory">
+                        <option value="None">None</option>
+                        <option value="Minor">Minor (Scratches/Small Dents)</option>
+                        <option value="Major">Major (Structural Damage)</option>
+                        <option value="WriteOff">Insurance Write-Off</option>
+                    </select>
+                </div>
+
+                <!-- Location -->
+                <div class="form-group full-width">
+                    <label>County / Location</label>
+                    <select id="location">
+                        <option value="Nairobi">Nairobi</option>
+                        <option value="Mombasa">Mombasa</option>
+                        <option value="Kisumu">Kisumu</option>
+                        <option value="Nakuru">Nakuru</option>
+                        <option value="Eldoret">Eldoret</option>
+                        <option value="Thika">Thika</option>
+                        <option value="Malindi">Malindi</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="price-banner">
+                <span>Service Fee</span>
+                <span>KES 500</span>
+            </div>
+
+            <div class="form-group">
+                <label>M-Pesa Phone Number</label>
+                <input type="tel" id="mpesaPhone" placeholder="0712345678" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="submitBtn">
+                💳 Pay & Get Instant Value
+            </button>
+        </form>
+
+        <div id="statusBox" class="status-box"></div>
+
+        <div id="resultBox" class="result-box">
+            <h3 style="color: #eab308; margin-bottom: 15px;">✅ AI Valuation Result</h3>
+            <div class="result-value" id="resultMarketValue">KES 0</div>
+            
+            <div style="margin-top: 20px;">
+                <div class="result-detail"><span>Vehicle</span><span id="resultVehicle">-</span></div>
+                <div class="result-detail"><span>Year</span><span id="resultYear">-</span></div>
+                <div class="result-detail"><span>Location</span><span id="resultLocation">-</span></div>
+                <div class="result-detail"><span>Valuation Date</span><span id="resultDate">-</span></div>
+                <div class="result-detail"><span>Certificate</span><span id="resultCert" style="color:#22c55e;">-</span></div>
+            </div>
+
+            <button class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Back to Dashboard</button>
+        </div>
+    </div>
+
+    <script>
+        // ─── Source of Truth ──────────────────────────────────────────
+        if (!window.autoV || !window.autoV.supabase) {
+            document.getElementById('statusBox').textContent = '❌ Error: Supabase not loaded. Please refresh.';
+            document.getElementById('statusBox').className = 'status-box status-error';
+            document.getElementById('statusBox').style.display = 'block';
+            throw new Error('Supabase client not found.');
+        }
+
+        const client = window.autoV.supabase;
+        const SERVICE_FEE = 500;
+
+        // ─── Base Market Prices (in KES) ─────────────────────────────
+        const BASE_PRICES = {
+            'Toyota': 2800000,
+            'Nissan': 2300000,
+            'BMW': 4500000,
+            'Mercedes': 5000000,
+            'Honda': 2500000,
+            'Mazda': 2200000,
+            'Volkswagen': 2400000,
+            'Mitsubishi': 2100000,
+            'Subaru': 2600000,
+            'Ford': 2100000,
+            'Other': 2000000
+        };
+
+        // ─── AI Valuation Engine ──────────────────────────────────────
+        function calculateValuation(data) {
+            // 1. Start with Base Price
+            let value = BASE_PRICES[data.make] || 2000000;
+
+            // 2. Age Factor (Depreciation)
+            const currentYear = new Date().getFullYear();
+            const age = Math.max(0, currentYear - data.year);
+            let ageFactor = 1 - (age * 0.07);
+            ageFactor = Math.max(0.35, Math.min(1.0, ageFactor)); // Clamp between 0.35 and 1.0
+
+            // 3. Mileage Factor
+            let mileageFactor = 1 - (data.mileage / 300000);
+            mileageFactor = Math.max(0.45, Math.min(1.0, mileageFactor));
+
+            // 4. Condition Factor
+            const conditionFactors = {
+                'Excellent': 1.15,
+                'Good': 1.0,
+                'Fair': 0.85,
+                'Poor': 0.65
+            };
+            const conditionFactor = conditionFactors[data.condition] || 1.0;
+
+            // 5. Accident Factor
+            const accidentFactors = {
+                'None': 1.0,
+                'Minor': 0.9,
+                'Major': 0.65,
+                'WriteOff': 0.4
+            };
+            const accidentFactor = accidentFactors[data.accidentHistory] || 1.0;
+
+            // 6. Location Factor (Market Demand)
+            const locationFactors = {
+                'Nairobi': 1.1,
+                'Mombasa': 1.05,
+                'Kisumu': 0.95,
+                'Nakuru': 0.95,
+                'Eldoret': 0.95,
+                'Thika': 1.0,
+                'Malindi': 0.9,
+                'Other': 1.0
+            };
+            const locationFactor = locationFactors[data.location] || 1.0;
+
+            // 7. Fuel Type Factor (Hybrid/Electric have premium demand)
+            const fuelFactors = {
+                'Petrol': 1.0,
+                'Diesel': 0.95,
+                'Hybrid': 1.12,
+                'Electric': 1.15
+            };
+            const fuelFactor = fuelFactors[data.fuelType] || 1.0;
+
+            // 8. Transmission Factor
+            const transmissionFactors = {
+                'Automatic': 1.05,
+                'Manual': 1.0,
+                'CVT': 1.08
+            };
+            const transmissionFactor = transmissionFactors[data.transmission] || 1.0;
+
+            // Final Calculation
+            let finalValue = value 
+                * ageFactor 
+                * mileageFactor 
+                * conditionFactor 
+                * accidentFactor 
+                * locationFactor 
+                * fuelFactor 
+                * transmissionFactor;
+
+            // Round to nearest 1,000 KES
+            finalValue = Math.round(finalValue / 1000) * 1000;
+
+            // Enforce absolute min and max
+            finalValue = Math.max(150000, Math.min(finalValue, 8000000));
+
+            return {
+                value: finalValue,
+                factors: {
+                    age: ageFactor,
+                    mileage: mileageFactor,
+                    condition: conditionFactor,
+                    accident: accidentFactor,
+                    location: locationFactor,
+                    fuel: fuelFactor,
+                    transmission: transmissionFactor
+                }
+            };
+        }
+
+        // ─── Form Submission ──────────────────────────────────────────
+        document.getElementById('instantForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const make = document.getElementById('make').value;
+            const model = document.getElementById('model').value.trim();
+            const year = parseInt(document.getElementById('year').value);
+            const fuelType = document.getElementById('fuelType').value;
+            const transmission = document.getElementById('transmission').value;
+            const mileage = parseInt(document.getElementById('mileage').value);
+            const condition = document.getElementById('condition').value;
+            const accidentHistory = document.getElementById('accidentHistory').value;
+            const location = document.getElementById('location').value;
+            const phone = document.getElementById('mpesaPhone').value.trim();
+
+            const statusBox = document.getElementById('statusBox');
+            const resultBox = document.getElementById('resultBox');
+            const btn = document.getElementById('submitBtn');
+
+            // Reset UI
+            statusBox.style.display = 'none';
+            resultBox.style.display = 'none';
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Processing...';
+
+            try {
+                // 1. Check authentication
+                const { data: { user } } = await client.auth.getUser();
+                if (!user) {
+                    statusBox.className = 'status-box status-error';
+                    statusBox.textContent = '❌ Please login again.';
+                    statusBox.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = '💳 Pay & Get Instant Value';
+                    return;
+                }
+
+                // 2. Create request in Supabase
+                const { data: request, error } = await client
+                    .from('service_requests')
+                    .insert({
+                        user_id: user.id,
+                        service_type: 'instant-value-check',
+                        amount: SERVICE_FEE,
+                        phone: phone,
+                        vehicle_make: make,
+                        vehicle_model: model,
+                        vehicle_year: year,
+                        vehicle_mileage: mileage,
+                        fuel_type: fuelType,
+                        transmission: transmission,
+                        vehicle_condition: condition,
+                        accident_history: accidentHistory,
+                        location: location,
+                        payment_status: 'pending',
+                        status: 'awaiting_payment'
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                // 3. Simulate Payment & Run AI Valuation
+                setTimeout(async () => {
+                    // Run the AI Valuation Engine
+                    const valuationResult = calculateValuation({
+                        make, model, year, fuelType, transmission,
+                        mileage, condition, accidentHistory, location
+                    });
+
+                    const certNumber = `AUTO-VAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+                    // Update DB to completed
+                    await client
+                        .from('service_requests')
+                        .update({ 
+                            payment_status: 'paid', 
+                            status: 'completed',
+                            result: { 
+                                market_value: valuationResult.value, 
+                                certificate: certNumber,
+                                factors: valuationResult.factors
+                            }
+                        })
+                        .eq('id', request.id);
+
+                    // 4. Show Result
+                    statusBox.className = 'status-box status-success';
+                    statusBox.textContent = '✅ Payment confirmed! Here is your AI-generated value.';
+                    statusBox.style.display = 'block';
+
+                    document.getElementById('resultMarketValue').textContent = `KES ${valuationResult.value.toLocaleString()}`;
+                    document.getElementById('resultVehicle').textContent = `${make} ${model}`;
+                    document.getElementById('resultYear').textContent = year;
+                    document.getElementById('resultLocation').textContent = location;
+                    document.getElementById('resultDate').textContent = new Date().toLocaleDateString('en-KE');
+                    document.getElementById('resultCert').textContent = certNumber;
+
+                    resultBox.style.display = 'block';
+                    btn.textContent = '✅ Completed';
+                    btn.disabled = true;
+
+                }, 2500); // Simulate network delay
+
+            } catch (err) {
+                statusBox.className = 'status-box status-error';
+                statusBox.textContent = '❌ Error: ' + err.message;
+                statusBox.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '💳 Pay & Get Instant Value';
+            }
+        });
+    </script>
+
+</body>
+</html>
