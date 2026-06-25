@@ -1,6 +1,6 @@
 // ============================================
 // AUTO-V SUPABASE CONFIGURATION
-// Single Source of Truth - Real-time Sync
+// Single Source of Truth - Real-time Sync + Auth
 // ============================================
 
 (function() {
@@ -298,7 +298,7 @@
             return map[status] || 'badge-pending';
         },
         
-        // ─── Auth ────────────────────────────────────────────────────
+        // ─── AUTHENTICATION (ADDED BACK) ─────────────────────────────
         async getCurrentUser() {
             const { data: { user }, error } = await supabase.auth.getUser();
             if (error || !user) return null;
@@ -316,26 +316,23 @@
         
         async logout() {
             await supabase.auth.signOut();
-            localStorage.removeItem('autoV_user');
+            localStorage.clear();
+            sessionStorage.clear();
             window.location.href = "login.html";
         },
         
-        // ─── User Profile ────────────────────────────────────────────
-        async upsertUserProfile(userId, email, name, phone) {
+        // ─── USER PROFILE (ADDED BACK) ──────────────────────────────
+        async upsertUserProfile(userId, email, role) {
             try {
                 const { data, error } = await supabase
                     .from('user_profiles')
                     .upsert({
                         id: userId,
                         email: email,
-                        full_name: name || email.split('@')[0],
-                        phone: phone || '',
-                        first_login: true,
-                        has_vehicle: false,
-                        login_count: 1,
+                        role: role,
                         updated_at: new Date().toISOString()
-                    }, { onConflict: 'id' });
-                
+                    }, { onConflict: 'id' })
+                    .select();
                 if (error) {
                     console.warn('Error upserting user profile:', error.message);
                     return { data: null, error: error };
@@ -347,45 +344,18 @@
             }
         },
         
-        async checkFirstTimeUser(userId) {
+        async getUserRole(userId) {
             try {
                 const { data, error } = await supabase
                     .from('user_profiles')
-                    .select('first_login, has_vehicle, login_count, full_name, phone')
+                    .select('role')
                     .eq('id', userId)
                     .single();
-                
-                if (error) {
-                    console.warn('User profile query failed, treating as first-time user:', error.message);
-                    return true;
-                }
-                
-                if (!data) return true;
-                if (!data.full_name || !data.phone) return true;
-                return !(data.first_login === false && data.has_vehicle === true && data.login_count >= 2);
+                if (error || !data) return 'individual';
+                return data.role;
             } catch (err) {
-                console.warn('Error checking user profile, treating as first-time user:', err);
-                return true;
-            }
-        },
-        
-        async isProfileComplete(userId) {
-            try {
-                const { data, error } = await supabase
-                    .from('user_profiles')
-                    .select('full_name, phone')
-                    .eq('id', userId)
-                    .single();
-                
-                if (error) {
-                    console.warn('Profile completeness query failed, assuming incomplete:', error.message);
-                    return false;
-                }
-                
-                return !!(data && data.full_name && data.phone);
-            } catch (err) {
-                console.warn('Error checking profile completeness:', err);
-                return false;
+                console.warn('Error getting role:', err);
+                return 'individual';
             }
         },
         
@@ -687,15 +657,12 @@
     }
 
     // ─── Auto-initialize real-time subscriptions ────────────────────
-    // Wait a moment for pages to set up listeners before starting
     setTimeout(() => {
-        // Only auto-subscribe if there are listeners registered
-        // This prevents unnecessary connections
         if (state.listeners.length > 0) {
             subscribeToChanges();
             console.log('🔌 Real-time subscriptions active');
         }
     }, 100);
 
-    console.log('✅ AUTO-V Supabase client initialized (Single Source of Truth + Real-time)');
+    console.log('✅ AUTO-V Supabase client initialized (Single Source of Truth + Real-time + Auth)');
 })();
