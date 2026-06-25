@@ -42,12 +42,12 @@ def supabase_request(method: str, endpoint: str, data: Dict = None) -> Dict:
     except requests.exceptions.RequestException as e:
         raise Exception(f"Supabase request failed: {e}")
 
+# ---- CRUD functions ----
 def create_payment(payment_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
         if "created_at" not in payment_data:
             payment_data["created_at"] = datetime.utcnow().isoformat()
-        result = supabase_request("POST", "payments", payment_data)
-        return result
+        return supabase_request("POST", "payments", payment_data)
     except Exception as e:
         logger.error(f"create_payment error: {e}")
         return None
@@ -75,8 +75,7 @@ def update_payment_status(payment_id: str, update_data: Dict[str, Any]) -> Optio
         if "updated_at" not in update_data:
             update_data["updated_at"] = datetime.utcnow().isoformat()
         endpoint = f"payments?payment_id=eq.{payment_id}"
-        result = supabase_request("PATCH", endpoint, update_data)
-        return result
+        return supabase_request("PATCH", endpoint, update_data)
     except Exception as e:
         logger.error(f"update_payment_status error: {e}")
         return None
@@ -126,3 +125,11 @@ def test_connection() -> Dict[str, Any]:
         return {"connected": True, "message": "Supabase connection successful", "payments_count": len(result)}
     except Exception as e:
         return {"connected": False, "message": f"Supabase connection failed: {str(e)}"}
+
+# ---- Compatibility stub for old imports ----
+def get_supabase_client():
+    """
+    Compatibility function – REST version does not use a client.
+    Provided to avoid ImportError in services/__init__.py.
+    """
+    return None
