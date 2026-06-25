@@ -52,6 +52,29 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         
+        .global-search-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            padding: 8px 16px;
+            margin-bottom: 20px;
+            max-width: 600px;
+        }
+        .global-search-bar input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 14px;
+            flex: 1;
+            padding: 8px 0;
+            outline: none;
+        }
+        .global-search-bar input::placeholder { color: #64748b; }
+        .global-search-bar .search-icon { color: #94a3b8; font-size: 18px; }
+
         .table-wrapper { overflow-x: auto; background: #0f172a; border-radius: 16px; border: 1px solid #1e293b; padding: 4px; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th { text-align: left; padding: 12px 16px; color: #eab308; font-weight: 600; border-bottom: 1px solid #1e293b; }
@@ -78,6 +101,12 @@
         .action-btn.delete:hover { background: #ef4444; color: #fff; }
         .action-btn.save { border-color: #22c55e; color: #22c55e; }
         .action-btn.save:hover { background: #22c55e; color: #fff; }
+        .action-btn.share { border-color: #3b82f6; color: #3b82f6; }
+        .action-btn.share:hover { background: #3b82f6; color: #fff; }
+        .action-btn.print { border-color: #8b5cf6; color: #8b5cf6; }
+        .action-btn.print:hover { background: #8b5cf6; color: #fff; }
+        .action-btn.download { border-color: #22c55e; color: #22c55e; }
+        .action-btn.download:hover { background: #22c55e; color: #fff; }
         
         .search-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
         .search-bar input, .search-bar select { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 16px; color: #fff; flex: 1; min-width: 150px; }
@@ -179,6 +208,12 @@
             </div>
         </div>
 
+        <!-- 🌐 Global Search Bar -->
+        <div class="global-search-bar">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="globalSearch" placeholder="Search requests, users, services, payments..." oninput="globalSearch()">
+        </div>
+
         <div class="tabs">
             <button class="tab-btn active" data-tab="requests">📋 Requests</button>
             <button class="tab-btn" data-tab="users">👥 Users</button>
@@ -266,7 +301,6 @@
 
         <!-- ─── PRICE MANAGEMENT & FEE MANAGER TAB ─── -->
         <div id="tab-prices" class="tab-content">
-            
             <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:24px;">
                 <!-- Standard System Settings Price Table -->
                 <div style="flex:1;min-width:300px;">
@@ -291,7 +325,6 @@
                     </div>
                 </div>
             </div>
-
         </div>
 
         <div id="tab-analytics" class="tab-content">
@@ -890,6 +923,17 @@
                     }
                 };
 
+                // ─── GLOBAL SEARCH ──────────────────────────────────────
+                window.globalSearch = function() {
+                    const query = document.getElementById('globalSearch').value.toLowerCase().trim();
+                    // Apply the search to all active filters
+                    filterRequests(query);
+                    filterUsers(query);
+                    filterPayments(query);
+                    filterServices(query);
+                    filterPrices(query);
+                };
+
                 // ─── FIXED GLOBAL DELETE FUNCTIONS ─────────────────────
                 window.deleteRequest = async function(id) {
                     if (!confirm('⚠️ Delete this request permanently?')) return;
@@ -932,10 +976,33 @@
                     }
                 };
 
+                // ─── SHARE / PRINT / DOWNLOAD REPORT FUNCTIONS ──────
+                window.shareReport = function(id, type = 'request') {
+                    const url = `${window.location.origin}/api/reports/generate/${id}`;
+                    if (navigator.share) {
+                        navigator.share({
+                            title: `AUTO-V ${type} Report`,
+                            text: `AUTO-V Certified ${type} Report`,
+                            url: url
+                        }).catch(() => {});
+                    } else {
+                        navigator.clipboard.writeText(url).then(() => {
+                            showToast('📤 Report link copied to clipboard!', 'success');
+                        });
+                    }
+                };
+
+                window.printReport = function(id) {
+                    window.open(`${window.location.origin}/api/reports/generate/${id}?print=true`, '_blank');
+                };
+
+                window.downloadReport = function(id) {
+                    window.location.href = `${window.location.origin}/api/reports/generate/${id}`;
+                };
+
                 // ─── LOAD REQUESTS (FIXED: NO JOIN) ──────────────────
                 async function loadRequests() {
                     try {
-                        // 1. Fetch requests only (NO JOIN)
                         const { data: requests, error: reqError } = await supabase
                             .from('service_requests')
                             .select('*')
@@ -943,7 +1010,6 @@
                         
                         if (reqError) throw reqError;
                         
-                        // 2. Fetch user profiles separately
                         const userIds = [...new Set(requests.map(r => r.user_id).filter(Boolean))];
                         let profiles = [];
                         if (userIds.length > 0) {
@@ -955,7 +1021,6 @@
                             profiles = profData || [];
                         }
                         
-                        // 3. Merge manually in JavaScript
                         const profileMap = {};
                         profiles.forEach(p => profileMap[p.id] = p);
                         
@@ -991,19 +1056,23 @@
                             <td>
                                 <button class="action-btn view" onclick="viewRequest('${r.id}')">View</button>
                                 <button class="action-btn delete" onclick="deleteRequest('${r.id}')">Delete</button>
+                                <button class="action-btn download" onclick="downloadReport('${r.id}')">📥 Download</button>
+                                <button class="action-btn print" onclick="printReport('${r.id}')">🖨 Print</button>
+                                <button class="action-btn share" onclick="shareReport('${r.id}')">📤 Share</button>
                             </td>
                         </tr>`;
                     }).join('');
                 }
                 
-                window.filterRequests = function() {
-                    const search = document.getElementById('requestSearch').value.toLowerCase();
+                window.filterRequests = function(searchQuery) {
+                    const search = searchQuery || document.getElementById('requestSearch').value.toLowerCase();
                     const filter = document.getElementById('requestFilter').value;
                     let filtered = allRequests;
                     if (search) filtered = filtered.filter(r => 
                         (r.customer_name || '').toLowerCase().includes(search) ||
                         (r.user_profiles?.full_name || '').toLowerCase().includes(search) ||
-                        (r.user_profiles?.email || '').toLowerCase().includes(search)
+                        (r.user_profiles?.email || '').toLowerCase().includes(search) ||
+                        (r.id || '').toLowerCase().includes(search)
                     );
                     if (filter !== 'all') filtered = filtered.filter(r => r.status === filter);
                     renderRequests(filtered);
@@ -1012,7 +1081,6 @@
                 // ─── LOAD PAYMENTS (FIXED: NO JOIN) ──────────────────
                 async function loadPayments() {
                     try {
-                        // 1. Fetch payments only (NO JOIN)
                         const { data: payments, error: payError } = await supabase
                             .from('payments')
                             .select('*')
@@ -1020,7 +1088,6 @@
                         
                         if (payError) throw payError;
                         
-                        // 2. Fetch user profiles separately
                         const userIds = [...new Set(payments.map(p => p.user_id).filter(Boolean))];
                         let profiles = [];
                         if (userIds.length > 0) {
@@ -1032,7 +1099,6 @@
                             profiles = profData || [];
                         }
                         
-                        // 3. Merge manually in JavaScript
                         const profileMap = {};
                         profiles.forEach(p => profileMap[p.id] = p);
                         
@@ -1069,8 +1135,8 @@
                     }).join('');
                 }
                 
-                window.filterPayments = function() {
-                    const search = document.getElementById('paymentSearch').value.toLowerCase();
+                window.filterPayments = function(searchQuery) {
+                    const search = searchQuery || document.getElementById('paymentSearch').value.toLowerCase();
                     const filter = document.getElementById('paymentFilter').value;
                     let filtered = allPayments;
                     if (search) filtered = filtered.filter(p => 
@@ -1115,8 +1181,8 @@
                     }).join('');
                 }
                 
-                window.filterUsers = function() {
-                    const search = document.getElementById('userSearch').value.toLowerCase();
+                window.filterUsers = function(searchQuery) {
+                    const search = searchQuery || document.getElementById('userSearch').value.toLowerCase();
                     const filtered = allUsers.filter(u => 
                         (u.email || '').toLowerCase().includes(search) ||
                         (u.full_name || '').toLowerCase().includes(search)
