@@ -20,10 +20,19 @@ def get_supabase_headers() -> Dict[str, str]:
     }
 
 def supabase_request(method: str, endpoint: str, data: Dict = None) -> Dict:
+    """Make a request to Supabase REST API with full logging."""
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+    
     url = f"{SUPABASE_URL}/rest/v1/{endpoint}"
     headers = get_supabase_headers()
+    
+    # Log the request details
+    logger.info(f"🔗 {method.upper()} {url}")
+    if data:
+        # Mask sensitive fields if any (but we keep for debugging)
+        logger.info(f"📦 Request data: {data}")
+    
     try:
         if method.upper() == "GET":
             response = requests.get(url, headers=headers, timeout=30)
@@ -35,21 +44,44 @@ def supabase_request(method: str, endpoint: str, data: Dict = None) -> Dict:
             response = requests.delete(url, headers=headers, timeout=30)
         else:
             raise ValueError(f"Unsupported method: {method}")
+        
+        # Log response status
+        logger.info(f"📨 Response status: {response.status_code}")
+        
         if response.status_code in [200, 201, 204]:
-            return response.json() if response.text else {}
+            result = response.json() if response.text else {}
+            logger.info(f"✅ Response data: {result}")
+            return result
         else:
-            raise Exception(f"Supabase error: {response.status_code} - {response.text}")
+            error_msg = f"Supabase error: {response.status_code} - {response.text}"
+            logger.error(f"❌ {error_msg}")
+            raise Exception(error_msg)
+            
     except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Supabase request failed: {e}", exc_info=True)
         raise Exception(f"Supabase request failed: {e}")
 
 # ---- CRUD functions ----
 def create_payment(payment_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Create a new payment record in Supabase.
+    Returns the created record or None on error.
+    """
     try:
         if "created_at" not in payment_data:
             payment_data["created_at"] = datetime.utcnow().isoformat()
-        return supabase_request("POST", "payments", payment_data)
+        
+        # 🔍 LOG THE FULL PAYLOAD
+        logger.info(f"📤 create_payment payload: {payment_data}")
+        
+        result = supabase_request("POST", "payments", payment_data)
+        
+        # 🔍 LOG THE RESULT
+        logger.info(f"📥 create_payment result: {result}")
+        return result
+        
     except Exception as e:
-        logger.error(f"create_payment error: {e}")
+        logger.error(f"❌ create_payment error: {e}", exc_info=True)
         return None
 
 def get_payment_by_payment_id(payment_id: str) -> Optional[Dict[str, Any]]:
