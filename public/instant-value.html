@@ -203,31 +203,44 @@
         <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
         
         <h1>💡 Instant Value Check</h1>
-        <p class="subtitle">Enter 9 key vehicle parameters for an AI-powered market estimate.</p>
+        <p class="subtitle">AI-powered market estimate for Cars & Motorcycles.</p>
 
         <form id="instantForm">
             <div class="form-grid">
-                <!-- Vehicle Identification -->
+                <!-- 1. Vehicle Identification -->
                 <div class="form-group">
                     <label>Make</label>
                     <select id="make">
-                        <option value="Toyota">Toyota</option>
-                        <option value="Nissan">Nissan</option>
-                        <option value="BMW">BMW</option>
-                        <option value="Mercedes">Mercedes</option>
-                        <option value="Honda">Honda</option>
-                        <option value="Mazda">Mazda</option>
-                        <option value="Volkswagen">Volkswagen</option>
-                        <option value="Mitsubishi">Mitsubishi</option>
-                        <option value="Subaru">Subaru</option>
-                        <option value="Ford">Ford</option>
+                        <optgroup label="Cars">
+                            <option value="Toyota">Toyota</option>
+                            <option value="Nissan">Nissan</option>
+                            <option value="BMW">BMW</option>
+                            <option value="Mercedes">Mercedes</option>
+                            <option value="Honda">Honda</option>
+                            <option value="Mazda">Mazda</option>
+                            <option value="Volkswagen">Volkswagen</option>
+                            <option value="Mitsubishi">Mitsubishi</option>
+                            <option value="Subaru">Subaru</option>
+                            <option value="Ford">Ford</option>
+                        </optgroup>
+                        <optgroup label="Bikes / Motorcycles">
+                            <option value="Honda Bike">Honda</option>
+                            <option value="Yamaha">Yamaha</option>
+                            <option value="Suzuki">Suzuki</option>
+                            <option value="Kawasaki">Kawasaki</option>
+                            <option value="TVS">TVS</option>
+                            <option value="Bajaj">Bajaj</option>
+                            <option value="Hero">Hero</option>
+                            <option value="Royal Enfield">Royal Enfield</option>
+                            <option value="KTM">KTM</option>
+                        </optgroup>
                         <option value="Other">Other</option>
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label>Model</label>
-                    <input type="text" id="model" placeholder="Axio, Corolla, X-Trail..." required>
+                    <input type="text" id="model" placeholder="Axio, CBR, Ninja..." required>
                 </div>
 
                 <div class="form-group">
@@ -254,13 +267,33 @@
                     </select>
                 </div>
 
-                <!-- Usage -->
+                <!-- 2. Vehicle Usage -->
                 <div class="form-group">
                     <label>Odometer (km)</label>
                     <input type="number" id="mileage" placeholder="50000" required>
                 </div>
 
-                <!-- Condition -->
+                <div class="form-group full-width">
+                    <label>Number of Previous Owners</label>
+                    <select id="previousOwners">
+                        <option value="0">0 (Brand New)</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5+</option>
+                    </select>
+                </div>
+
+                <div class="form-group full-width">
+                    <label>Usage Type</label>
+                    <select id="usageType">
+                        <option value="Personal">Personal</option>
+                        <option value="Commercial">Commercial</option>
+                    </select>
+                </div>
+
+                <!-- 3. Condition Assessment -->
                 <div class="form-group full-width">
                     <label>Overall Condition</label>
                     <select id="condition">
@@ -271,7 +304,7 @@
                     </select>
                 </div>
 
-                <!-- Accident & Repair History -->
+                <!-- 4. Accident History -->
                 <div class="form-group full-width">
                     <label>Accident History</label>
                     <select id="accidentHistory">
@@ -282,7 +315,7 @@
                     </select>
                 </div>
 
-                <!-- Location -->
+                <!-- 6. Location -->
                 <div class="form-group full-width">
                     <label>County / Location</label>
                     <select id="location">
@@ -309,7 +342,7 @@
             </div>
 
             <button type="submit" class="btn btn-primary" id="submitBtn">
-                💳 Pay & Get Instant Value
+                💳 Get Instant Value
             </button>
         </form>
 
@@ -342,162 +375,13 @@
 
         const client = window.autoV.supabase;
         const SERVICE_FEE = 500;
+        const API_BASE = 'https://auto-v.onrender.com'; // Change to your Python backend URL
 
-        // ─── BASE PRICES BY MAKE (in KES) ─────────────────────────────
-        const BASE_PRICES = {
-            'Toyota': 2800000,
-            'Nissan': 2300000,
-            'BMW': 4500000,
-            'Mercedes': 5000000,
-            'Honda': 2500000,
-            'Mazda': 2200000,
-            'Volkswagen': 2400000,
-            'Mitsubishi': 2100000,
-            'Subaru': 2600000,
-            'Ford': 2100000,
-            'Other': 2000000
-        };
-
-        // ─── MODEL MULTIPLIERS (Specific model adjustments) ────────────
-        const MODEL_MULTIPLIERS = {
-            // Toyota
-            'land cruiser': 1.45,
-            'prado': 1.35,
-            'hilux': 1.20,
-            'corolla': 0.90,
-            'axio': 0.90,
-            'fielder': 0.95,
-            'voxy': 1.05,
-            'noah': 1.05,
-            'hiace': 1.10,
-            // Nissan
-            'x-trail': 1.15,
-            'patrol': 1.30,
-            'navara': 1.10,
-            'note': 0.80,
-            // BMW
-            'x5': 1.25,
-            'x3': 1.15,
-            '3 series': 1.10,
-            // Mercedes
-            'c-class': 1.10,
-            'e-class': 1.25,
-            'g-class': 1.50,
-            // Honda
-            'cr-v': 1.15,
-            'accord': 1.10,
-            'fit': 0.85,
-            // Mazda
-            'cx-5': 1.15,
-            'demio': 0.85,
-            // Subaru
-            'forester': 1.10,
-            'outback': 1.15,
-            'legacy': 1.10
-        };
-
-        // ─── AI VALUATION ENGINE ──────────────────────────────────────
-        function calculateValuation(data) {
-            // 1. Start with Base Price (Make)
-            let value = BASE_PRICES[data.make] || 2000000;
-
-            // 2. Apply Model Multiplier (if known)
-            const modelKey = data.model.toLowerCase().trim();
-            const modelMultiplier = MODEL_MULTIPLIERS[modelKey] || 1.0;
-            value = value * modelMultiplier;
-
-            // 3. Age Factor (Depreciation)
-            const currentYear = new Date().getFullYear();
-            const age = Math.max(0, currentYear - data.year);
-            let ageFactor = 1 - (age * 0.07);
-            ageFactor = Math.max(0.35, Math.min(1.0, ageFactor)); // Clamp between 0.35 and 1.0
-
-            // 4. Mileage Factor
-            let mileageFactor = 1 - (data.mileage / 300000);
-            mileageFactor = Math.max(0.45, Math.min(1.0, mileageFactor));
-
-            // 5. Condition Factor
-            const conditionFactors = {
-                'Excellent': 1.15,
-                'Good': 1.0,
-                'Fair': 0.85,
-                'Poor': 0.65
-            };
-            const conditionFactor = conditionFactors[data.condition] || 1.0;
-
-            // 6. Accident Factor
-            const accidentFactors = {
-                'None': 1.0,
-                'Minor': 0.9,
-                'Major': 0.65,
-                'WriteOff': 0.4
-            };
-            const accidentFactor = accidentFactors[data.accidentHistory] || 1.0;
-
-            // 7. Location Factor (Market Demand)
-            const locationFactors = {
-                'Nairobi': 1.1,
-                'Mombasa': 1.05,
-                'Kisumu': 0.95,
-                'Nakuru': 0.95,
-                'Eldoret': 0.95,
-                'Thika': 1.0,
-                'Malindi': 0.9,
-                'Other': 1.0
-            };
-            const locationFactor = locationFactors[data.location] || 1.0;
-
-            // 8. Fuel Type Factor (Hybrid/Electric have premium demand)
-            const fuelFactors = {
-                'Petrol': 1.0,
-                'Diesel': 0.95,
-                'Hybrid': 1.12,
-                'Electric': 1.15
-            };
-            const fuelFactor = fuelFactors[data.fuelType] || 1.0;
-
-            // 9. Transmission Factor
-            const transmissionFactors = {
-                'Automatic': 1.05,
-                'Manual': 1.0,
-                'CVT': 1.08
-            };
-            const transmissionFactor = transmissionFactors[data.transmission] || 1.0;
-
-            // Final Calculation
-            let finalValue = value 
-                * ageFactor 
-                * mileageFactor 
-                * conditionFactor 
-                * accidentFactor 
-                * locationFactor 
-                * fuelFactor 
-                * transmissionFactor;
-
-            // Round to nearest 1,000 KES
-            finalValue = Math.round(finalValue / 1000) * 1000;
-
-            // Enforce absolute min and max
-            finalValue = Math.max(150000, Math.min(finalValue, 8000000));
-
-            return {
-                value: finalValue,
-                factors: {
-                    age: ageFactor,
-                    mileage: mileageFactor,
-                    condition: conditionFactor,
-                    accident: accidentFactor,
-                    location: locationFactor,
-                    fuel: fuelFactor,
-                    transmission: transmissionFactor
-                }
-            };
-        }
-
-        // ─── FORM SUBMISSION ──────────────────────────────────────────
+        // ─── Form Submission ──────────────────────────────────────────
         document.getElementById('instantForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
+            // Gather 10 parameters
             const make = document.getElementById('make').value;
             const model = document.getElementById('model').value.trim();
             const year = parseInt(document.getElementById('year').value);
@@ -507,6 +391,8 @@
             const condition = document.getElementById('condition').value;
             const accidentHistory = document.getElementById('accidentHistory').value;
             const location = document.getElementById('location').value;
+            const previousOwners = parseInt(document.getElementById('previousOwners').value);
+            const usageType = document.getElementById('usageType').value;
             const phone = document.getElementById('mpesaPhone').value.trim();
 
             const statusBox = document.getElementById('statusBox');
@@ -520,19 +406,37 @@
             btn.innerHTML = '<span class="spinner"></span> Processing...';
 
             try {
-                // 1. Check authentication
+                // 1. Authenticate
                 const { data: { user } } = await client.auth.getUser();
                 if (!user) {
                     statusBox.className = 'status-box status-error';
                     statusBox.textContent = '❌ Please login again.';
                     statusBox.style.display = 'block';
                     btn.disabled = false;
-                    btn.textContent = '💳 Pay & Get Instant Value';
+                    btn.textContent = '💳 Get Instant Value';
                     return;
                 }
 
-                // 2. Create request in Supabase
-                const { data: request, error } = await client
+                // 2. Call the Python AI Valuation Engine
+                const response = await fetch(`${API_BASE}/api/valuate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        make, model, year, fuel_type: fuelType,
+                        transmission, mileage, condition,
+                        accident_history: accidentHistory, location,
+                        previous_owners: previousOwners, usage_type: usageType
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('AI Valuation Engine error');
+                }
+
+                const result = await response.json();
+                
+                // 3. Save the Request to Supabase (Record keeping)
+                await client
                     .from('service_requests')
                     .insert({
                         user_id: user.id,
@@ -548,62 +452,35 @@
                         vehicle_condition: condition,
                         accident_history: accidentHistory,
                         location: location,
-                        payment_status: 'pending',
-                        status: 'awaiting_payment'
-                    })
-                    .select()
-                    .single();
-
-                if (error) throw error;
-
-                // 3. Simulate Payment & Run AI Valuation
-                setTimeout(async () => {
-                    // Run the AI Valuation Engine
-                    const valuationResult = calculateValuation({
-                        make, model, year, fuelType, transmission,
-                        mileage, condition, accidentHistory, location
+                        result: result,
+                        payment_status: 'paid', // Payment handled separately or simulated
+                        status: 'completed'
                     });
 
-                    const certNumber = `AUTO-VAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+                // 4. Display Result
+                const certNumber = `AUTO-VAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
-                    // Update DB to completed
-                    await client
-                        .from('service_requests')
-                        .update({ 
-                            payment_status: 'paid', 
-                            status: 'completed',
-                            result: { 
-                                market_value: valuationResult.value, 
-                                certificate: certNumber,
-                                factors: valuationResult.factors
-                            }
-                        })
-                        .eq('id', request.id);
+                statusBox.className = 'status-box status-success';
+                statusBox.textContent = '✅ AI Valuation complete!';
+                statusBox.style.display = 'block';
 
-                    // 4. Show Result
-                    statusBox.className = 'status-box status-success';
-                    statusBox.textContent = '✅ Payment confirmed! Here is your AI-generated value.';
-                    statusBox.style.display = 'block';
+                document.getElementById('resultMarketValue').textContent = `KES ${result.value.toLocaleString()}`;
+                document.getElementById('resultVehicle').textContent = `${make} ${model}`;
+                document.getElementById('resultYear').textContent = year;
+                document.getElementById('resultLocation').textContent = location;
+                document.getElementById('resultDate').textContent = new Date().toLocaleDateString('en-KE');
+                document.getElementById('resultCert').textContent = certNumber;
 
-                    document.getElementById('resultMarketValue').textContent = `KES ${valuationResult.value.toLocaleString()}`;
-                    document.getElementById('resultVehicle').textContent = `${make} ${model}`;
-                    document.getElementById('resultYear').textContent = year;
-                    document.getElementById('resultLocation').textContent = location;
-                    document.getElementById('resultDate').textContent = new Date().toLocaleDateString('en-KE');
-                    document.getElementById('resultCert').textContent = certNumber;
-
-                    resultBox.style.display = 'block';
-                    btn.textContent = '✅ Completed';
-                    btn.disabled = true;
-
-                }, 2500); // Simulate network delay
+                resultBox.style.display = 'block';
+                btn.textContent = '✅ Completed';
+                btn.disabled = true;
 
             } catch (err) {
                 statusBox.className = 'status-box status-error';
                 statusBox.textContent = '❌ Error: ' + err.message;
                 statusBox.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = '💳 Pay & Get Instant Value';
+                btn.textContent = '💳 Get Instant Value';
             }
         });
     </script>
