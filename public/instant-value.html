@@ -280,6 +280,23 @@
                 </div>
 
                 <div class="form-group">
+                    <label>Engine Capacity (cc)</label>
+                    <select id="engineCapacity">
+                        <option value="800">Under 800cc</option>
+                        <option value="1000">1000cc</option>
+                        <option value="1200">1200cc</option>
+                        <option value="1500">1500cc</option>
+                        <option value="1800">1800cc</option>
+                        <option value="2000" selected>2000cc</option>
+                        <option value="2500">2500cc</option>
+                        <option value="3000">3000cc</option>
+                        <option value="3500">3500cc</option>
+                        <option value="4000">4000cc</option>
+                        <option value="5000">5000cc+</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label>Fuel Type</label>
                     <select id="fuelType">
                         <option value="Petrol">Petrol</option>
@@ -295,6 +312,33 @@
                         <option value="Automatic">Automatic</option>
                         <option value="Manual">Manual</option>
                         <option value="CVT">CVT</option>
+                    </select>
+                </div>
+
+                <div class="form-group full-width">
+                    <label>Body Type</label>
+                    <select id="bodyType">
+                        <!-- Options will be dynamically populated via JavaScript -->
+                        <option value="">-- Select Body Type --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Body Color</label>
+                    <select id="bodyColor">
+                        <option value="White">White</option>
+                        <option value="Silver">Silver</option>
+                        <option value="Grey">Grey</option>
+                        <option value="Black">Black</option>
+                        <option value="Red">Red</option>
+                        <option value="Blue">Blue</option>
+                        <option value="Green">Green</option>
+                        <option value="Yellow">Yellow</option>
+                        <option value="Orange">Orange</option>
+                        <option value="Maroon">Maroon</option>
+                        <option value="Brown">Brown</option>
+                        <option value="Gold">Gold</option>
+                        <option value="Other">Other</option>
                     </select>
                 </div>
 
@@ -387,6 +431,8 @@
                 <div class="result-detail"><span>Vehicle</span><span id="resultVehicle">-</span></div>
                 <div class="result-detail"><span>Year</span><span id="resultYear">-</span></div>
                 <div class="result-detail"><span>Location</span><span id="resultLocation">-</span></div>
+                <div class="result-detail"><span>Engine</span><span id="resultEngine">-</span></div>
+                <div class="result-detail"><span>Color</span><span id="resultColor">-</span></div>
                 <div class="result-detail"><span>Valuation Date</span><span id="resultDate">-</span></div>
                 <div class="result-detail"><span>Certificate</span><span id="resultCert" style="color:#22c55e;">-</span></div>
             </div>
@@ -572,26 +618,31 @@
             'Other': ['Other']
         };
 
+        // ─── Body Types by Vehicle Type ──────────────────────────────
+        const BODY_TYPES = {
+            'Car': ['Sedan', 'SUV', 'Hatchback', 'Pickup', 'Van', 'Coupe', 'Convertible', 'Wagon', 'Other'],
+            'Bike': ['Standard', 'Sport', 'Cruiser', 'Touring', 'Adventure', 'Scooter', 'Off-Road', 'Other'],
+            'Tricycle': ['Passenger', 'Cargo', 'Auto', 'Other']
+        };
+
         // ─── DOM Elements ─────────────────────────────────────────────
         const vehicleTypeSelect = document.getElementById('vehicleType');
         const makeSelect = document.getElementById('make');
         const modelSelect = document.getElementById('model');
+        const bodyTypeSelect = document.getElementById('bodyType');
 
         // ─── Update Models when Make changes ──────────────────────────
         function updateModelDropdown() {
             const selectedMake = makeSelect.value;
             const models = MODEL_MAP[selectedMake] || ['Other'];
             
-            // Clear current options
             modelSelect.innerHTML = '';
             
-            // Add default placeholder
             const placeholder = document.createElement('option');
             placeholder.value = '';
             placeholder.textContent = '-- Select Model --';
             modelSelect.appendChild(placeholder);
 
-            // Add models
             models.forEach(m => {
                 const opt = document.createElement('option');
                 opt.value = m;
@@ -600,9 +651,28 @@
             });
         }
 
+        // ─── Update Body Types when Vehicle Type changes ──────────────
+        function updateBodyTypeDropdown() {
+            const type = vehicleTypeSelect.value;
+            const types = BODY_TYPES[type] || ['Other'];
+            
+            bodyTypeSelect.innerHTML = '';
+            
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '-- Select Body Type --';
+            bodyTypeSelect.appendChild(placeholder);
+
+            types.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                bodyTypeSelect.appendChild(opt);
+            });
+        }
+
         // ─── Event Listeners ──────────────────────────────────────────
         vehicleTypeSelect.addEventListener('change', function() {
-            // When vehicle type changes, reset the Make dropdown to the first option of that group
             const firstMake = makeSelect.querySelector('optgroup[label="Cars"] option') ||
                               makeSelect.querySelector('optgroup[label="Bikes"] option') ||
                               makeSelect.querySelector('optgroup[label="Tricycles"] option');
@@ -611,13 +681,14 @@
                 makeSelect.value = firstMake.value;
                 updateModelDropdown();
             }
+            updateBodyTypeDropdown();
         });
 
         makeSelect.addEventListener('change', updateModelDropdown);
 
         // ─── Initialize ──────────────────────────────────────────────
-        // Set the initial Model list based on the default Make
         updateModelDropdown();
+        updateBodyTypeDropdown();
 
         // ─── Form Submission ──────────────────────────────────────────
         document.getElementById('instantForm').addEventListener('submit', async function(e) {
@@ -627,8 +698,11 @@
             const make = makeSelect.value;
             const model = modelSelect.value;
             const year = parseInt(document.getElementById('year').value);
+            const engineCapacity = parseInt(document.getElementById('engineCapacity').value);
             const fuelType = document.getElementById('fuelType').value;
             const transmission = document.getElementById('transmission').value;
+            const bodyType = document.getElementById('bodyType').value;
+            const bodyColor = document.getElementById('bodyColor').value;
             const mileage = parseInt(document.getElementById('mileage').value);
             const condition = document.getElementById('condition').value;
             const accidentHistory = document.getElementById('accidentHistory').value;
@@ -637,8 +711,8 @@
             const usageType = document.getElementById('usageType').value;
             const phone = document.getElementById('mpesaPhone').value.trim();
 
-            if (!model) {
-                alert('Please select a valid model.');
+            if (!model || !bodyType) {
+                alert('Please select a valid model and body type.');
                 return;
             }
 
@@ -694,9 +768,12 @@
                         vehicle_make: make,
                         vehicle_model: model,
                         vehicle_year: year,
-                        vehicle_mileage: mileage,
+                        vehicle_engine_capacity: engineCapacity,
                         fuel_type: fuelType,
                         transmission: transmission,
+                        body_type: bodyType,
+                        body_color: bodyColor,
+                        vehicle_mileage: mileage,
                         vehicle_condition: condition,
                         accident_history: accidentHistory,
                         location: location,
@@ -716,6 +793,8 @@
                 document.getElementById('resultVehicle').textContent = `${make} ${model}`;
                 document.getElementById('resultYear').textContent = year;
                 document.getElementById('resultLocation').textContent = location;
+                document.getElementById('resultEngine').textContent = `${engineCapacity}cc`;
+                document.getElementById('resultColor').textContent = bodyColor;
                 document.getElementById('resultDate').textContent = new Date().toLocaleDateString('en-KE');
                 document.getElementById('resultCert').textContent = certNumber;
 
