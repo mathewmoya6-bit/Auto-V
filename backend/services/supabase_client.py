@@ -4,12 +4,30 @@
 
 import os
 import logging
+import importlib
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 _supabase_client = None
+
+
+def log_supabase_version():
+    """Log the version of supabase and httpx being used."""
+    try:
+        # Check supabase version
+        import supabase
+        logger.info(f"📦 SUPABASE VERSION: {supabase.__version__}")
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"⚠️ Could not get supabase version: {e}")
+    
+    try:
+        # Check httpx version
+        import httpx
+        logger.info(f"📦 HTTPX VERSION: {httpx.__version__}")
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"⚠️ Could not get httpx version: {e}")
 
 
 def get_supabase_client():
@@ -20,7 +38,8 @@ def get_supabase_client():
         return _supabase_client
     
     try:
-        from supabase import create_client
+        # Log versions first
+        log_supabase_version()
         
         SUPABASE_URL = os.getenv("SUPABASE_URL")
         SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
@@ -28,12 +47,56 @@ def get_supabase_client():
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
         
-        _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        logger.info("✅ Supabase client initialized")
+        logger.info(f"🔗 Connecting to Supabase: {SUPABASE_URL}")
+        
+        # Try different import methods based on version
+        try:
+            # Method 1: Standard import (most common)
+            from supabase import create_client
+            _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+            logger.info("✅ Supabase client initialized (standard method)")
+            
+        except TypeError as e:
+            if "proxy" in str(e):
+                logger.warning("⚠️ Proxy parameter issue, trying alternative method...")
+                # Method 2: For newer versions without proxy
+                from supabase.client import Client
+                _supabase_client = Client(SUPABASE_URL, SUPABASE_ANON_KEY)
+                logger.info("✅ Supabase client initialized (alternative method - no proxy)")
+            else:
+                raise
+                
+        except ImportError as e:
+            logger.warning(f"⚠️ Standard import failed: {e}")
+            # Method 3: Old import style (supabase-py)
+            try:
+                from supabase_py import create_client
+                _supabase_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+                logger.info("✅ Supabase client initialized (old import style - supabase-py)")
+            except ImportError:
+                # Method 4: Try importing from supabase.client directly
+                from supabase.client import Client
+                _supabase_client = Client(SUPABASE_URL, SUPABASE_ANON_KEY)
+                logger.info("✅ Supabase client initialized (direct Client import)")
+        
+        # Verify the client works with a simple query
+        try:
+            test_result = (
+                _supabase_client.table("payments")
+                .select("payment_id")
+                .limit(1)
+                .execute()
+            )
+            logger.info("✅ Supabase client verified with test query")
+        except Exception as test_e:
+            logger.warning(f"⚠️ Test query failed but client created: {test_e}")
+        
         return _supabase_client
         
     except Exception as e:
         logger.error(f"❌ Failed to initialize Supabase client: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 
@@ -57,6 +120,7 @@ def create_payment(payment_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             payment_data["created_at"] = datetime.utcnow().isoformat()
         
         logger.info(f"💾 Creating payment: {payment_data.get('payment_id')}")
+        logger.debug(f"Payment data: {payment_data}")
         
         result = (
             client.table("payments")
@@ -100,6 +164,7 @@ def get_payment_by_payment_id(payment_id: str) -> Optional[Dict[str, Any]]:
         )
         
         if result.data and len(result.data) > 0:
+            logger.debug(f"✅ Found payment: {payment_id}")
             return result.data[0]
         else:
             logger.warning(f"⚠️ Payment not found: {payment_id}")
@@ -162,6 +227,7 @@ def update_payment_status(payment_id: str, update_data: Dict[str, Any]) -> Optio
             update_data["updated_at"] = datetime.utcnow().isoformat()
         
         logger.info(f"💾 Updating payment: {payment_id} → {update_data.get('status', 'unknown')}")
+        logger.debug(f"Update data: {update_data}")
         
         result = (
             client.table("payments")
@@ -368,3 +434,9 @@ def verify_payments_table() -> Dict[str, Any]:
             "exists": False,
             "error": str(e)
         }
+
+
+# ─── Initialization ────────────────────────────────────────
+
+# Log versions when module loads
+log_supabase_version()
