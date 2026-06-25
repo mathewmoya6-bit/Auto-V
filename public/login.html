@@ -4,16 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Login</title>
-    
-    <!-- ✅ Favicon Section -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
-    <meta name="msapplication-TileColor" content="#eab308">
-
-    <!-- ✅ CRITICAL FIX: Load Supabase via UMD script, NOT ES Modules -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js">
-    </script>
     
+    <!-- Load UMD Script first -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Load the Single Source of Truth -->
+    <script src="supabase.js"></script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #0a0a0a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
@@ -24,7 +21,6 @@
         .role-btn.active { background: #eab308; color: #000; }
         input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #333; border-radius: 8px; background: #1a1a1a; color: white; }
         button { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #eab308; color: black; font-weight: bold; cursor: pointer; }
-        button:hover { background: #ca8a04; }
         .error { color: #ef4444; display: none; margin-bottom: 10px; text-align: center; }
         .link { text-align: center; margin-top: 15px; color: #94a3b8; }
         .link a { color: #eab308; text-decoration: none; }
@@ -33,31 +29,23 @@
 <body>
     <div class="card">
         <h2>🚗 AUTO-V Login</h2>
-        
         <div class="role-selector">
             <button type="button" class="role-btn active" data-role="individual">👤 Individual</button>
             <button type="button" class="role-btn" data-role="corporate">🏢 Corporate</button>
             <button type="button" class="role-btn" data-role="valuer">🔍 Valuer</button>
         </div>
-
         <div class="error" id="errorMsg"></div>
-
         <form id="loginForm">
             <input type="email" id="email" placeholder="Email Address" required>
             <input type="password" id="password" placeholder="Password" required>
             <button type="submit" id="loginBtn">Login</button>
         </form>
-
         <div class="link">Don't have an account? <a href="register.html">Sign Up</a></div>
     </div>
 
     <script>
-        // ✅ CRITICAL FIX: Use window.supabase (UMD) instead of ES Module imports
-        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-        
-        // Create client directly from the UMD loaded global
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // 🔥 Use the Single Source of Truth
+        const { supabase, upsertUserProfile } = window.autoV;
 
         let selectedRole = 'individual';
         document.querySelectorAll('.role-btn').forEach(btn => {
@@ -70,7 +58,6 @@
 
         document.getElementById('loginForm').onsubmit = async function(e) {
             e.preventDefault();
-            
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const errorMsg = document.getElementById('errorMsg');
@@ -90,19 +77,8 @@
                 return;
             }
 
-            // Update or create profile with the selected role
-            const { error: profileError } = await supabase
-                .from('user_profiles')
-                .upsert({
-                    id: data.user.id,
-                    email: data.user.email,
-                    role: selectedRole,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'id' });
-
-            if (profileError) {
-                console.error('Profile error:', profileError);
-            }
+            // ✅ Store the role using the shared function
+            await upsertUserProfile(data.user.id, data.user.email, selectedRole);
 
             // ✅ Redirect to dashboard
             window.location.href = 'dashboard.html';
