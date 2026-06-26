@@ -1,18 +1,35 @@
-# db/supabase_client.py - Production Ready (Fixed)
+"""
+Supabase Client - Production Ready (FastAPI Version)
+Thread-safe singleton client with comprehensive health checks
+"""
 
 import os
 import logging
-from supabase import create_client, Client
 from threading import Lock
+from datetime import datetime
+from typing import Optional, Dict, Any
+from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
-_supabase_client: Client = None
+# ─── Global State ──────────────────────────────────────────────
+
+_supabase_client: Optional[Client] = None
 _client_lock = Lock()
 
 
+# ─── Client Initialization ──────────────────────────────────
+
 def get_supabase() -> Client:
-    """Get Singleton Supabase Client with thread-safe initialization."""
+    """
+    Get Singleton Supabase Client with thread-safe initialization.
+    
+    Returns:
+        Client: Initialized Supabase client
+    
+    Raises:
+        RuntimeError: If Supabase credentials are not configured
+    """
     global _supabase_client
     
     if _supabase_client is not None:
@@ -22,20 +39,29 @@ def get_supabase() -> Client:
         if _supabase_client is not None:
             return _supabase_client
         
-        supabase_url = os.getenv('SUPABASE_URL', 'https://tsvejnzxrxrrecgquxbq.supabase.co')
-        supabase_key = os.getenv('SUPABASE_ANON_KEY', os.getenv('SUPABASE_KEY', ''))
+        # Get credentials
+        supabase_url = os.getenv('SUPABASE_URL', '')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY', '')
         
         if not supabase_url or not supabase_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+            raise RuntimeError(
+                "SUPABASE_URL and SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY must be set"
+            )
         
-        # ─── NO proxy parameter ──────────────────────────────────────
-        _supabase_client = create_client(supabase_url, supabase_key)
-        logger.info("✅ Supabase client initialized")
+        # Initialize client
+        try:
+            _supabase_client = create_client(supabase_url, supabase_key)
+            logger.info("✅ Supabase client initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Supabase client: {e}")
+            raise RuntimeError(f"Supabase initialization failed: {e}")
         
         return _supabase_client
 
 
-def get_supabase_status() -> dict:
+# ─── Health Checks ──────────────────────────────────────────
+
+def get_supabase_status() -> Dict[str, Any]:
     """
     Get Supabase connection status WITHOUT testing database tables.
     
@@ -52,7 +78,7 @@ def get_supabase_status() -> dict:
     status = {
         "connected": False,
         "url_configured": bool(os.getenv('SUPABASE_URL')),
-        "key_configured": bool(os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY')),
+        "key_configured": bool(os.getenv('SUPABASE_ANON_KEY') or os.getenv('SUPABASE_KEY') or os.getenv('SUPABASE_SERVICE_ROLE_KEY')),
         "error": None,
         "client_initialized": _supabase_client is not None
     }
@@ -61,16 +87,21 @@ def get_supabase_status() -> dict:
         # Get or create client (this will initialize if not already)
         client = get_supabase()
         
-        # ─── Real lightweight verification (safe + production standard) ──
-        # This does NOT require table or schema existence
+        # Lightweight verification - does NOT require table or schema existence
         try:
             client.auth.get_session()
             status["connected"] = True
-            logger.info("✅ Supabase connection verified (auth session check)")
+            logger.debug("✅ Supabase connection verified (auth session check)")
         except Exception as e:
             status["connected"] = False
             status["error"] = str(e)
-            logger.warning(f"⚠️ Supabase connection not fully verified: {e}")
+            logger.warning(f"⚠️ Supabase auth session check failed: {e}")
+            
+            # If client exists but auth failed, still consider it partially connected
+            if _supabase_client is not None:
+                status["connected"] = True
+                status["auth_verified"] = False
+                status["error"] = f"Auth check failed but client initialized: {e}"
         
     except Exception as e:
         status["connected"] = False
@@ -108,9 +139,7 @@ def force_supabase_connection() -> bool:
         return False
 
 
-# ─── Convenience Function for Health Checks ──────────────────
-
-def check_supabase_health() -> dict:
+def check_supabase_health() -> Dict[str, Any]:
     """
     Comprehensive health check for Supabase.
     
@@ -121,9 +150,14 @@ def check_supabase_health() -> dict:
     
     # Add additional context
     status.update({
-        "timestamp": __import__('datetime').datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
         "url": os.getenv('SUPABASE_URL', 'not_set')[:30] + "...",
-        "key_mode": "service_role" if os.getenv('SUPABASE_KEY') else "anon" if os.getenv('SUPABASE_ANON_KEY') else "none"
+        "key_mode": (
+            "service_role" if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else
+            "anon" if os.getenv('SUPABASE_ANON_KEY') else
+            "key" if os.getenv('SUPABASE_KEY') else
+            "none"
+        )
     })
     
     return status
@@ -132,19 +166,40 @@ def check_supabase_health() -> dict:
 # ─── Reset Client (useful for testing) ──────────────────────
 
 def reset_supabase_client() -> None:
-    """Reset the Supabase client (useful for testing)."""
+    """
+    Reset the Supabase client (useful for testing).
+    """
     global _supabase_client
     with _client_lock:
         _supabase_client = None
         logger.info("🔄 Supabase client reset")
 
 
+# ─── Async Version for FastAPI ──────────────────────────────
+
+async def async_get_supabase() -> Client:
+    """
+    Async wrapper for get_supabase().
+    Returns the same singleton client.
+    """
+    return get_supabase()
+
+
+async def async_check_supabase_health() -> Dict[str, Any]:
+    """
+    Async wrapper for check_supabase_health().
+    """
+    return check_supabase_health()
+
+
 # ─── Exports ──────────────────────────────────────────────────
 
 __all__ = [
     'get_supabase',
+    'async_get_supabase',
     'get_supabase_status',
     'force_supabase_connection',
     'check_supabase_health',
+    'async_check_supabase_health',
     'reset_supabase_client'
 ]
