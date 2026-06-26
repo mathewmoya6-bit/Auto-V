@@ -1,148 +1,198 @@
-# backend/api/vin_routes.py
-from flask import Blueprint, request, jsonify
-from services.vin_validator import vin_validator
-from services.carapi_service import car_api
-from services.vin_ocr import vin_ocr
-from utils.decorators import rate_limit, require_auth
-import logging
+"""
+VIN Routes - FastAPI Version
+VIN validation, decoding, OCR extraction, and check digit generation
+"""
 
-bp = Blueprint('vin', __name__, url_prefix='/api/vin')
+import logging
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, validator
+
+from app.core.dependencies import get_current_user, get_current_user_optional
+from app.services.vin_validator import vin_validator
+from app.services.carapi_service import car_api
+from app.services.vin_ocr import vin_ocr
+from app.core.rate_limit import rate_limit
+
 logger = logging.getLogger(__name__)
 
-@bp.route('/validate', methods=['POST'])
+router = APIRouter(prefix="/api/vin", tags=["VIN"])
+
+
+# ─── Pydantic Models ──────────────────────────────────────────
+
+class ValidateVinRequest(BaseModel):
+    """VIN validation request"""
+    vin: str = Field(..., min_length=17, max_length=17, description="17-character VIN")
+
+    @validator('vin')
+    def validate_vin_format(cls, v):
+        """Validate VIN format (alphanumeric, no I, O, Q)"""
+        v = v.upper().strip()
+        invalid_chars = ['I', 'O', 'Q']
+        for char in invalid_chars:
+            if char in v:
+                raise ValueError(f'VIN contains invalid character: {char}')
+        return v
+
+
+class BatchValidateVinRequest(BaseModel):
+    """Batch VIN validation request"""
+    vins: List[str] = Field(..., description="List of VINs to validate")
+
+
+class SuggestCorrectionsRequest(BaseModel):
+    """VIN correction suggestion request"""
+    vin: str = Field(..., description="VIN to suggest corrections for")
+
+
+class ExtractVinRequest(BaseModel):
+    """VIN extraction from image request"""
+    image_url: str = Field(..., description="URL of the image containing VIN")
+
+
+class GenerateCheckDigitRequest(BaseModel):
+    """Generate check digit request"""
+    vin_without_check: str = Field(..., min_length=16, max_length=16, description="16-character VIN without check digit")
+
+
+class VinResponse(BaseModel):
+    """Standard VIN response"""
+    success: bool
+    data: Optional[dict] = None
+    error: Optional[str] = None
+
+
+# ─── Helper Functions ──────────────────────────────────────────
+
+def clean_vin(vin: str) -> str:
+    """Clean VIN by removing whitespace and converting to uppercase"""
+    return vin.upper().strip()
+
+
+# ─── Routes ──────────────────────────────────────────────────
+
+@router.post("/validate", response_model=VinResponse)
 @rate_limit(limit=100, per=60)
-def validate_vin():
+async def validate_vin(request: ValidateVinRequest):
     """
-    Validate a VIN number
+    Validate a VIN number.
     
-    Request body:
-    {
-        "vin": "JTEGD34V000123456"
-    }
+    **Request Body:**
+    - `vin`: 17-character VIN to validate
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Validation result with valid flag and details
+    - `error`: Error message if unsuccessful
     """
     try:
-        data = request.get_json()
-        
-        if not data or 'vin' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'vin is required'
-            }), 400
-        
-        vin = data['vin']
+        vin = clean_vin(request.vin)
         result = vin_validator.validate(vin)
         
-        return jsonify({
-            'success': True,
-            'data': result
-        })
+        return VinResponse(
+            success=True,
+            data=result
+        )
         
     except Exception as e:
-        logger.error(f"VIN validation error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"VIN validation error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
 
-@bp.route('/batch-validate', methods=['POST'])
+
+@router.post("/batch-validate", response_model=VinResponse)
 @rate_limit(limit=50, per=60)
-def batch_validate_vin():
+async def batch_validate_vin(request: BatchValidateVinRequest):
     """
-    Validate multiple VIN numbers
+    Validate multiple VIN numbers.
     
-    Request body:
-    {
-        "vins": ["JTEGD34V000123456", "JTEGD34V000123457"]
-    }
+    **Request Body:**
+    - `vins`: List of VINs to validate
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: List of validation results
+    - `error`: Error message if unsuccessful
     """
     try:
-        data = request.get_json()
-        
-        if not data or 'vins' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'vins is required'
-            }), 400
-        
         results = []
-        for vin in data['vins']:
-            result = vin_validator.validate(vin)
+        for vin in request.vins:
+            clean = clean_vin(vin)
+            result = vin_validator.validate(clean)
             results.append(result)
         
-        return jsonify({
-            'success': True,
-            'data': results,
-            'count': len(results)
-        })
+        return VinResponse(
+            success=True,
+            data={
+                "results": results,
+                "count": len(results)
+            }
+        )
         
     except Exception as e:
-        logger.error(f"Batch VIN validation error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Batch VIN validation error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
 
-@bp.route('/suggest-corrections', methods=['POST'])
+
+@router.post("/suggest-corrections", response_model=VinResponse)
 @rate_limit(limit=50, per=60)
-def suggest_corrections():
+async def suggest_corrections(request: SuggestCorrectionsRequest):
     """
-    Suggest corrections for an invalid VIN
+    Suggest corrections for an invalid VIN.
     
-    Request body:
-    {
-        "vin": "JTEGD34V00012I456"
-    }
+    **Request Body:**
+    - `vin`: VIN to suggest corrections for
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Original VIN and list of suggestions
+    - `error`: Error message if unsuccessful
     """
     try:
-        data = request.get_json()
-        
-        if not data or 'vin' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'vin is required'
-            }), 400
-        
-        vin = data['vin']
+        vin = clean_vin(request.vin)
         suggestions = vin_validator.suggest_corrections(vin)
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'original_vin': vin,
-                'suggestions': suggestions
+        return VinResponse(
+            success=True,
+            data={
+                "original_vin": vin,
+                "suggestions": suggestions
             }
-        })
+        )
         
     except Exception as e:
-        logger.error(f"Correction suggestion error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Correction suggestion error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
 
-@bp.route('/extract', methods=['POST'])
+
+@router.post("/extract", response_model=VinResponse)
 @rate_limit(limit=10, per=60)
-def extract_vin():
+async def extract_vin(request: ExtractVinRequest):
     """
-    Extract VIN from image using OpenAI Vision
+    Extract VIN from image using AI vision.
     
-    Request body:
-    {
-        "image_url": "https://example.com/vehicle.jpg"
-    }
+    **Request Body:**
+    - `image_url`: URL of the image containing VIN
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Extracted VIN with validation and vehicle details
+    - `error`: Error message if unsuccessful
     """
     try:
-        data = request.get_json()
+        image_url = request.image_url
         
-        if not data or 'image_url' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'image_url is required'
-            }), 400
-        
-        image_url = data['image_url']
-        
-        # Extract VIN
+        # Extract VIN from image
         result = vin_ocr.extract_vin_from_image(image_url)
         
         # Validate if VIN found
@@ -159,107 +209,243 @@ def extract_vin():
                         'make': car_data.get('make', ''),
                         'model': car_data.get('model', ''),
                         'year': car_data.get('year', ''),
-                        'engine': car_data.get('engine', '')
+                        'engine': car_data.get('engine', ''),
+                        'manufacturer': car_data.get('manufacturer', ''),
+                        'country': car_data.get('country', '')
                     }
         
-        return jsonify({
-            'success': True,
-            'data': result
-        })
+        return VinResponse(
+            success=True,
+            data=result
+        )
         
     except Exception as e:
-        logger.error(f"VIN extraction error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"VIN extraction error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
 
-@bp.route('/decode/<vin>', methods=['GET'])
+
+@router.get("/decode/{vin}", response_model=VinResponse)
 @rate_limit(limit=50, per=60)
-def decode_vin(vin):
+async def decode_vin(vin: str):
     """
-    Decode VIN and get vehicle details
+    Decode VIN and get vehicle details.
     
-    Requires valid VIN
+    **Path Parameter:**
+    - `vin`: 17-character VIN to decode
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Vehicle details including make, model, year, engine
+    - `error`: Error message if unsuccessful
     """
     try:
+        vin = clean_vin(vin)
+        
         # Validate VIN first
         validation = vin_validator.validate(vin)
         
         if not validation.get('valid'):
-            return jsonify({
-                'success': False,
-                'error': 'Invalid VIN',
-                'validation': validation
-            }), 400
+            return VinResponse(
+                success=False,
+                error="Invalid VIN",
+                data={"validation": validation}
+            )
         
-        # Get vehicle details
+        # Get vehicle details from API
         car_data = car_api.decode_vin(vin)
         
         if 'error' in car_data:
-            return jsonify({
-                'success': False,
-                'error': 'VIN not found in database'
-            }), 404
+            return VinResponse(
+                success=False,
+                error="VIN not found in database"
+            )
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'vin': vin,
-                'validation': validation,
-                'vehicle': car_data
+        return VinResponse(
+            success=True,
+            data={
+                "vin": vin,
+                "validation": validation,
+                "vehicle": car_data
             }
-        })
+        )
         
     except Exception as e:
-        logger.error(f"VIN decode error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"VIN decode error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
 
-@bp.route('/generate-check-digit', methods=['POST'])
+
+@router.post("/generate-check-digit", response_model=VinResponse)
 @rate_limit(limit=50, per=60)
-def generate_check_digit():
+async def generate_check_digit(request: GenerateCheckDigitRequest):
     """
-    Generate check digit for a VIN without it
+    Generate check digit for a VIN without it.
     
-    Request body:
-    {
-        "vin_without_check": "JTEGD34V00012345"  # 16 characters
-    }
+    **Request Body:**
+    - `vin_without_check`: 16-character VIN without check digit
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Generated check digit and full VIN
+    - `error`: Error message if unsuccessful
     """
     try:
-        data = request.get_json()
-        
-        if not data or 'vin_without_check' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'vin_without_check is required'
-            }), 400
-        
-        vin_without = data['vin_without_check']
+        vin_without = request.vin_without_check.upper().strip()
         
         # Validate length
         if len(vin_without) != 16:
-            return jsonify({
-                'success': False,
-                'error': 'VIN without check digit must be 16 characters'
-            }), 400
+            return VinResponse(
+                success=False,
+                error="VIN without check digit must be 16 characters"
+            )
         
+        # Generate check digit
         check_digit = vin_validator.generate_check_digit(vin_without)
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'check_digit': check_digit,
-                'full_vin': vin_without[:8] + check_digit + vin_without[8:]
+        # Construct full VIN
+        full_vin = vin_without[:8] + check_digit + vin_without[8:]
+        
+        return VinResponse(
+            success=True,
+            data={
+                "check_digit": check_digit,
+                "full_vin": full_vin
             }
-        })
+        )
         
     except Exception as e:
-        logger.error(f"Check digit generation error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Check digit generation error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.get("/country/{wmi}", response_model=VinResponse)
+@rate_limit(limit=50, per=60)
+async def get_country_by_wmi(wmi: str):
+    """
+    Get country information by WMI (World Manufacturer Identifier).
+    
+    **Path Parameter:**
+    - `wmi`: 3-character WMI code
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Country information
+    - `error`: Error message if unsuccessful
+    """
+    try:
+        wmi = wmi.upper().strip()
+        
+        # Get country info from validator
+        country_info = vin_validator.get_country_by_wmi(wmi)
+        
+        if not country_info:
+            return VinResponse(
+                success=False,
+                error="WMI not found"
+            )
+        
+        return VinResponse(
+            success=True,
+            data=country_info
+        )
+        
+    except Exception as e:
+        logger.error(f"Country lookup error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.get("/manufacturer/{wmi}", response_model=VinResponse)
+@rate_limit(limit=50, per=60)
+async def get_manufacturer_by_wmi(wmi: str):
+    """
+    Get manufacturer information by WMI.
+    
+    **Path Parameter:**
+    - `wmi`: 3-character WMI code
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Manufacturer information
+    - `error`: Error message if unsuccessful
+    """
+    try:
+        wmi = wmi.upper().strip()
+        
+        # Get manufacturer info from validator
+        manufacturer_info = vin_validator.get_manufacturer_by_wmi(wmi)
+        
+        if not manufacturer_info:
+            return VinResponse(
+                success=False,
+                error="WMI not found"
+            )
+        
+        return VinResponse(
+            success=True,
+            data=manufacturer_info
+        )
+        
+    except Exception as e:
+        logger.error(f"Manufacturer lookup error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.get("/model/{vin}", response_model=VinResponse)
+@rate_limit(limit=50, per=60)
+async def get_model_details(vin: str):
+    """
+    Get detailed model information from VIN.
+    
+    **Path Parameter:**
+    - `vin`: 17-character VIN
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Model details including trim, engine, transmission
+    - `error`: Error message if unsuccessful
+    """
+    try:
+        vin = clean_vin(vin)
+        
+        # Validate VIN
+        validation = vin_validator.validate(vin)
+        if not validation.get('valid'):
+            return VinResponse(
+                success=False,
+                error="Invalid VIN"
+            )
+        
+        # Get model details
+        model_data = car_api.get_model_details(vin)
+        
+        if 'error' in model_data:
+            return VinResponse(
+                success=False,
+                error="Model details not found"
+            )
+        
+        return VinResponse(
+            success=True,
+            data=model_data
+        )
+        
+    except Exception as e:
+        logger.error(f"Model details error: {str(e)}", exc_info=True)
+        return VinResponse(
+            success=False,
+            error=str(e)
+        )
