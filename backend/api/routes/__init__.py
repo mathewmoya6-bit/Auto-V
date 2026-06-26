@@ -1,7 +1,17 @@
-# ============================================================
-# Routes Package Initialization
-# ============================================================
+"""
+Routes Package
+"""
 
-from api.routes import mpesa
+from app.routes import health, auth, mpesa, valuation, certificates, vehicles, dashboard, vin, webhooks
 
-__all__ = ["mpesa"]
+__all__ = [
+    "health",
+    "auth",
+    "mpesa",
+    "valuation",
+    "certificates",
+    "vehicles",
+    "dashboard",
+    "vin",
+    "webhooks"
+]
