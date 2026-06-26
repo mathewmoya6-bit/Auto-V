@@ -1,24 +1,30 @@
+# ============================================================
 # models.py – AUTO-V Database Models
 # Uses SQLAlchemy 2.0 style (async-compatible)
+# ============================================================
 
 from sqlalchemy import (
     Column, String, Integer, Boolean, DateTime, Numeric, Date, JSON,
     ForeignKey, CheckConstraint, UniqueConstraint, Index, Text, func,
-    Float, BigInteger, Enum as SQLEnum
+    Float, BigInteger, Enum as SQLEnum, Table, MetaData
 )
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, validates, backref
+from sqlalchemy.orm import relationship, validates, backref, declarative_mixin
 from sqlalchemy.sql import expression
 import uuid
 from datetime import datetime, date
 import enum
 
+# ─── Base Class ──────────────────────────────────────────────────
+
 Base = declarative_base()
+metadata = Base.metadata
 
 # Helper for UUID columns
 def generate_uuid():
     return str(uuid.uuid4())
+
 
 # ─── ENUMS ──────────────────────────────────────────────────────
 
@@ -28,6 +34,9 @@ class UserRole(str, enum.Enum):
     SUPER_ADMIN = "super_admin"
     INSPECTOR = "inspector"
     VALUER = "valuer"
+    FLEET_MANAGER = "fleet_manager"
+    ASSESSOR = "assessor"
+
 
 class ServiceType(str, enum.Enum):
     INSTANT = "instant"
@@ -37,10 +46,17 @@ class ServiceType(str, enum.Enum):
     MILEAGE = "mileage"
     FLEET = "fleet"
     VERIFICATION = "verification"
+    CERTIFICATE = "certificate"
+    REPORT = "report"
+
 
 class CustomerType(str, enum.Enum):
     INDIVIDUAL = "individual"
     CORPORATE = "corporate"
+    GOVERNMENT = "government"
+    DEALER = "dealer"
+    FLEET = "fleet"
+
 
 class PaymentStatus(str, enum.Enum):
     PENDING = "pending"
@@ -50,6 +66,8 @@ class PaymentStatus(str, enum.Enum):
     FAILED = "failed"
     REFUNDED = "refunded"
     CANCELLED = "cancelled"
+    DISPUTED = "disputed"
+
 
 class ServiceStatus(str, enum.Enum):
     PENDING = "pending"
@@ -60,24 +78,33 @@ class ServiceStatus(str, enum.Enum):
     REJECTED = "rejected"
     CANCELLED = "cancelled"
     IN_PROGRESS = "in_progress"
+    DRAFT = "draft"
+    EXPIRED = "expired"
+
 
 class VehicleCondition(str, enum.Enum):
     EXCELLENT = "Excellent"
+    VERY_GOOD = "Very Good"
     GOOD = "Good"
     FAIR = "Fair"
     POOR = "Poor"
+
 
 class AccidentHistory(str, enum.Enum):
     NONE = "None"
     MINOR = "Minor"
     MODERATE = "Moderate"
     MAJOR = "Major"
+    WRITE_OFF = "WriteOff"
+
 
 class TransmissionType(str, enum.Enum):
     MANUAL = "Manual"
     AUTOMATIC = "Automatic"
     CVT = "CVT"
     DCT = "DCT"
+    SEMI_AUTOMATIC = "Semi-Automatic"
+
 
 class FuelType(str, enum.Enum):
     PETROL = "Petrol"
@@ -85,34 +112,75 @@ class FuelType(str, enum.Enum):
     HYBRID = "Hybrid"
     ELECTRIC = "Electric"
     LPG = "LPG"
+    CNG = "CNG"
+
 
 class InspectionType(str, enum.Enum):
     STANDARD = "Standard"
     PREMIUM = "Premium"
     EXPRESS = "Express"
+    AI = "AI"
+    VIRTUAL = "Virtual"
+
 
 class PaymentMethod(str, enum.Enum):
     MPESA = "mpesa"
     CARD = "card"
     BANK = "bank"
     CASH = "cash"
+    CRYPTO = "crypto"
+    STIPE = "stripe"
+
 
 class DocumentVerificationStatus(str, enum.Enum):
     PENDING = "Pending"
     VERIFIED = "Verified"
     FAILED = "Failed"
     REVIEW = "Review"
+    EXPIRED = "Expired"
+
+
+class VehicleType(str, enum.Enum):
+    CAR = "Car"
+    SUV = "SUV"
+    PICKUP = "Pickup"
+    TRUCK = "Truck"
+    VAN = "Van"
+    BUS = "Bus"
+    MOTORCYCLE = "Motorcycle"
+    TRICYCLE = "Tricycle"
+    TRAILER = "Trailer"
+
+
+# ─── Mixins ─────────────────────────────────────────────────────
+
+@declarative_mixin
+class TimestampMixin:
+    """Mixin for timestamp fields."""
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
+
+
+@declarative_mixin
+class SoftDeleteMixin:
+    """Mixin for soft delete."""
+    is_deleted = Column(Boolean, default=False, server_default=expression.false())
+    deleted_at = Column(DateTime(timezone=True))
+
 
 # ─── USER PROFILE ─────────────────────────────────────────────
 
-class UserProfile(Base):
+class UserProfile(Base, TimestampMixin):
     __tablename__ = "user_profiles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255))
     full_name = Column(String(255))
     phone = Column(String(50))
     role = Column(String(50), default=UserRole.USER.value, server_default=UserRole.USER.value)
+    
+    # Profile fields
     first_login = Column(Boolean, default=True, server_default=expression.true())
     has_vehicle = Column(Boolean, default=False, server_default=expression.false())
     login_count = Column(Integer, default=1, server_default="1")
@@ -120,11 +188,18 @@ class UserProfile(Base):
     inspection_count = Column(Integer, default=0, server_default="0")
     assessment_count = Column(Integer, default=0, server_default="0")
     claim_count = Column(Integer, default=0, server_default="0")
+    
+    # Business fields
+    company_name = Column(String(255))
+    business_reg = Column(String(100))
+    tax_id = Column(String(50))
+    
+    # Status
     is_active = Column(Boolean, default=True, server_default=expression.true())
+    is_verified = Column(Boolean, default=False, server_default=expression.false())
     last_login = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
-
+    last_ip = Column(String(45))
+    
     # Relationships
     service_requests = relationship("ServiceRequest", back_populates="user", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
@@ -133,12 +208,17 @@ class UserProfile(Base):
     valuations = relationship("Valuation", back_populates="user", cascade="all, delete-orphan")
     inspections = relationship("Inspection", back_populates="inspector")
     vin_scans = relationship("VINScan", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="user")
+    certificates = relationship("Certificate", back_populates="user", cascade="all, delete-orphan")
+    fleets = relationship("Fleet", back_populates="owner", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint(f"role IN ('{UserRole.USER.value}', '{UserRole.ADMIN.value}', '{UserRole.SUPER_ADMIN.value}', '{UserRole.INSPECTOR.value}', '{UserRole.VALUER.value}')", name="check_role"),
+        CheckConstraint(f"role IN ('{UserRole.USER.value}', '{UserRole.ADMIN.value}', '{UserRole.SUPER_ADMIN.value}', '{UserRole.INSPECTOR.value}', '{UserRole.VALUER.value}', '{UserRole.FLEET_MANAGER.value}', '{UserRole.ASSESSOR.value}')", name="check_role"),
         Index("idx_user_profiles_email", "email"),
         Index("idx_user_profiles_role", "role"),
         Index("idx_user_profiles_created_at", "created_at"),
+        Index("idx_user_profiles_phone", "phone"),
     )
 
     @validates("email")
@@ -149,7 +229,6 @@ class UserProfile(Base):
     @validates("phone")
     def validate_phone(self, key, phone):
         if phone:
-            # Simple phone validation
             phone = ''.join(filter(str.isdigit, phone))
             if len(phone) < 10:
                 raise ValueError("Phone number must be at least 10 digits")
@@ -169,7 +248,10 @@ class UserProfile(Base):
             "inspection_count": self.inspection_count,
             "assessment_count": self.assessment_count,
             "claim_count": self.claim_count,
+            "company_name": self.company_name,
+            "business_reg": self.business_reg,
             "is_active": self.is_active,
+            "is_verified": self.is_verified,
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
@@ -178,22 +260,29 @@ class UserProfile(Base):
 
 # ─── VEHICLE ────────────────────────────────────────────────────
 
-class Vehicle(Base):
+class Vehicle(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "vehicles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
+    
+    # Vehicle Identification
     vin = Column(String(17), unique=True, nullable=False, index=True)
     registration_number = Column(String(20), unique=True, index=True)
     make = Column(String(100), nullable=False)
     model = Column(String(100), nullable=False)
     year = Column(Integer, nullable=False)
+    vehicle_type = Column(String(50), default=VehicleType.CAR.value)
+    
+    # Specifications
     body_type = Column(String(50))
     engine_cc = Column(Integer)
     transmission = Column(String(20))
     fuel_type = Column(String(20))
     odometer = Column(BigInteger)
     color = Column(String(50))
+    
+    # Condition
     condition = Column(String(20))
     accident_history = Column(String(20))
     service_history = Column(String(20))
@@ -201,12 +290,14 @@ class Vehicle(Base):
     usage_type = Column(String(20))
     import_status = Column(String(20))
     warranty_status = Column(String(20))
-    modifications = Column(String(50))
+    modifications = Column(Text)
     notes = Column(Text)
+    
+    # Additional
     is_active = Column(Boolean, default=True, server_default=expression.true())
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
-
+    is_verified = Column(Boolean, default=False, server_default=expression.false())
+    verified_at = Column(DateTime(timezone=True))
+    
     # Relationships
     owner = relationship("UserProfile", back_populates="vehicles")
     images = relationship("VehicleImage", back_populates="vehicle", cascade="all, delete-orphan")
@@ -214,17 +305,21 @@ class Vehicle(Base):
     inspections = relationship("Inspection", back_populates="vehicle", cascade="all, delete-orphan")
     vin_scans = relationship("VINScan", back_populates="vehicle")
     service_requests = relationship("ServiceRequest", back_populates="vehicle_ref")
+    mileage_claims = relationship("MileageClaim", back_populates="vehicle")
+    fleet_vehicles = relationship("FleetVehicle", back_populates="vehicle", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint(f"condition IN ('{VehicleCondition.EXCELLENT.value}', '{VehicleCondition.GOOD.value}', '{VehicleCondition.FAIR.value}', '{VehicleCondition.POOR.value}')", name="check_condition"),
-        CheckConstraint(f"accident_history IN ('{AccidentHistory.NONE.value}', '{AccidentHistory.MINOR.value}', '{AccidentHistory.MODERATE.value}', '{AccidentHistory.MAJOR.value}')", name="check_accident_history"),
-        CheckConstraint(f"transmission IN ('{TransmissionType.MANUAL.value}', '{TransmissionType.AUTOMATIC.value}', '{TransmissionType.CVT.value}', '{TransmissionType.DCT.value}')", name="check_transmission"),
-        CheckConstraint(f"fuel_type IN ('{FuelType.PETROL.value}', '{FuelType.DIESEL.value}', '{FuelType.HYBRID.value}', '{FuelType.ELECTRIC.value}', '{FuelType.LPG.value}')", name="check_fuel_type"),
+        CheckConstraint(f"condition IN ('{VehicleCondition.EXCELLENT.value}', '{VehicleCondition.VERY_GOOD.value}', '{VehicleCondition.GOOD.value}', '{VehicleCondition.FAIR.value}', '{VehicleCondition.POOR.value}')", name="check_condition"),
+        CheckConstraint(f"accident_history IN ('{AccidentHistory.NONE.value}', '{AccidentHistory.MINOR.value}', '{AccidentHistory.MODERATE.value}', '{AccidentHistory.MAJOR.value}', '{AccidentHistory.WRITE_OFF.value}')", name="check_accident_history"),
+        CheckConstraint(f"transmission IN ('{TransmissionType.MANUAL.value}', '{TransmissionType.AUTOMATIC.value}', '{TransmissionType.CVT.value}', '{TransmissionType.DCT.value}', '{TransmissionType.SEMI_AUTOMATIC.value}')", name="check_transmission"),
+        CheckConstraint(f"fuel_type IN ('{FuelType.PETROL.value}', '{FuelType.DIESEL.value}', '{FuelType.HYBRID.value}', '{FuelType.ELECTRIC.value}', '{FuelType.LPG.value}', '{FuelType.CNG.value}')", name="check_fuel_type"),
+        CheckConstraint(f"vehicle_type IN ('{VehicleType.CAR.value}', '{VehicleType.SUV.value}', '{VehicleType.PICKUP.value}', '{VehicleType.TRUCK.value}', '{VehicleType.VAN.value}', '{VehicleType.BUS.value}', '{VehicleType.MOTORCYCLE.value}', '{VehicleType.TRICYCLE.value}', '{VehicleType.TRAILER.value}')", name="check_vehicle_type"),
         Index("idx_vehicles_vin", "vin"),
         Index("idx_vehicles_registration", "registration_number"),
         Index("idx_vehicles_make_model", "make", "model"),
         Index("idx_vehicles_user_id", "user_id"),
         Index("idx_vehicles_created_at", "created_at"),
+        Index("idx_vehicles_vehicle_type", "vehicle_type"),
         UniqueConstraint("vin", name="uq_vehicles_vin"),
         UniqueConstraint("registration_number", name="uq_vehicles_registration"),
     )
@@ -238,6 +333,7 @@ class Vehicle(Base):
             "make": self.make,
             "model": self.model,
             "year": self.year,
+            "vehicle_type": self.vehicle_type,
             "body_type": self.body_type,
             "engine_cc": self.engine_cc,
             "transmission": self.transmission,
@@ -249,11 +345,8 @@ class Vehicle(Base):
             "service_history": self.service_history,
             "owners": self.owners,
             "usage_type": self.usage_type,
-            "import_status": self.import_status,
-            "warranty_status": self.warranty_status,
-            "modifications": self.modifications,
-            "notes": self.notes,
             "is_active": self.is_active,
+            "is_verified": self.is_verified,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
@@ -266,31 +359,51 @@ class VehicleImage(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
-    slot = Column(String(50), nullable=False)  # front, rear, left, right, etc.
+    
+    slot = Column(String(50), nullable=False)  # front, rear, left, right, interior, engine, vin
     image_url = Column(String(500), nullable=False)
+    thumbnail_url = Column(String(500))
     is_primary = Column(Boolean, default=False, server_default=expression.false())
     order = Column(Integer, default=0)
+    
+    # Metadata
+    file_name = Column(String(255))
+    file_size = Column(Integer)
+    mime_type = Column(String(50))
+    width = Column(Integer)
+    height = Column(Integer)
+    
+    # AI Analysis
+    ai_analyzed = Column(Boolean, default=False, server_default=expression.false())
+    ai_damage_detected = Column(Boolean, default=False)
+    ai_confidence = Column(Float)
+    ai_analysis_data = Column(JSON)
+    
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-
+    
     # Relationships
     vehicle = relationship("Vehicle", back_populates="images")
 
     __table_args__ = (
         Index("idx_vehicle_images_vehicle_id", "vehicle_id"),
         Index("idx_vehicle_images_slot", "slot"),
+        Index("idx_vehicle_images_is_primary", "is_primary"),
         UniqueConstraint("vehicle_id", "slot", name="uq_vehicle_images_slot"),
+        Index("idx_vehicle_images_ai_analyzed", "ai_analyzed"),
+        Index("idx_vehicle_images_ai_analysis_data", "ai_analysis_data", postgresql_using="gin"),
     )
 
 
 # ─── SERVICE REQUEST ──────────────────────────────────────────
 
-class ServiceRequest(Base):
+class ServiceRequest(Base, TimestampMixin):
     __tablename__ = "service_requests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
     vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="SET NULL"))
     
+    # Service Details
     service_type = Column(String(50), nullable=False)
     customer_type = Column(String(20))
     customer_name = Column(String(255))
@@ -301,6 +414,7 @@ class ServiceRequest(Base):
     business_reg = Column(String(100))
     contact_person = Column(String(255))
     
+    # Vehicle Details
     registration_number = Column(String(20))
     vin = Column(String(17))
     make = Column(String(100))
@@ -315,20 +429,24 @@ class ServiceRequest(Base):
     fuel_type = Column(String(20))
     location = Column(String(255))
     
+    # Service Data
     purpose = Column(String(100))
     purpose_data = Column(JSON)
     amount = Column(Numeric(10, 2))
     payment_status = Column(String(20), default="pending")
     status = Column(String(30), default="pending")
     
+    # Inspection Specific
     inspection_type = Column(String(20))
     inspection_date = Column(Date)
     inspection_location = Column(String(255))
     inspection_notes = Column(Text)
     
+    # Valuation Specific
     valuation_methodology = Column(String(50))
     valuation_region = Column(String(50))
     
+    # Results
     image_count = Column(Integer, default=0)
     document_count = Column(Integer, default=0)
     document_verification = Column(String(20), default="Pending")
@@ -339,32 +457,32 @@ class ServiceRequest(Base):
     valuation_result = Column(JSON, default={})
     result = Column(JSON, default={})
     
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
+    # Timestamps
     completed_at = Column(DateTime(timezone=True))
-
+    
     # Relationships
     user = relationship("UserProfile", back_populates="service_requests")
     vehicle_ref = relationship("Vehicle", back_populates="service_requests")
+    payments = relationship("Payment", back_populates="service_request")
+    certificates = relationship("Certificate", back_populates="service_request")
 
     __table_args__ = (
-        CheckConstraint(f"service_type IN ('{ServiceType.INSTANT.value}', '{ServiceType.VALUATION.value}', '{ServiceType.INSPECTION.value}', '{ServiceType.ASSESSMENT.value}', '{ServiceType.MILEAGE.value}', '{ServiceType.FLEET.value}', '{ServiceType.VERIFICATION.value}')", name="check_service_type"),
-        CheckConstraint(f"customer_type IN ('{CustomerType.INDIVIDUAL.value}', '{CustomerType.CORPORATE.value}')", name="check_customer_type"),
-        CheckConstraint(f"payment_status IN ('{PaymentStatus.PENDING.value}', '{PaymentStatus.PAID.value}', '{PaymentStatus.FAILED.value}', '{PaymentStatus.REFUNDED.value}')", name="check_payment_status"),
-        CheckConstraint(f"status IN ('{ServiceStatus.PENDING.value}', '{ServiceStatus.ASSESSOR_REVIEW.value}', '{ServiceStatus.QUALITY_CHECK.value}', '{ServiceStatus.APPROVED.value}', '{ServiceStatus.COMPLETED.value}', '{ServiceStatus.REJECTED.value}', '{ServiceStatus.CANCELLED.value}', '{ServiceStatus.IN_PROGRESS.value}')", name="check_status"),
-        CheckConstraint(f"condition IN ('{VehicleCondition.EXCELLENT.value}', '{VehicleCondition.GOOD.value}', '{VehicleCondition.FAIR.value}', '{VehicleCondition.POOR.value}')", name="check_condition"),
-        CheckConstraint(f"accident_history IN ('{AccidentHistory.NONE.value}', '{AccidentHistory.MINOR.value}', '{AccidentHistory.MODERATE.value}', '{AccidentHistory.MAJOR.value}')", name="check_accident_history"),
-        CheckConstraint(f"transmission IN ('{TransmissionType.MANUAL.value}', '{TransmissionType.AUTOMATIC.value}', '{TransmissionType.CVT.value}', '{TransmissionType.DCT.value}')", name="check_transmission"),
-        CheckConstraint(f"fuel_type IN ('{FuelType.PETROL.value}', '{FuelType.DIESEL.value}', '{FuelType.HYBRID.value}', '{FuelType.ELECTRIC.value}', '{FuelType.LPG.value}')", name="check_fuel_type"),
-        CheckConstraint(f"inspection_type IN ('{InspectionType.STANDARD.value}', '{InspectionType.PREMIUM.value}', '{InspectionType.EXPRESS.value}')", name="check_inspection_type"),
-        CheckConstraint(f"document_verification IN ('{DocumentVerificationStatus.PENDING.value}', '{DocumentVerificationStatus.VERIFIED.value}', '{DocumentVerificationStatus.FAILED.value}', '{DocumentVerificationStatus.REVIEW.value}')", name="check_doc_verification"),
+        CheckConstraint(f"service_type IN ('{ServiceType.INSTANT.value}', '{ServiceType.VALUATION.value}', '{ServiceType.INSPECTION.value}', '{ServiceType.ASSESSMENT.value}', '{ServiceType.MILEAGE.value}', '{ServiceType.FLEET.value}', '{ServiceType.VERIFICATION.value}', '{ServiceType.CERTIFICATE.value}', '{ServiceType.REPORT.value}')", name="check_service_type"),
+        CheckConstraint(f"customer_type IN ('{CustomerType.INDIVIDUAL.value}', '{CustomerType.CORPORATE.value}', '{CustomerType.GOVERNMENT.value}', '{CustomerType.DEALER.value}', '{CustomerType.FLEET.value}')", name="check_customer_type"),
+        CheckConstraint(f"payment_status IN ('{PaymentStatus.PENDING.value}', '{PaymentStatus.PROCESSING.value}', '{PaymentStatus.COMPLETED.value}', '{PaymentStatus.FAILED.value}', '{PaymentStatus.REFUNDED.value}', '{PaymentStatus.CANCELLED.value}')", name="check_payment_status"),
+        CheckConstraint(f"status IN ('{ServiceStatus.PENDING.value}', '{ServiceStatus.ASSESSOR_REVIEW.value}', '{ServiceStatus.QUALITY_CHECK.value}', '{ServiceStatus.APPROVED.value}', '{ServiceStatus.COMPLETED.value}', '{ServiceStatus.REJECTED.value}', '{ServiceStatus.CANCELLED.value}', '{ServiceStatus.IN_PROGRESS.value}', '{ServiceStatus.DRAFT.value}', '{ServiceStatus.EXPIRED.value}')", name="check_status"),
+        CheckConstraint(f"condition IN ('{VehicleCondition.EXCELLENT.value}', '{VehicleCondition.VERY_GOOD.value}', '{VehicleCondition.GOOD.value}', '{VehicleCondition.FAIR.value}', '{VehicleCondition.POOR.value}')", name="check_condition"),
+        CheckConstraint(f"accident_history IN ('{AccidentHistory.NONE.value}', '{AccidentHistory.MINOR.value}', '{AccidentHistory.MODERATE.value}', '{AccidentHistory.MAJOR.value}', '{AccidentHistory.WRITE_OFF.value}')", name="check_accident_history"),
+        CheckConstraint(f"transmission IN ('{TransmissionType.MANUAL.value}', '{TransmissionType.AUTOMATIC.value}', '{TransmissionType.CVT.value}', '{TransmissionType.DCT.value}', '{TransmissionType.SEMI_AUTOMATIC.value}')", name="check_transmission"),
+        CheckConstraint(f"fuel_type IN ('{FuelType.PETROL.value}', '{FuelType.DIESEL.value}', '{FuelType.HYBRID.value}', '{FuelType.ELECTRIC.value}', '{FuelType.LPG.value}', '{FuelType.CNG.value}')", name="check_fuel_type"),
+        CheckConstraint(f"inspection_type IN ('{InspectionType.STANDARD.value}', '{InspectionType.PREMIUM.value}', '{InspectionType.EXPRESS.value}', '{InspectionType.AI.value}', '{InspectionType.VIRTUAL.value}')", name="check_inspection_type"),
+        CheckConstraint(f"document_verification IN ('{DocumentVerificationStatus.PENDING.value}', '{DocumentVerificationStatus.VERIFIED.value}', '{DocumentVerificationStatus.FAILED.value}', '{DocumentVerificationStatus.REVIEW.value}', '{DocumentVerificationStatus.EXPIRED.value}')", name="check_doc_verification"),
         Index("idx_service_requests_user_id", "user_id"),
         Index("idx_service_requests_service_type", "service_type"),
         Index("idx_service_requests_status", "status"),
         Index("idx_service_requests_payment_status", "payment_status"),
         Index("idx_service_requests_created_at", "created_at"),
         Index("idx_service_requests_registration", "registration_number"),
-        Index("idx_service_requests_purpose", "purpose"),
         Index("idx_service_requests_vin", "vin"),
         Index("idx_service_requests_vehicle_id", "vehicle_id"),
         Index("idx_service_requests_purpose_data", "purpose_data", postgresql_using="gin"),
@@ -409,37 +527,44 @@ class ServiceRequest(Base):
 
 # ─── PAYMENT ────────────────────────────────────────────────────
 
-class Payment(Base):
+class Payment(Base, TimestampMixin):
     __tablename__ = "payments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
     service_type = Column(String(50), nullable=False)
     service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id", ondelete="SET NULL"))
+    
+    # Payment Details
     purpose = Column(String(100))
     amount = Column(Numeric(10, 2), nullable=False)
     payment_method = Column(String(20), default="mpesa")
     status = Column(String(20), default="pending")
     reference = Column(String(50), unique=True)
+    
+    # M-Pesa Details
     mpesa_phone = Column(String(50))
     transaction_id = Column(String(100))
     checkout_request_id = Column(String(100))
+    merchant_request_id = Column(String(100))
     mpesa_receipt = Column(String(100))
+    mpesa_result_code = Column(String(10))
+    mpesa_result_desc = Column(String(255))
     payment_data = Column(JSON)
+    
+    # Approval
     approved_by = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id"))
     approved_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
-
+    
     # Relationships
     user = relationship("UserProfile", back_populates="payments")
     approver = relationship("UserProfile", foreign_keys=[approved_by])
-    service_request = relationship("ServiceRequest")
+    service_request = relationship("ServiceRequest", back_populates="payments")
 
     __table_args__ = (
-        CheckConstraint(f"service_type IN ('{ServiceType.INSTANT.value}', '{ServiceType.VALUATION.value}', '{ServiceType.INSPECTION.value}', '{ServiceType.ASSESSMENT.value}', '{ServiceType.MILEAGE.value}', '{ServiceType.FLEET.value}', '{ServiceType.VERIFICATION.value}')", name="check_service_type"),
-        CheckConstraint(f"payment_method IN ('{PaymentMethod.MPESA.value}', '{PaymentMethod.CARD.value}', '{PaymentMethod.BANK.value}', '{PaymentMethod.CASH.value}')", name="check_payment_method"),
-        CheckConstraint(f"status IN ('{PaymentStatus.PENDING.value}', '{PaymentStatus.PROCESSING.value}', '{PaymentStatus.COMPLETED.value}', '{PaymentStatus.FAILED.value}', '{PaymentStatus.REFUNDED.value}', '{PaymentStatus.CANCELLED.value}')", name="check_status"),
+        CheckConstraint(f"service_type IN ('{ServiceType.INSTANT.value}', '{ServiceType.VALUATION.value}', '{ServiceType.INSPECTION.value}', '{ServiceType.ASSESSMENT.value}', '{ServiceType.MILEAGE.value}', '{ServiceType.FLEET.value}', '{ServiceType.VERIFICATION.value}', '{ServiceType.CERTIFICATE.value}', '{ServiceType.REPORT.value}')", name="check_service_type"),
+        CheckConstraint(f"payment_method IN ('{PaymentMethod.MPESA.value}', '{PaymentMethod.CARD.value}', '{PaymentMethod.BANK.value}', '{PaymentMethod.CASH.value}', '{PaymentMethod.CRYPTO.value}', '{PaymentMethod.STIPE.value}')", name="check_payment_method"),
+        CheckConstraint(f"status IN ('{PaymentStatus.PENDING.value}', '{PaymentStatus.PROCESSING.value}', '{PaymentStatus.COMPLETED.value}', '{PaymentStatus.FAILED.value}', '{PaymentStatus.REFUNDED.value}', '{PaymentStatus.CANCELLED.value}', '{PaymentStatus.DISPUTED.value}')", name="check_status"),
         Index("idx_payments_user_id", "user_id"),
         Index("idx_payments_status", "status"),
         Index("idx_payments_service_type", "service_type"),
@@ -447,7 +572,9 @@ class Payment(Base):
         Index("idx_payments_reference", "reference"),
         Index("idx_payments_checkout_request_id", "checkout_request_id"),
         Index("idx_payments_transaction_id", "transaction_id"),
+        Index("idx_payments_mpesa_receipt", "mpesa_receipt"),
         UniqueConstraint("reference", name="uq_payments_reference"),
+        UniqueConstraint("checkout_request_id", name="uq_payments_checkout"),
     )
 
     def to_dict(self):
@@ -462,7 +589,10 @@ class Payment(Base):
             "mpesa_phone": self.mpesa_phone,
             "transaction_id": self.transaction_id,
             "checkout_request_id": self.checkout_request_id,
+            "merchant_request_id": self.merchant_request_id,
             "mpesa_receipt": self.mpesa_receipt,
+            "mpesa_result_code": self.mpesa_result_code,
+            "mpesa_result_desc": self.mpesa_result_desc,
             "approved_at": self.approved_at.isoformat() if self.approved_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
@@ -471,7 +601,7 @@ class Payment(Base):
 
 # ─── VALUATION ─────────────────────────────────────────────────
 
-class Valuation(Base):
+class Valuation(Base, TimestampMixin):
     __tablename__ = "valuations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -479,13 +609,25 @@ class Valuation(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
     service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id", ondelete="SET NULL"))
     
+    # Valuation Details
     valuation_id = Column(String(50), unique=True, index=True)
+    valuation_type = Column(String(20), default="standard")  # instant, standard, premium
+    
+    # Values
     market_value = Column(Numeric(12, 2))
+    trade_in_value = Column(Numeric(12, 2))
+    private_sale_value = Column(Numeric(12, 2))
+    retail_value = Column(Numeric(12, 2))
+    auction_value = Column(Numeric(12, 2))
     insurance_value = Column(Numeric(12, 2))
     forced_sale_value = Column(Numeric(12, 2))
+    
+    # Scores
     confidence_score = Column(Integer)
     risk_score = Column(Integer)
     condition_score = Column(Float)
+    
+    # Valuation Data
     purpose = Column(String(100))
     region = Column(String(50))
     methodology = Column(String(50))
@@ -494,15 +636,15 @@ class Valuation(Base):
     inspection_data = Column(JSON)
     inspector = Column(JSON)
     ai_analysis = Column(JSON)
+    market_data = Column(JSON)
+    depreciation_data = Column(JSON)
     
+    # Status
     status = Column(String(20), default="draft")
     is_verified = Column(Boolean, default=False, server_default=expression.false())
     verified_at = Column(DateTime(timezone=True))
     verified_by = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id"))
     
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
-
     # Relationships
     vehicle = relationship("Vehicle", back_populates="valuations")
     user = relationship("UserProfile", back_populates="valuations")
@@ -520,13 +662,15 @@ class Valuation(Base):
         Index("idx_valuations_factors", "factors", postgresql_using="gin"),
         Index("idx_valuations_inspection_data", "inspection_data", postgresql_using="gin"),
         Index("idx_valuations_ai_analysis", "ai_analysis", postgresql_using="gin"),
+        Index("idx_valuations_market_data", "market_data", postgresql_using="gin"),
+        Index("idx_valuations_depreciation_data", "depreciation_data", postgresql_using="gin"),
         UniqueConstraint("valuation_id", name="uq_valuations_valuation_id"),
     )
 
 
 # ─── INSPECTION ────────────────────────────────────────────────
 
-class Inspection(Base):
+class Inspection(Base, TimestampMixin):
     __tablename__ = "inspections"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -534,6 +678,7 @@ class Inspection(Base):
     inspector_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="SET NULL"))
     service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id", ondelete="SET NULL"))
     
+    # Inspection Details
     inspection_type = Column(String(20))
     inspection_date = Column(Date, nullable=False)
     inspection_location = Column(String(255))
@@ -548,31 +693,35 @@ class Inspection(Base):
     electronics_score = Column(Integer)
     chassis_score = Column(Integer)
     tyre_depth = Column(Float)
+    
+    # History
     accident_history = Column(String(20))
     service_history = Column(String(20))
     
+    # Inspector
     inspector_name = Column(String(255))
     inspector_license = Column(String(50))
     inspector_signature = Column(String(255))
     
+    # Findings
     notes = Column(Text)
     images = Column(JSON)
     findings = Column(JSON)
+    damage_assessment = Column(JSON)
+    repair_estimates = Column(JSON)
     
+    # Status
     status = Column(String(20), default="pending")
     completed_at = Column(DateTime(timezone=True))
     
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
-
     # Relationships
     vehicle = relationship("Vehicle", back_populates="inspections")
     inspector = relationship("UserProfile", back_populates="inspections")
     service_request = relationship("ServiceRequest")
 
     __table_args__ = (
-        CheckConstraint(f"inspection_type IN ('{InspectionType.STANDARD.value}', '{InspectionType.PREMIUM.value}', '{InspectionType.EXPRESS.value}')", name="check_inspection_type"),
-        CheckConstraint(f"accident_history IN ('{AccidentHistory.NONE.value}', '{AccidentHistory.MINOR.value}', '{AccidentHistory.MODERATE.value}', '{AccidentHistory.MAJOR.value}')", name="check_accident_history"),
+        CheckConstraint(f"inspection_type IN ('{InspectionType.STANDARD.value}', '{InspectionType.PREMIUM.value}', '{InspectionType.EXPRESS.value}', '{InspectionType.AI.value}', '{InspectionType.VIRTUAL.value}')", name="check_inspection_type"),
+        CheckConstraint(f"accident_history IN ('{AccidentHistory.NONE.value}', '{AccidentHistory.MINOR.value}', '{AccidentHistory.MODERATE.value}', '{AccidentHistory.MAJOR.value}', '{AccidentHistory.WRITE_OFF.value}')", name="check_accident_history"),
         Index("idx_inspections_vehicle_id", "vehicle_id"),
         Index("idx_inspections_inspector_id", "inspector_id"),
         Index("idx_inspections_status", "status"),
@@ -580,12 +729,14 @@ class Inspection(Base):
         Index("idx_inspections_created_at", "created_at"),
         Index("idx_inspections_findings", "findings", postgresql_using="gin"),
         Index("idx_inspections_images", "images", postgresql_using="gin"),
+        Index("idx_inspections_damage_assessment", "damage_assessment", postgresql_using="gin"),
+        Index("idx_inspections_repair_estimates", "repair_estimates", postgresql_using="gin"),
     )
 
 
 # ─── MILEAGE CLAIM ─────────────────────────────────────────────
 
-class MileageClaim(Base):
+class MileageClaim(Base, TimestampMixin):
     __tablename__ = "mileage_claims"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -593,6 +744,7 @@ class MileageClaim(Base):
     vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="SET NULL"))
     service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id", ondelete="SET NULL"))
     
+    # Trip Details
     trip_date = Column(Date, nullable=False)
     start_location = Column(String(255))
     end_location = Column(String(255))
@@ -603,21 +755,25 @@ class MileageClaim(Base):
     purpose = Column(String(100))
     notes = Column(Text)
     
+    # Supporting Documents
+    route_image = Column(String(500))
+    odometer_start = Column(BigInteger)
+    odometer_end = Column(BigInteger)
+    trip_duration = Column(Integer)  # in minutes
+    
+    # Status
     status = Column(String(20), default="pending")
     approved_by = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id"))
     approved_at = Column(DateTime(timezone=True))
     
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
-
     # Relationships
     user = relationship("UserProfile", back_populates="mileage_claims")
-    vehicle = relationship("Vehicle")
+    vehicle = relationship("Vehicle", back_populates="mileage_claims")
     approver = relationship("UserProfile", foreign_keys=[approved_by])
     service_request = relationship("ServiceRequest")
 
     __table_args__ = (
-        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'paid')", name="check_status"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'paid', 'cancelled')", name="check_status"),
         Index("idx_mileage_claims_user_id", "user_id"),
         Index("idx_mileage_claims_vehicle_id", "vehicle_id"),
         Index("idx_mileage_claims_status", "status"),
@@ -628,7 +784,7 @@ class MileageClaim(Base):
 
 # ─── MILEAGE RATE ──────────────────────────────────────────────
 
-class MileageRate(Base):
+class MileageRate(Base, TimestampMixin):
     __tablename__ = "mileage_rates"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -638,8 +794,15 @@ class MileageRate(Base):
     effective_to = Column(Date)
     is_active = Column(Boolean, default=True, server_default=expression.true())
     description = Column(String(255))
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
+    
+    # Additional rates
+    base_rate = Column(Numeric(8, 2))
+    fuel_surcharge = Column(Numeric(8, 2))
+    maintenance_factor = Column(Numeric(8, 2))
+    
+    # Metadata
+    source = Column(String(50))  # government, corporate, custom
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id"))
 
     __table_args__ = (
         Index("idx_mileage_rates_active", "is_active"),
@@ -652,7 +815,7 @@ class MileageRate(Base):
 
 # ─── VIN SCAN ──────────────────────────────────────────────────
 
-class VINScan(Base):
+class VINScan(Base, TimestampMixin):
     __tablename__ = "vin_scans"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -664,11 +827,14 @@ class VINScan(Base):
     extracted_from = Column(String(100))  # Image URL or text
     confidence = Column(Float)
     model_used = Column(String(50))
+    
+    # Results
     validation_result = Column(JSON)
     vehicle_data = Column(JSON)
     status = Column(String(20), default="pending")  # pending, verified, failed
     
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
+    # Metadata
+    scan_method = Column(String(20))  # ocr, manual, vision
     
     # Relationships
     user = relationship("UserProfile", back_populates="vin_scans")
@@ -685,9 +851,167 @@ class VINScan(Base):
     )
 
 
+# ─── FLEET ──────────────────────────────────────────────────────
+
+class Fleet(Base, TimestampMixin):
+    __tablename__ = "fleets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
+    
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    fleet_code = Column(String(50), unique=True, index=True)
+    fleet_type = Column(String(50))
+    
+    # Statistics
+    total_vehicles = Column(Integer, default=0)
+    active_vehicles = Column(Integer, default=0)
+    total_drivers = Column(Integer, default=0)
+    active_drivers = Column(Integer, default=0)
+    total_annual_km = Column(BigInteger, default=0)
+    
+    # Financial
+    total_annual_cost = Column(Numeric(15, 2), default=0)
+    total_fixed_cost = Column(Numeric(15, 2), default=0)
+    total_operating_cost = Column(Numeric(15, 2), default=0)
+    average_cost_per_km = Column(Numeric(10, 4), default=0)
+    
+    # Status
+    is_active = Column(Boolean, default=True, server_default=expression.true())
+    
+    # Relationships
+    owner = relationship("UserProfile", back_populates="fleets")
+    fleet_vehicles = relationship("FleetVehicle", back_populates="fleet", cascade="all, delete-orphan")
+    fleet_drivers = relationship("FleetDriver", back_populates="fleet", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_fleets_owner_id", "owner_id"),
+        Index("idx_fleets_fleet_code", "fleet_code"),
+        Index("idx_fleets_is_active", "is_active"),
+        Index("idx_fleets_created_at", "created_at"),
+    )
+
+
+# ─── FLEET VEHICLE ─────────────────────────────────────────────
+
+class FleetVehicle(Base, TimestampMixin):
+    __tablename__ = "fleet_vehicles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    fleet_id = Column(UUID(as_uuid=True), ForeignKey("fleets.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    
+    # Assignment
+    assignment_status = Column(String(20), default="active")
+    assigned_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    assigned_by = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id"))
+    
+    # Fleet Specific
+    fleet_registration = Column(String(50))
+    fleet_number = Column(String(50))
+    current_mileage = Column(BigInteger)
+    last_service_date = Column(Date)
+    next_service_due = Column(Date)
+    service_interval_km = Column(Integer)
+    
+    # Relationships
+    fleet = relationship("Fleet", back_populates="fleet_vehicles")
+    vehicle = relationship("Vehicle", back_populates="fleet_vehicles")
+
+    __table_args__ = (
+        Index("idx_fleet_vehicles_fleet_id", "fleet_id"),
+        Index("idx_fleet_vehicles_vehicle_id", "vehicle_id"),
+        Index("idx_fleet_vehicles_assignment_status", "assignment_status"),
+        UniqueConstraint("fleet_id", "vehicle_id", name="uq_fleet_vehicles"),
+    )
+
+
+# ─── FLEET DRIVER ──────────────────────────────────────────────
+
+class FleetDriver(Base, TimestampMixin):
+    __tablename__ = "fleet_drivers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    fleet_id = Column(UUID(as_uuid=True), ForeignKey("fleets.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"))
+    
+    # Driver Details
+    driver_code = Column(String(50), unique=True, index=True)
+    license_number = Column(String(50))
+    license_class = Column(String(20))
+    license_expiry = Column(Date)
+    
+    # Employment
+    employment_date = Column(Date)
+    employment_status = Column(String(20), default="active")
+    driver_type = Column(String(20))  # full-time, part-time, contract
+    
+    # Statistics
+    total_trips = Column(Integer, default=0)
+    total_km = Column(BigInteger, default=0)
+    safety_score = Column(Float)
+    rating = Column(Float)
+    
+    # Relationships
+    fleet = relationship("Fleet", back_populates="fleet_drivers")
+    user = relationship("UserProfile")
+
+    __table_args__ = (
+        Index("idx_fleet_drivers_fleet_id", "fleet_id"),
+        Index("idx_fleet_drivers_driver_code", "driver_code"),
+        Index("idx_fleet_drivers_employment_status", "employment_status"),
+        Index("idx_fleet_drivers_user_id", "user_id"),
+    )
+
+
+# ─── CERTIFICATE ────────────────────────────────────────────────
+
+class Certificate(Base, TimestampMixin):
+    __tablename__ = "certificates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
+    service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id", ondelete="SET NULL"))
+    
+    certificate_number = Column(String(50), unique=True, index=True)
+    certificate_type = Column(String(50))  # valuation, inspection, assessment
+    
+    # Vehicle Details
+    vehicle_make = Column(String(100))
+    vehicle_model = Column(String(100))
+    vehicle_reg = Column(String(20))
+    vin = Column(String(17))
+    
+    # Certificate Data
+    result = Column(JSON)
+    metadata = Column(JSON)
+    pdf_url = Column(String(500))
+    qr_code = Column(String(500))
+    
+    # Status
+    status = Column(String(20), default="active")  # active, expired, revoked
+    issued_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    expiry_date = Column(Date)
+    
+    # Relationships
+    user = relationship("UserProfile", back_populates="certificates")
+    service_request = relationship("ServiceRequest", back_populates="certificates")
+
+    __table_args__ = (
+        Index("idx_certificates_user_id", "user_id"),
+        Index("idx_certificates_certificate_number", "certificate_number"),
+        Index("idx_certificates_status", "status"),
+        Index("idx_certificates_issued_at", "issued_at"),
+        Index("idx_certificates_result", "result", postgresql_using="gin"),
+        Index("idx_certificates_metadata", "metadata", postgresql_using="gin"),
+        UniqueConstraint("certificate_number", name="uq_certificates_number"),
+    )
+
+
 # ─── SYSTEM SETTING ────────────────────────────────────────────
 
-class SystemSetting(Base):
+class SystemSetting(Base, TimestampMixin):
     __tablename__ = "system_settings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -695,33 +1019,42 @@ class SystemSetting(Base):
     setting_value = Column(Text, nullable=False)
     description = Column(Text)
     is_public = Column(Boolean, default=False, server_default=expression.false())
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
+    category = Column(String(50))
+    data_type = Column(String(20))  # string, integer, boolean, json
 
     __table_args__ = (
         Index("idx_system_settings_key", "setting_key"),
         Index("idx_system_settings_is_public", "is_public"),
+        Index("idx_system_settings_category", "category"),
         UniqueConstraint("setting_key", name="uq_system_settings_key"),
     )
 
 
 # ─── AUDIT LOG ─────────────────────────────────────────────────
 
-class AuditLog(Base):
+class AuditLog(Base, TimestampMixin):
     __tablename__ = "audit_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="SET NULL"))
+    
     action = Column(String(50), nullable=False)
     resource_type = Column(String(50))
     resource_id = Column(String(100))
     resource_data = Column(JSON)
     changes = Column(JSON)
+    
+    # Request Context
     ip_address = Column(String(45))
     user_agent = Column(String(255))
-    status = Column(String(20))
+    request_id = Column(String(50))
+    
+    # Result
+    status = Column(String(20))  # success, failure
     error_message = Column(Text)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
+    
+    # Relationships
+    user = relationship("UserProfile", back_populates="audit_logs")
 
     __table_args__ = (
         Index("idx_audit_logs_user_id", "user_id"),
@@ -730,24 +1063,29 @@ class AuditLog(Base):
         Index("idx_audit_logs_created_at", "created_at"),
         Index("idx_audit_logs_resource_data", "resource_data", postgresql_using="gin"),
         Index("idx_audit_logs_changes", "changes", postgresql_using="gin"),
+        Index("idx_audit_logs_request_id", "request_id"),
     )
 
 
 # ─── NOTIFICATION ──────────────────────────────────────────────
 
-class Notification(Base):
+class Notification(Base, TimestampMixin):
     __tablename__ = "notifications"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
+    
     type = Column(String(50), nullable=False)  # email, sms, push, in_app
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
     data = Column(JSON)
+    
     is_read = Column(Boolean, default=False, server_default=expression.false())
     read_at = Column(DateTime(timezone=True))
     sent_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, server_default=func.now())
+    
+    # Relationships
+    user = relationship("UserProfile", back_populates="notifications")
 
     __table_args__ = (
         Index("idx_notifications_user_id", "user_id"),
@@ -760,20 +1098,10 @@ class Notification(Base):
 # ─── EXPORT ALL MODELS ─────────────────────────────────────────
 
 __all__ = [
+    # Base
     'Base',
-    'UserProfile',
-    'Vehicle',
-    'VehicleImage',
-    'ServiceRequest',
-    'Payment',
-    'Valuation',
-    'Inspection',
-    'MileageClaim',
-    'MileageRate',
-    'VINScan',
-    'SystemSetting',
-    'AuditLog',
-    'Notification',
+    'metadata',
+    
     # Enums
     'UserRole',
     'ServiceType',
@@ -787,4 +1115,24 @@ __all__ = [
     'InspectionType',
     'PaymentMethod',
     'DocumentVerificationStatus',
+    'VehicleType',
+    
+    # Models
+    'UserProfile',
+    'Vehicle',
+    'VehicleImage',
+    'ServiceRequest',
+    'Payment',
+    'Valuation',
+    'Inspection',
+    'MileageClaim',
+    'MileageRate',
+    'VINScan',
+    'Fleet',
+    'FleetVehicle',
+    'FleetDriver',
+    'Certificate',
+    'SystemSetting',
+    'AuditLog',
+    'Notification',
 ]
