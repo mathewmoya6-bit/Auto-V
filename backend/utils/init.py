@@ -18,7 +18,19 @@ from app.utils.decorators import (
     RateLimiter,
 )
 
+from app.utils.logger import (
+    setup_logger,
+    get_logger,
+    logger_middleware,
+    log_context,
+    get_default_logger,
+    JSONFormatter,
+    ColoredFormatter,
+    LoggerFactory,
+)
+
 __all__ = [
+    # Decorators
     "rate_limit",
     "require_auth",
     "require_role",
@@ -32,4 +44,14 @@ __all__ = [
     "admin_endpoint",
     "get_rate_limit_status",
     "RateLimiter",
+    
+    # Logger
+    "setup_logger",
+    "get_logger",
+    "logger_middleware",
+    "log_context",
+    "get_default_logger",
+    "JSONFormatter",
+    "ColoredFormatter",
+    "LoggerFactory",
 ]
