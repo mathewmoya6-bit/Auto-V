@@ -1,17 +1,45 @@
 """
-Routes Package
+Routes Package - All API Routes
 """
 
-from app.routes import health, auth, mpesa, valuation, certificates, vehicles, dashboard, vin, webhooks
+from app.routes import (
+    health,
+    auth,
+    mpesa,
+    valuation,
+    valuations,
+    certificates,
+    vehicles,
+    dashboard,
+    vin,
+    vin_routes,
+    webhooks,
+    admin,
+    assessments,
+    inspection,
+    intelligence,
+    payments,
+    services,
+    fuel
+)
 
 __all__ = [
     "health",
     "auth",
     "mpesa",
     "valuation",
+    "valuations",
     "certificates",
     "vehicles",
     "dashboard",
     "vin",
-    "webhooks"
+    "vin_routes",
+    "webhooks",
+    "admin",
+    "assessments",
+    "inspection",
+    "intelligence",
+    "payments",
+    "services",
+    "fuel"
 ]
