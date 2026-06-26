@@ -1,228 +1,200 @@
-# api/routes/admin.py - Admin Routes
-from flask import Blueprint, request, jsonify
-from datetime import datetime
+"""
+AUTO-V FastAPI Application Entry Point
+"""
+
 import logging
+import time
+from contextlib import asynccontextmanager
 
-from services.supabase_client import get_supabase
-from utils.decorators import rate_limit, require_auth, log_request
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
-logger = logging.getLogger(__name__)
+from app.core.config import settings
+from app.core.database import force_supabase_connection, check_supabase_health
+from app.routes import (
+    health, auth, mpesa, valuation, certificates, 
+    vehicles, dashboard, vin, webhooks, admin
+)
+from app.workers import get_async_worker
+from app.utils.logger import get_default_logger
 
-admin_bp = Blueprint('admin', __name__)
+# Setup logger
+logger = get_default_logger()
 
-# ─── SYSTEM STATUS ─────────────────────────────────────────────
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
-@admin_bp.route('/status', methods=['GET'])
-@rate_limit(limit=30, per=60)
-@require_auth
-@log_request
-def system_status():
-    """Get system status"""
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
+    logger.info("🚀 Starting AUTO-V API...")
+    logger.info(f"📡 Environment: {settings.ENV}")
+    logger.info(f"🔗 Database: {settings.SUPABASE_URL}")
+    logger.info(f"📦 Version: {settings.APP_VERSION}")
+    
+    # Test Supabase connection
     try:
-        supabase = get_supabase()
-        health = supabase.check_health()
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'status': 'operational' if health.get('connected') else 'degraded',
-                'timestamp': datetime.now().isoformat(),
-                'services': {
-                    'supabase': health,
-                    'api': 'operational'
-                }
-            }
-        }), 200
+        connected = force_supabase_connection()
+        if connected:
+            logger.info("✅ Supabase connected successfully")
+        else:
+            logger.warning("⚠️ Supabase connection failed on startup")
     except Exception as e:
-        logger.error(f"System status error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@admin_bp.route('/stats', methods=['GET'])
-@rate_limit(limit=30, per=60)
-@require_auth
-@log_request
-def system_stats():
-    """Get system statistics"""
+        logger.error(f"❌ Supabase connection error: {e}")
+    
+    # Start payment worker
     try:
-        supabase = get_supabase()
-        stats = supabase.get_stats()
-        
-        return jsonify({
-            'success': True,
-            'data': stats,
-            'timestamp': datetime.now().isoformat()
-        }), 200
+        worker = get_async_worker()
+        await worker.start()
+        logger.info("✅ Payment worker started")
     except Exception as e:
-        logger.error(f"System stats error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-# ─── USERS ──────────────────────────────────────────────────────
-
-@admin_bp.route('/users', methods=['GET'])
-@rate_limit(limit=30, per=60)
-@require_auth
-@log_request
-def list_users():
-    """List all users"""
+        logger.error(f"❌ Failed to start payment worker: {e}")
+    
+    yield
+    # Shutdown
+    logger.info("🛑 Shutting down AUTO-V API...")
+    
+    # Stop payment worker
     try:
-        supabase = get_supabase()
-        users = supabase.list_users()
-        
-        return jsonify({
-            'success': True,
-            'data': users,
-            'count': len(users)
-        }), 200
+        worker = get_async_worker()
+        await worker.stop()
+        logger.info("✅ Payment worker stopped")
     except Exception as e:
-        logger.error(f"List users error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"❌ Failed to stop payment worker: {e}")
 
-@admin_bp.route('/users/<user_id>', methods=['GET'])
-@rate_limit(limit=30, per=60)
-@require_auth
-@log_request
-def get_user(user_id):
-    """Get user by ID"""
-    try:
-        supabase = get_supabase()
-        user = supabase.get_user(user_id)
-        
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'}), 404
-        
-        return jsonify({
-            'success': True,
-            'data': user
-        }), 200
-    except Exception as e:
-        logger.error(f"Get user error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
-@admin_bp.route('/users/<user_id>/status', methods=['PUT'])
-@rate_limit(limit=20, per=60)
-@require_auth
-@log_request
-def update_user_status(user_id):
-    """Update user status"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'status' not in data:
-            return jsonify({'success': False, 'error': 'status is required'}), 400
-        
-        supabase = get_supabase()
-        result = supabase.update_user_status(user_id, data['status'])
-        
-        if not result.get('success'):
-            return jsonify({'success': False, 'error': result.get('error')}), 500
-        
-        return jsonify({
-            'success': True,
-            'data': result.get('data'),
-            'message': 'User status updated'
-        }), 200
-    except Exception as e:
-        logger.error(f"Update user status error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+# Create FastAPI app
+app = FastAPI(
+    title="AUTO-V API",
+    version=settings.APP_VERSION,
+    description="Africa's Vehicle Intelligence Platform - AI-powered valuation, inspection, fleet analytics, and verification",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+    openapi_tags=[
+        {"name": "Health", "description": "Health check endpoints"},
+        {"name": "Authentication", "description": "User authentication and JWT tokens"},
+        {"name": "M-Pesa", "description": "M-Pesa payment integration"},
+        {"name": "Valuation", "description": "AI-powered vehicle valuation"},
+        {"name": "Certificates", "description": "Certificate generation and management"},
+        {"name": "Vehicles", "description": "Vehicle management"},
+        {"name": "Dashboard", "description": "Dashboard analytics and statistics"},
+        {"name": "VIN", "description": "VIN validation, decoding, and OCR extraction"},
+        {"name": "Webhooks", "description": "Webhook endpoints for third-party integrations"},
+        {"name": "Admin", "description": "Administrative endpoints for system management"}
+    ]
+)
 
-# ─── SYSTEM CONFIG ─────────────────────────────────────────────
+# Rate limit handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, lambda req, exc: JSONResponse(
+    status_code=429,
+    content={
+        "success": False,
+        "error": "Rate limit exceeded",
+        "message": str(exc)
+    }
+))
 
-@admin_bp.route('/config', methods=['GET'])
-@rate_limit(limit=20, per=60)
-@require_auth
-@log_request
-def get_config():
-    """Get system configuration"""
-    try:
-        supabase = get_supabase()
-        config = supabase.get_system_config()
-        
-        return jsonify({
-            'success': True,
-            'data': config
-        }), 200
-    except Exception as e:
-        logger.error(f"Get config error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"]
+)
 
-@admin_bp.route('/config', methods=['PUT'])
-@rate_limit(limit=10, per=60)
-@require_auth
-@log_request
-def update_config():
-    """Update system configuration"""
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'success': False, 'error': 'No data provided'}), 400
-        
-        supabase = get_supabase()
-        result = supabase.update_system_config(data)
-        
-        if not result.get('success'):
-            return jsonify({'success': False, 'error': result.get('error')}), 500
-        
-        return jsonify({
-            'success': True,
-            'data': result.get('data'),
-            'message': 'Configuration updated'
-        }), 200
-    except Exception as e:
-        logger.error(f"Update config error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+# Trusted host middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS
+)
 
-# ─── LOGS ──────────────────────────────────────────────────────
+# Request ID middleware
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    """Add request ID to each request"""
+    request_id = request.headers.get("X-Request-ID")
+    if not request_id:
+        import uuid
+        request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
-@admin_bp.route('/logs', methods=['GET'])
-@rate_limit(limit=20, per=60)
-@require_auth
-@log_request
-def get_logs():
-    """Get system logs"""
-    try:
-        limit = request.args.get('limit', 100, type=int)
-        level = request.args.get('level', 'INFO')
-        
-        # Read logs from file
-        import os
-        log_file = os.getenv('LOG_FILE', 'auto-v.log')
-        
-        if not os.path.exists(log_file):
-            return jsonify({
-                'success': True,
-                'data': [],
-                'message': 'No log file found'
-            }), 200
-        
-        with open(log_file, 'r') as f:
-            lines = f.readlines()[-limit:]
-        
-        return jsonify({
-            'success': True,
-            'data': lines,
-            'count': len(lines)
-        }), 200
-    except Exception as e:
-        logger.error(f"Get logs error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+# Response logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all requests and responses"""
+    start_time = time.time()
+    logger.info(f"📥 {request.method} {request.url.path}")
+    response = await call_next(request)
+    duration = time.time() - start_time
+    logger.info(f"📤 {response.status_code} {request.method} {request.url.path} - {duration:.3f}s")
+    return response
 
-# ─── CACHE ──────────────────────────────────────────────────────
 
-@admin_bp.route('/cache/clear', methods=['POST'])
-@rate_limit(limit=10, per=60)
-@require_auth
-@log_request
-def clear_cache():
-    """Clear system cache"""
-    try:
-        supabase = get_supabase()
-        supabase.clear_cache()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Cache cleared successfully'
-        }), 200
-    except Exception as e:
-        logger.error(f"Clear cache error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+# ─── Root and Health Endpoints ──────────────────────────────
+
+@app.get("/", tags=["Health"])
+async def root():
+    """Root endpoint"""
+    logger.info("Root endpoint accessed")
+    return {
+        "name": "AUTO-V API",
+        "version": settings.APP_VERSION,
+        "description": "Africa's Vehicle Intelligence Platform",
+        "docs": "/docs",
+        "status": "operational"
+    }
+
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint with Supabase status"""
+    supabase_health = check_supabase_health()
+    
+    status = "healthy" if supabase_health.get("connected") else "degraded"
+    logger.info(f"Health check: {status}")
+    
+    return {
+        "status": status,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENV,
+        "timestamp": time.time(),
+        "supabase": supabase_health
+    }
+
+
+# ─── Include Routers ──────────────────────────────────────
+
+app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(mpesa.router)
+app.include_router(valuation.router)
+app.include_router(certificates.router)
+app.include_router(vehicles.router)
+app.include_router(dashboard.router)
+app.include_router(vin.router)
+app.include_router(webhooks.router)
+app.include_router(admin.router)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG
+    )
