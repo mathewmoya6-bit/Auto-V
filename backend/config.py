@@ -32,13 +32,14 @@ class Settings(BaseSettings):
     MPESA_PASSKEY: str
     MPESA_SHORTCODE: str = "4095377"
     MPESA_ENVIRONMENT: str = "sandbox"
-    MPESA_CALLBACK_URL: str = "/api/v1/mpesa/callback"
+    MPESA_CALLBACK_URL: str = "https://auto-v.onrender.com/api/mpesa/callback"
     BASE_URL: str = "https://auto-v.onrender.com"
     
     # CORS
     CORS_ORIGINS: List[str] = [
         "https://auto-v.meipressgroup.com",
         "https://www.auto-v.meipressgroup.com",
+        "https://auto-v.onrender.com",
         "http://localhost:3000",
         "http://localhost:5173"
     ]
