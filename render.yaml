@@ -1,8 +1,10 @@
-# render.yaml - Deploy to Render.com
+# ============================================================
+# render.yaml - Render.com Deployment
+# ============================================================
 
 services:
   - type: web
-    name: auto-v-backend
+    name: auto-v-api
     runtime: python
     plan: starter
     region: frankfurt
@@ -12,34 +14,44 @@ services:
       pip install --upgrade pip
       pip install -r requirements.txt
     startCommand: |
-      uvicorn app.main:app --host 0.0.0.0 --port $PORT
+      gunicorn -c gunicorn.conf.py wsgi:app
     envVars:
       - key: ENV
         value: production
-      - key: DEBUG
-        value: false
-      - key: APP_VERSION
-        value: 2.0.0
-      - key: BASE_URL
-        value: https://auto-v.onrender.com
-      
+      - key: PORT
+        value: 8000
+      - key: WORKERS
+        value: 4
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: SUPABASE_ANON_KEY
         sync: false
-      
+      - key: SECRET_KEY
+        sync: false
       - key: MPESA_CONSUMER_KEY
         sync: false
       - key: MPESA_CONSUMER_SECRET
         sync: false
       - key: MPESA_PASSKEY
         sync: false
-      - key: MPESA_SHORTCODE
-        value: 4095377
-      - key: MPESA_ENVIRONMENT
-        value: sandbox
-      - key: MPESA_CALLBACK_URL
-        value: https://auto-v.onrender.com/api/mpesa/callback
-      
-      - key: CORS_ORIGINS
-        value: https://auto-v.meipressgroup.com,https://www.auto-v.meipressgroup.com,https://auto-v.onrender.com,http://localhost:3000,http://localhost:5173
+
+  - type: worker
+    name: auto-v-worker
+    runtime: python
+    plan: starter
+    region: frankfurt
+    branch: main
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: |
+      python run_worker.py
+    envVars:
+      - key: ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
