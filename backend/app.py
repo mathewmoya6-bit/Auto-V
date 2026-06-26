@@ -6,6 +6,7 @@ Complete with all routes, middleware, and configuration
 import logging
 import time
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -15,15 +16,18 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
-from app.core.database import supabase
-from app.routes import health, mpesa, valuation, certificates, vehicles, dashboard
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+from app.core.database import db
+from app.routes import (
+    health, auth, mpesa, valuation, certificates, 
+    vehicles, dashboard, vin, vin_routes, webhooks, admin, 
+    assessments, inspection, intelligence, payments, services, 
+    valuations, fuel
 )
-logger = logging.getLogger(__name__)
+from app.workers import get_async_worker
+from app.utils.logger import setup_logger, get_default_logger
+
+# Setup logger
+logger = get_default_logger()
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -35,35 +39,69 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting AUTO-V API...")
     logger.info(f"📡 Environment: {settings.ENV}")
-    logger.info(f"🔗 Database: {settings.SUPABASE_URL}")
+    logger.info(f"🔗 Database: {settings.MONGODB_URI}")
+    logger.info(f"📦 Version: {settings.APP_VERSION}")
     
-    # Test Supabase connection
+    # Connect to database
     try:
-        await supabase.test_connection()
-        logger.info("✅ Supabase connected successfully")
+        await db.connect()
+        logger.info("✅ Database connected successfully")
     except Exception as e:
-        logger.error(f"❌ Supabase connection error: {e}")
+        logger.error(f"❌ Database connection error: {e}")
+    
+    # Start payment worker
+    try:
+        worker = get_async_worker()
+        await worker.start()
+        logger.info("✅ Payment worker started")
+    except Exception as e:
+        logger.error(f"❌ Failed to start payment worker: {e}")
     
     yield
     # Shutdown
     logger.info("🛑 Shutting down AUTO-V API...")
+    
+    # Disconnect database
+    try:
+        await db.disconnect()
+        logger.info("✅ Database disconnected")
+    except Exception as e:
+        logger.error(f"❌ Database disconnection error: {e}")
+    
+    # Stop payment worker
+    try:
+        worker = get_async_worker()
+        await worker.stop()
+        logger.info("✅ Payment worker stopped")
+    except Exception as e:
+        logger.error(f"❌ Failed to stop payment worker: {e}")
 
 
 # Create FastAPI app
 app = FastAPI(
     title="AUTO-V API",
     version=settings.APP_VERSION,
-    description="AUTO-V Backend - M-Pesa + AI Valuation Engine + Certificate Generator",
+    description="Africa's Vehicle Intelligence Platform - AI-powered valuation, inspection, fleet analytics, and verification",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
     openapi_tags=[
         {"name": "Health", "description": "Health check endpoints"},
+        {"name": "Authentication", "description": "User authentication and JWT tokens"},
         {"name": "M-Pesa", "description": "M-Pesa payment integration"},
         {"name": "Valuation", "description": "AI-powered vehicle valuation"},
         {"name": "Certificates", "description": "Certificate generation and management"},
         {"name": "Vehicles", "description": "Vehicle management"},
-        {"name": "Dashboard", "description": "Dashboard analytics"}
+        {"name": "Dashboard", "description": "Dashboard analytics and statistics"},
+        {"name": "VIN", "description": "VIN validation, decoding, and OCR extraction"},
+        {"name": "Webhooks", "description": "Webhook endpoints for third-party integrations"},
+        {"name": "Admin", "description": "Administrative endpoints for system management"},
+        {"name": "Assessments", "description": "Vehicle assessment and risk evaluation"},
+        {"name": "Inspections", "description": "Vehicle inspection and damage detection"},
+        {"name": "Intelligence", "description": "AI-powered intelligence and analytics"},
+        {"name": "Payments", "description": "Payment processing and management"},
+        {"name": "Services", "description": "Service request management"},
+        {"name": "Fuel", "description": "EPRA fuel price management"}
     ]
 )
 
@@ -91,7 +129,7 @@ app.add_middleware(
 # Trusted host middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=settings.ALLOWED_HOSTS
+    allowed_hosts=settings.CORS_ORIGINS + ["localhost", "127.0.0.1"]
 )
 
 # Request ID middleware
@@ -105,23 +143,6 @@ async def add_request_id(request: Request, call_next):
     request.state.request_id = request_id
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
-    return response
-
-# Response logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all requests and responses"""
-    start_time = time.time()
-    
-    # Log request
-    logger.info(f"📥 {request.method} {request.url.path}")
-    
-    response = await call_next(request)
-    
-    # Log response
-    duration = time.time() - start_time
-    logger.info(f"📤 {response.status_code} {request.method} {request.url.path} - {duration:.3f}s")
-    
     return response
 
 
@@ -146,34 +167,62 @@ async def health_check():
         "status": "healthy",
         "version": settings.APP_VERSION,
         "environment": settings.ENV,
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "database": "connected" if db.is_connected else "disconnected"
     }
 
 
-@app.get("/api/mpesa/test", tags=["M-Pesa"])
-async def test_mpesa_callback():
-    """Test endpoint for M-Pesa callback"""
-    return {
-        "status": "ok",
-        "message": "M-Pesa callback endpoint is reachable",
-        "callback_url": settings.MPESA_CALLBACK_URL,
-        "base_url": settings.BASE_URL,
-        "mpesa_configured": bool(
-            settings.MPESA_CONSUMER_KEY and 
-            settings.MPESA_CONSUMER_SECRET and 
-            settings.MPESA_PASSKEY
-        )
-    }
+# ─── Include All Routers ──────────────────────────────────────
 
-
-# ─── Include Routers ──────────────────────────────────────
-
+# Health
 app.include_router(health.router)
+
+# Authentication
+app.include_router(auth.router)
+
+# M-Pesa
 app.include_router(mpesa.router)
+
+# Valuation
 app.include_router(valuation.router)
+app.include_router(valuations.router)
+
+# Certificates
 app.include_router(certificates.router)
+
+# Vehicles
 app.include_router(vehicles.router)
+
+# Dashboard
 app.include_router(dashboard.router)
+
+# VIN
+app.include_router(vin.router)
+app.include_router(vin_routes.router)
+
+# Webhooks
+app.include_router(webhooks.router)
+
+# Admin
+app.include_router(admin.router)
+
+# Assessments
+app.include_router(assessments.router)
+
+# Inspections
+app.include_router(inspection.router)
+
+# Intelligence
+app.include_router(intelligence.router)
+
+# Payments
+app.include_router(payments.router)
+
+# Services
+app.include_router(services.router)
+
+# Fuel
+app.include_router(fuel.router)
 
 
 if __name__ == "__main__":
