@@ -1,256 +1,222 @@
-# api/routes/auth.py - Authentication Routes
-from flask import Blueprint, request, jsonify
-from datetime import datetime, timedelta
-import logging
-import jwt
-import os
+"""
+Authentication Routes - FastAPI Version
+Handles user registration, login, profile management with JWT
+"""
 
-from services.supabase_client import get_supabase
-from utils.decorators import rate_limit, require_auth, log_request
+import logging
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, Depends, status
+from pydantic import BaseModel, EmailStr
+
+from app.core.database import supabase
+from app.core.auth_middleware import (
+    generate_token_pair,
+    verify_refresh_token,
+    get_current_user,
+    get_current_user_optional
+)
+from app.schemas.user import UserRegisterRequest, UserLoginRequest, UserResponse
 
 logger = logging.getLogger(__name__)
 
-auth_bp = Blueprint('auth', __name__)
+router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-# ─── REGISTER ───────────────────────────────────────────────────
 
-@auth_bp.route('/register', methods=['POST'])
-@rate_limit(limit=10, per=60)
-@log_request
-def register():
-    """Register a new user"""
+# ─── Routes ──────────────────────────────────────────────────
+
+@router.post("/register", response_model=UserResponse)
+async def register(user_data: UserRegisterRequest):
+    """Register a new user."""
     try:
-        data = request.get_json()
+        # Check if user exists
+        existing = supabase.table("user_profiles").select("*").eq("email", user_data.email).execute()
         
-        if not data:
-            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        if existing.data:
+            return UserResponse(
+                success=False,
+                error="User with this email already exists"
+            )
         
-        # Validate required fields
-        required = ['email', 'password', 'full_name']
-        missing = [f for f in required if not data.get(f)]
+        # Create user in Supabase Auth
+        auth_response = supabase.auth.sign_up({
+            "email": user_data.email,
+            "password": user_data.password
+        })
         
-        if missing:
-            return jsonify({
-                'success': False,
-                'error': f'Missing fields: {", ".join(missing)}'
-            }), 400
+        if not auth_response.user:
+            return UserResponse(
+                success=False,
+                error="Registration failed"
+            )
         
-        # Register user
-        supabase = get_supabase()
-        result = supabase.register_user(
-            email=data['email'],
-            password=data['password'],
-            metadata={
-                'full_name': data['full_name'],
-                'phone': data.get('phone'),
-                'company': data.get('company')
+        # Create user profile
+        profile_data = {
+            "id": auth_response.user.id,
+            "email": user_data.email,
+            "full_name": user_data.full_name,
+            "phone": user_data.phone,
+            "company": user_data.company,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        supabase.table("user_profiles").insert(profile_data).execute()
+        
+        return UserResponse(
+            success=True,
+            data={
+                "user_id": auth_response.user.id,
+                "email": user_data.email,
+                "full_name": user_data.full_name,
+                "message": "User registered successfully"
             }
         )
         
-        if not result.get('success'):
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Registration failed')
-            }), 400
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'user_id': result.get('user_id'),
-                'email': data['email'],
-                'full_name': data['full_name']
-            },
-            'message': 'Registration successful. Please verify your email.'
-        }), 201
-        
     except Exception as e:
-        logger.error(f"Register error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Registration error: {e}", exc_info=True)
+        return UserResponse(
+            success=False,
+            error=str(e)
+        )
 
-# ─── LOGIN ──────────────────────────────────────────────────────
 
-@auth_bp.route('/login', methods=['POST'])
-@rate_limit(limit=20, per=60)
-@log_request
-def login():
-    """Login user"""
+@router.post("/login")
+async def login(user_data: UserLoginRequest):
+    """Login user and return JWT tokens."""
     try:
-        data = request.get_json()
+        # Authenticate with Supabase
+        auth_response = supabase.auth.sign_in_with_password({
+            "email": user_data.email,
+            "password": user_data.password
+        })
         
-        if not data:
-            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        if not auth_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            )
         
-        # Validate required fields
-        if not data.get('email') or not data.get('password'):
-            return jsonify({
-                'success': False,
-                'error': 'Email and password are required'
-            }), 400
+        # Update last login
+        supabase.table("user_profiles").update({
+            "last_login": datetime.utcnow().isoformat()
+        }).eq("id", auth_response.user.id).execute()
         
-        # Login user
-        supabase = get_supabase()
-        result = supabase.login_user(data['email'], data['password'])
+        # Get user profile
+        profile_result = supabase.table("user_profiles").select("*").eq("id", auth_response.user.id).execute()
+        profile = profile_result.data[0] if profile_result.data else {}
         
-        if not result.get('success'):
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Invalid credentials')
-            }), 401
+        # Generate JWT tokens
+        tokens = generate_token_pair(
+            user_id=auth_response.user.id,
+            email=auth_response.user.email,
+            role=profile.get("role", "user")
+        )
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'access_token': result.get('access_token'),
-                'refresh_token': result.get('refresh_token'),
-                'user': result.get('user')
+        return {
+            "success": True,
+            "data": {
+                "user": {
+                    "id": auth_response.user.id,
+                    "email": auth_response.user.email,
+                    "full_name": profile.get("full_name"),
+                    "phone": profile.get("phone"),
+                    "company": profile.get("company"),
+                    "role": profile.get("role", "user")
+                },
+                **tokens
             }
-        }), 200
+        }
         
     except Exception as e:
-        logger.error(f"Login error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Login error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
 
-# ─── LOGOUT ─────────────────────────────────────────────────────
 
-@auth_bp.route('/logout', methods=['POST'])
-@require_auth
-@log_request
-def logout():
-    """Logout user"""
+@router.post("/refresh")
+async def refresh_token(refresh_token: str):
+    """Refresh access token using refresh token."""
     try:
-        supabase = get_supabase()
-        supabase.logout_user()
+        # Verify refresh token
+        payload = verify_refresh_token(refresh_token)
         
-        return jsonify({
-            'success': True,
-            'message': 'Logged out successfully'
-        }), 200
+        if not payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token"
+            )
+        
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        role = payload.get("role", "user")
+        
+        if not user_id or not email:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload"
+            )
+        
+        # Generate new tokens
+        tokens = generate_token_pair(user_id, email, role)
+        
+        return {
+            "success": True,
+            "data": tokens
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Logout error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Refresh token error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
-# ─── ME ─────────────────────────────────────────────────────────
 
-@auth_bp.route('/me', methods=['GET'])
-@require_auth
-@log_request
-def get_current_user():
-    """Get current user"""
+@router.post("/logout")
+async def logout(current_user: dict = Depends(get_current_user_optional)):
+    """Logout user."""
+    # Supabase handles logout on client side
+    # Server just acknowledges the logout
+    return {
+        "success": True,
+        "message": "Logged out successfully"
+    }
+
+
+@router.get("/me")
+async def get_current_user_profile(current_user: dict = Depends(get_current_user)):
+    """Get current user profile."""
     try:
-        supabase = get_supabase()
-        result = supabase.get_current_user()
+        user_id = current_user.get("sub")
         
-        if not result.get('success'):
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Not authenticated')
-            }), 401
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
         
-        return jsonify({
-            'success': True,
-            'data': result.get('user')
-        }), 200
+        # Get user profile
+        result = supabase.table("user_profiles").select("*").eq("id", user_id).execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        return {
+            "success": True,
+            "data": result.data[0]
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Get current user error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-# ─── REFRESH ────────────────────────────────────────────────────
-
-@auth_bp.route('/refresh', methods=['POST'])
-@rate_limit(limit=20, per=60)
-@log_request
-def refresh_token():
-    """Refresh access token"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'refresh_token' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'refresh_token is required'
-            }), 400
-        
-        supabase = get_supabase()
-        result = supabase.refresh_session(data['refresh_token'])
-        
-        if not result.get('success'):
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Invalid refresh token')
-            }), 401
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'access_token': result.get('access_token')
-            }
-        }), 200
-    except Exception as e:
-        logger.error(f"Refresh token error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-# ─── RESET PASSWORD ────────────────────────────────────────────
-
-@auth_bp.route('/reset-password', methods=['POST'])
-@rate_limit(limit=5, per=60)
-@log_request
-def reset_password():
-    """Request password reset"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'email' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'email is required'
-            }), 400
-        
-        supabase = get_supabase()
-        result = supabase.reset_password(data['email'])
-        
-        if not result.get('success'):
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Password reset failed')
-            }), 400
-        
-        return jsonify({
-            'success': True,
-            'message': 'Password reset email sent'
-        }), 200
-    except Exception as e:
-        logger.error(f"Reset password error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-# ─── VERIFY ─────────────────────────────────────────────────────
-
-@auth_bp.route('/verify', methods=['POST'])
-@rate_limit(limit=10, per=60)
-@log_request
-def verify_email():
-    """Verify email with OTP"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'email' not in data or 'otp' not in data:
-            return jsonify({
-                'success': False,
-                'error': 'email and otp are required'
-            }), 400
-        
-        supabase = get_supabase()
-        result = supabase.verify_email(data['email'], data['otp'])
-        
-        if not result.get('success'):
-            return jsonify({
-                'success': False,
-                'error': result.get('error', 'Verification failed')
-            }), 400
-        
-        return jsonify({
-            'success': True,
-            'message': 'Email verified successfully'
-        }), 200
-    except Exception as e:
-        logger.error(f"Verify email error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Get current user error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
