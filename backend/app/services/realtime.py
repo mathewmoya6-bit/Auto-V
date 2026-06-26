@@ -1,57 +1,30 @@
-# realtime/supabase_realtime.py – Real-time Event Streaming (PRODUCTION HARDENED)
 """
-Supabase Realtime Integration for AUTO-V
+Supabase Realtime Integration for AUTO-V (FastAPI Version)
 Handles real-time event streaming for payments, valuations, inspections, mileage, and more
+Production hardened with proper error handling and connection management
 """
 
 import os
 import logging
 import json
 import time
+import asyncio
 from typing import Callable, Dict, Any, Optional, List
 from datetime import datetime
-from threading import Thread, Event
+from threading import Thread, Event, Lock
+from contextlib import asynccontextmanager
 
-# ✅ FIX: Correct import path for Render deployment
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Try multiple import paths
-try:
-    from services.supabase_client import get_supabase_client as get_supabase
-    print("✅ Imported supabase_client from services")
-except ImportError:
-    try:
-        from backend.services.supabase_client import get_supabase_client as get_supabase
-        print("✅ Imported supabase_client from backend.services")
-    except ImportError:
-        try:
-            from ..services.supabase_client import get_supabase_client as get_supabase
-            print("✅ Imported supabase_client from ..services")
-        except ImportError:
-            print("❌ Could not import supabase_client, using fallback")
-            # Fallback: try to import directly
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(
-                "supabase_client",
-                os.path.join(os.path.dirname(os.path.dirname(__file__)), "services", "supabase_client.py")
-            )
-            if spec and spec.loader:
-                supabase_client_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(supabase_client_module)
-                get_supabase = supabase_client_module.get_supabase_client
-                print("✅ Imported supabase_client via fallback")
+from app.core.database import get_supabase
 
 logger = logging.getLogger(__name__)
 
 # ─── Configuration ──────────────────────────────────────────────
+
 REALTIME_ENABLED = os.getenv('REALTIME_ENABLED', 'true').lower() == 'true'
 REALTIME_HEARTBEAT_INTERVAL = int(os.getenv('REALTIME_HEARTBEAT_INTERVAL', '30'))
 REALTIME_RETRY_ATTEMPTS = int(os.getenv('REALTIME_RETRY_ATTEMPTS', '3'))
 REALTIME_RETRY_DELAY = int(os.getenv('REALTIME_RETRY_DELAY', '2'))
+REALTIME_MAX_CHANNELS = int(os.getenv('REALTIME_MAX_CHANNELS', '100'))
 
 
 class SupabaseRealtime:
@@ -73,6 +46,7 @@ class SupabaseRealtime:
     def __init__(self):
         self._client = None
         self._client_initialized = False
+        self._lock = Lock()
         self._init_client()
         
         self.channels = {}
@@ -81,6 +55,7 @@ class SupabaseRealtime:
         self._threads = {}
         self._heartbeat_interval = REALTIME_HEARTBEAT_INTERVAL
         self._enabled = REALTIME_ENABLED
+        self._max_channels = REALTIME_MAX_CHANNELS
         
         if not self._enabled:
             logger.warning("⚠️ Realtime is disabled (REALTIME_ENABLED=false)")
@@ -90,14 +65,18 @@ class SupabaseRealtime:
         if self._client_initialized:
             return
         
-        try:
-            self._client = get_supabase()
-            self._client_initialized = True
-            logger.info("✅ Supabase client initialized for realtime")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize Supabase client: {e}")
-            self._client = None
-            self._client_initialized = False
+        with self._lock:
+            if self._client_initialized:
+                return
+            
+            try:
+                self._client = get_supabase()
+                self._client_initialized = True
+                logger.info("✅ Supabase client initialized for realtime")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize Supabase client: {e}")
+                self._client = None
+                self._client_initialized = False
     
     def _get_client(self):
         """Get Supabase client with lazy initialization."""
@@ -111,13 +90,17 @@ class SupabaseRealtime:
             logger.warning(f"⚠️ Realtime disabled, not creating channel: {channel_id}")
             return None
         
+        if len(self.channels) >= self._max_channels:
+            logger.error(f"❌ Max channels reached ({self._max_channels})")
+            return None
+        
         client = self._get_client()
         if not client:
             logger.error(f"❌ No Supabase client for channel: {channel_id}")
             return None
         
         try:
-            # ✅ FIX: Check if client has realtime attribute
+            # Check if client has realtime attribute
             if hasattr(client, 'realtime'):
                 return client.realtime.channel(channel_id)
             elif hasattr(client, 'channel'):
@@ -137,17 +120,7 @@ class SupabaseRealtime:
         callback: Callable[[Dict[str, Any]], None],
         event_types: List[str] = ['INSERT', 'UPDATE']
     ) -> Optional[str]:
-        """
-        Subscribe to payment changes for a user.
-        
-        Args:
-            user_id: User ID to listen for
-            callback: Function to call on payment update
-            event_types: List of event types to listen for
-            
-        Returns:
-            str: Channel ID or None on failure
-        """
+        """Subscribe to payment changes for a user."""
         if not self._enabled:
             return None
         
@@ -159,7 +132,6 @@ class SupabaseRealtime:
         
         def handler(payload):
             try:
-                # ✅ FIX: Handle different payload structures
                 event_type = payload.get('event_type') or payload.get('type')
                 new_data = payload.get('new', {}) or payload.get('data', {})
                 old_data = payload.get('old') or payload.get('old_data')
@@ -180,7 +152,6 @@ class SupabaseRealtime:
                 return None
             
             for event_type in event_types:
-                # ✅ FIX: Use correct filter format
                 channel = channel.on(
                     'postgres_changes',
                     {
@@ -201,6 +172,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to payments for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -267,6 +239,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to service requests for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -333,6 +306,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to valuations for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -399,6 +373,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to inspections for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -465,6 +440,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to assessments for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -531,6 +507,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to mileage rates for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -597,6 +574,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to mileage claims for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -661,6 +639,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to notifications for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -727,6 +706,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to user profile for user {user_id} (channel: {channel_id})")
             return channel_id
             
@@ -803,6 +783,7 @@ class SupabaseRealtime:
                 'started_at': datetime.now().isoformat()
             }
             
+            self.start_heartbeat(channel_id)
             logger.info(f"📡 Subscribed to system events (channel: {channel_id})")
             return channel_id
             
@@ -1007,6 +988,7 @@ class SupabaseRealtime:
                 for cid, data in self.listeners.items()
             ],
             'threads': len(self._threads),
+            'max_channels': self._max_channels,
             'timestamp': datetime.now().isoformat()
         }
     
@@ -1059,13 +1041,37 @@ class SupabaseRealtime:
 # ─── Singleton Instance ──────────────────────────────────────────
 
 _realtime_instance = None
+_realtime_lock = Lock()
+
 
 def get_realtime() -> SupabaseRealtime:
     """Get real-time service instance (singleton)."""
     global _realtime_instance
     if _realtime_instance is None:
-        _realtime_instance = SupabaseRealtime()
+        with _realtime_lock:
+            if _realtime_instance is None:
+                _realtime_instance = SupabaseRealtime()
     return _realtime_instance
+
+
+# ─── FastAPI Dependency ──────────────────────────────────────────
+
+async def get_realtime_client() -> SupabaseRealtime:
+    """FastAPI dependency for realtime client."""
+    return get_realtime()
+
+
+# ─── Context Manager ────────────────────────────────────────────
+
+@asynccontextmanager
+async def realtime_context():
+    """Async context manager for realtime service."""
+    realtime = get_realtime()
+    try:
+        yield realtime
+    finally:
+        # Don't cleanup on context exit - let the singleton manage lifecycle
+        pass
 
 
 # ─── Quick Test ──────────────────────────────────────────────────
