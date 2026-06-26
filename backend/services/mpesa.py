@@ -1,489 +1,337 @@
-# services/mpesa.py - M-Pesa Service Logic (REAL API)
+"""
+M-Pesa Service Layer - FastAPI Version
+Handles M-Pesa API interactions and business logic
+"""
 
 import os
-import base64
+import uuid
+import json
 import logging
+import base64
 import requests
 from datetime import datetime
 from typing import Optional, Dict, Any
-from dotenv import load_dotenv
+from supabase import create_client
 
-# Import Supabase client functions
-from services.supabase_client import (
-    create_payment,
-    get_payment_by_checkout_request_id,
-    get_payment_by_payment_id,
-    update_payment_status,
-    get_payment_status
-)
-
-load_dotenv()
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# ─── M-Pesa Configuration ──────────────────────────────────
-MPESA_CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY")
-MPESA_CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET")
-MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
-MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
-MPESA_ENV = os.getenv("MPESA_ENV", "sandbox").lower().strip()
+# ─── Supabase Client ──────────────────────────────────────
 
-# ─── Callback URL ──────────────────────────────────────────
-MPESA_CALLBACK_URL = os.getenv(
-    "MPESA_CALLBACK_URL",
-    "https://auto-v.onrender.com/api/mpesa/callback"
+def get_supabase_client():
+    """Get Supabase client instance"""
+    try:
+        client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY
+        )
+        return client
+    except Exception as e:
+        logger.error(f"Supabase connection error: {e}")
+        return None
+
+
+# ─── Configuration ──────────────────────────────────────
+
+MPESA_CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY", "")
+MPESA_CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET", "")
+MPESA_PASSKEY = os.getenv("MPESA_PASSKEY", "")
+MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "4095377")
+MPESA_ENV = os.getenv("MPESA_ENV", "production")
+MPESA_API_BASE = (
+    "https://api.safaricom.co.ke" if MPESA_ENV == "production"
+    else "https://sandbox.safaricom.co.ke"
 )
 
-# ─── Base URLs ─────────────────────────────────────────────
-BASE_URLS = {
-    "production": "https://api.safaricom.co.ke",
-    "sandbox": "https://sandbox.safaricom.co.ke"
-}
-BASE_URL = BASE_URLS.get(MPESA_ENV, BASE_URLS["sandbox"])
 
-logger.info(f"🔧 M-Pesa Environment: {MPESA_ENV}")
-logger.info(f"🔧 M-Pesa Base URL: {BASE_URL}")
-logger.info(f"🔧 M-Pesa Shortcode: {MPESA_SHORTCODE}")
-logger.info(f"🔧 M-Pesa Callback URL: {MPESA_CALLBACK_URL}")
+def is_mpesa_configured() -> bool:
+    """Check if M-Pesa credentials are configured"""
+    return all([
+        MPESA_CONSUMER_KEY,
+        MPESA_CONSUMER_SECRET,
+        MPESA_PASSKEY,
+        MPESA_SHORTCODE
+    ])
 
+
+# ─── M-Pesa API Functions ──────────────────────────────
 
 def get_mpesa_token() -> Optional[str]:
-    """Get M-Pesa OAuth token from Safaricom."""
-    try:
-        if not MPESA_CONSUMER_KEY or not MPESA_CONSUMER_SECRET:
-            logger.error("❌ M-Pesa credentials not configured")
-            return None
-
-        # Encode credentials
-        credentials = f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}"
-        encoded_credentials = base64.b64encode(credentials.encode()).decode()
-
-        # Make request
-        url = f"{BASE_URL}/oauth/v1/generate?grant_type=client_credentials"
-        headers = {"Authorization": f"Basic {encoded_credentials}"}
-
-        logger.info(f"🔄 Fetching M-Pesa token from {url}")
-
-        response = requests.get(url, headers=headers, timeout=30)
-
-        if response.status_code == 200:
-            token = response.json().get("access_token")
-            logger.info("✅ M-Pesa token obtained successfully")
-            return token
-        else:
-            logger.error(f"❌ Failed to get M-Pesa token: {response.status_code}")
-            logger.error(f"Response: {response.text}")
-            return None
-
-    except Exception as e:
-        logger.error(f"❌ M-Pesa token error: {e}")
+    """Get M-Pesa OAuth token"""
+    if not is_mpesa_configured():
+        logger.error("M-Pesa not configured")
         return None
+    
+    auth_str = f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}"
+    auth_bytes = auth_str.encode()
+    auth_b64 = base64.b64encode(auth_bytes).decode()
+    
+    response = requests.get(
+        f"{MPESA_API_BASE}/oauth/v1/generate?grant_type=client_credentials",
+        headers={"Authorization": f"Basic {auth_b64}"},
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        logger.error(f"Failed to get M-Pesa token: {response.text}")
+        return None
+    
+    return response.json()["access_token"]
+
+
+def format_phone(phone: str) -> str:
+    """Format phone number for M-Pesa"""
+    cleaned = ''.join(c for c in phone if c.isdigit())
+    if cleaned.startswith('0'):
+        cleaned = '254' + cleaned[1:]
+    elif cleaned.startswith('7') and len(cleaned) == 9:
+        cleaned = '254' + cleaned
+    elif len(cleaned) == 10 and cleaned.startswith('07'):
+        cleaned = '254' + cleaned[1:]
+    return cleaned
 
 
 def initiate_stk_push(
     phone: str,
     amount: float,
     payment_id: str,
-    reference: str = None,
-    user_id: str = None
+    reference: str,
+    user_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Initiate M-Pesa STK Push payment using Safaricom API.
-    """
+    """Initiate STK Push payment"""
     try:
-        # Get token
-        token = get_mpesa_token()
-        if not token:
-            raise ValueError("❌ Failed to get M-Pesa token. Check your credentials.")
-
-        # Format phone number (ensure it starts with 254)
-        original_phone = phone
-        if phone.startswith("0"):
-            phone = "254" + phone[1:]
-        elif phone.startswith("+"):
-            phone = phone[1:]
-        elif not phone.startswith("254"):
-            phone = "254" + phone
-
-        logger.info(f"📱 Phone formatted: {original_phone} → {phone}")
-
+        formatted_phone = format_phone(phone)
+        
         # Generate timestamp and password
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
-        password = base64.b64encode(password_str.encode()).decode()
-
-        # Build payload
+        data = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
+        password = base64.b64encode(data.encode()).decode()
+        
+        # Get access token
+        access_token = get_mpesa_token()
+        if not access_token:
+            return {"error": "Failed to get M-Pesa token"}
+        
+        # Prepare payload
+        callback_url = f"{settings.BASE_URL}/api/mpesa/callback"
+        
         payload = {
             "BusinessShortCode": MPESA_SHORTCODE,
             "Password": password,
             "Timestamp": timestamp,
             "TransactionType": "CustomerPayBillOnline",
-            "Amount": int(round(amount)),
-            "PartyA": phone,
+            "Amount": int(amount),
+            "PartyA": formatted_phone,
             "PartyB": MPESA_SHORTCODE,
-            "PhoneNumber": phone,
-            "CallBackURL": MPESA_CALLBACK_URL,
-            "AccountReference": reference or f"AUTO-{payment_id[-8:]}",
-            "TransactionDesc": f"Payment {payment_id}"
+            "PhoneNumber": formatted_phone,
+            "CallBackURL": callback_url,
+            "AccountReference": reference,
+            "TransactionDesc": f"AUTO-V Payment {payment_id}"
         }
-
-        if user_id:
-            payload["TransactionDesc"] = f"{payload['TransactionDesc']} - User {user_id}"
-
-        # Log request (hide sensitive data)
-        log_payload = payload.copy()
-        log_payload["Password"] = "***HIDDEN***"
-        logger.info(f"📤 STK Push Request: {log_payload}")
-
-        # Make request to Safaricom
-        url = f"{BASE_URL}/mpesa/stkpush/v1/processrequest"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
-
-        # Log response
-        logger.info(f"📥 STK Push Response Status: {response.status_code}")
-
-        if response.status_code == 200:
-            result = response.json()
-            logger.info(f"✅ STK Push Response: {result}")
-
-            # Check if the request was successful
-            if result.get("ResponseCode") == "0":
-                checkout_request_id = result.get("CheckoutRequestID")
-                merchant_request_id = result.get("MerchantRequestID")
-                
-                logger.info(f"✅ STK Push initiated successfully for {phone}")
-                logger.info(f"   CheckoutRequestID: {checkout_request_id}")
-                logger.info(f"   MerchantRequestID: {merchant_request_id}")
-                
-                # ─── SAVE TO DATABASE ──────────────────────────────────
-                # Create payment record in Supabase
-                try:
-                    payment_data = {
-                        "payment_id": payment_id,
-                        "user_id": user_id,
-                        "phone": phone,
-                        "amount": float(amount),
-                        "status": "pending",
-                        "reference": reference or f"AUTO-{payment_id[-8:]}",
-                        "checkout_request_id": checkout_request_id,
-                        "merchant_request_id": merchant_request_id,
-                        "created_at": datetime.utcnow().isoformat()
-                    }
-                    
-                    # 🔍 LOG THE DATA BEFORE SAVING
-                    logger.info(f"💰 Payment data before saving: {payment_data}")
-                    
-                    create_payment(payment_data)
-                    logger.info(f"💾 Payment record created in database: {payment_id}")
-                    
-                except Exception as db_error:
-                    logger.error(f"❌ Failed to save payment to database: {db_error}", exc_info=True)
-                    # Continue - we still want to return the STK response
-                
-                return result
-            else:
-                error_msg = result.get("ResponseDescription", "Unknown error")
-                logger.error(f"❌ STK Push failed: {error_msg}")
-                raise ValueError(f"STK Push failed: {error_msg}")
-        else:
-            logger.error(f"❌ STK Push HTTP Error: {response.status_code}")
-            logger.error(f"Response: {response.text}")
-            raise ValueError(f"STK Push failed: HTTP {response.status_code}")
-
-    except requests.exceptions.Timeout:
-        logger.error("❌ STK Push timeout - Safaricom API not responding")
-        raise ValueError("STK Push timeout - please try again")
-    except requests.exceptions.ConnectionError:
-        logger.error("❌ STK Push connection error - cannot reach Safaricom")
-        raise ValueError("Connection error - check your internet")
+        
+        logger.info(f"📤 STK Push payload: {payload}")
+        
+        response = requests.post(
+            f"{MPESA_API_BASE}/mpesa/stkpush/v1/processrequest",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"STK Push error: {response.text}")
+            return {"error": f"STK Push failed: {response.text}"}
+        
+        result = response.json()
+        logger.info(f"📥 STK Push response: {result}")
+        
+        # Store in database
+        client = get_supabase_client()
+        if client:
+            client.table("mpesa_transactions").insert({
+                "payment_id": payment_id,
+                "checkout_request_id": result.get("CheckoutRequestID"),
+                "merchant_request_id": result.get("MerchantRequestID"),
+                "phone": formatted_phone,
+                "amount": int(amount),
+                "reference": reference,
+                "user_id": user_id,
+                "status": "pending",
+                "mpesa_response": result,
+                "created_at": datetime.utcnow().isoformat()
+            }).execute()
+        
+        return result
+        
     except Exception as e:
-        logger.error(f"❌ STK Push error: {e}")
-        raise
+        logger.error(f"initiate_stk_push error: {e}", exc_info=True)
+        return {"error": str(e)}
 
 
 def handle_mpesa_callback(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle M-Pesa callback from Safaricom."""
+    """Process M-Pesa callback"""
     try:
-        body = data.get("Body", {})
-        stk_callback = body.get("stkCallback", {})
-
+        stk_callback = data.get("Body", {}).get("stkCallback", {})
+        checkout_request_id = stk_callback.get("CheckoutRequestID")
         result_code = stk_callback.get("ResultCode")
         result_desc = stk_callback.get("ResultDesc")
-        checkout_request_id = stk_callback.get("CheckoutRequestID")
-        merchant_request_id = stk_callback.get("MerchantRequestID")
-
-        # Extract metadata
-        metadata = stk_callback.get("CallbackMetadata", {})
-        items = metadata.get("Item", [])
-
-        meta_dict = {}
-        for item in items:
-            name = item.get("Name")
-            value = item.get("Value")
-            if name:
-                meta_dict[name] = value
-
+        
+        if not checkout_request_id:
+            logger.warning("No checkout_request_id in callback")
+            return {"error": "No checkout_request_id"}
+        
+        # Get metadata
+        metadata_items = stk_callback.get("CallbackMetadata", {}).get("Item", [])
+        amount = None
+        mpesa_receipt = None
+        phone = None
+        
+        for item in metadata_items:
+            if item.get("Name") == "Amount":
+                amount = item.get("Value")
+            elif item.get("Name") == "MpesaReceiptNumber":
+                mpesa_receipt = item.get("Value")
+            elif item.get("Name") == "PhoneNumber":
+                phone = item.get("Value")
+        
         # Determine status
-        if result_code == 0:
+        status = "pending"
+        if result_code == "0" or result_code == "000":
             status = "completed"
-        elif result_code == 1037:
-            status = "cancelled"  # User cancelled the transaction
-        elif result_code == 1032:
-            status = "failed"  # Transaction failed
-        else:
+        elif str(result_code) in ["1", "1037", "1032", "2001", "2002"]:
             status = "failed"
-
-        logger.info(
-            f"📩 Callback: {checkout_request_id} → {status}",
-            extra={
-                "result_code": result_code,
-                "result_desc": result_desc,
-                "mpesa_code": meta_dict.get("MpesaReceiptNumber"),
-                "amount": meta_dict.get("Amount")
-            }
-        )
-
-        # ─── UPDATE DATABASE ──────────────────────────────────────────
-        updated = False
-        if checkout_request_id:
-            try:
-                # Find the payment by checkout_request_id
-                payment = get_payment_by_checkout_request_id(checkout_request_id)
-                
-                if payment:
-                    logger.info(f"💾 Found payment: {payment.get('payment_id')}")
-                    
-                    # Update payment status and details
-                    update_data = {
-                        "status": status,
-                        "result_code": result_code,
-                        "result_desc": result_desc,
-                        "mpesa_receipt": meta_dict.get("MpesaReceiptNumber"),
-                        "transaction_date": meta_dict.get("TransactionDate"),
-                        "amount": meta_dict.get("Amount"),
-                        "updated_at": datetime.utcnow().isoformat()
-                    }
-                    
-                    # If completed, also store the receipt number
-                    if status == "completed":
-                        update_data["mpesa_receipt"] = meta_dict.get("MpesaReceiptNumber")
-                        update_data["transaction_date"] = meta_dict.get("TransactionDate")
-                        logger.info(f"✅ Payment completed! Receipt: {meta_dict.get('MpesaReceiptNumber')}")
-                    
-                    update_payment_status(payment["payment_id"], update_data)
-                    logger.info(f"💾 Payment updated in database: {payment['payment_id']} → {status}")
-                    updated = True
-                    
-                else:
-                    logger.warning(f"⚠️ Payment not found for checkout_request_id: {checkout_request_id}")
-                    # Try to find by merchant_request_id as fallback
-                    if merchant_request_id:
-                        payment = get_payment_by_checkout_request_id(merchant_request_id)
-                        if payment:
-                            logger.info(f"💾 Found payment by merchant_request_id: {payment.get('payment_id')}")
-                            update_payment_status(payment["payment_id"], {
-                                "status": status,
-                                "result_code": result_code,
-                                "result_desc": result_desc,
-                                "mpesa_receipt": meta_dict.get("MpesaReceiptNumber"),
-                                "transaction_date": meta_dict.get("TransactionDate"),
-                                "amount": meta_dict.get("Amount"),
-                                "updated_at": datetime.utcnow().isoformat()
-                            })
-                            updated = True
-                        else:
-                            logger.warning(f"⚠️ Payment not found by merchant_request_id either.")
-                    
-                    # ─── FALLBACK: CREATE A NEW PAYMENT RECORD ───
-                    # If still not found, create a record from callback data
-                    if not updated:
-                        logger.info("🔄 Attempting to create fallback payment record from callback data...")
-                        try:
-                            fallback_data = {
-                                "payment_id": f"CB-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
-                                "user_id": None,  # We don't have it; could extract from AccountReference if stored
-                                "phone": meta_dict.get("PhoneNumber"),
-                                "amount": meta_dict.get("Amount", 0),
-                                "status": "completed" if status == "completed" else "failed",
-                                "reference": "CALLBACK-FALLBACK",
-                                "checkout_request_id": checkout_request_id,
-                                "merchant_request_id": merchant_request_id,
-                                "mpesa_receipt": meta_dict.get("MpesaReceiptNumber"),
-                                "transaction_date": meta_dict.get("TransactionDate"),
-                                "result_code": result_code,
-                                "result_desc": result_desc,
-                                "created_at": datetime.utcnow().isoformat(),
-                                "updated_at": datetime.utcnow().isoformat()
-                            }
-                            # Log the fallback data
-                            logger.info(f"📦 Fallback payment data: {fallback_data}")
-                            
-                            created = create_payment(fallback_data)
-                            if created:
-                                logger.info(f"✅ Created fallback payment record: {fallback_data['payment_id']}")
-                                updated = True
-                            else:
-                                logger.error("❌ Failed to create fallback payment record.")
-                        except Exception as e:
-                            logger.error(f"❌ Fallback creation error: {e}", exc_info=True)
-                            
-            except Exception as db_error:
-                logger.error(f"❌ Failed to update payment in database: {db_error}", exc_info=True)
-                # Continue - we still want to return success to Safaricom
-        else:
-            logger.warning("⚠️ No checkout_request_id in callback")
-
-        # Return success to Safaricom regardless of DB update (they expect 0)
-        return {
-            "ResultCode": 0,
-            "ResultDesc": "Success",
-            "data": {
-                "checkout_request_id": checkout_request_id,
-                "merchant_request_id": merchant_request_id,
+        
+        # Update database
+        client = get_supabase_client()
+        if client:
+            client.table("mpesa_transactions").update({
                 "status": status,
-                "result_code": result_code,
-                "result_desc": result_desc,
-                "mpesa_code": meta_dict.get("MpesaReceiptNumber"),
-                "amount": meta_dict.get("Amount"),
-                "transaction_date": meta_dict.get("TransactionDate"),
-                "db_updated": updated
-            }
+                "mpesa_result_code": str(result_code),
+                "mpesa_result_desc": result_desc,
+                "mpesa_receipt": mpesa_receipt,
+                "mpesa_phone": phone,
+                "mpesa_amount": amount,
+                "callback_data": stk_callback,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("checkout_request_id", checkout_request_id).execute()
+        
+        return {
+            "success": True,
+            "status": status,
+            "checkout_request_id": checkout_request_id,
+            "result_code": result_code,
+            "result_desc": result_desc,
+            "receipt": mpesa_receipt,
+            "amount": amount,
+            "phone": phone
         }
-
+        
     except Exception as e:
-        logger.error(f"❌ Callback handling error: {e}", exc_info=True)
-        return {"ResultCode": 1, "ResultDesc": f"Error: {str(e)}"}
+        logger.error(f"handle_mpesa_callback error: {e}", exc_info=True)
+        return {"error": str(e)}
 
 
 def query_payment_status(checkout_request_id: str) -> Dict[str, Any]:
-    """Query payment status from Safaricom."""
+    """Query payment status from M-Pesa"""
     try:
-        token = get_mpesa_token()
-        if not token:
-            raise ValueError("Failed to get M-Pesa token")
-
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
-        password = base64.b64encode(password_str.encode()).decode()
-
+        data = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
+        password = base64.b64encode(data.encode()).decode()
+        
+        access_token = get_mpesa_token()
+        if not access_token:
+            return {"error": "Failed to get M-Pesa token"}
+        
         payload = {
             "BusinessShortCode": MPESA_SHORTCODE,
             "Password": password,
             "Timestamp": timestamp,
             "CheckoutRequestID": checkout_request_id
         }
-
+        
         response = requests.post(
-            f"{BASE_URL}/mpesa/stkpushquery/v1/query",
-            json=payload,
+            f"{MPESA_API_BASE}/mpesa/stkpushquery/v1/query",
             headers={
-                "Authorization": f"Bearer {token}",
+                "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json"
             },
+            json=payload,
             timeout=30
         )
-
-        if response.status_code == 200:
-            result = response.json()
-            
-            # Also update database with the query result
-            try:
-                payment = get_payment_by_checkout_request_id(checkout_request_id)
-                if payment:
-                    result_code = result.get("ResultCode")
-                    if result_code == 0:
-                        update_payment_status(payment["payment_id"], {
-                            "status": "completed",
-                            "updated_at": datetime.utcnow().isoformat()
-                        })
-                    elif result_code in [1037, 1032]:
-                        update_payment_status(payment["payment_id"], {
-                            "status": "failed",
-                            "updated_at": datetime.utcnow().isoformat()
-                        })
-            except Exception as db_error:
-                logger.error(f"❌ Failed to update payment from query: {db_error}")
-            
-            return result
-        else:
-            logger.error(f"Query failed: {response.status_code}")
-            raise ValueError(f"Query failed: {response.text}")
-
-    except Exception as e:
-        logger.error(f"Query error: {e}")
-        raise
-
-
-def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
-    """Auto-confirm a pending payment (admin override)."""
-    try:
-        # Check if payment exists
-        payment = get_payment_by_payment_id(payment_id)
-        if not payment:
-            raise ValueError(f"Payment {payment_id} not found")
         
-        # Update status to completed
-        update_data = {
-            "status": "completed",
-            "result_code": 0,
-            "result_desc": "Auto-confirmed by admin",
-            "updated_at": datetime.utcnow().isoformat()
-        }
+        if response.status_code != 200:
+            logger.error(f"Query error: {response.text}")
+            return {"error": f"Query failed: {response.text}"}
         
-        update_payment_status(payment_id, update_data)
+        result = response.json()
+        result_code = result.get("ResultCode") or result.get("ResponseCode")
+        result_desc = result.get("ResultDesc") or result.get("ResponseDescription")
+        
+        status = "pending"
+        if result_code == "0" or result_code == "000":
+            status = "completed"
+        elif str(result_code) in ["1", "1037", "1032", "2001", "2002"]:
+            status = "failed"
+        
+        # Update database
+        client = get_supabase_client()
+        if client:
+            client.table("mpesa_transactions").update({
+                "status": status,
+                "mpesa_result_code": str(result_code),
+                "mpesa_result_desc": result_desc,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("checkout_request_id", checkout_request_id).execute()
         
         return {
             "success": True,
-            "message": "Payment auto-confirmed",
-            "payment_id": payment_id,
-            "status": "completed"
+            "status": status,
+            "result_code": result_code,
+            "result_desc": result_desc,
+            "receipt": result.get("MpesaReceiptNumber")
         }
+        
     except Exception as e:
-        logger.error(f"Auto-confirm error: {e}")
-        raise
+        logger.error(f"query_payment_status error: {e}", exc_info=True)
+        return {"error": str(e)}
 
 
-def is_mpesa_configured() -> bool:
-    """Check if M-Pesa is properly configured."""
-    configured = bool(
-        MPESA_CONSUMER_KEY and
-        MPESA_CONSUMER_SECRET and
-        MPESA_PASSKEY
-    )
-    if not configured:
-        logger.warning("⚠️ M-Pesa not fully configured - missing credentials")
-    return configured
-
-
-def get_mpesa_token_public() -> Optional[Dict[str, Any]]:
-    """Public wrapper for get_mpesa_token."""
-    token = get_mpesa_token()
-    if token:
-        return {"token": token, "expires_in": 3600}
-    return None
-
-
-def get_payment_status_by_id(payment_id: str) -> Dict[str, Any]:
-    """Get payment status from database by payment_id."""
+def auto_confirm_payment(payment_id: str) -> Dict[str, Any]:
+    """Auto-confirm a pending payment"""
     try:
-        payment = get_payment_by_payment_id(payment_id)
-        if payment:
+        # Get payment from database
+        client = get_supabase_client()
+        if not client:
+            return {"error": "Supabase client not available"}
+        
+        result = client.table("mpesa_transactions").select("*").eq("payment_id", payment_id).execute()
+        payments = result.data if hasattr(result, 'data') else result
+        
+        if not payments:
+            return {"error": "Payment not found"}
+        
+        payment = payments[0]
+        checkout_request_id = payment.get("checkout_request_id")
+        
+        if not checkout_request_id:
+            return {"error": "No checkout_request_id"}
+        
+        if payment.get("status") == "completed":
             return {
-                "payment_id": payment.get("payment_id"),
-                "status": payment.get("status", "pending"),
-                "amount": payment.get("amount"),
-                "phone": payment.get("phone"),
-                "mpesa_receipt": payment.get("mpesa_receipt"),
-                "created_at": payment.get("created_at"),
-                "updated_at": payment.get("updated_at")
+                "status": "completed",
+                "result_code": "0",
+                "data": {"already_completed": True}
             }
-        else:
-            return {"payment_id": payment_id, "status": "not_found"}
+        
+        # Query M-Pesa
+        query_result = query_payment_status(checkout_request_id)
+        
+        return query_result
+        
     except Exception as e:
-        logger.error(f"Error getting payment status: {e}")
-        return {"payment_id": payment_id, "status": "error", "error": str(e)}
+        logger.error(f"auto_confirm_payment error: {e}", exc_info=True)
+        return {"error": str(e)}
