@@ -109,4 +109,115 @@ async def initiate_payment(
         return PaymentResponse(
             payment_id=payment_id,
             status='pending',
-            checkout_request_id=result.get('Check
+            checkout_request_id=result.get('CheckoutRequestID'),
+            merchant_request_id=result.get('MerchantRequestID'),
+            amount=payment.amount,
+            phone_number=payment.phone_number,
+            payment_type=payment.payment_type,
+            created_at=payment_data['created_at']
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Payment initiation error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Payment initiation failed"
+        )
+
+@router.get("/verify/{payment_id}")
+async def verify_payment(
+    payment_id: str,
+    request: Request,
+    token_data: dict = Depends(JWTBearer()),
+    db=Depends(get_db)
+):
+    """Verify payment status"""
+    try:
+        user_id = request.state.user_id
+        
+        # Get payment record
+        result = db.table('payments').select('*').eq('id', payment_id).execute()
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Payment not found"
+            )
+        
+        payment = result.data[0]
+        
+        # Verify user owns this payment
+        if payment['user_id'] != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Check status with M-PESA
+        if payment.get('checkout_request_id'):
+            mpesa = MpesaService()
+            status_result = await mpesa.query_status(
+                checkout_request_id=payment['checkout_request_id']
+            )
+            
+            if status_result.get('success'):
+                # Update payment status
+                new_status = status_result.get('ResultCode') == '0' and 'completed' or 'failed'
+                db.table('payments').update({
+                    'status': new_status,
+                    'updated_at': datetime.utcnow().isoformat(),
+                    'mpesa_response': status_result
+                }).eq('id', payment_id).execute()
+                
+                payment['status'] = new_status
+        
+        return {
+            'payment_id': payment_id,
+            'status': payment.get('status', 'unknown'),
+            'amount': payment.get('amount'),
+            'created_at': payment.get('created_at'),
+            'updated_at': payment.get('updated_at')
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Payment verification error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Payment verification failed"
+        )
+
+@router.get("/history")
+async def get_payment_history(
+    request: Request,
+    token_data: dict = Depends(JWTBearer()),
+    db=Depends(get_db),
+    limit: int = 20,
+    offset: int = 0
+):
+    """Get user's payment history"""
+    try:
+        user_id = request.state.user_id
+        
+        result = db.table('payments') \
+            .select('*') \
+            .eq('user_id', user_id) \
+            .order('created_at', desc=True) \
+            .range(offset, offset + limit) \
+            .execute()
+        
+        return {
+            'payments': result.data,
+            'total': len(result.data),
+            'limit': limit,
+            'offset': offset
+        }
+        
+    except Exception as e:
+        logger.error(f"Payment history error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get payment history"
+        )
