@@ -1,11 +1,12 @@
 """
 AUTO-V Core Configuration - FastAPI Version
+Fixed CORS_ORIGINS parsing for Render.com
 """
 
 import os
 from typing import List, Optional, Dict, Any
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, ValidationInfo
 
 
 class Settings(BaseSettings):
@@ -24,52 +25,76 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "AUTO-V API"
     
     # Supabase
-    SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_JWT_SECRET: Optional[str] = None
     
     # Security
-    SECRET_KEY: str
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     BCRYPT_ROUNDS: int = 12
     
     # M-Pesa
-    MPESA_CONSUMER_KEY: str
-    MPESA_CONSUMER_SECRET: str
-    MPESA_PASSKEY: str
+    MPESA_CONSUMER_KEY: str = ""
+    MPESA_CONSUMER_SECRET: str = ""
+    MPESA_PASSKEY: str = ""
     MPESA_SHORTCODE: str = "4095377"
     MPESA_ENVIRONMENT: str = "production"
     MPESA_CALLBACK_URL: str = "https://auto-v.meipressgroup.com/api/webhooks/mpesa"
     BASE_URL: str = "https://auto-v.meipressgroup.com"
     
-    # CORS
+    # ─── CORS - Fixed Parsing ──────────────────────────────────────
     CORS_ORIGINS: List[str] = [
         "https://auto-v.meipressgroup.com",
         "https://www.auto-v.meipressgroup.com",
         "http://localhost:3000",
-        "http://localhost:5500"
+        "http://localhost:5500",
+        "http://localhost:5173",
+        "https://auto-v-api.onrender.com"
     ]
+    
     ALLOWED_HOSTS: List[str] = [
         "auto-v.meipressgroup.com",
         "www.auto-v.meipressgroup.com",
         "localhost",
-        "127.0.0.1"
+        "127.0.0.1",
+        "auto-v-api.onrender.com"
     ]
     
     @field_validator("CORS_ORIGINS", mode="before")
-    def parse_cors_origins(cls, v):
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> List[str]:
+        """Parse CORS origins from string or list"""
+        if v is None:
+            return []
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+            # Remove quotes and whitespace
+            v = v.strip('"').strip("'").strip()
+            if not v:
+                return []
+            # Split by comma and clean
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        if isinstance(v, list):
+            return [str(origin).strip() for origin in v if origin]
+        return []
     
     @field_validator("ALLOWED_HOSTS", mode="before")
-    def parse_allowed_hosts(cls, v):
+    @classmethod
+    def parse_allowed_hosts(cls, v: Any) -> List[str]:
+        """Parse allowed hosts from string or list"""
+        if v is None:
+            return []
         if isinstance(v, str):
-            return [host.strip() for host in v.split(",")]
-        return v
+            v = v.strip('"').strip("'").strip()
+            if not v:
+                return []
+            return [host.strip() for host in v.split(",") if host.strip()]
+        if isinstance(v, list):
+            return [str(host).strip() for host in v if host]
+        return []
     
     # Redis
     REDIS_URL: str = "redis://redis:6379"
@@ -84,7 +109,7 @@ class Settings(BaseSettings):
     IP_RATE_LIMIT: int = 100
     
     # Logging
-    LOG_LEVEL: str = "WARNING"
+    LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"
     LOG_FORMAT: str = "json"
     LOG_DIR: str = "logs"
@@ -113,13 +138,13 @@ class Settings(BaseSettings):
     REALTIME_ENABLED: bool = True
     
     # File Uploads
-    MAX_IMAGE_SIZE: int = 10485760   # 10MB
-    MAX_DOCUMENT_SIZE: int = 20971520  # 20MB
+    MAX_IMAGE_SIZE: int = 10485760
+    MAX_DOCUMENT_SIZE: int = 20971520
     STORAGE_TYPE: str = "supabase"
     STORAGE_BUCKET: str = "autov-storage"
     
     # Vehicle API
-    CARAPI_KEY: str
+    CARAPI_KEY: Optional[str] = None
     
     # External APIs
     OPENAI_API_KEY: Optional[str] = None
@@ -155,6 +180,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra environment variables
 
 
 settings = Settings()
