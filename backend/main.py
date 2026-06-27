@@ -1,4 +1,4 @@
-# main.py (UPDATED - with all fixes)
+# main.py (UPDATED - using properties)
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -30,7 +30,6 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
-        # Continue startup even if database fails (will retry on requests)
     
     yield
     
@@ -54,39 +53,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration
-cors_origins = settings.CORS_ORIGINS
-if isinstance(cors_origins, str):
-    cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
-elif not isinstance(cors_origins, list):
-    cors_origins = []
-
-logger.info(f"CORS origins configured: {cors_origins}")
+# CORS Configuration - Using the property
+logger.info(f"CORS origins configured: {settings.cors_origins_list}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Trusted Hosts
-allowed_hosts = settings.ALLOWED_HOSTS
-if isinstance(allowed_hosts, str):
-    allowed_hosts = [host.strip() for host in allowed_hosts.split(',') if host.strip()]
-elif not isinstance(allowed_hosts, list):
-    allowed_hosts = []
-
-logger.info(f"Allowed hosts: {allowed_hosts}")
+# Trusted Hosts - Using the property
+logger.info(f"Allowed hosts: {settings.allowed_hosts_list}")
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=allowed_hosts or ["*"],
+    allowed_hosts=settings.allowed_hosts_list or ["*"],
 )
 
-# Rate Limiting (only if Redis is available)
-if settings.RATELIMIT_ENABLED:
+# Rate Limiting (disabled for Render)
+if settings.RATELIMIT_ENABLED and settings.REDIS_ENABLED:
     try:
         app.add_middleware(RateLimitMiddleware)
         logger.info("Rate limiting middleware enabled")
