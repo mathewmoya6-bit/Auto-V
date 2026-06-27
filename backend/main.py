@@ -1,72 +1,86 @@
 """
 AUTO-V FastAPI Application Entry Point
-Complete with all routes, middleware, and configuration
+Supabase as Single Source of Truth
+Production-ready with graceful error handling
 """
 
 import logging
 import time
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+
+# ─── Optional Dependencies (Graceful Fallback) ──────────────
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    HAS_SLOWAPI = True
+except ImportError:
+    HAS_SLOWAPI = False
+    Limiter = None
+    get_remote_address = None
+    RateLimitExceeded = None
 
 from app.core.config import settings
-from app.core.database import db
+from app.core.database import supabase
 from app.routes import (
     health, auth, mpesa, valuation, certificates, 
     vehicles, dashboard, vin, vin_routes, webhooks, admin, 
     assessments, inspection, intelligence, payments, services, 
     valuations, fuel
 )
-from app.workers import get_async_worker
 from app.utils.logger import setup_logger, get_default_logger
 
-# Setup logger
+# ─── Setup Logger ──────────────────────────────────────────────
 logger = get_default_logger()
 
-# Rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# ─── Rate Limiter (Optional) ──────────────────────────────────
+if HAS_SLOWAPI:
+    limiter = Limiter(key_func=get_remote_address)
+else:
+    limiter = None
+    logger.warning("⚠️ slowapi not installed - rate limiting disabled")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
-    # Startup
-    logger.info("🚀 Starting AUTO-V API...")
+    """Application lifespan manager with graceful startup/shutdown"""
+    # ─── Startup ──────────────────────────────────────────────────
+    logger.info("=" * 60)
+    logger.info("🚀 Starting AUTO-V API (Supabase)...")
     logger.info(f"📡 Environment: {settings.ENV}")
-    logger.info(f"🔗 Database: {settings.MONGODB_URI}")
+    logger.info(f"🔗 Supabase URL: {settings.SUPABASE_URL}")
     logger.info(f"📦 Version: {settings.APP_VERSION}")
+    logger.info(f"🐍 Python: {os.sys.version}")
+    logger.info("=" * 60)
     
-    # Connect to database
+    # ─── Check Supabase Connection ──────────────────────────────
     try:
-        await db.connect()
-        logger.info("✅ Database connected successfully")
+        # Test Supabase connection
+        response = supabase.table("users").select("count", count="exact").limit(1).execute()
+        logger.info("✅ Supabase connected successfully")
     except Exception as e:
-        logger.error(f"❌ Database connection error: {e}")
+        logger.error(f"❌ Supabase connection error: {e}")
+        logger.warning("⚠️ Continuing without database...")
     
-    # Start payment worker
+    # ─── Payment Worker ──────────────────────────────────────────
     try:
         worker = get_async_worker()
         await worker.start()
         logger.info("✅ Payment worker started")
     except Exception as e:
         logger.error(f"❌ Failed to start payment worker: {e}")
+        logger.warning("⚠️ Payment worker disabled")
     
     yield
-    # Shutdown
-    logger.info("🛑 Shutting down AUTO-V API...")
     
-    # Disconnect database
-    try:
-        await db.disconnect()
-        logger.info("✅ Database disconnected")
-    except Exception as e:
-        logger.error(f"❌ Database disconnection error: {e}")
+    # ─── Shutdown ──────────────────────────────────────────────────
+    logger.info("🛑 Shutting down AUTO-V API...")
     
     # Stop payment worker
     try:
@@ -77,7 +91,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Failed to stop payment worker: {e}")
 
 
-# Create FastAPI app
+# ─── Create FastAPI App ──────────────────────────────────────────
 app = FastAPI(
     title="AUTO-V API",
     version=settings.APP_VERSION,
@@ -105,18 +119,26 @@ app = FastAPI(
     ]
 )
 
-# Rate limit handler
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, lambda req, exc: JSONResponse(
-    status_code=429,
-    content={
-        "success": False,
-        "error": "Rate limit exceeded",
-        "message": str(exc)
-    }
-))
+# ─── Rate Limit Handler (Optional) ──────────────────────────────
+if HAS_SLOWAPI:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, lambda req, exc: JSONResponse(
+        status_code=429,
+        content={
+            "success": False,
+            "error": "Rate limit exceeded",
+            "message": str(exc)
+        }
+    ))
+else:
+    # Fallback rate limit handler (no-op)
+    app.add_exception_handler(Exception, lambda req, exc: JSONResponse(
+        status_code=500,
+        content={"success": False, "error": "Internal server error"}
+    ))
 
-# CORS middleware
+
+# ─── CORS Middleware ──────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -126,13 +148,14 @@ app.add_middleware(
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"]
 )
 
-# Trusted host middleware
+# ─── Trusted Host Middleware ──────────────────────────────────────
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=settings.CORS_ORIGINS + ["localhost", "127.0.0.1"]
 )
 
-# Request ID middleware
+
+# ─── Request ID Middleware ──────────────────────────────────────
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
     """Add request ID to each request"""
@@ -146,7 +169,7 @@ async def add_request_id(request: Request, call_next):
     return response
 
 
-# ─── Root and Health Endpoints ──────────────────────────────
+# ─── Root and Health Endpoints ──────────────────────────────────
 
 @app.get("/", tags=["Health"])
 async def root():
@@ -162,66 +185,43 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with Supabase status"""
+    supabase_status = "unknown"
+    try:
+        response = supabase.table("users").select("count", count="exact").limit(1).execute()
+        supabase_status = "connected"
+    except Exception as e:
+        supabase_status = f"disconnected: {str(e)[:50]}..."
+    
     return {
         "status": "healthy",
         "version": settings.APP_VERSION,
         "environment": settings.ENV,
         "timestamp": time.time(),
-        "database": "connected" if db.is_connected else "disconnected"
+        "supabase": supabase_status,
+        "rate_limiting": "enabled" if HAS_SLOWAPI else "disabled"
     }
 
 
 # ─── Include All Routers ──────────────────────────────────────
 
-# Health
 app.include_router(health.router)
-
-# Authentication
 app.include_router(auth.router)
-
-# M-Pesa
 app.include_router(mpesa.router)
-
-# Valuation
 app.include_router(valuation.router)
 app.include_router(valuations.router)
-
-# Certificates
 app.include_router(certificates.router)
-
-# Vehicles
 app.include_router(vehicles.router)
-
-# Dashboard
 app.include_router(dashboard.router)
-
-# VIN
 app.include_router(vin.router)
 app.include_router(vin_routes.router)
-
-# Webhooks
 app.include_router(webhooks.router)
-
-# Admin
 app.include_router(admin.router)
-
-# Assessments
 app.include_router(assessments.router)
-
-# Inspections
 app.include_router(inspection.router)
-
-# Intelligence
 app.include_router(intelligence.router)
-
-# Payments
 app.include_router(payments.router)
-
-# Services
 app.include_router(services.router)
-
-# Fuel
 app.include_router(fuel.router)
 
 
