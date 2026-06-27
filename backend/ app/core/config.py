@@ -1,9 +1,9 @@
-# app/core/config.py (COMPLETE UPDATED VERSION)
+# app/core/config.py (FIXED VERSION)
 from pydantic_settings import BaseSettings
 from typing import List, Optional, Union
 import os
 from pathlib import Path
-from pydantic import field_validator, Field
+from pydantic import field_validator, Field, model_validator
 
 class Settings(BaseSettings):
     # App
@@ -43,18 +43,18 @@ class Settings(BaseSettings):
     MPESA_ENV: str = "production"
     BASE_URL: str = "https://auto-v.onrender.com"
     
-    # CORS - Stored as string, parsed to list via validator
-    CORS_ORIGINS: str = "https://auto-v.meipressgroup.com,https://www.auto-v.meipressgroup.com,http://localhost:3000,http://localhost:5500,http://localhost:5173,https://auto-v.onrender.com"
-    ALLOWED_HOSTS: str = "auto-v.meipressgroup.com,www.auto-v.meipressgroup.com,localhost,127.0.0.1,auto-v.onrender.com"
+    # CORS - Use Union type to accept both string and list
+    CORS_ORIGINS: Union[str, List[str]] = "https://auto-v.meipressgroup.com,https://www.auto-v.meipressgroup.com,http://localhost:3000,http://localhost:5500,http://localhost:5173,https://auto-v.onrender.com"
+    ALLOWED_HOSTS: Union[str, List[str]] = "auto-v.meipressgroup.com,www.auto-v.meipressgroup.com,localhost,127.0.0.1,auto-v.onrender.com"
     
     # Redis
     REDIS_URL: str = "redis://redis:6379"
     REDIS_MAX_CONNECTIONS: int = 10
-    REDIS_ENABLED: bool = True
+    REDIS_ENABLED: bool = False  # Disabled for Render
     REDIS_TTL: int = 3600
     
     # Rate Limiting
-    RATELIMIT_ENABLED: bool = True
+    RATELIMIT_ENABLED: bool = False  # Disabled for Render
     RATELIMIT_DEFAULT: str = "100/minute"
     RATELIMIT_STORAGE_URI: str = "redis://redis:6379"
     MAX_LOGIN_ATTEMPTS: int = 5
@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # AI Services
     AI_WEIGHT: float = 0.4
     AI_MIN_CONFIDENCE: float = 0.3
-    AI_CACHE_ENABLED: bool = True
+    AI_CACHE_ENABLED: bool = False
     AI_FALLBACK_ENABLED: bool = True
     AI_MODEL_PATH: str = "./models"
     AI_PREDICTIONS_ENABLED: bool = True
@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     SESSION_COOKIE_HTTPONLY: bool = True
     
     # SSL/TLS
-    SSL_ENABLED: bool = True
+    SSL_ENABLED: bool = False
     SSL_CERT_PATH: str = "/etc/ssl/certs/autov.crt"
     SSL_KEY_PATH: str = "/etc/ssl/private/autov.key"
     
@@ -146,31 +146,36 @@ class Settings(BaseSettings):
     MAINTENANCE_MODE: bool = False
     MAINTENANCE_MESSAGE: str = "System is currently undergoing maintenance. Please try again later."
     
-    @field_validator('CORS_ORIGINS', mode='before')
+    @model_validator(mode='before')
     @classmethod
-    def parse_cors_origins(cls, v):
-        """Parse CORS_ORIGINS from string to list"""
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(',') if origin.strip()]
-        return v
-    
-    @field_validator('ALLOWED_HOSTS', mode='before')
-    @classmethod
-    def parse_allowed_hosts(cls, v):
-        """Parse ALLOWED_HOSTS from string to list"""
-        if isinstance(v, str):
-            return [host.strip() for host in v.split(',') if host.strip()]
-        return v
+    def parse_cors_and_hosts(cls, values):
+        """Parse CORS_ORIGINS and ALLOWED_HOSTS from string to list"""
+        # Parse CORS_ORIGINS
+        if 'CORS_ORIGINS' in values:
+            val = values['CORS_ORIGINS']
+            if isinstance(val, str):
+                values['CORS_ORIGINS'] = [origin.strip() for origin in val.split(',') if origin.strip()]
+        
+        # Parse ALLOWED_HOSTS
+        if 'ALLOWED_HOSTS' in values:
+            val = values['ALLOWED_HOSTS']
+            if isinstance(val, str):
+                values['ALLOWED_HOSTS'] = [host.strip() for host in val.split(',') if host.strip()]
+        
+        return values
     
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
-        extra = "ignore"  # Ignore extra fields from .env
+        extra = "ignore"
 
 # Create settings instance
 settings = Settings()
 
-# For backwards compatibility, expose the parsed values
-settings.CORS_ORIGINS_LIST = settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else []
-settings.ALLOWED_HOSTS_LIST = settings.ALLOWED_HOSTS if isinstance(settings.ALLOWED_HOSTS, list) else []
+# Ensure CORS_ORIGINS and ALLOWED_HOSTS are lists
+if isinstance(settings.CORS_ORIGINS, str):
+    settings.CORS_ORIGINS = [origin.strip() for origin in settings.CORS_ORIGINS.split(',') if origin.strip()]
+
+if isinstance(settings.ALLOWED_HOSTS, str):
+    settings.ALLOWED_HOSTS = [host.strip() for host in settings.ALLOWED_HOSTS.split(',') if host.strip()]
