@@ -1,4 +1,4 @@
-# main.py (UPDATED - using properties)
+# main.py
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -24,7 +24,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.ENV}")
     logger.info(f"Debug mode: {settings.DEBUG}")
+    logger.info(f"CORS Origins: {settings.CORS_ORIGINS}")
+    logger.info(f"Allowed Hosts: {settings.ALLOWED_HOSTS}")
+    logger.info(f"Redis URL: {settings.REDIS_URL}")
+    logger.info(f"Rate Limiting: {settings.RATELIMIT_ENABLED}")
     
+    # Initialize database
     try:
         await init_db()
         logger.info("Database initialized successfully")
@@ -53,26 +58,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration - Using the property
-logger.info(f"CORS origins configured: {settings.cors_origins_list}")
-
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Trusted Hosts - Using the property
-logger.info(f"Allowed hosts: {settings.allowed_hosts_list}")
-
+# Trusted Hosts
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=settings.allowed_hosts_list or ["*"],
+    allowed_hosts=settings.ALLOWED_HOSTS,
 )
 
-# Rate Limiting (disabled for Render)
+# Rate Limiting (only if Redis is available)
 if settings.RATELIMIT_ENABLED and settings.REDIS_ENABLED:
     try:
         app.add_middleware(RateLimitMiddleware)
@@ -94,6 +95,7 @@ logger.info("All routes registered successfully")
 # Health check endpoint
 @app.get("/health")
 async def health_check():
+    """Health check endpoint for Render"""
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
@@ -105,16 +107,19 @@ async def health_check():
 # Root endpoint
 @app.get("/")
 async def root():
+    """Root endpoint with API information"""
     return {
         "message": f"Welcome to {settings.APP_NAME}",
         "version": settings.APP_VERSION,
         "docs": "/api/docs",
-        "health": "/health"
+        "health": "/health",
+        "environment": settings.ENV
     }
 
 # Maintenance mode check
 @app.middleware("http")
 async def maintenance_check(request: Request, call_next):
+    """Check if the system is in maintenance mode"""
     if settings.MAINTENANCE_MODE:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -124,6 +129,30 @@ async def maintenance_check(request: Request, call_next):
             }
         )
     return await call_next(request)
+
+# Error handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Custom HTTP exception handler"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Global exception handler"""
+    logger.error(f"Unhandled exception: {str(exc)}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "An internal server error occurred",
+            "status_code": 500
+        }
+    )
 
 if __name__ == "__main__":
     import uvicorn
