@@ -1,105 +1,69 @@
-"""
-AUTO-V Core Configuration - FastAPI Version
-Fixed CORS_ORIGINS parsing for Render.com
-"""
-
-import os
-from typing import List, Optional, Dict, Any
+# app/core/config.py
 from pydantic_settings import BaseSettings
-from pydantic import field_validator, ValidationInfo
-
+from typing import List, Optional
+import os
+from pathlib import Path
 
 class Settings(BaseSettings):
-    """Application settings"""
-    
-    # Application
+    # App
     APP_NAME: str = "AUTO-V Professional Valuation Engine"
     APP_VERSION: str = "2.0.0"
     ENV: str = "production"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 10000
-    
-    # API
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "AUTO-V API"
     
     # Supabase
-    SUPABASE_URL: str = ""
-    SUPABASE_ANON_KEY: str = ""
-    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
-    SUPABASE_JWT_SECRET: Optional[str] = None
+    SUPABASE_URL: str
+    SUPABASE_ANON_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str
+    SUPABASE_JWT_SECRET: str
+    SUPABASE_KEY: str
     
     # Security
-    SECRET_KEY: str = ""
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     BCRYPT_ROUNDS: int = 12
+    JWT_SECRET: str
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_HOURS: int = 24
     
-    # M-Pesa
-    MPESA_CONSUMER_KEY: str = ""
-    MPESA_CONSUMER_SECRET: str = ""
-    MPESA_PASSKEY: str = ""
-    MPESA_SHORTCODE: str = "4095377"
+    # M-PESA
+    MPESA_CONSUMER_KEY: str
+    MPESA_CONSUMER_SECRET: str
+    MPESA_SHORTCODE: str
+    MPESA_PASSKEY: str
+    MPESA_CALLBACK_URL: str
     MPESA_ENVIRONMENT: str = "production"
-    MPESA_CALLBACK_URL: str = "https://auto-v.meipressgroup.com/api/webhooks/mpesa"
-    BASE_URL: str = "https://auto-v.meipressgroup.com"
+    MPESA_ENV: str = "production"
+    BASE_URL: str
     
-    # ─── CORS - Fixed Parsing ──────────────────────────────────────
+    # CORS
     CORS_ORIGINS: List[str] = [
         "https://auto-v.meipressgroup.com",
         "https://www.auto-v.meipressgroup.com",
         "http://localhost:3000",
         "http://localhost:5500",
         "http://localhost:5173",
-        "https://auto-v-api.onrender.com"
+        "https://auto-v.onrender.com"
     ]
-    
     ALLOWED_HOSTS: List[str] = [
         "auto-v.meipressgroup.com",
         "www.auto-v.meipressgroup.com",
         "localhost",
         "127.0.0.1",
-        "auto-v-api.onrender.com"
+        "auto-v.onrender.com"
     ]
-    
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v: Any) -> List[str]:
-        """Parse CORS origins from string or list"""
-        if v is None:
-            return []
-        if isinstance(v, str):
-            # Remove quotes and whitespace
-            v = v.strip('"').strip("'").strip()
-            if not v:
-                return []
-            # Split by comma and clean
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        if isinstance(v, list):
-            return [str(origin).strip() for origin in v if origin]
-        return []
-    
-    @field_validator("ALLOWED_HOSTS", mode="before")
-    @classmethod
-    def parse_allowed_hosts(cls, v: Any) -> List[str]:
-        """Parse allowed hosts from string or list"""
-        if v is None:
-            return []
-        if isinstance(v, str):
-            v = v.strip('"').strip("'").strip()
-            if not v:
-                return []
-            return [host.strip() for host in v.split(",") if host.strip()]
-        if isinstance(v, list):
-            return [str(host).strip() for host in v if host]
-        return []
     
     # Redis
     REDIS_URL: str = "redis://redis:6379"
     REDIS_MAX_CONNECTIONS: int = 10
     REDIS_ENABLED: bool = True
+    REDIS_TTL: int = 3600
     
     # Rate Limiting
     RATELIMIT_ENABLED: bool = True
@@ -138,28 +102,27 @@ class Settings(BaseSettings):
     REALTIME_ENABLED: bool = True
     
     # File Uploads
-    MAX_IMAGE_SIZE: int = 10485760
-    MAX_DOCUMENT_SIZE: int = 20971520
+    MAX_IMAGE_SIZE: int = 10485760  # 10MB
+    MAX_DOCUMENT_SIZE: int = 20971520  # 20MB
     STORAGE_TYPE: str = "supabase"
     STORAGE_BUCKET: str = "autov-storage"
     
-    # Vehicle API
-    CARAPI_KEY: Optional[str] = None
+    # Vehicle Data API
+    CARAPI_KEY: str
     
-    # External APIs
-    OPENAI_API_KEY: Optional[str] = None
-    GOOGLE_VISION_API_KEY: Optional[str] = None
+    # External API Keys
+    OPENAI_API_KEY: str
+    GOOGLE_VISION_API_KEY: str
     
     # SMTP
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USERNAME: Optional[str] = None
-    SMTP_PASSWORD: Optional[str] = None
-    SMTP_FROM_EMAIL: str = "noreply@autov.africa"
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    SMTP_FROM_EMAIL: str
     SMTP_TLS: bool = True
     
     # Realtime
-    REALTIME_ENABLED: bool = True
     REALTIME_HEARTBEAT_INTERVAL: int = 30
     REALTIME_RETRY_ATTEMPTS: int = 3
     REALTIME_RETRY_DELAY: int = 2
@@ -176,11 +139,28 @@ class Settings(BaseSettings):
     WEBHOOK_RETRY_DELAY: int = 30
     WEBHOOK_TIMEOUT: int = 30
     
+    # Database Pool
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 30
+    
+    # Session
+    SESSION_TIMEOUT_MINUTES: int = 60
+    SESSION_COOKIE_SECURE: bool = True
+    SESSION_COOKIE_HTTPONLY: bool = True
+    
+    # SSL/TLS
+    SSL_ENABLED: bool = True
+    SSL_CERT_PATH: str = "/etc/ssl/certs/autov.crt"
+    SSL_KEY_PATH: str = "/etc/ssl/private/autov.key"
+    
+    # Maintenance
+    MAINTENANCE_MODE: bool = False
+    MAINTENANCE_MESSAGE: str = "System is currently undergoing maintenance. Please try again later."
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
-        extra = "ignore"  # Ignore extra environment variables
-
 
 settings = Settings()
