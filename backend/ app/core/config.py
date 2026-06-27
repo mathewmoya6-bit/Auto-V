@@ -1,9 +1,8 @@
-# app/core/config.py (FIXED VERSION)
+# app/core/config.py (SECURE FIXED VERSION)
 from pydantic_settings import BaseSettings
-from typing import List, Optional, Union
+from typing import List, Optional
 import os
 from pathlib import Path
-from pydantic import field_validator, Field, model_validator
 
 class Settings(BaseSettings):
     # App
@@ -16,45 +15,58 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "AUTO-V API"
     
-    # Supabase
-    SUPABASE_URL: str = "https://tsvejnzxrxrrecgquxbq.supabase.co"
-    SUPABASE_ANON_KEY: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ"
-    SUPABASE_SERVICE_ROLE_KEY: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTE4NzM2OCwiZXhwIjoyMDk2NzYzMzY4fQ.your_service_role_key_here"
-    SUPABASE_JWT_SECRET: str = "your_jwt_secret_here"
-    SUPABASE_KEY: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ"
+    # Supabase - Read from environment only (NO hardcoded values)
+    SUPABASE_URL: str
+    SUPABASE_ANON_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str
+    SUPABASE_JWT_SECRET: str
+    SUPABASE_KEY: str
     
-    # Security
-    SECRET_KEY: str = "b7c973b0-931c-4fb8-82b0-d93827cfdee8"
+    # Security - Read from environment only
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     BCRYPT_ROUNDS: int = 12
-    JWT_SECRET: str = "b7c973b0-931c-4fb8-82b0-d93827cfdee8"
+    JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
     
-    # M-PESA
-    MPESA_CONSUMER_KEY: str = "LI2gcJZEheN8qCfXHEXV4gdYXvOBHVnv"
-    MPESA_CONSUMER_SECRET: str = "aGGo8AuPJVpsZLcs"
-    MPESA_SHORTCODE: str = "4095377"
-    MPESA_PASSKEY: str = "7eb17a031bdfd5b4251863a1ddb72c5b9cd14f3385aa6a258c1442a0116e8277"
-    MPESA_CALLBACK_URL: str = "https://auto-v.onrender.com/api/webhooks/mpesa"
+    # M-PESA - Read from environment only
+    MPESA_CONSUMER_KEY: str
+    MPESA_CONSUMER_SECRET: str
+    MPESA_SHORTCODE: str
+    MPESA_PASSKEY: str
+    MPESA_CALLBACK_URL: str
     MPESA_ENVIRONMENT: str = "production"
     MPESA_ENV: str = "production"
-    BASE_URL: str = "https://auto-v.onrender.com"
+    BASE_URL: str
     
-    # CORS - Use Union type to accept both string and list
-    CORS_ORIGINS: Union[str, List[str]] = "https://auto-v.meipressgroup.com,https://www.auto-v.meipressgroup.com,http://localhost:3000,http://localhost:5500,http://localhost:5173,https://auto-v.onrender.com"
-    ALLOWED_HOSTS: Union[str, List[str]] = "auto-v.meipressgroup.com,www.auto-v.meipressgroup.com,localhost,127.0.0.1,auto-v.onrender.com"
+    # CORS - Use plain strings with properties for list conversion
+    CORS_ORIGINS: str = (
+        "https://auto-v.meipressgroup.com,"
+        "https://www.auto-v.meipressgroup.com,"
+        "http://localhost:3000,"
+        "http://localhost:5500,"
+        "http://localhost:5173,"
+        "https://auto-v.onrender.com"
+    )
+    ALLOWED_HOSTS: str = (
+        "auto-v.meipressgroup.com,"
+        "www.auto-v.meipressgroup.com,"
+        "localhost,"
+        "127.0.0.1,"
+        "auto-v.onrender.com"
+    )
     
     # Redis
     REDIS_URL: str = "redis://redis:6379"
     REDIS_MAX_CONNECTIONS: int = 10
-    REDIS_ENABLED: bool = False  # Disabled for Render
+    REDIS_ENABLED: bool = False
     REDIS_TTL: int = 3600
     
     # Rate Limiting
-    RATELIMIT_ENABLED: bool = False  # Disabled for Render
+    RATELIMIT_ENABLED: bool = False
     RATELIMIT_DEFAULT: str = "100/minute"
     RATELIMIT_STORAGE_URI: str = "redis://redis:6379"
     MAX_LOGIN_ATTEMPTS: int = 5
@@ -96,18 +108,18 @@ class Settings(BaseSettings):
     STORAGE_BUCKET: str = "autov-storage"
     
     # Vehicle Data API
-    CARAPI_KEY: str = "carapi_45747df211066bb9d14224ae998de7e7"
+    CARAPI_KEY: str
     
-    # External API Keys
-    OPENAI_API_KEY: str = "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"
-    GOOGLE_VISION_API_KEY: str = "AIzaSyC8pJt4X8nV5jQ2nX9rL3mW6kY8tH4vB2c"
+    # External API Keys - Read from environment only
+    OPENAI_API_KEY: str
+    GOOGLE_VISION_API_KEY: str
     
     # SMTP
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USERNAME: str = "noreply@autov.africa"
-    SMTP_PASSWORD: str = "your_smtp_password_here"
-    SMTP_FROM_EMAIL: str = "noreply@autov.africa"
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    SMTP_FROM_EMAIL: str
     SMTP_TLS: bool = True
     
     # Realtime
@@ -146,23 +158,15 @@ class Settings(BaseSettings):
     MAINTENANCE_MODE: bool = False
     MAINTENANCE_MESSAGE: str = "System is currently undergoing maintenance. Please try again later."
     
-    @model_validator(mode='before')
-    @classmethod
-    def parse_cors_and_hosts(cls, values):
-        """Parse CORS_ORIGINS and ALLOWED_HOSTS from string to list"""
-        # Parse CORS_ORIGINS
-        if 'CORS_ORIGINS' in values:
-            val = values['CORS_ORIGINS']
-            if isinstance(val, str):
-                values['CORS_ORIGINS'] = [origin.strip() for origin in val.split(',') if origin.strip()]
-        
-        # Parse ALLOWED_HOSTS
-        if 'ALLOWED_HOSTS' in values:
-            val = values['ALLOWED_HOSTS']
-            if isinstance(val, str):
-                values['ALLOWED_HOSTS'] = [host.strip() for host in val.split(',') if host.strip()]
-        
-        return values
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Convert CORS_ORIGINS string to list"""
+        return [x.strip() for x in self.CORS_ORIGINS.split(",") if x.strip()]
+    
+    @property
+    def allowed_hosts_list(self) -> List[str]:
+        """Convert ALLOWED_HOSTS string to list"""
+        return [x.strip() for x in self.ALLOWED_HOSTS.split(",") if x.strip()]
     
     class Config:
         env_file = ".env"
@@ -172,10 +176,3 @@ class Settings(BaseSettings):
 
 # Create settings instance
 settings = Settings()
-
-# Ensure CORS_ORIGINS and ALLOWED_HOSTS are lists
-if isinstance(settings.CORS_ORIGINS, str):
-    settings.CORS_ORIGINS = [origin.strip() for origin in settings.CORS_ORIGINS.split(',') if origin.strip()]
-
-if isinstance(settings.ALLOWED_HOSTS, str):
-    settings.ALLOWED_HOSTS = [host.strip() for host in settings.ALLOWED_HOSTS.split(',') if host.strip()]
