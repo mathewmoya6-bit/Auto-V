@@ -7,15 +7,9 @@ router = APIRouter(
 
 @router.post("/mpesa")
 async def mpesa_webhook(request: Request):
-    payload = await request.json()
+    body = await request.json()
 
     return {
-        "success": True,
-        "received": payload
-    }
-
-@router.get("/health")
-async def webhook_health():
-    return {
-        "status": "ok"
+        "received": True,
+        "payload": body
     }
