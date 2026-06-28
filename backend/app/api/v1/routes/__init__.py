@@ -1,11 +1,13 @@
-# Route package
+"""
+API V1 Routes Package
+"""
 
-from . import (
-    auth,
-    users,
-    vehicles,
-    valuations,
-    payments,
-    reports,
-    webhooks,
-)
+__all__ = [
+    "auth",
+    "users",
+    "vehicles",
+    "valuations",
+    "payments",
+    "reports",
+    "webhooks",
+]
