@@ -1,12 +1,15 @@
-# main.py
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+# app/main.py (UPDATED with SlowAPI)
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import os
-from typing import List
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 from app.core.config import settings
 from app.core.logging import setup_logging
@@ -17,6 +20,9 @@ from app.middleware.rate_limit import RateLimitMiddleware
 # Setup logging
 logger = setup_logging()
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
@@ -24,12 +30,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.ENV}")
     logger.info(f"Debug mode: {settings.DEBUG}")
-    logger.info(f"CORS Origins: {settings.CORS_ORIGINS}")
-    logger.info(f"Allowed Hosts: {settings.ALLOWED_HOSTS}")
-    logger.info(f"Redis URL: {settings.REDIS_URL}")
-    logger.info(f"Rate Limiting: {settings.RATELIMIT_ENABLED}")
     
-    # Initialize database
     try:
         await init_db()
         logger.info("Database initialized successfully")
@@ -58,6 +59,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Initialize rate limiter
+app.state.limiter = limiter
+
+# Add rate limiting middleware
+app.add_middleware(SlowAPIMiddleware)
+
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
@@ -73,13 +80,16 @@ app.add_middleware(
     allowed_hosts=settings.ALLOWED_HOSTS,
 )
 
-# Rate Limiting (only if Redis is available)
-if settings.RATELIMIT_ENABLED and settings.REDIS_ENABLED:
-    try:
-        app.add_middleware(RateLimitMiddleware)
-        logger.info("Rate limiting middleware enabled")
-    except Exception as e:
-        logger.warning(f"Failed to enable rate limiting: {str(e)}")
+# Rate Limiting exception handler
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "detail": "Too many requests. Please try again later.",
+            "retry_after": 60
+        }
+    )
 
 # Include routers
 logger.info("Registering API routes...")
@@ -95,7 +105,6 @@ logger.info("All routes registered successfully")
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Render"""
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
@@ -107,7 +116,6 @@ async def health_check():
 # Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint with API information"""
     return {
         "message": f"Welcome to {settings.APP_NAME}",
         "version": settings.APP_VERSION,
@@ -116,24 +124,9 @@ async def root():
         "environment": settings.ENV
     }
 
-# Maintenance mode check
-@app.middleware("http")
-async def maintenance_check(request: Request, call_next):
-    """Check if the system is in maintenance mode"""
-    if settings.MAINTENANCE_MODE:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={
-                "detail": settings.MAINTENANCE_MESSAGE,
-                "status": "maintenance"
-            }
-        )
-    return await call_next(request)
-
-# Error handlers
+# Global exception handlers
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Custom HTTP exception handler"""
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -144,7 +137,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    """Global exception handler"""
     logger.error(f"Unhandled exception: {str(exc)}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
