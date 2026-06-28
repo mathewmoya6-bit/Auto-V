@@ -1,33 +1,37 @@
 # app/api/v1/routes/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import uuid
-import hashlib
-import hmac
-import secrets
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
-    create_access_token, create_refresh_token, decode_token,
-    verify_password, get_password_hash, validate_password_strength,
-    JWTBearer, hash_token, verify_token_hash,
-    generate_verification_token, generate_password_reset_token,
-    ROLE_PERMISSIONS, check_permission
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    verify_password,
+    get_password_hash,
+    validate_password_strength,
+    JWTBearer,
+    hash_token,
+    verify_token_hash,
+    generate_verification_token,
+    generate_password_reset_token,
+    ROLE_PERMISSIONS,
+    check_permission,
+    get_role_permissions
 )
 from app.core.logging import get_logger
 from app.core.cache import Cache
 from app.services.email_service import EmailService
 from app.models.user import (
-    UserCreate, UserLogin, TokenResponse, UserResponse,
-    UserProfile, PasswordResetRequest, PasswordResetConfirm,
-    EmailVerificationRequest, ChangePasswordRequest,
-    LogoutRequest, TokenRevokeRequest
+    UserResponse,
+    UserProfile
 )
 
 router = APIRouter(
@@ -411,7 +415,7 @@ async def login(
                 background_tasks.add_task(
                     email_service.send_account_locked_email,
                     user['email'],
-                    f"{user.get('first_name', '')} {user.get('last_name', '')}",
+                    f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
                     {
                         'failed_attempts': failed_attempts,
                         'lock_time': datetime.utcnow().isoformat(),
@@ -1250,7 +1254,7 @@ async def get_current_user(
         
         # Get user permissions based on role
         role = user.get('role', 'user')
-        permissions = ROLE_PERMISSIONS.get(role, [])
+        permissions = get_role_permissions(role)
         
         return {
             "success": True,
