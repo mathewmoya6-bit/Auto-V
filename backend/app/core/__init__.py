@@ -1,7 +1,6 @@
 # backend/app/core/__init__.py
-# This makes 'app.core' a Python package
 
 from app.core.config import settings
-from app.core.database import supabase
+from app.core.database import db, get_db
 
-__all__ = ['settings', 'supabase']
+__all__ = ["settings", "db", "get_db"]
