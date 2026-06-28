@@ -1,6 +1,6 @@
-# app/core/config.py
+# app/core/config.py (COMPLETE)
 from pydantic_settings import BaseSettings
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import field_validator
 import json
 
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     PORT: int = 10000
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "AUTO-V API"
+    BASE_URL: str = "https://auto-v.meipressgroup.com"
     
     # Supabase
     SUPABASE_URL: str
@@ -21,12 +22,15 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
     
-    # Security
+    # Security - JWT
     SECRET_KEY: str
-    ALGORITHM: str = "HS256"
+    JWT_SECRET: str
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_HOURS: int = 24
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     BCRYPT_ROUNDS: int = 12
+    ALGORITHM: str = "HS256"
     
     # M-PESA
     MPESA_CONSUMER_KEY: str
@@ -34,10 +38,9 @@ class Settings(BaseSettings):
     MPESA_SHORTCODE: str
     MPESA_PASSKEY: str
     MPESA_ENVIRONMENT: str = "production"
-    BASE_URL: str
     MPESA_CALLBACK_URL: str
     
-    # CORS - JSON arrays
+    # CORS
     CORS_ORIGINS: List[str] = [
         "https://auto-v.meipressgroup.com",
         "https://www.auto-v.meipressgroup.com",
@@ -56,14 +59,14 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_ENABLED: bool = True
-    REDIS_URL: str
+    REDIS_URL: str = "redis://redis:6379"
     REDIS_MAX_CONNECTIONS: int = 10
     REDIS_TTL: int = 3600
     
     # Rate Limiting
     RATELIMIT_ENABLED: bool = True
     RATELIMIT_DEFAULT: str = "100/minute"
-    RATELIMIT_STORAGE_URI: str
+    RATELIMIT_STORAGE_URI: str = "redis://redis:6379"
     MAX_LOGIN_ATTEMPTS: int = 5
     IP_RATE_LIMIT: int = 100
     
@@ -154,22 +157,18 @@ class Settings(BaseSettings):
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def validate_cors_origins(cls, v):
-        """Parse CORS_ORIGINS from JSON string or comma-separated string"""
         if isinstance(v, str):
             try:
-                # Try to parse as JSON
                 parsed = json.loads(v)
                 if isinstance(parsed, list):
                     return parsed
             except json.JSONDecodeError:
-                # If not JSON, split by comma
                 return [x.strip() for x in v.split(',') if x.strip()]
         return v
     
     @field_validator('ALLOWED_HOSTS', mode='before')
     @classmethod
     def validate_allowed_hosts(cls, v):
-        """Parse ALLOWED_HOSTS from JSON string or comma-separated string"""
         if isinstance(v, str):
             try:
                 parsed = json.loads(v)
@@ -185,5 +184,4 @@ class Settings(BaseSettings):
         case_sensitive = True
         extra = "ignore"
 
-# Create settings instance
 settings = Settings()
