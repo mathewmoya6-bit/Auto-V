@@ -9,8 +9,7 @@ router = APIRouter(
 async def list_users():
     return {
         "success": True,
-        "message": "Users endpoint working",
-        "data": []
+        "message": "Users endpoint working"
     }
 
 @router.get("/{user_id}")
