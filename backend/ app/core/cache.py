@@ -2,51 +2,54 @@
 import redis
 import json
 import asyncio
-from typing import Optional, Any, Dict
+from typing import Optional, Dict, Any, Union
 import logging
+from datetime import datetime, timedelta
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class Cache:
-    """Redis cache manager"""
+    """Redis cache manager with async support"""
     
     def __init__(self):
         self.client = None
         self.enabled = settings.REDIS_ENABLED
+        self._initialized = False
         
         if self.enabled:
             try:
                 self.client = redis.from_url(
                     settings.REDIS_URL,
                     decode_responses=True,
-                    max_connections=settings.REDIS_MAX_CONNECTIONS
+                    max_connections=settings.REDIS_MAX_CONNECTIONS,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
+                    retry_on_timeout=True
                 )
-                # Test connection
                 self.client.ping()
+                self._initialized = True
                 logger.info("Redis cache connection established")
             except Exception as e:
-                logger.warning(f"Redis connection failed: {e}")
+                logger.error(f"Redis connection failed: {e}")
                 self.enabled = False
+                self.client = None
     
     async def get(self, key: str) -> Optional[str]:
         """Get value from cache"""
-        if not self.enabled:
+        if not self.enabled or not self._initialized:
             return None
-        
         try:
-            value = self.client.get(key)
-            return value
+            return self.client.get(key)
         except Exception as e:
-            logger.error(f"Cache get error: {e}")
+            logger.error(f"Cache get error for key {key}: {e}")
             return None
     
     async def set(self, key: str, value: str, ttl: Optional[int] = None) -> bool:
-        """Set value in cache"""
-        if not self.enabled:
+        """Set value in cache with optional TTL"""
+        if not self.enabled or not self._initialized:
             return False
-        
         try:
             if ttl:
                 self.client.setex(key, ttl, value)
@@ -54,55 +57,38 @@ class Cache:
                 self.client.set(key, value)
             return True
         except Exception as e:
-            logger.error(f"Cache set error: {e}")
+            logger.error(f"Cache set error for key {key}: {e}")
             return False
     
     async def delete(self, key: str) -> bool:
         """Delete value from cache"""
-        if not self.enabled:
+        if not self.enabled or not self._initialized:
             return False
-        
         try:
             self.client.delete(key)
             return True
         except Exception as e:
-            logger.error(f"Cache delete error: {e}")
+            logger.error(f"Cache delete error for key {key}: {e}")
             return False
     
     async def exists(self, key: str) -> bool:
         """Check if key exists in cache"""
-        if not self.enabled:
+        if not self.enabled or not self._initialized:
             return False
-        
         try:
             return bool(self.client.exists(key))
         except Exception as e:
-            logger.error(f"Cache exists error: {e}")
-            return False
-    
-    async def clear_pattern(self, pattern: str) -> bool:
-        """Clear all keys matching pattern"""
-        if not self.enabled:
-            return False
-        
-        try:
-            keys = self.client.keys(pattern)
-            if keys:
-                self.client.delete(*keys)
-            return True
-        except Exception as e:
-            logger.error(f"Cache clear pattern error: {e}")
+            logger.error(f"Cache exists error for key {key}: {e}")
             return False
     
     async def increment(self, key: str, amount: int = 1) -> Optional[int]:
         """Increment value in cache"""
-        if not self.enabled:
+        if not self.enabled or not self._initialized:
             return None
-        
         try:
             return self.client.incr(key, amount)
         except Exception as e:
-            logger.error(f"Cache increment error: {e}")
+            logger.error(f"Cache increment error for key {key}: {e}")
             return None
     
     async def get_json(self, key: str) -> Optional[Dict]:
@@ -111,7 +97,7 @@ class Cache:
         if value:
             try:
                 return json.loads(value)
-            except:
+            except json.JSONDecodeError:
                 return None
         return None
     
@@ -122,3 +108,20 @@ class Cache:
         except Exception as e:
             logger.error(f"Cache set JSON error: {e}")
             return False
+    
+    async def clear_pattern(self, pattern: str) -> bool:
+        """Clear all keys matching pattern"""
+        if not self.enabled or not self._initialized:
+            return False
+        try:
+            keys = self.client.keys(pattern)
+            if keys:
+                self.client.delete(*keys)
+            return True
+        except Exception as e:
+            logger.error(f"Cache clear pattern error: {e}")
+            return False
+    
+    async def set_with_ttl(self, key: str, value: str, ttl: int) -> bool:
+        """Set value with TTL (alias for set with ttl)"""
+        return await self.set(key, value, ttl)
