@@ -1,6 +1,7 @@
 # app/core/config.py
-from pydantic_settings import BaseSettings
-from typing import List, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List, Optional, Union
+import json
 import os
 from pathlib import Path
 
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
-    SUPABASE_KEY: str
+    SUPABASE_KEY: str  # Added - now required in .env
     
     # Security
     SECRET_KEY: str
@@ -28,7 +29,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     BCRYPT_ROUNDS: int = 12
-    JWT_SECRET: str
+    JWT_SECRET: str  # Added - now required in .env
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
     
@@ -42,8 +43,8 @@ class Settings(BaseSettings):
     MPESA_ENV: str = "production"
     BASE_URL: str
     
-    # CORS
-    CORS_ORIGINS: List[str] = [
+    # CORS - Handle both JSON array and string formats
+    CORS_ORIGINS: Union[str, List[str]] = [
         "https://auto-v.meipressgroup.com",
         "https://www.auto-v.meipressgroup.com",
         "http://localhost:3000",
@@ -51,7 +52,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "https://auto-v.onrender.com"
     ]
-    ALLOWED_HOSTS: List[str] = [
+    ALLOWED_HOSTS: Union[str, List[str]] = [
         "auto-v.meipressgroup.com",
         "www.auto-v.meipressgroup.com",
         "localhost",
@@ -149,8 +150,8 @@ class Settings(BaseSettings):
     SESSION_COOKIE_SECURE: bool = True
     SESSION_COOKIE_HTTPONLY: bool = True
     
-    # SSL/TLS
-    SSL_ENABLED: bool = True
+    # SSL/TLS - Default to False for Render deployment
+    SSL_ENABLED: bool = False  # Changed from True to False
     SSL_CERT_PATH: str = "/etc/ssl/certs/autov.crt"
     SSL_KEY_PATH: str = "/etc/ssl/private/autov.key"
     
@@ -158,9 +159,45 @@ class Settings(BaseSettings):
     MAINTENANCE_MODE: bool = False
     MAINTENANCE_MESSAGE: str = "System is currently undergoing maintenance. Please try again later."
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    # Helper methods to parse list fields from environment
+    @classmethod
+    def parse_list_field(cls, value: Union[str, List[str]]) -> List[str]:
+        """Parse a field that can be either a JSON array string or a list"""
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            # Try JSON parse first
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                # Fall back to comma-separated
+                return [item.strip() for item in value.split(',') if item.strip()]
+        return []
+    
+    def get_cors_origins(self) -> List[str]:
+        """Get CORS origins as a list"""
+        return self.parse_list_field(self.CORS_ORIGINS)
+    
+    def get_allowed_hosts(self) -> List[str]:
+        """Get allowed hosts as a list"""
+        return self.parse_list_field(self.ALLOWED_HOSTS)
+    
+    # Pydantic v2 configuration
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore"  # Ignore extra fields in .env
+    )
 
+# Create singleton instance
 settings = Settings()
+
+# Optional: Log configuration on startup (for debugging)
+if settings.DEBUG:
+    print(f"✅ Environment: {settings.ENV}")
+    print(f"✅ Supabase URL: {settings.SUPABASE_URL}")
+    print(f"✅ CORS Origins: {settings.get_cors_origins()}")
+    print(f"✅ SSL Enabled: {settings.SSL_ENABLED}")
