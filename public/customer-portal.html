@@ -6,47 +6,81 @@
     <title>AUTO-V | Customer Portal</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
-        header { display: flex; justify-content: space-between; padding: 15px 30px; background: #111827; border-bottom: 2px solid #eab308; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; background: #111827; border-bottom: 2px solid #eab308; flex-wrap: wrap; gap: 10px; }
         .logo { font-size: 24px; color: #eab308; font-weight: bold; }
+        .logo span { font-size: 12px; color: #94a3b8; font-weight: normal; }
+        .user-info { display: flex; align-items: center; gap: 15px; }
+        .user-email { font-size: 12px; color: #94a3b8; }
+        .logout-btn { background: #dc2626; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .logout-btn:hover { background: #b91c1c; }
         .container { max-width: 800px; margin: auto; padding: 24px; }
         .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
         .step { display: none; animation: fadeIn 0.3s ease; }
         .step.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .progress-bar { display: flex; margin-bottom: 20px; background: #1e293b; border-radius: 40px; padding: 5px; }
-        .progress-step { flex: 1; text-align: center; padding: 10px; border-radius: 40px; color: #94a3b8; font-size: 12px; font-weight: 600; }
+        .progress-bar { display: flex; margin-bottom: 20px; background: #1e293b; border-radius: 40px; padding: 5px; flex-wrap: wrap; }
+        .progress-step { flex: 1; text-align: center; padding: 10px 15px; border-radius: 40px; color: #94a3b8; font-size: 12px; font-weight: 600; min-width: 80px; }
         .progress-step.active { background: #eab308; color: #000; }
         .progress-step.completed { background: #22c55e; color: #000; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; color: #94a3b8; margin-bottom: 5px; font-weight: 600; }
-        input, select { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: white; }
-        input:focus { border-color: #eab308; outline: none; }
-        .btn { padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; }
+        label { display: block; color: #94a3b8; margin-bottom: 5px; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+        label.required:after { content: " *"; color: #ef4444; }
+        input, select { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 14px; transition: border-color 0.3s; }
+        input:focus, select:focus { border-color: #eab308; outline: none; box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.1); }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s; }
         .btn-primary { background: #eab308; color: black; }
+        .btn-primary:hover { background: #facc15; transform: translateY(-2px); }
         .btn-secondary { background: #475569; color: white; }
+        .btn-secondary:hover { background: #64748b; }
         .btn-success { background: #22c55e; color: white; }
-        .btn-success:disabled { background: #555; cursor: not-allowed; }
-        .nav-buttons { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
+        .btn-success:hover { background: #16a34a; transform: translateY(-2px); }
+        .btn-success:disabled { background: #555; cursor: not-allowed; transform: none; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .nav-buttons { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .nav-buttons .btn { flex: 1; min-width: 120px; }
         .status-box { padding: 15px; border-radius: 8px; margin-bottom: 15px; display: none; }
         .status-success { background: #14532d; color: #bbf7d0; border-left: 4px solid #22c55e; }
         .status-error { background: #7f1d1d; color: #fecaca; border-left: 4px solid #ef4444; }
-        .service-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-        .service-card { background: #1e293b; padding: 15px; border-radius: 8px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: 0.3s; }
-        .service-card:hover, .service-card.selected { border-color: #eab308; background: #2d3a4e; }
-        .service-icon { font-size: 36px; display: block; margin-bottom: 5px; }
+        .status-info { background: #1e3a5f; color: #93c5fd; border-left: 4px solid #3b82f6; }
+        .service-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+        .service-card { background: #1e293b; padding: 20px 15px; border-radius: 12px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: all 0.3s; }
+        .service-card:hover { border-color: #eab308; background: #2d3a4e; transform: translateY(-2px); }
+        .service-card.selected { border-color: #eab308; background: #2d3a4e; }
+        .service-card .service-icon { font-size: 36px; display: block; margin-bottom: 8px; }
+        .service-card .service-name { font-weight: 600; font-size: 14px; }
+        .service-card .service-price { color: #22c55e; font-size: 13px; font-weight: 600; margin-top: 4px; display: block; }
+        .service-card .service-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 9px; font-weight: 700; text-transform: uppercase; margin-top: 4px; }
+        .service-badge.popular { background: #eab308; color: #000; }
+        .service-badge.new { background: #3b82f6; color: #fff; }
+        .service-badge.premium { background: #8b5cf6; color: #fff; }
         .result-box { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 20px; display: none; }
         .result-value { font-size: 32px; color: #22c55e; font-weight: bold; text-align: center; }
-        .logout-btn { background: #dc2626; color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
+        .payment-summary { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .payment-summary .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #334155; }
+        .payment-summary .row:last-child { border-bottom: none; }
+        .payment-summary .label { color: #94a3b8; }
+        .payment-summary .value { font-weight: 600; }
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 50%; border-top-color: #eab308; animation: spin 0.6s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; z-index: 9999; font-weight: 500; animation: slideIn 0.3s ease; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-warning { background: #eab308; color: #000; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
+        @media (max-width: 600px) { header { flex-direction: column; text-align: center; } .user-info { flex-wrap: wrap; justify-content: center; } .nav-buttons .btn { flex: 1 1 100%; } .service-cards { grid-template-columns: 1fr 1fr; } .progress-step { font-size: 10px; padding: 8px 10px; } }
     </style>
 </head>
 <body>
     <header>
-        <div class="logo">🚗 AUTO-V Portal</div>
-        <button class="logout-btn" onclick="window.autoV.logout()">Logout</button>
+        <div class="logo">🚗 AUTO-V <span>| Customer Portal</span></div>
+        <div class="user-info">
+            <span class="user-email" id="userEmail">Loading...</span>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
     </header>
 
     <div class="container">
@@ -58,32 +92,41 @@
 
         <!-- STEP 1: CHOOSE SERVICE -->
         <div id="step1" class="card step active">
-            <h2>🔧 Choose Service</h2>
-            <div class="service-cards" id="serviceCards"></div>
-            <div id="selectedServiceMsg" style="text-align:center;margin-top:10px;color:#eab308;font-weight:500;"></div>
+            <h2 style="color:#eab308;margin-bottom:15px;">🔧 Choose a Service</h2>
+            <p style="color:#94a3b8;margin-bottom:20px;">Select the service you need. Prices are dynamic and updated in real-time.</p>
+            <div class="service-cards" id="serviceCards">
+                <div style="text-align:center;padding:30px;color:#94a3b8;">Loading services...</div>
+            </div>
+            <div id="selectedServiceMsg" style="text-align:center;margin-top:15px;color:#eab308;font-weight:500;min-height:30px;"></div>
             <div class="nav-buttons">
                 <button class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
                 <button class="btn btn-primary" onclick="confirmService()">Next →</button>
             </div>
         </div>
 
-        <!-- STEP 2: DETAILS (Adapts based on service) -->
+        <!-- STEP 2: DETAILS -->
         <div id="step2" class="card step">
-            <h2 id="step2Title">📝 Enter Details</h2>
+            <h2 id="step2Title" style="color:#eab308;margin-bottom:15px;">📝 Enter Vehicle Details</h2>
+            <p style="color:#94a3b8;margin-bottom:15px;">Provide the vehicle information for the service.</p>
             <form id="detailsForm">
-                <div class="form-group"><label>Registration Number</label><input type="text" id="regNumber" placeholder="KCA 123A" required></div>
-                <div class="form-group"><label>Make</label><input type="text" id="make" placeholder="Toyota" required></div>
-                <div class="form-group"><label>Model</label><input type="text" id="model" placeholder="Axio" required></div>
-                <div class="form-group"><label>Year</label><input type="number" id="year" placeholder="2020" required></div>
-                <div class="form-group" id="mileageGroup" style="display:none;"><label>Mileage (km)</label><input type="number" id="mileage" placeholder="50000"></div>
-                <div class="form-group" id="conditionGroup" style="display:none;"><label>Condition</label><select id="condition"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select></div>
-                <div class="nav-buttons"><button type="button" class="btn btn-secondary" onclick="showStep(1)">← Back</button><button type="submit" class="btn btn-primary">Pay Now →</button></div>
+                <div class="form-group"><label class="required">Registration Number</label><input type="text" id="regNumber" placeholder="KCA 123A" required></div>
+                <div class="form-group"><label class="required">Make</label><input type="text" id="make" placeholder="Toyota" required></div>
+                <div class="form-group"><label class="required">Model</label><input type="text" id="model" placeholder="Axio" required></div>
+                <div class="form-group"><label class="required">Year</label><input type="number" id="year" placeholder="2020" required min="1950" max="2026"></div>
+                <div class="form-group" id="mileageGroup" style="display:none;"><label>Mileage (km)</label><input type="number" id="mileage" placeholder="50000" min="0"></div>
+                <div class="form-group" id="conditionGroup" style="display:none;"><label>Condition</label>
+                    <select id="condition"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select>
+                </div>
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="showStep(1)">← Back</button>
+                    <button type="submit" class="btn btn-primary">Pay Now →</button>
+                </div>
             </form>
         </div>
 
         <!-- STEP 3: PAYMENT -->
         <div id="step3" class="card step">
-            <h2>💳 Payment</h2>
+            <h2 style="color:#eab308;margin-bottom:15px;">💳 Payment</h2>
             <div id="statusMessage" class="status-box"></div>
             <div class="payment-summary">
                 <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
@@ -91,199 +134,472 @@
                 <div class="row"><span class="label">Amount</span><span class="value" id="summaryAmount" style="font-size:24px;color:#22c55e;font-weight:bold;">KES 0</span></div>
             </div>
             <form id="paymentForm">
-                <div class="form-group"><label>M-Pesa Phone Number</label><input type="tel" id="mpesaPhone" placeholder="0712345678" required></div>
-                <div class="nav-buttons"><button class="btn btn-secondary" onclick="showStep(2)">← Back</button><button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button></div>
+                <div class="form-group"><label class="required">M-Pesa Phone Number</label>
+                    <input type="tel" id="mpesaPhone" placeholder="0712345678" required pattern="[0-9]{10}">
+                    <small style="color:#94a3b8;font-size:11px;">Enter your M-Pesa registered phone number (e.g., 0712345678)</small>
+                </div>
+                <div class="nav-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="showStep(2)">← Back</button>
+                    <button type="submit" class="btn btn-success" id="payBtn">💳 Pay Now</button>
+                </div>
             </form>
         </div>
 
         <div class="result-box" id="resultBox">
-            <h3 style="color:#eab308;margin-bottom:15px;">Service Result</h3>
+            <h3 style="color:#eab308;margin-bottom:15px;">✅ Service Result</h3>
             <div id="resultContent"></div>
         </div>
     </div>
 
     <script>
-        const client = window.autoV.supabase;
-        let selectedService = null;
-        let serviceFee = 0;
-        let vehicleDetails = {};
-        let feesChannel = null;
+        // ============================================================
+        // AUTO-V CUSTOMER PORTAL - PRODUCTION READY
+        // ============================================================
+        (function() {
+            if (window.autoVPortalInitialized) return;
+            window.autoVPortalInitialized = true;
 
-        // ─── Dynamic Fees from Supabase ──────────────────────────────
-        const SERVICE_KEYS = {
-            'instant-value-check': 'instant',
-            'mileage-rate': 'mileage',
-            'valuation': 'valuation',
-            'inspection': 'inspection',
-            'assessment': 'assessment',
-            'fleet': 'fleet'
-        };
+            // ─── SUPABASE CONFIG ──────────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        const SERVICE_PAGES = {
-            'instant-value-check': 'instant-value.html',
-            'mileage-rate': 'mileage.html',
-            'valuation': 'valuation.html',
-            'inspection': 'inspection.html',
-            'assessment': 'assessment.html',
-            'fleet': 'fleet.html'
-        };
-
-        async function loadFees() {
-            const { data, error } = await client.from('system_fees').select('*');
-            if (error) return;
-            
-            data.forEach(row => {
-                const key = SERVICE_KEYS[row.service_type];
-                if (key) SERVICE_FEES[row.service_type] = row.amount;
-            });
-            renderServices();
-        }
-
-        function subscribeToFees() {
-            if (feesChannel) client.removeChannel(feesChannel);
-            feesChannel = client.channel('system_fees_changes')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'system_fees' }, () => loadFees())
-                .subscribe();
-        }
-
-        const SERVICE_FEES = {};
-
-        function showStep(step) {
-            ['step1', 'step2', 'step3'].forEach(id => document.getElementById(id).classList.remove('active'));
-            ['step1Prog', 'step2Prog', 'step3Prog'].forEach(id => document.getElementById(id).classList.remove('active', 'completed'));
-            document.getElementById(`step${step}`).classList.add('active');
-            for(let i=1; i<step; i++) document.getElementById(`step${i}Prog`).classList.add('completed');
-            document.getElementById(`step${step}Prog`).classList.add('active');
-        }
-
-        function renderServices() {
-            const container = document.getElementById('serviceCards');
-            container.innerHTML = Object.keys(SERVICE_FEES).map(key => `
-                <div class="service-card" onclick="selectService('${key}')">
-                    <span class="service-icon">${getIcon(key)}</span>
-                    <h4>${formatName(key)}</h4>
-                    <small style="color:#22c55e;">KES ${SERVICE_FEES[key].toLocaleString()}</small>
-                </div>
-            `).join('');
-        }
-
-        function selectService(key) {
-            document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
-            document.querySelector(`.service-card[onclick="selectService('${key}')"]`).classList.add('selected');
-            selectedService = key;
-            serviceFee = SERVICE_FEES[key];
-            document.getElementById('selectedServiceMsg').textContent = `✅ Selected: ${formatName(key)}`;
-        }
-
-        function confirmService() {
-            if (!selectedService) return alert('Please select a service.');
-            if (selectedService === 'instant-value-check') {
-                window.location.href = SERVICE_PAGES[selectedService];
-                return;
-            }
-            const mileageGroup = document.getElementById('mileageGroup');
-            const conditionGroup = document.getElementById('conditionGroup');
-            mileageGroup.style.display = 'none';
-            conditionGroup.style.display = 'none';
-            if (selectedService === 'mileage-rate' || selectedService === 'inspection') mileageGroup.style.display = 'block';
-            if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') conditionGroup.style.display = 'block';
-            document.getElementById('step2Title').textContent = `📝 ${formatName(selectedService)} Details`;
-            showStep(2);
-        }
-
-        document.getElementById('detailsForm').onsubmit = function(e) {
-            e.preventDefault();
-            vehicleDetails = {
-                reg: document.getElementById('regNumber').value,
-                make: document.getElementById('make').value,
-                model: document.getElementById('model').value,
-                year: document.getElementById('year').value,
-                mileage: document.getElementById('mileage').value || 0,
-                condition: document.getElementById('condition').value || 'Good'
+            // ─── SERVICE CONFIGURATION ──────────────────────────────
+            const SERVICE_ICONS = {
+                'instant-value-check': '💡',
+                'mileage-rate': '📏',
+                'valuation': '💰',
+                'inspection': '🔍',
+                'assessment': '⚠️',
+                'fleet': '🚛'
             };
-            document.getElementById('summaryService').textContent = formatName(selectedService);
-            document.getElementById('summaryVehicle').textContent = `${vehicleDetails.make} ${vehicleDetails.model} (${vehicleDetails.year})`;
-            document.getElementById('summaryAmount').textContent = `KES ${serviceFee.toLocaleString()}`;
-            showStep(3);
-        };
 
-        document.getElementById('paymentForm').onsubmit = async function(e) {
-            e.preventDefault();
-            const phone = document.getElementById('mpesaPhone').value.trim();
-            const btn = document.getElementById('payBtn');
-            const statusBox = document.getElementById('statusMessage');
+            const SERVICE_NAMES = {
+                'instant-value-check': 'Instant Value Check',
+                'mileage-rate': 'Mileage Rate Calculator',
+                'valuation': 'Professional Valuation',
+                'inspection': 'Vehicle Inspection',
+                'assessment': 'Risk Assessment',
+                'fleet': 'Fleet Management'
+            };
 
-            btn.disabled = true;
-            btn.textContent = 'Processing...';
-            statusBox.style.display = 'none';
+            const SERVICE_PAGES = {
+                'instant-value-check': 'instant-value.html',
+                'mileage-rate': 'mileage.html',
+                'valuation': 'valuation.html',
+                'inspection': 'inspection.html',
+                'assessment': 'assessment.html',
+                'fleet': 'fleet.html'
+            };
 
-            try {
-                const { data: { user } } = await client.auth.getUser();
-                if (!user) { alert('Please login again.'); window.location.href = 'login.html'; return; }
+            const SERVICE_BADGES = {
+                'instant-value-check': 'popular',
+                'mileage-rate': 'popular',
+                'valuation': 'premium',
+                'inspection': 'premium',
+                'assessment': 'new',
+                'fleet': 'premium'
+            };
 
-                const requestPayload = {
-                    user_id: user.id,
-                    service_type: selectedService,
-                    amount: serviceFee,
-                    phone: phone,
-                    vehicle_reg: vehicleDetails.reg,
-                    vehicle_make: vehicleDetails.make,
-                    vehicle_model: vehicleDetails.model,
-                    vehicle_year: parseInt(vehicleDetails.year),
-                    payment_status: 'pending',
-                    status: 'awaiting_payment'
-                };
+            const ROLE_SERVICES = {
+                'individual': ['instant-value-check', 'mileage-rate'],
+                'corporate': ['instant-value-check', 'mileage-rate', 'fleet'],
+                'valuer': ['instant-value-check', 'mileage-rate', 'valuation', 'inspection', 'assessment', 'fleet'],
+                'admin': ['instant-value-check', 'mileage-rate', 'valuation', 'inspection', 'assessment', 'fleet']
+            };
 
-                if (selectedService === 'mileage-rate' || selectedService === 'inspection') requestPayload.vehicle_mileage = parseInt(vehicleDetails.mileage);
-                if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') requestPayload.vehicle_condition = vehicleDetails.condition;
+            // ─── STATE ──────────────────────────────────────────────
+            let selectedService = null;
+            let serviceFee = 0;
+            let vehicleDetails = {};
+            let feesChannel = null;
+            let currentUser = null;
+            let userRole = 'individual';
+            let serviceFees = {};
 
-                const { data: request, error } = await client.from('service_requests').insert(requestPayload).select().single();
-                if (error) throw error;
+            // ─── DOM REFS ──────────────────────────────────────────
+            const $ = (id) => document.getElementById(id);
+            const step1 = $('step1');
+            const step2 = $('step2');
+            const step3 = $('step3');
+            const step1Prog = $('step1Prog');
+            const step2Prog = $('step2Prog');
+            const step3Prog = $('step3Prog');
+            const serviceCards = $('serviceCards');
+            const selectedServiceMsg = $('selectedServiceMsg');
+            const detailsForm = $('detailsForm');
+            const paymentForm = $('paymentForm');
+            const statusMessage = $('statusMessage');
+            const payBtn = $('payBtn');
+            const resultBox = $('resultBox');
+            const resultContent = $('resultContent');
 
-                setTimeout(async () => {
-                    await client.from('service_requests').update({ payment_status: 'paid', status: 'completed' }).eq('id', request.id);
+            // ─── HELPERS ─────────────────────────────────────────────
+            function showToast(msg, type = 'success') {
+                const t = document.createElement('div');
+                t.className = `toast toast-${type}`;
+                t.textContent = msg;
+                document.body.appendChild(t);
+                setTimeout(() => t.remove(), 3000);
+            }
+
+            function showStep(step) {
+                [step1, step2, step3].forEach(el => el.classList.remove('active'));
+                [step1Prog, step2Prog, step3Prog].forEach(el => {
+                    el.classList.remove('active', 'completed');
+                });
+                const stepMap = {1: step1, 2: step2, 3: step3};
+                const progMap = {1: step1Prog, 2: step2Prog, 3: step3Prog};
+                stepMap[step].classList.add('active');
+                for (let i = 1; i < step; i++) {
+                    progMap[i].classList.add('completed');
+                }
+                progMap[step].classList.add('active');
+            }
+
+            function formatName(key) {
+                return SERVICE_NAMES[key] || key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            }
+
+            function getIcon(key) {
+                return SERVICE_ICONS[key] || '📄';
+            }
+
+            function getBadge(key) {
+                return SERVICE_BADGES[key] || '';
+            }
+
+            // ─── LOAD FEES FROM SUPABASE ─────────────────────────────
+            async function loadFees() {
+                try {
+                    const { data, error } = await supabase
+                        .from('system_fees')
+                        .select('*')
+                        .eq('is_active', true);
+
+                    if (error) throw error;
+
+                    serviceFees = {};
+                    data.forEach(row => {
+                        const serviceKey = row.service_type || row.key;
+                        serviceFees[serviceKey] = row.amount || row.fee || 0;
+                    });
+
+                    // Set defaults if no fees found
+                    if (Object.keys(serviceFees).length === 0) {
+                        serviceFees = {
+                            'instant-value-check': 500,
+                            'mileage-rate': 1000,
+                            'valuation': 2500,
+                            'inspection': 2000,
+                            'assessment': 1500,
+                            'fleet': 4000
+                        };
+                    }
+
+                    renderServices();
+                    return serviceFees;
+                } catch (error) {
+                    console.error('Error loading fees:', error);
+                    // Use default fees as fallback
+                    serviceFees = {
+                        'instant-value-check': 500,
+                        'mileage-rate': 1000,
+                        'valuation': 2500,
+                        'inspection': 2000,
+                        'assessment': 1500,
+                        'fleet': 4000
+                    };
+                    renderServices();
+                    return serviceFees;
+                }
+            }
+
+            function subscribeToFees() {
+                if (feesChannel) {
+                    supabase.removeChannel(feesChannel);
+                }
+                feesChannel = supabase.channel('system_fees_changes')
+                    .on('postgres_changes', {
+                        event: '*',
+                        schema: 'public',
+                        table: 'system_fees'
+                    }, () => {
+                        loadFees();
+                        showToast('💰 Service fees updated!', 'warning');
+                    })
+                    .subscribe();
+            }
+
+            // ─── RENDER SERVICES ─────────────────────────────────────
+            function renderServices() {
+                const allowedServices = ROLE_SERVICES[userRole] || ['instant-value-check', 'mileage-rate'];
+                const availableServices = Object.keys(serviceFees).filter(key => allowedServices.includes(key));
+
+                if (availableServices.length === 0) {
+                    serviceCards.innerHTML = `<div style="text-align:center;padding:30px;color:#94a3b8;">
+                        <p>No services available for your role.</p>
+                        <p style="font-size:12px;margin-top:10px;">Role: ${userRole}</p>
+                    </div>`;
+                    return;
+                }
+
+                serviceCards.innerHTML = availableServices.map(key => `
+                    <div class="service-card" onclick="window.selectService('${key}')" data-service="${key}">
+                        <span class="service-icon">${getIcon(key)}</span>
+                        <div class="service-name">${formatName(key)}</div>
+                        <span class="service-price">KES ${(serviceFees[key] || 0).toLocaleString()}</span>
+                        ${getBadge(key) ? `<span class="service-badge ${getBadge(key)}">${getBadge(key)}</span>` : ''}
+                    </div>
+                `).join('');
+
+                // Select first service by default if none selected
+                if (!selectedService && availableServices.length > 0) {
+                    selectService(availableServices[0]);
+                }
+            }
+
+            // ─── SELECT SERVICE ──────────────────────────────────────
+            window.selectService = function(key) {
+                document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+                const card = document.querySelector(`.service-card[data-service="${key}"]`);
+                if (card) card.classList.add('selected');
+                selectedService = key;
+                serviceFee = serviceFees[key] || 0;
+                selectedServiceMsg.textContent = `✅ Selected: ${formatName(key)} - KES ${serviceFee.toLocaleString()}`;
+            };
+
+            // ─── CONFIRM SERVICE ─────────────────────────────────────
+            window.confirmService = function() {
+                if (!selectedService) {
+                    showToast('Please select a service first.', 'warning');
+                    return;
+                }
+
+                // Redirect to service page if it's instant value check
+                if (selectedService === 'instant-value-check') {
+                    window.location.href = SERVICE_PAGES[selectedService] || 'instant-value.html';
+                    return;
+                }
+
+                // Show/hide conditional fields
+                const mileageGroup = $('mileageGroup');
+                const conditionGroup = $('conditionGroup');
+                
+                mileageGroup.style.display = 'none';
+                conditionGroup.style.display = 'none';
+
+                if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
+                    mileageGroup.style.display = 'block';
+                }
+                if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
+                    conditionGroup.style.display = 'block';
+                }
+
+                $('step2Title').textContent = `📝 ${formatName(selectedService)} Details`;
+                showStep(2);
+            };
+
+            // ─── AUTH ──────────────────────────────────────────────────
+            async function requireAuth() {
+                try {
+                    const { data: { user }, error } = await supabase.auth.getUser();
+                    if (error || !user) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
+                    currentUser = user;
+                    $('userEmail').textContent = user.email;
+                    return user;
+                } catch (e) {
+                    window.location.href = 'login.html';
+                    return null;
+                }
+            }
+
+            async function getUserRole(userId) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_roles')
+                        .select('role')
+                        .eq('user_id', userId)
+                        .maybeSingle();
+
+                    if (error) throw error;
+                    userRole = data?.role || 'individual';
+                    return userRole;
+                } catch (e) {
+                    console.error('Error getting role:', e);
+                    userRole = 'individual';
+                    return 'individual';
+                }
+            }
+
+            // ─── LOGOUT ──────────────────────────────────────────────
+            window.logout = async function() {
+                try {
+                    await supabase.auth.signOut();
+                    window.location.href = 'login.html';
+                } catch (e) {
+                    showToast('Logout failed: ' + e.message, 'error');
+                }
+            };
+
+            // ─── DETAILS FORM SUBMIT ────────────────────────────────
+            detailsForm.onsubmit = function(e) {
+                e.preventDefault();
+                
+                const reg = $('regNumber').value.trim().toUpperCase();
+                const make = $('make').value.trim();
+                const model = $('model').value.trim();
+                const year = parseInt($('year').value);
+                const mileage = parseInt($('mileage').value) || 0;
+                const condition = $('condition').value || 'Good';
+
+                if (!reg || !make || !model || !year) {
+                    showToast('Please fill all required fields.', 'error');
+                    return;
+                }
+
+                vehicleDetails = { reg, make, model, year, mileage, condition };
+                
+                $('summaryService').textContent = formatName(selectedService);
+                $('summaryVehicle').textContent = `${make} ${model} (${year})`;
+                $('summaryAmount').textContent = `KES ${serviceFee.toLocaleString()}`;
+                
+                showStep(3);
+            };
+
+            // ─── PAYMENT FORM SUBMIT ─────────────────────────────────
+            paymentForm.onsubmit = async function(e) {
+                e.preventDefault();
+                
+                const phone = $('mpesaPhone').value.trim();
+                if (!phone || phone.length < 10) {
+                    showToast('Please enter a valid M-Pesa phone number.', 'error');
+                    return;
+                }
+
+                const btn = payBtn;
+                const statusBox = statusMessage;
+
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span> Processing...';
+                statusBox.style.display = 'none';
+
+                try {
+                    const user = await requireAuth();
+                    if (!user) return;
+
+                    // Create service request
+                    const requestPayload = {
+                        user_id: user.id,
+                        service_type: selectedService,
+                        amount: serviceFee,
+                        phone: phone,
+                        vehicle_reg: vehicleDetails.reg,
+                        vehicle_make: vehicleDetails.make,
+                        vehicle_model: vehicleDetails.model,
+                        vehicle_year: vehicleDetails.year,
+                        payment_status: 'pending',
+                        status: 'awaiting_payment'
+                    };
+
+                    if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
+                        requestPayload.vehicle_mileage = vehicleDetails.mileage;
+                    }
+                    if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
+                        requestPayload.vehicle_condition = vehicleDetails.condition;
+                    }
+
+                    // Insert request
+                    const { data: request, error } = await supabase
+                        .from('service_requests')
+                        .insert(requestPayload)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    // Simulate payment processing (in production, integrate with M-Pesa API)
+                    statusBox.className = 'status-box status-info';
+                    statusBox.textContent = '⏳ Processing payment... Please wait.';
+                    statusBox.style.display = 'block';
+
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+
+                    // Update payment status
+                    const { error: updateError } = await supabase
+                        .from('service_requests')
+                        .update({ 
+                            payment_status: 'paid', 
+                            status: 'completed',
+                            paid_at: new Date().toISOString()
+                        })
+                        .eq('id', request.id);
+
+                    if (updateError) throw updateError;
+
+                    // Success
                     statusBox.className = 'status-box status-success';
                     statusBox.textContent = '✅ Payment successful! Redirecting to service page...';
                     statusBox.style.display = 'block';
-                    btn.textContent = '✅ Completed';
+                    btn.innerHTML = '✅ Completed';
                     btn.disabled = true;
-                    
-                    // ✅ REDIRECT TO THE ACTUAL SERVICE PAGE
+
+                    showToast('✅ Payment successful!', 'success');
+
+                    // Redirect after 2 seconds
                     setTimeout(() => {
                         const page = SERVICE_PAGES[selectedService] || 'valuation.html';
-                        window.location.href = page;
+                        window.location.href = page + '?request_id=' + request.id;
                     }, 2000);
-                    
-                }, 3000);
-            } catch (err) {
-                statusBox.className = 'status-box status-error';
-                statusBox.textContent = '❌ Error: ' + err.message;
-                statusBox.style.display = 'block';
-                btn.disabled = false;
-                btn.textContent = '💳 Pay Now';
-            }
-        };
 
-        function formatName(key) { return key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); }
-        function getIcon(key) { const icons = { 'instant-value-check': '💡', 'mileage-rate': '📏', 'valuation': '💰', 'inspection': '🔍', 'assessment': '⚠️', 'fleet': '🚛' }; return icons[key] || '📄'; }
-
-        async function init() {
-            const user = await window.autoV.requireAuth();
-            if (!user) return;
-            const role = await window.autoV.getUserRole(user.id);
-            const ALLOWED_SERVICES = {
-                'individual': ['instant-value-check', 'mileage-rate'],
-                'corporate': ['instant-value-check', 'mileage-rate'],
-                'valuer': ['valuation', 'inspection', 'assessment', 'fleet']
+                } catch (error) {
+                    console.error('Payment error:', error);
+                    statusBox.className = 'status-box status-error';
+                    statusBox.textContent = '❌ Error: ' + error.message;
+                    statusBox.style.display = 'block';
+                    btn.innerHTML = '💳 Retry Payment';
+                    btn.disabled = false;
+                    showToast('Payment failed: ' + error.message, 'error');
+                }
             };
-            const allowed = ALLOWED_SERVICES[role] || [];
-            Object.keys(SERVICE_FEES).forEach(key => { if (!allowed.includes(key)) delete SERVICE_FEES[key]; });
-            await loadFees();
-            subscribeToFees();
-            renderServices();
-            showStep(1);
-        }
-        init();
+
+            // ─── INIT ──────────────────────────────────────────────────
+            async function init() {
+                console.log('🚗 AUTO-V Customer Portal - Initializing...');
+                
+                try {
+                    const user = await requireAuth();
+                    if (!user) return;
+
+                    await getUserRole(user.id);
+                    console.log('👤 User role:', userRole);
+                    console.log('📧 User email:', user.email);
+
+                    await loadFees();
+                    subscribeToFees();
+                    
+                    showStep(1);
+                    console.log('✅ AUTO-V Customer Portal ready');
+                } catch (error) {
+                    console.error('Init error:', error);
+                    showToast('Failed to initialize portal: ' + error.message, 'error');
+                }
+            }
+
+            // Expose functions globally
+            window.showStep = showStep;
+            window.confirmService = confirmService;
+            window.selectService = selectService;
+            window.logout = logout;
+            window.formatName = formatName;
+            window.getIcon = getIcon;
+
+            // Start the app
+            document.addEventListener('DOMContentLoaded', init);
+        })();
     </script>
 </body>
 </html>
