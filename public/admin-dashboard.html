@@ -339,7 +339,7 @@
         <div id="panel-rates" class="tab-panel">
             <div class="admin-section">
                 <h3>💰 Mileage Rate Tables</h3>
-                <p style="color:#64748b;font-size:12px;margin-bottom:12px;">📡 Data sourced from Supabase `vehicle_models` table</p>
+                <p style="color:#64748b;font-size:12px;margin-bottom:12px;">📡 Data sourced from Supabase <strong style="color:#eab308;">vehicle_models</strong> table</p>
                 <div class="rates-grid" id="ratesGrid">
                     <div style="text-align:center;padding:20px;color:#64748b;grid-column:1/-1;"><div class="spinner"></div> Loading rates from Supabase…</div>
                 </div>
@@ -394,7 +394,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V ADMIN DASHBOARD — SUPABASE SINGLE SOURCE OF TRUTH
+        // AUTO-V ADMIN DASHBOARD — FIXED (No duplicate declarations)
         // ═══════════════════════════════════════════════════════════════
 
         // ─── SUPABASE CONFIG ──────────────────────────────────────────
@@ -403,26 +403,28 @@
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 
         // ─── INIT SUPABASE ────────────────────────────────────────────
-        let _supabase = null;
+        // Use a single global instance with a unique name to avoid conflicts
+        let _supabaseClient = null;
 
-        function getSupabase() {
-            if (_supabase) return _supabase;
+        function getSupabaseClient() {
+            if (_supabaseClient) return _supabaseClient;
             try {
                 if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-                    _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 } else if (typeof supabaseJs !== 'undefined') {
-                    _supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    _supabaseClient = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 } else {
-                    _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 }
-                return _supabase;
+                console.log('✅ Supabase client initialized');
+                return _supabaseClient;
             } catch (e) {
                 console.error('Failed to initialize Supabase:', e);
                 return null;
             }
         }
 
-        const supabase = getSupabase();
+        const sb = getSupabaseClient();
 
         // ─── STATE ──────────────────────────────────────────────────
         let allRequests = [],
@@ -481,13 +483,13 @@
 
         // ─── AUTH CHECK ────────────────────────────────────────────
         async function checkAuth() {
-            if (!supabase) {
+            if (!sb) {
                 showToast('❌ Supabase connection failed', 'error');
                 setConnectionStatus(false);
                 return null;
             }
             try {
-                const { data: { user }, error } = await supabase.auth.getUser();
+                const { data: { user }, error } = await sb.auth.getUser();
                 if (error || !user) {
                     const stored = localStorage.getItem('autoV_admin');
                     if (stored) {
@@ -535,18 +537,18 @@
 
         // ─── LOAD: STATS ──────────────────────────────────────────
         async function loadStats() {
-            if (!supabase) {
+            if (!sb) {
                 showToast('❌ Supabase not connected', 'error');
                 return;
             }
             try {
-                const { count: users } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-                const { count: requests } = await supabase.from('service_requests').select('*', { count: 'exact',
+                const { count: users } = await sb.from('profiles').select('*', { count: 'exact', head: true });
+                const { count: requests } = await sb.from('service_requests').select('*', { count: 'exact',
                     head: true });
-                const { data: payments } = await supabase.from('payments').select('amount, status');
+                const { data: payments } = await sb.from('payments').select('amount, status');
                 const total = payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0;
                 const pending = payments?.filter(p => p.status === 'pending').length || 0;
-                const { count: instant } = await supabase.from('service_requests').select('*', { count: 'exact',
+                const { count: instant } = await sb.from('service_requests').select('*', { count: 'exact',
                     head: true }).eq('service_type', 'instant');
 
                 document.getElementById('totalUsers').textContent = formatNumber(users);
@@ -564,9 +566,9 @@
 
         // ─── LOAD: REQUESTS ──────────────────────────────────────
         async function loadRequests() {
-            if (!supabase) return;
+            if (!sb) return;
             try {
-                const { data, error } = await supabase.from('service_requests')
+                const { data, error } = await sb.from('service_requests')
                     .select('*')
                     .order('created_at', { ascending: false })
                     .limit(50);
@@ -622,9 +624,9 @@
 
         window.deleteRequest = async function(id) {
             if (!confirm('Delete this request from Supabase?')) return;
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             try {
-                const { error } = await supabase.from('service_requests').delete().eq('id', id);
+                const { error } = await sb.from('service_requests').delete().eq('id', id);
                 if (error) throw error;
                 showToast('✅ Deleted from Supabase', 'success');
                 loadRequests();
@@ -636,9 +638,9 @@
 
         // ─── LOAD: USERS ──────────────────────────────────────────
         async function loadUsers() {
-            if (!supabase) return;
+            if (!sb) return;
             try {
-                const { data, error } = await supabase.from('profiles')
+                const { data, error } = await sb.from('profiles')
                     .select('*')
                     .order('created_at', { ascending: false });
                 if (error) throw error;
@@ -693,9 +695,9 @@
 
         window.deleteUser = async function(id) {
             if (!confirm('Delete this user from Supabase?')) return;
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             try {
-                const { error } = await supabase.from('profiles').delete().eq('id', id);
+                const { error } = await sb.from('profiles').delete().eq('id', id);
                 if (error) throw error;
                 showToast('✅ Deleted from Supabase', 'success');
                 loadUsers();
@@ -706,9 +708,9 @@
 
         // ─── LOAD: PAYMENTS ──────────────────────────────────────
         async function loadPayments() {
-            if (!supabase) return;
+            if (!sb) return;
             try {
-                const { data, error } = await supabase.from('payments')
+                const { data, error } = await sb.from('payments')
                     .select('*')
                     .order('created_at', { ascending: false })
                     .limit(50);
@@ -754,9 +756,9 @@
 
         // ─── LOAD: SERVICES ──────────────────────────────────────
         async function loadServices() {
-            if (!supabase) return;
+            if (!sb) return;
             try {
-                const { data, error } = await supabase.from('system_fees')
+                const { data, error } = await sb.from('system_fees')
                     .select('*')
                     .order('service_name');
                 if (error) throw error;
@@ -808,9 +810,9 @@
 
         window.deleteService = async function(id) {
             if (!confirm('Delete this service from Supabase?')) return;
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             try {
-                const { error } = await supabase.from('system_fees').delete().eq('id', id);
+                const { error } = await sb.from('system_fees').delete().eq('id', id);
                 if (error) throw error;
                 showToast('✅ Deleted from Supabase', 'success');
                 loadServices();
@@ -825,9 +827,9 @@
             'verification_fee': 'Verification' };
 
         async function loadPrices() {
-            if (!supabase) return;
+            if (!sb) return;
             try {
-                const { data, error } = await supabase.from('system_settings')
+                const { data, error } = await sb.from('system_settings')
                     .select('*')
                     .in('setting_key', Object.keys(keyToName));
                 if (error) throw error;
@@ -875,12 +877,12 @@
         // ─── FEE MANAGER ──────────────────────────────────────────
         async function loadAdminFees() {
             const container = document.getElementById('feeList');
-            if (!supabase) {
+            if (!sb) {
                 container.innerHTML = '<div style="text-align:center;padding:16px;color:#ef4444;">Supabase not connected</div>';
                 return;
             }
             try {
-                const { data, error } = await supabase.from('system_fees').select('*');
+                const { data, error } = await sb.from('system_fees').select('*');
                 if (error) throw error;
                 if (!data || !data.length) {
                     container.innerHTML =
@@ -902,13 +904,13 @@
         }
 
         window.updateFee = async function(id) {
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             const input = document.getElementById('fee_' + id);
             if (!input) return;
             const val = parseInt(input.value);
             if (!val || val <= 0) return showToast('Enter valid amount', 'error');
             try {
-                const { error } = await supabase.from('system_fees').update({ fee: val }).eq('id', id);
+                const { error } = await sb.from('system_fees').update({ fee: val }).eq('id', id);
                 if (error) throw error;
                 showToast('✅ Fee updated in Supabase', 'success');
                 loadAdminFees();
@@ -920,13 +922,13 @@
         // ─── LOAD: RATES ──────────────────────────────────────────
         async function loadRates() {
             const container = document.getElementById('ratesGrid');
-            if (!supabase) {
+            if (!sb) {
                 container.innerHTML =
                     '<div style="text-align:center;padding:20px;color:#ef4444;grid-column:1/-1;">Supabase not connected</div>';
                 return;
             }
             try {
-                const { data, error } = await supabase.from('vehicle_models')
+                const { data, error } = await sb.from('vehicle_models')
                     .select('class, rate_per_km, fuel_type, fuel_efficiency')
                     .order('class');
                 if (error) throw error;
@@ -953,12 +955,12 @@
 
         // ─── FUEL ──────────────────────────────────────────────────
         async function loadFuelPrices() {
-            if (!supabase) {
+            if (!sb) {
                 showToast('Supabase not connected', 'error');
                 return;
             }
             try {
-                const { data, error } = await supabase.from('fuel_prices')
+                const { data, error } = await sb.from('fuel_prices')
                     .select('*')
                     .order('created_at', { ascending: false })
                     .limit(1);
@@ -986,7 +988,7 @@
         }
 
         async function createInitialFuelPrices() {
-            if (!supabase) return;
+            if (!sb) return;
             try {
                 const prices = {
                     petrol: 214.03,
@@ -996,7 +998,7 @@
                     electric: 20.00,
                     updated_at: new Date().toISOString()
                 };
-                const { error } = await supabase.from('fuel_prices').insert([prices]);
+                const { error } = await sb.from('fuel_prices').insert([prices]);
                 if (error) throw error;
                 showToast('✅ Initial fuel prices created in Supabase', 'success');
                 loadFuelPrices();
@@ -1006,7 +1008,7 @@
         }
 
         async function saveFuelPrices() {
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             const prices = {
                 petrol: parseFloat(document.getElementById('fuelPetrol').value) || 214.03,
                 diesel: parseFloat(document.getElementById('fuelDiesel').value) || 222.86,
@@ -1017,10 +1019,10 @@
             };
             const statusEl = document.getElementById('fuelUpdateStatus');
             try {
-                const { data: existing } = await supabase.from('fuel_prices').select('id').limit(1);
+                const { data: existing } = await sb.from('fuel_prices').select('id').limit(1);
                 let result;
                 if (existing && existing.length) {
-                    const { data, error } = await supabase.from('fuel_prices')
+                    const { data, error } = await sb.from('fuel_prices')
                         .update(prices)
                         .eq('id', existing[0].id)
                         .select()
@@ -1028,7 +1030,7 @@
                     if (error) throw error;
                     result = data;
                 } else {
-                    const { data, error } = await supabase.from('fuel_prices')
+                    const { data, error } = await sb.from('fuel_prices')
                         .insert([prices])
                         .select()
                         .single();
@@ -1077,13 +1079,13 @@
         // ─── FORMS ──────────────────────────────────────────────────
         document.getElementById('addUserForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             const email = document.getElementById('newUserEmail').value.trim();
             const pwd = document.getElementById('newUserPassword').value;
             if (!email || !pwd) return showToast('Email & password required', 'error');
             if (pwd.length < 6) return showToast('Password min 6 chars', 'error');
             try {
-                const { data, error } = await supabase.auth.signUp({
+                const { data, error } = await sb.auth.signUp({
                     email,
                     password: pwd,
                     options: { data: { full_name: document.getElementById('newUserName').value.trim() || email.split(
@@ -1091,7 +1093,7 @@
                 });
                 if (error) throw error;
                 if (data.user) {
-                    await supabase.from('profiles').insert({
+                    await sb.from('profiles').insert({
                         id: data.user.id,
                         email,
                         full_name: document.getElementById('newUserName').value.trim() || email.split('@')[0],
@@ -1108,10 +1110,10 @@
 
         document.getElementById('editUserForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             const id = document.getElementById('editUserId').value;
             try {
-                const { error } = await supabase.from('profiles').update({
+                const { error } = await sb.from('profiles').update({
                     full_name: document.getElementById('editUserName').value.trim(),
                     user_role: document.getElementById('editUserRole').value,
                     updated_at: new Date().toISOString()
@@ -1125,9 +1127,9 @@
 
         document.getElementById('addServiceForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             try {
-                const { error } = await supabase.from('system_fees').insert({
+                const { error } = await sb.from('system_fees').insert({
                     service_name: document.getElementById('newServiceName').value.trim(),
                     service_type: document.getElementById('newServiceType').value,
                     fee: parseFloat(document.getElementById('newServicePrice').value),
@@ -1145,10 +1147,10 @@
 
         document.getElementById('editServiceForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             const id = document.getElementById('editServiceId').value;
             try {
-                const { error } = await supabase.from('system_fees').update({
+                const { error } = await sb.from('system_fees').update({
                     service_name: document.getElementById('editServiceName').value.trim(),
                     service_type: document.getElementById('editServiceType').value,
                     fee: parseFloat(document.getElementById('editServicePrice').value),
@@ -1164,12 +1166,12 @@
 
         document.getElementById('addPriceForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             const key = document.getElementById('newPriceService').value;
             const val = parseInt(document.getElementById('newPriceValue').value);
             if (!val || val <= 0) return showToast('Valid price required', 'error');
             try {
-                const { error } = await supabase.from('system_settings')
+                const { error } = await sb.from('system_settings')
                     .upsert({ setting_key: key, setting_value: String(val), updated_at: new Date().toISOString() },
                     { onConflict: 'setting_key' });
                 if (error) throw error;
@@ -1182,12 +1184,12 @@
 
         document.getElementById('editPriceForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            if (!supabase) return showToast('Supabase not connected', 'error');
+            if (!sb) return showToast('Supabase not connected', 'error');
             const key = document.getElementById('editPriceId').value;
             const val = parseInt(document.getElementById('editPriceValue').value);
             if (!val || val <= 0) return showToast('Valid price required', 'error');
             try {
-                const { error } = await supabase.from('system_settings')
+                const { error } = await sb.from('system_settings')
                     .upsert({ setting_key: key, setting_value: String(val), updated_at: new Date().toISOString() },
                     { onConflict: 'setting_key' });
                 if (error) throw error;
@@ -1344,8 +1346,8 @@
 
         // ─── LOGOUT ──────────────────────────────────────────────────
         document.getElementById('logoutBtn').addEventListener('click', async () => {
-            if (supabase) {
-                await supabase.auth.signOut();
+            if (sb) {
+                await sb.auth.signOut();
             }
             localStorage.removeItem('autoV_admin');
             window.location.href = 'admin-login.html';
@@ -1353,12 +1355,11 @@
 
         // ─── INIT ────────────────────────────────────────────────────
         async function init() {
-            console.log('🚀 AUTO-V Admin Dashboard — Supabase Single Source of Truth');
+            console.log('🚀 AUTO-V Admin Dashboard — Supabase Single Source of Truth (FIXED)');
 
             // Check auth
             const user = await checkAuth();
             if (!user) {
-                // Try to redirect if not authenticated
                 const stored = localStorage.getItem('autoV_admin');
                 if (!stored) {
                     window.location.href = 'admin-login.html';
@@ -1388,7 +1389,7 @@
 
             hideLoading();
 
-            if (supabase) {
+            if (sb) {
                 showToast('✅ Connected to Supabase — Single Source of Truth', 'success');
             } else {
                 showToast('❌ Supabase connection failed', 'error');
