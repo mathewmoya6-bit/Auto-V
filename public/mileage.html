@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AUTO-V | Professional Mileage Calculator</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E📊%3C/text%3E%3C/svg%3E">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E%F0%9F%93%8A%3C/text%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
@@ -178,6 +178,7 @@
             -webkit-appearance: none;
             transition: outline 0.15s;
         }
+        select:disabled, input:disabled { opacity: 0.6; cursor: not-allowed; }
         select:focus, input:focus {
             outline: 2px solid var(--amber);
             outline-offset: 1px;
@@ -192,6 +193,13 @@
         }
         .field-row { display: flex; gap: 12px; }
         .field-row>div { flex: 1; }
+        .field-error {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--rust);
+            margin-top: 4px;
+            min-height: 14px;
+        }
 
         .quick-routes { margin-top: 4px; }
         .quick-routes-title {
@@ -258,6 +266,12 @@
             background: var(--amber-deep);
             transform: translateY(-2px);
             box-shadow: 0 4px 20px rgba(234, 179, 8, 0.3);
+        }
+        .calc-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
         .results-panel {
@@ -473,10 +487,13 @@
             color: var(--amber);
             background: rgba(234, 179, 8, 0.05);
         }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .action-btn.print { border-color: var(--blue); color: var(--blue); }
         .action-btn.print:hover { background: rgba(59, 130, 246, 0.08); }
         .action-btn.share { border-color: var(--green); color: var(--green); }
         .action-btn.share:hover { background: rgba(34, 197, 94, 0.08); }
+        .action-btn.retry { border-color: var(--rust); color: var(--rust); }
+        .action-btn.retry:hover { background: rgba(239, 68, 68, 0.08); }
 
         .fuel-filter-group {
             display: flex;
@@ -518,6 +535,7 @@
         .fuel-filter-btn .fuel-dot.lpg { background: #3b82f6; }
         .fuel-filter-btn .fuel-dot.electric { background: #8b5cf6; }
 
+        /* Show All Classes Toggle */
         .all-classes-toggle {
             display: flex;
             align-items: center;
@@ -578,6 +596,16 @@
             line-height: 1.8;
         }
         .report-footer .meta strong { color: var(--cream-dim); }
+
+        .sr-only {
+            position: absolute;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            white-space: nowrap;
+            border: 0;
+        }
 
         @media (max-width: 768px) {
             .wrap { padding: 16px 12px 40px; }
@@ -646,8 +674,8 @@
         </div>
         <div class="header-right">
             <div class="version">Report Version <span>2026.07</span></div>
-            <div>Last Updated: <span id="lastUpdated">Loading...</span></div>
-            <div>Data Status: <span class="status" id="dbStatus">● Connecting...</span></div>
+            <div>Last Updated: <span id="lastUpdated">—</span></div>
+            <div>Data Status: <span class="status" id="dbStatus" role="status" aria-live="polite">● Connecting...</span></div>
         </div>
     </div>
 
@@ -658,42 +686,43 @@
 
             <div class="form-group">
                 <label for="categorySelect">Vehicle Category</label>
-                <select id="categorySelect">
+                <select id="categorySelect" disabled aria-busy="true">
                     <option value="">Loading categories...</option>
                 </select>
             </div>
 
             <div class="form-group">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <label for="variantSelect">Engine / Class</label>
+                    <label for="variantSelect" style="margin-bottom:0;">Engine / Class</label>
                     <div class="all-classes-toggle">
-                        <label>
+                        <label for="showAllClasses">
                             <input type="checkbox" id="showAllClasses" />
                             <span class="toggle-label">Show <strong>All</strong> Classes</span>
                         </label>
                     </div>
                 </div>
-                <select id="variantSelect">
+                <select id="variantSelect" disabled aria-busy="true">
                     <option value="">Select a category first</option>
                 </select>
             </div>
 
+            <!-- Fuel Type Filter -->
             <div class="form-group">
-                <label>Fuel Type</label>
-                <div class="fuel-filter-group" id="fuelFilterGroup">
-                    <button class="fuel-filter-btn active" data-fuel="all">
+                <label id="fuelFilterLabel">Fuel Type</label>
+                <div class="fuel-filter-group" id="fuelFilterGroup" role="group" aria-labelledby="fuelFilterLabel">
+                    <button type="button" class="fuel-filter-btn active" data-fuel="all" aria-pressed="true">
                         <span class="fuel-dot" style="background:var(--cream-dim);"></span> All
                     </button>
-                    <button class="fuel-filter-btn" data-fuel="Petrol">
+                    <button type="button" class="fuel-filter-btn" data-fuel="Petrol" aria-pressed="false">
                         <span class="fuel-dot petrol"></span> Petrol
                     </button>
-                    <button class="fuel-filter-btn" data-fuel="Diesel">
+                    <button type="button" class="fuel-filter-btn" data-fuel="Diesel" aria-pressed="false">
                         <span class="fuel-dot diesel"></span> Diesel
                     </button>
-                    <button class="fuel-filter-btn" data-fuel="Gas/LPG">
+                    <button type="button" class="fuel-filter-btn" data-fuel="Gas/LPG" aria-pressed="false">
                         <span class="fuel-dot lpg"></span> Gas/LPG
                     </button>
-                    <button class="fuel-filter-btn" data-fuel="Electric">
+                    <button type="button" class="fuel-filter-btn" data-fuel="Electric" aria-pressed="false">
                         <span class="fuel-dot electric"></span> Electric
                     </button>
                 </div>
@@ -703,7 +732,8 @@
 
             <div class="form-group">
                 <label for="distanceInput">Distance (km)</label>
-                <input type="number" id="distanceInput" min="0" step="1" value="100" />
+                <input type="number" id="distanceInput" min="0" max="100000" step="1" value="100" inputmode="decimal" />
+                <div class="field-error" id="distanceError" role="alert"></div>
             </div>
 
             <div class="quick-routes">
@@ -711,10 +741,10 @@
                 <div class="route-chips" id="routeChips"></div>
             </div>
 
-            <button class="calc-btn" id="calculateBtn">🚀 Calculate Mileage Rate</button>
+            <button class="calc-btn" id="calculateBtn" disabled>🚀 Calculate Mileage Rate</button>
         </section>
 
-        <section class="results-panel" aria-label="Cost results">
+        <section class="results-panel" aria-label="Cost results" aria-live="polite">
             <div class="vehicle-tag">
                 <span id="vehicleLabel">—</span>
                 <span class="fuel-pill" id="fuelPill">—</span>
@@ -784,12 +814,12 @@
 
             <div class="rate-line" style="border-top: 2px solid var(--amber); padding-top: 12px; margin-top: 4px;">
                 <span style="font-weight: 600;">✅ Confidence Score</span>
-                <b style="color: var(--green);" id="confidenceScore">95%</b>
+                <b style="color: var(--green);" id="confidenceScore">—</b>
             </div>
 
             <div class="action-bar">
-                <button class="action-btn print" onclick="window.print()">🖨️ Print Report</button>
-                <button class="action-btn share" onclick="shareReport()">📤 Share Report</button>
+                <button class="action-btn print" id="printBtn" type="button" disabled>🖨️ Print Report</button>
+                <button class="action-btn share" id="shareBtn" type="button" disabled>📤 Share Report</button>
             </div>
         </section>
     </div>
@@ -807,153 +837,194 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
+(function () {
+    'use strict';
+
+    // ---------------------------------------------------------------
+    // Config
+    // ---------------------------------------------------------------
     const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+    const MAX_DISTANCE = 100000;
+    const FETCH_TIMEOUT_MS = 12000;
 
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        // The Supabase SDK failed to load (CDN blocked / offline).
+        document.addEventListener('DOMContentLoaded', () => showFatalError('Could not load the Supabase client library. Check your connection and reload.'));
+        return;
+    }
     const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // ---------------------------------------------------------------
+    // DOM helpers
+    // ---------------------------------------------------------------
     const $ = (id) => document.getElementById(id);
     const categorySelect = $('categorySelect');
     const variantSelect = $('variantSelect');
     const distanceInput = $('distanceInput');
+    const distanceError = $('distanceError');
     const routeChips = $('routeChips');
     const dbStatus = $('dbStatus');
     const showAllClasses = $('showAllClasses');
+    const calculateBtn = $('calculateBtn');
+    const printBtn = $('printBtn');
+    const shareBtn = $('shareBtn');
 
-    const fmtKShs = (n) => new Intl.NumberFormat('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
-    const fmtKShsInt = (n) => new Intl.NumberFormat('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
+    // Numbers coming back from Postgres numeric columns are often
+    // serialized as strings by the client. Coerce everything so
+    // arithmetic and comparisons behave correctly.
+    function num(v, fallback = 0) {
+        const n = typeof v === 'string' ? parseFloat(v) : v;
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    function debounce(fn, wait) {
+        let t;
+        return (...args) => {
+            clearTimeout(t);
+            t = setTimeout(() => fn(...args), wait);
+        };
+    }
+
+    let kesFormatter, kesFormatterInt;
+    try {
+        kesFormatter = new Intl.NumberFormat('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        kesFormatterInt = new Intl.NumberFormat('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    } catch (e) {
+        kesFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        kesFormatterInt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    const fmtKShs = (n) => kesFormatter.format(num(n));
+    const fmtKShsInt = (n) => kesFormatterInt.format(num(n));
+
+    // ---------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------
     let categories = [];
     let routes = [];
     let selectedFuel = 'all';
     let allVariants = [];
+    let dataLoaded = false;
 
+    function withTimeout(promise, ms) {
+        return Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), ms))
+        ]);
+    }
+
+    // ---------------------------------------------------------------
+    // Data fetching
+    // ---------------------------------------------------------------
     async function fetchData() {
-        try {
-            dbStatus.textContent = '● Fetching...';
-            dbStatus.style.color = 'var(--amber)';
+        dbStatus.textContent = '● Fetching...';
+        dbStatus.style.color = 'var(--amber)';
 
-            const { data: columnsData, error: columnsError } = await _supabase
-                .from('vehicle_categories')
-                .select('*')
-                .limit(1);
+        const { data: columnsData, error: columnsError } = await withTimeout(
+            _supabase.from('vehicle_categories').select('*').limit(1),
+            FETCH_TIMEOUT_MS
+        );
+        if (columnsError) throw columnsError;
 
-            if (columnsError) throw columnsError;
+        const sample = columnsData && columnsData[0] ? columnsData[0] : {};
+        const categoryNameCol = ['name', 'label', 'category_name'].find(c => Object.prototype.hasOwnProperty.call(sample, c)) || 'name';
+        const fuelCol = ['fuel_type', 'fuel'].find(c => Object.prototype.hasOwnProperty.call(sample, c)) || null;
 
-            const categoryNameCol = columnsData && columnsData[0] ? 
-                (columnsData[0].hasOwnProperty('name') ? 'name' : 
-                 columnsData[0].hasOwnProperty('label') ? 'label' : 
-                 columnsData[0].hasOwnProperty('category_name') ? 'category_name' : 'name') : 'name';
-
-            const fuelCol = columnsData && columnsData[0] ? 
-                (columnsData[0].hasOwnProperty('fuel_type') ? 'fuel_type' : 
-                 columnsData[0].hasOwnProperty('fuel') ? 'fuel' : null) : null;
-
-            const [categoriesRes, routesRes, variantsRes, componentsRes] = await Promise.all([
+        const [categoriesRes, routesRes, variantsRes, componentsRes] = await withTimeout(
+            Promise.all([
                 _supabase.from('vehicle_categories').select('*').order(categoryNameCol),
                 _supabase.from('routes').select('*').order('km'),
                 _supabase.from('vehicle_variants').select('*'),
                 _supabase.from('running_cost_components').select('*')
-            ]);
+            ]),
+            FETCH_TIMEOUT_MS
+        );
 
-            if (categoriesRes.error) throw categoriesRes.error;
-            if (routesRes.error) throw routesRes.error;
-            if (variantsRes.error) throw variantsRes.error;
-            if (componentsRes.error) throw componentsRes.error;
+        if (categoriesRes.error) throw categoriesRes.error;
+        if (routesRes.error) throw routesRes.error;
+        if (variantsRes.error) throw variantsRes.error;
+        if (componentsRes.error) throw componentsRes.error;
 
-            categories = categoriesRes.data || [];
-            routes = routesRes.data || [];
-            const variants = variantsRes.data || [];
-            const components = componentsRes.data || [];
+        const rawCategories = categoriesRes.data || [];
+        routes = (routesRes.data || []).filter(r => r && num(r.km) > 0);
+        const variants = variantsRes.data || [];
+        const components = componentsRes.data || [];
 
-            const variantNameCol = variants && variants.length > 0 ? 
-                (variants[0].hasOwnProperty('name') ? 'name' : 
-                 variants[0].hasOwnProperty('label') ? 'label' : 
-                 variants[0].hasOwnProperty('variant_name') ? 'variant_name' : 'name') : 'name';
+        const variantSample = variants[0] || {};
+        const variantNameCol = ['name', 'label', 'variant_name'].find(c => Object.prototype.hasOwnProperty.call(variantSample, c)) || 'name';
 
-            // Build all variants list for "Show All Classes"
-            allVariants = variants.map(v => {
-                const comp = components.find(c => c.variant_id === v.id) || {};
-                const category = categories.find(c => c.id === v.category_id);
-                return {
-                    id: v.id,
-                    label: v[variantNameCol] || 'Unknown',
-                    category_id: v.category_id,
-                    category_name: category ? category[categoryNameCol] || 'Unknown' : 'Unknown',
-                    fuel_type: category ? (fuelCol ? category[fuelCol] || '—' : '—') : '—',
-                    fixed_per_km: v.fixed_per_km || v.fixed_cost || 0,
-                    operating_per_km: v.operating_per_km || v.operating_cost || 0,
-                    total_per_km: v.total_per_km || v.total_rate || 0,
-                    initial_cost: v.initial_cost || 0,
-                    year1: v.year1 || v.total_per_km || v.total_rate || 0,
-                    year2: v.year2 || v.total_per_km || v.total_rate || 0,
-                    year3: v.year3 || v.total_per_km || v.total_rate || 0,
-                    year4: v.year4 || v.total_per_km || v.total_rate || 0,
-                    year5: v.year5 || v.total_per_km || v.total_rate || 0,
-                    components: {
-                        insurance: comp.insurance || 0,
-                        depreciation: comp.depreciation || 0,
-                        interest: comp.interest || 0,
-                        fuel: comp.fuel || 0,
-                        servicing: comp.servicing || 0,
-                        repairs: comp.repairs || 0,
-                        tyres: comp.tyres || 0,
-                        licences: comp.licences || 0
-                    }
-                };
-            });
-
-            const variantsByCategory = {};
-            variants.forEach(v => {
-                if (!variantsByCategory[v.category_id]) {
-                    variantsByCategory[v.category_id] = [];
-                }
-                const comp = components.find(c => c.variant_id === v.id) || {};
-                const variantObj = {
-                    id: v.id,
-                    label: v[variantNameCol] || 'Unknown',
-                    fixed_per_km: v.fixed_per_km || v.fixed_cost || 0,
-                    operating_per_km: v.operating_per_km || v.operating_cost || 0,
-                    total_per_km: v.total_per_km || v.total_rate || 0,
-                    initial_cost: v.initial_cost || 0,
-                    year1: v.year1 || v.total_per_km || v.total_rate || 0,
-                    year2: v.year2 || v.total_per_km || v.total_rate || 0,
-                    year3: v.year3 || v.total_per_km || v.total_rate || 0,
-                    year4: v.year4 || v.total_per_km || v.total_rate || 0,
-                    year5: v.year5 || v.total_per_km || v.total_rate || 0,
-                    components: {
-                        insurance: comp.insurance || 0,
-                        depreciation: comp.depreciation || 0,
-                        interest: comp.interest || 0,
-                        fuel: comp.fuel || 0,
-                        servicing: comp.servicing || 0,
-                        repairs: comp.repairs || 0,
-                        tyres: comp.tyres || 0,
-                        licences: comp.licences || 0
-                    }
-                };
-                variantsByCategory[v.category_id].push(variantObj);
-            });
-
-            categories.forEach(cat => {
-                cat.variants = variantsByCategory[cat.id] || [];
-                cat.fuel_type = fuelCol ? cat[fuelCol] || '—' : '—';
-                cat.label = cat[categoryNameCol] || 'Unknown';
-            });
-
-            dbStatus.textContent = '● Connected';
-            dbStatus.style.color = 'var(--green)';
-            
-            return { categories, routes };
-
-        } catch (error) {
-            console.error('Supabase error:', error);
-            dbStatus.textContent = '● Error: ' + error.message;
-            dbStatus.style.color = 'var(--rust)';
-            throw error;
+        function buildComponents(variantId) {
+            const comp = components.find(c => c.variant_id === variantId) || {};
+            return {
+                insurance: num(comp.insurance),
+                depreciation: num(comp.depreciation),
+                interest: num(comp.interest),
+                fuel: num(comp.fuel),
+                servicing: num(comp.servicing),
+                repairs: num(comp.repairs),
+                tyres: num(comp.tyres),
+                licences: num(comp.licences)
+            };
         }
+
+        function buildVariant(v, categoryLabel) {
+            const totalPerKm = num(v.total_per_km ?? v.total_rate);
+            return {
+                id: v.id,
+                label: v[variantNameCol] || 'Unnamed variant',
+                category_id: v.category_id,
+                category_name: categoryLabel,
+                fixed_per_km: num(v.fixed_per_km ?? v.fixed_cost),
+                operating_per_km: num(v.operating_per_km ?? v.operating_cost),
+                total_per_km: totalPerKm,
+                initial_cost: num(v.initial_cost),
+                year1: num(v.year1 ?? totalPerKm),
+                year2: num(v.year2 ?? totalPerKm),
+                year3: num(v.year3 ?? totalPerKm),
+                year4: num(v.year4 ?? totalPerKm),
+                year5: num(v.year5 ?? totalPerKm),
+                components: buildComponents(v.id)
+            };
+        }
+
+        categories = rawCategories.map(cat => ({
+            ...cat,
+            label: cat[categoryNameCol] || 'Unnamed category',
+            fuel_type: fuelCol ? (cat[fuelCol] || '—') : '—',
+        }));
+
+        const categoryById = new Map(categories.map(c => [c.id, c]));
+
+        allVariants = variants.map(v => {
+            const cat = categoryById.get(v.category_id);
+            const built = buildVariant(v, cat ? cat.label : 'Unknown');
+            built.fuel_type = cat ? cat.fuel_type : '—';
+            return built;
+        });
+
+        categories.forEach(cat => {
+            cat.variants = allVariants
+                .filter(v => v.category_id === cat.id)
+                .map(v => ({ ...v })); // shallow copy, category_id/fuel_type retained but unused here
+        });
+
+        dataLoaded = true;
+        dbStatus.textContent = '● Connected';
+        dbStatus.style.color = 'var(--green)';
     }
 
+    // ---------------------------------------------------------------
+    // Rendering: selects & routes
+    // ---------------------------------------------------------------
     function populateCategories() {
         categorySelect.innerHTML = '';
         const defaultOpt = document.createElement('option');
@@ -963,71 +1034,62 @@
         defaultOpt.selected = true;
         categorySelect.appendChild(defaultOpt);
 
-        let filteredCategories = categories;
-        if (selectedFuel !== 'all') {
-            filteredCategories = categories.filter(cat => 
-                cat.fuel_type && cat.fuel_type.toLowerCase() === selectedFuel.toLowerCase()
-            );
-        }
+        const filtered = selectedFuel === 'all'
+            ? categories
+            : categories.filter(cat => cat.fuel_type && cat.fuel_type.toLowerCase() === selectedFuel.toLowerCase());
 
-        filteredCategories.forEach(cat => {
+        filtered.forEach(cat => {
             const opt = document.createElement('option');
             opt.value = cat.id;
             opt.textContent = cat.label;
             categorySelect.appendChild(opt);
         });
 
-        if (filteredCategories.length > 0) {
-            categorySelect.value = filteredCategories[0].id;
-            populateVariants(filteredCategories[0].id);
+        if (filtered.length > 0) {
+            categorySelect.disabled = false;
+            categorySelect.value = filtered[0].id;
+            populateVariants(filtered[0].id);
         } else {
-            variantSelect.innerHTML = '<option value="">No variants available</option>';
+            categorySelect.disabled = true;
+            variantSelect.innerHTML = '<option value="">No categories for this fuel type</option>';
+            variantSelect.disabled = true;
         }
     }
 
     function populateVariants(categoryId) {
-        const category = categories.find(c => c.id === categoryId);
         variantSelect.innerHTML = '';
 
-        // If "Show All Classes" is checked, show all variants with category name
         if (showAllClasses.checked) {
-            let filteredVariants = allVariants;
-            if (selectedFuel !== 'all') {
-                filteredVariants = allVariants.filter(v => 
-                    v.fuel_type && v.fuel_type.toLowerCase() === selectedFuel.toLowerCase()
-                );
-            }
-            if (filteredVariants.length === 0) {
-                const opt = document.createElement('option');
-                opt.value = '';
-                opt.textContent = 'No variants available';
-                opt.disabled = true;
-                variantSelect.appendChild(opt);
+            let filtered = selectedFuel === 'all'
+                ? allVariants
+                : allVariants.filter(v => v.fuel_type && v.fuel_type.toLowerCase() === selectedFuel.toLowerCase());
+
+            if (filtered.length === 0) {
+                variantSelect.innerHTML = '<option value="">No variants available</option>';
+                variantSelect.disabled = true;
                 return;
             }
-            // Sort variants by category name then variant name
-            filteredVariants.sort((a, b) => {
-                if (a.category_name < b.category_name) return -1;
-                if (a.category_name > b.category_name) return 1;
-                return a.label.localeCompare(b.label);
+
+            filtered = [...filtered].sort((a, b) => {
+                const catCmp = a.category_name.localeCompare(b.category_name);
+                return catCmp !== 0 ? catCmp : a.label.localeCompare(b.label);
             });
-            filteredVariants.forEach((variant, index) => {
+
+            filtered.forEach((variant, index) => {
                 const opt = document.createElement('option');
                 opt.value = variant.id;
                 opt.textContent = `${variant.category_name} — ${variant.label}`;
                 if (index === 0) opt.selected = true;
                 variantSelect.appendChild(opt);
             });
+            variantSelect.disabled = false;
             return;
         }
 
-        // Normal mode: show variants for selected category
+        const category = categories.find(c => c.id === categoryId);
         if (!category || !category.variants || category.variants.length === 0) {
-            const opt = document.createElement('option');
-            opt.value = '';
-            opt.textContent = 'No variants available';
-            opt.disabled = true;
-            variantSelect.appendChild(opt);
+            variantSelect.innerHTML = '<option value="">No variants available</option>';
+            variantSelect.disabled = true;
             return;
         }
 
@@ -1038,12 +1100,16 @@
             if (index === 0) opt.selected = true;
             variantSelect.appendChild(opt);
         });
+        variantSelect.disabled = false;
     }
 
     function loadRoutes() {
         routeChips.innerHTML = '';
         if (!routes || routes.length === 0) {
-            routeChips.innerHTML = '<span style="color:var(--ink-soft);font-size:11px;">No routes available</span>';
+            const span = document.createElement('span');
+            span.style.cssText = 'color:var(--ink-soft);font-size:11px;';
+            span.textContent = 'No routes available';
+            routeChips.appendChild(span);
             return;
         }
         routes.forEach((r) => {
@@ -1052,65 +1118,103 @@
             chip.className = 'chip';
             const fromCity = r.from_city || r.from || 'Unknown';
             const toCity = r.to_city || r.to || 'Unknown';
-            chip.innerHTML = `${fromCity} → ${toCity} <span class="km-badge">${r.km}km</span>`;
+            const km = num(r.km);
+
+            const label = document.createElement('span');
+            label.textContent = `${fromCity} → ${toCity} `;
+            const badge = document.createElement('span');
+            badge.className = 'km-badge';
+            badge.textContent = `${km}km`;
+            chip.appendChild(label);
+            chip.appendChild(badge);
+            chip.setAttribute('aria-label', `${fromCity} to ${toCity}, ${km} kilometres`);
+
             chip.addEventListener('click', () => {
                 document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                 chip.classList.add('active');
-                distanceInput.value = r.km;
+                distanceInput.value = km;
+                validateDistance();
                 calculate();
             });
             routeChips.appendChild(chip);
         });
     }
 
+    // ---------------------------------------------------------------
+    // Vehicle lookup
+    // ---------------------------------------------------------------
     function getSelectedVehicle() {
         const variantId = variantSelect.value;
         if (!variantId) return null;
-        
-        // Find variant in allVariants first (for "Show All Classes" mode)
-        let variant = allVariants.find(v => v.id === variantId);
-        if (!variant) {
-            // Try to find in categories
-            for (const cat of categories) {
-                const v = cat.variants.find(v => v.id === variantId);
-                if (v) {
-                    variant = v;
-                    // Also set category_id if not set
-                    if (!variant.category_id) {
-                        variant.category_id = cat.id;
-                    }
-                    break;
-                }
-            }
-        }
+
+        const variant = allVariants.find(v => v.id === variantId);
         if (!variant) return null;
-        
+
         const category = categories.find(c => c.id === variant.category_id);
         if (!category) return null;
-        
+
         return { category, variant };
     }
 
+    // ---------------------------------------------------------------
+    // Validation
+    // ---------------------------------------------------------------
+    function validateDistance() {
+        const raw = distanceInput.value;
+        const val = parseFloat(raw);
+        if (raw === '' || Number.isNaN(val)) {
+            distanceError.textContent = 'Enter a distance in km.';
+            return false;
+        }
+        if (val < 0) {
+            distanceError.textContent = 'Distance cannot be negative.';
+            return false;
+        }
+        if (val > MAX_DISTANCE) {
+            distanceError.textContent = `Distance seems too large (max ${fmtKShsInt(MAX_DISTANCE)} km).`;
+            return false;
+        }
+        distanceError.textContent = '';
+        return true;
+    }
+
+    // ---------------------------------------------------------------
+    // Calculation / rendering results
+    // ---------------------------------------------------------------
+    function resetResults(message) {
+        $('vehicleLabel').textContent = '—';
+        $('fuelPill').textContent = '—';
+        $('totalTrip').textContent = '0.00';
+        $('totalTripSub').textContent = message || 'Select a vehicle and enter a distance';
+        $('fixedPerKm').textContent = '—';
+        $('operatingPerKm').textContent = '—';
+        $('fixedTrip').textContent = '—';
+        $('operatingTrip').textContent = '—';
+        $('totalPerKm').textContent = '—';
+        $('initialCost').textContent = '—';
+        $('confidenceScore').textContent = '—';
+        ['year1', 'year2', 'year3', 'year4', 'year5'].forEach(id => { $(id).textContent = '—'; $(id).className = 'year-value'; });
+        ['detailInsurance', 'detailDepreciation', 'detailInterest', 'detailFuel', 'detailServicing', 'detailRepairs', 'detailTyres', 'detailLicences'].forEach(id => $(id).textContent = '—');
+        printBtn.disabled = true;
+        shareBtn.disabled = true;
+    }
+
     function calculate() {
-        const distance_km = parseFloat(distanceInput.value) || 0;
+        if (!dataLoaded) return;
+
+        const distanceValid = validateDistance();
         const selected = getSelectedVehicle();
 
         if (!selected) {
-            $('vehicleLabel').textContent = '—';
-            $('fuelPill').textContent = '—';
-            $('totalTrip').textContent = '0.00';
-            $('totalTripSub').textContent = 'Select a vehicle and enter distance';
-            $('fixedPerKm').textContent = '—';
-            $('operatingPerKm').textContent = '—';
-            $('fixedTrip').textContent = '—';
-            $('operatingTrip').textContent = '—';
-            $('totalPerKm').textContent = '—';
-            $('initialCost').textContent = '—';
-            ['year1','year2','year3','year4','year5'].forEach(id => $(id).textContent = '—');
-            ['detailInsurance','detailDepreciation','detailInterest','detailFuel','detailServicing','detailRepairs','detailTyres','detailLicences'].forEach(id => $(id).textContent = '—');
+            resetResults('Select a vehicle and enter a distance');
+            return;
+        }
+        if (!distanceValid) {
+            resetResults('Fix the distance field to see results');
             return;
         }
 
+        const distance_km = Math.max(0, parseFloat(distanceInput.value) || 0);
         const { category, variant } = selected;
         const fixedCostTrip = variant.fixed_per_km * distance_km;
         const operatingCostTrip = variant.operating_per_km * distance_km;
@@ -1120,8 +1224,8 @@
         $('fuelPill').textContent = category.fuel_type || '—';
         $('totalTrip').textContent = fmtKShs(totalCostTrip);
         $('totalTripSub').textContent = `at ${fmtKShs(variant.total_per_km)} KES/km over ${fmtKShsInt(distance_km)} km`;
-        $('fixedPerKm').textContent = `${fmtKShs(variant.fixed_per_km)}`;
-        $('operatingPerKm').textContent = `${fmtKShs(variant.operating_per_km)}`;
+        $('fixedPerKm').textContent = fmtKShs(variant.fixed_per_km);
+        $('operatingPerKm').textContent = fmtKShs(variant.operating_per_km);
         $('fixedTrip').textContent = `KES ${fmtKShs(fixedCostTrip)}`;
         $('operatingTrip').textContent = `KES ${fmtKShs(operatingCostTrip)}`;
         $('totalPerKm').textContent = `${fmtKShs(variant.total_per_km)} KES/km`;
@@ -1131,28 +1235,28 @@
         $('detailInsurance').textContent = comp.insurance ? fmtKShsInt(comp.insurance) : '—';
         $('detailDepreciation').textContent = comp.depreciation ? fmtKShsInt(comp.depreciation) : '—';
         $('detailInterest').textContent = comp.interest ? fmtKShsInt(comp.interest) : '—';
-        $('detailFuel').textContent = comp.fuel ? fmtKShs(comp.fuel) + '/km' : '—';
-        $('detailServicing').textContent = comp.servicing ? fmtKShs(comp.servicing) + '/km' : '—';
-        $('detailRepairs').textContent = comp.repairs ? fmtKShs(comp.repairs) + '/km' : '—';
-        $('detailTyres').textContent = comp.tyres ? fmtKShs(comp.tyres) + '/km' : '—';
+        $('detailFuel').textContent = comp.fuel ? `${fmtKShs(comp.fuel)}/km` : '—';
+        $('detailServicing').textContent = comp.servicing ? `${fmtKShs(comp.servicing)}/km` : '—';
+        $('detailRepairs').textContent = comp.repairs ? `${fmtKShs(comp.repairs)}/km` : '—';
+        $('detailTyres').textContent = comp.tyres ? `${fmtKShs(comp.tyres)}/km` : '—';
         $('detailLicences').textContent = comp.licences ? fmtKShsInt(comp.licences) : '—';
 
         const years = [
-            { id: 'year1', label: 'New', val: variant.year1 ?? variant.total_per_km },
-            { id: 'year2', label: '2nd Year', val: variant.year2 ?? variant.total_per_km },
-            { id: 'year3', label: '3rd Year', val: variant.year3 ?? variant.total_per_km },
-            { id: 'year4', label: '4th Year', val: variant.year4 ?? variant.total_per_km },
-            { id: 'year5', label: '5+ Years', val: variant.year5 ?? variant.total_per_km }
+            { id: 'year1', val: variant.year1 },
+            { id: 'year2', val: variant.year2 },
+            { id: 'year3', val: variant.year3 },
+            { id: 'year4', val: variant.year4 },
+            { id: 'year5', val: variant.year5 }
         ];
         years.forEach((y, idx) => {
             const el = $(y.id);
-            const val = y.val ?? variant.total_per_km;
-            el.textContent = fmtKShs(val);
-            if (idx === 0) { el.className = 'year-value gold'; }
-            else {
-                const prev = years[idx-1]?.val ?? variant.total_per_km;
-                if (val < prev) el.className = 'year-value green';
-                else if (val > prev) el.className = 'year-value red';
+            el.textContent = fmtKShs(y.val);
+            if (idx === 0) {
+                el.className = 'year-value gold';
+            } else {
+                const prev = years[idx - 1].val;
+                if (y.val < prev) el.className = 'year-value green';
+                else if (y.val > prev) el.className = 'year-value red';
                 else el.className = 'year-value';
             }
         });
@@ -1166,47 +1270,96 @@
         $('lastUpdated').textContent = new Date().toLocaleDateString('en-KE', {
             year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
+
+        printBtn.disabled = false;
+        shareBtn.disabled = false;
     }
 
+    // ---------------------------------------------------------------
+    // Share / print
+    // ---------------------------------------------------------------
     function shareReport() {
         const vehicle = $('vehicleLabel').textContent;
+        if (vehicle === '—') return;
         const rate = $('totalPerKm').textContent;
         const total = $('totalTrip').textContent;
         const y1 = $('year1').textContent, y2 = $('year2').textContent, y3 = $('year3').textContent, y4 = $('year4').textContent, y5 = $('year5').textContent;
         const shareText = `🚗 AUTO-V Mileage Rate Report\n\nVehicle: ${vehicle}\nRate: ${rate}\nTrip Total: ${total}\n\n📈 5-Year Running Costs:\nNew: ${y1}\n2nd Year: ${y2}\n3rd Year: ${y3}\n4th Year: ${y4}\n5+ Years: ${y5}\n\nPowered by AUTO-V Intelligence Engine`;
+
         if (navigator.share) {
             navigator.share({ title: 'AUTO-V Mileage Rate Report', text: shareText }).catch(() => {});
-        } else {
-            navigator.clipboard.writeText(shareText).then(() => alert('✅ Report copied to clipboard!'))
-                .catch(() => {
-                    const win = window.open('', '_blank');
-                    if (win) {
-                        win.document.write(`<html><head><title>AUTO-V Mileage Report</title><style>body{font-family:sans-serif;padding:40px;background:#f5f5f5;color:#333;line-height:1.8;}</style></head><body><pre>${shareText}</pre><p><button onclick="window.print()">🖨️ Print</button></p></body></html>`);
-                        win.document.close();
-                    }
-                });
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(shareText)
+                .then(() => alert('✅ Report copied to clipboard!'))
+                .catch(() => openShareFallbackWindow(shareText));
+            return;
+        }
+        openShareFallbackWindow(shareText);
+    }
+
+    function openShareFallbackWindow(shareText) {
+        const win = window.open('', '_blank');
+        if (!win) return;
+        const pre = win.document.createElement('pre');
+        pre.textContent = shareText;
+        win.document.title = 'AUTO-V Mileage Report';
+        win.document.body.style.cssText = 'font-family:sans-serif;padding:40px;background:#f5f5f5;color:#333;line-height:1.8;';
+        win.document.body.appendChild(pre);
+        const btn = win.document.createElement('button');
+        btn.textContent = '🖨️ Print';
+        btn.onclick = () => win.print();
+        win.document.body.appendChild(btn);
+    }
+
+    // ---------------------------------------------------------------
+    // Error / loading UI
+    // ---------------------------------------------------------------
+    function showFatalError(message) {
+        dbStatus.textContent = '● Error';
+        dbStatus.style.color = 'var(--rust)';
+        categorySelect.innerHTML = '';
+        categorySelect.disabled = true;
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Unable to load data';
+        categorySelect.appendChild(opt);
+        variantSelect.innerHTML = '<option value="">Unable to load data</option>';
+        variantSelect.disabled = true;
+        resetResults(escapeHtml(message));
+
+        if (!$('retryBtn')) {
+            const retry = document.createElement('button');
+            retry.id = 'retryBtn';
+            retry.type = 'button';
+            retry.className = 'action-btn retry';
+            retry.textContent = '🔄 Retry';
+            retry.addEventListener('click', () => location.reload());
+            document.querySelector('.calculator-panel').appendChild(retry);
         }
     }
 
-    // Fuel filter buttons
+    // ---------------------------------------------------------------
+    // Event wiring
+    // ---------------------------------------------------------------
     document.querySelectorAll('.fuel-filter-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.fuel-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.fuel-filter-btn').forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-pressed', 'false');
+            });
             this.classList.add('active');
+            this.setAttribute('aria-pressed', 'true');
             selectedFuel = this.dataset.fuel;
             populateCategories();
-            // If "Show All Classes" is checked, refresh variants
-            if (showAllClasses.checked) {
-                populateVariants(null);
-            }
+            if (showAllClasses.checked) populateVariants(null);
             calculate();
         });
     });
 
-    // Show All Classes toggle
-    showAllClasses.addEventListener('change', function() {
-        const categoryId = categorySelect.value;
-        populateVariants(categoryId);
+    showAllClasses.addEventListener('change', () => {
+        populateVariants(categorySelect.value);
         calculate();
     });
 
@@ -1214,31 +1367,37 @@
         populateVariants(e.target.value);
         calculate();
     });
+
     variantSelect.addEventListener('change', calculate);
-    distanceInput.addEventListener('input', () => {
+
+    const debouncedCalc = debounce(() => {
         document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
         calculate();
-    });
-    document.getElementById('calculateBtn').addEventListener('click', calculate);
+    }, 150);
+    distanceInput.addEventListener('input', debouncedCalc);
+    distanceInput.addEventListener('blur', () => { validateDistance(); calculate(); });
 
+    calculateBtn.addEventListener('click', calculate);
+    printBtn.addEventListener('click', () => window.print());
+    shareBtn.addEventListener('click', shareReport);
+
+    // ---------------------------------------------------------------
+    // Init
+    // ---------------------------------------------------------------
     (async function init() {
-        console.log('🚗 AUTO-V — Connecting to Supabase...');
         try {
-            const data = await fetchData();
-            categories = data.categories;
-            routes = data.routes;
-            
+            await fetchData();
             populateCategories();
             loadRoutes();
+            calculateBtn.disabled = false;
             calculate();
-            
-            console.log('✅ AUTO-V Running Costs — July 2026 (Supabase-backed)');
-            console.log(`📊 Loaded ${categories.length} categories, ${routes.length} routes`);
         } catch (error) {
-            console.error('Failed to initialize:', error);
-            categorySelect.innerHTML = '<option value="">Error loading data</option>';
+            console.error('AUTO-V failed to initialize:', error);
+            const message = (error && error.message) ? error.message : 'Unknown error while loading vehicle data.';
+            showFatalError(message);
         }
     })();
+})();
 </script>
 </body>
 </html>
