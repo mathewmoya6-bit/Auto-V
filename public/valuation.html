@@ -113,9 +113,6 @@
         <div id="errorMsg" class="error"></div>
         <div id="successMsg" class="success"></div>
 
-        <!-- ============================================================
-        DATA ENTRY CARD
-        ============================================================ -->
         <div class="card" id="dataEntryCard">
             <div style="margin-bottom:15px;">
                 <span class="service-badge">🚗 Professional Valuation</span>
@@ -127,7 +124,6 @@
                 Comprehensive valuation with market data, forced sale value, insurance value, and full audit trail.
             </p>
 
-            <!-- Validation Summary -->
             <div class="validation-summary" id="validationSummary">
                 <div style="display:flex; justify-content:space-between; font-weight:600; color:#eab308; margin-bottom:10px;">
                     <span>📋 Required Items</span>
@@ -137,7 +133,6 @@
                 <div class="item"><span>📄 Documents (5)</span><span class="status-icon missing" id="docStatus">⛔ 0/5</span></div>
             </div>
 
-            <!-- Tabs -->
             <div class="valuation-tabs">
                 <button class="valuation-tab active" data-tab="basic">📝 Basic Info</button>
                 <button class="valuation-tab" data-tab="purpose">🎯 Purpose</button>
@@ -357,9 +352,6 @@
             </form>
         </div>
 
-        <!-- ============================================================
-        RESULTS CARD
-        ============================================================ -->
         <div id="resultsCard" class="card hidden">
             <h2>✅ Valuation Results</h2>
             <div id="resultsContainer" class="result-box"></div>
@@ -374,7 +366,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V PROFESSIONAL VALUATION ENGINE – PRODUCTION READY
+        // AUTO-V PROFESSIONAL VALUATION ENGINE – BACKEND INTEGRATED
         // ============================================================
         (function() {
             if (window.autoVProfValuationInitialized) return;
@@ -383,6 +375,10 @@
             const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
             const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // Backend API URL - Change this to your actual backend URL
+            const API_BASE_URL = 'https://auto-v-backend.onrender.com/api';
+            // For local development: http://localhost:3000/api
 
             // ─── VEHICLE MODELS ──────────────────────────────────────
             const vehicleModels = {
@@ -409,7 +405,7 @@
                 'Other': ['Other']
             };
 
-            // ─── PURPOSE OPTIONS & PRICING ──────────────────────────
+            // ─── PURPOSE OPTIONS ──────────────────────────────────
             const purposeOptions = {
                 valuation: [
                     "Insurance Valuation",
@@ -481,7 +477,6 @@
             const docStatus = {};
             let imageUrls = {};
             let docUrls = {};
-            let currentValuationId = null;
             let selectedPurpose = null;
             let currentUser = null;
 
@@ -642,7 +637,6 @@
                     const { data: { user } } = await supabase.auth.getUser();
                     if (!user) throw new Error('Please login');
                     
-                    // Try to get vehicle info from Supabase
                     const { data, error } = await supabase
                         .from('vehicle_vin_lookup')
                         .select('*')
@@ -758,20 +752,40 @@
                 }
             }
 
-            // ─── AUTH HELPERS ──────────────────────────────────────
-            async function ensureAuth() {
-                const { data: { user }, error } = await supabase.auth.getUser();
-                if (error || !user) {
-                    window.location.href = 'login.html';
-                    return null;
+            // ─── GET AUTH TOKEN ─────────────────────────────────────
+            async function getAuthToken() {
+                const { data: { session } } = await supabase.auth.getSession();
+                return session?.access_token || null;
+            }
+
+            // ─── CALL BACKEND API ──────────────────────────────────
+            async function callBackendAPI(endpoint, method = 'POST', payload = {}) {
+                const token = await getAuthToken();
+                if (!token) throw new Error('Not authenticated');
+
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.message || error.error || `API error: ${response.status}`);
                 }
-                return user;
+
+                return response.json();
             }
 
             // ─── SUBMIT VALUATION ──────────────────────────────────
             async function handleCalculate() {
-                const user = await ensureAuth();
-                if (!user) return;
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) { showToast('Please login again', 'error'); window.location.href = 'login.html'; return; }
+                currentUser = user;
+                document.getElementById('userEmail').textContent = user.email;
 
                 // Validate required fields
                 const reg = document.getElementById('vehicleReg').value.toUpperCase();
@@ -841,19 +855,21 @@
                 showLoading(true);
 
                 try {
-                    // Build payload for Supabase
+                    // Build payload
                     const payload = {
                         user_id: user.id,
-                        registration_number: reg,
-                        vin: vin,
-                        make: make,
-                        model: model,
-                        year: year,
-                        body_type: document.getElementById('vehicleBody').value,
-                        engine_cc: parseInt(document.getElementById('vehicleEngine').value),
-                        transmission: document.getElementById('vehicleTransmission').value,
-                        fuel_type: document.getElementById('vehicleFuel').value,
-                        odometer: odometer,
+                        vehicle_data: {
+                            registration_number: reg,
+                            vin: vin,
+                            make: make,
+                            model: model,
+                            year: year,
+                            body_type: document.getElementById('vehicleBody').value,
+                            engine_cc: parseInt(document.getElementById('vehicleEngine').value),
+                            transmission: document.getElementById('vehicleTransmission').value,
+                            fuel_type: document.getElementById('vehicleFuel').value,
+                            odometer: odometer
+                        },
                         purpose: selectedPurpose,
                         methodology: document.getElementById('valMethodology').value,
                         region: document.getElementById('valRegion').value,
@@ -896,65 +912,23 @@
                     });
                     payload.purpose_fields = purposeFieldValues;
 
-                    // Save to Supabase
-                    const { data, error } = await supabase
-                        .from('valuations')
-                        .insert([{
-                            user_id: payload.user_id,
-                            registration_number: payload.registration_number,
-                            vin: payload.vin,
-                            make: payload.make,
-                            model: payload.model,
-                            year: payload.year,
-                            body_type: payload.body_type,
-                            engine_cc: payload.engine_cc,
-                            transmission: payload.transmission,
-                            fuel_type: payload.fuel_type,
-                            odometer: payload.odometer,
-                            purpose: payload.purpose,
-                            methodology: payload.methodology,
-                            region: payload.region,
-                            inspection_data: payload.inspection,
-                            history_data: payload.history,
-                            inspector_data: payload.inspector,
-                            image_urls: payload.image_urls,
-                            document_urls: payload.document_urls,
-                            purpose_fields: payload.purpose_fields,
-                            status: 'completed'
-                        }])
-                        .select()
-                        .single();
-
-                    if (error) throw error;
-
-                    // Calculate valuation
-                    const valuationResult = calculateValuation(payload);
-
-                    // Update with valuation results
-                    const { error: updateError } = await supabase
-                        .from('valuations')
-                        .update({
-                            market_value: valuationResult.market_value,
-                            insurance_value: valuationResult.insurance_value,
-                            forced_sale_value: valuationResult.forced_sale_value,
-                            confidence_score: valuationResult.confidence_score,
-                            condition_score: valuationResult.condition_score,
-                            risk_score: valuationResult.risk_score,
-                            valuation_result: valuationResult
-                        })
-                        .eq('id', data.id);
-
-                    if (updateError) throw updateError;
+                    // Call backend API for valuation
+                    const result = await callBackendAPI('/valuations', 'POST', payload);
 
                     // Display results
                     displayResults({
-                        ...valuationResult,
-                        valuation_id: data.id,
-                        valuationId: data.id,
+                        ...result,
+                        valuation_id: result.valuation_id || result.valuationId || 'VAL-' + Date.now(),
+                        valuationId: result.valuation_id || result.valuationId || 'VAL-' + Date.now(),
                         purpose: selectedPurpose,
                         methodology: payload.methodology,
                         region: payload.region,
-                        inspector: payload.inspector
+                        inspector: payload.inspector,
+                        comparables: result.comparables || [
+                            { make: 'Toyota', model: model, year: year, price: Math.round((result.market_value || 2500000) * (1 + (Math.random() - 0.5) * 0.15)) },
+                            { make: 'Toyota', model: model, year: year - 1, price: Math.round((result.market_value || 2500000) * 0.9 * (1 + (Math.random() - 0.5) * 0.15)) },
+                            { make: 'Toyota', model: model, year: year + 1, price: Math.round((result.market_value || 2500000) * 1.1 * (1 + (Math.random() - 0.5) * 0.15)) }
+                        ]
                     });
 
                     showToast('✅ Valuation completed successfully!', 'success');
@@ -967,90 +941,6 @@
                 }
             }
 
-            // ─── CALCULATE VALUATION ──────────────────────────────
-            function calculateValuation(payload) {
-                // Base value based on make, model, year
-                let baseValue = 2500000;
-                const yearFactor = 1 - ((new Date().getFullYear() - payload.year) * 0.08);
-                const makeFactors = {
-                    'Toyota': 1.2,
-                    'Honda': 1.1,
-                    'Mercedes-Benz': 1.5,
-                    'BMW': 1.4,
-                    'Audi': 1.3,
-                    'Land Rover': 1.6,
-                    'Lexus': 1.4,
-                    'Volvo': 1.2,
-                    'Other': 0.9
-                };
-                const makeFactor = makeFactors[payload.make] || 1.0;
-                
-                let marketValue = baseValue * makeFactor * Math.max(yearFactor, 0.3);
-                
-                // Adjust for odometer
-                const odometerAdjustment = Math.max(0, 1 - ((payload.odometer / 200000) * 0.3));
-                marketValue = marketValue * odometerAdjustment;
-                
-                // Adjust for condition
-                const conditionMap = { 'Excellent': 1.2, 'Good': 1.0, 'Fair': 0.85, 'Poor': 0.6 };
-                const conditionFactor = conditionMap[payload.inspection?.engine] || 1.0;
-                marketValue = marketValue * conditionFactor;
-                
-                // Accident adjustment
-                const accidentMap = { 'None': 1.0, 'Minor': 0.9, 'Moderate': 0.75, 'Major': 0.5 };
-                const accidentFactor = accidentMap[payload.history?.accident_history] || 1.0;
-                marketValue = marketValue * accidentFactor;
-                
-                // Round to nearest 1000
-                marketValue = Math.round(marketValue / 1000) * 1000;
-                
-                // Calculate other values
-                const insuranceValue = Math.round(marketValue * 1.15 / 1000) * 1000;
-                const forcedSaleValue = Math.round(marketValue * 0.65 / 1000) * 1000;
-                
-                // Calculate confidence score
-                let confidence = 85;
-                if (payload.odometer > 100000) confidence -= 5;
-                if (payload.history?.accident_history !== 'None') confidence -= 10;
-                if (!payload.image_urls || Object.keys(payload.image_urls).length < 15) confidence -= 10;
-                confidence = Math.max(50, Math.min(98, confidence));
-                
-                // Calculate condition score (out of 10)
-                const conditionScores = {
-                    'Excellent': 10,
-                    'Good': 7,
-                    'Fair': 5,
-                    'Poor': 2
-                };
-                const avgCondition = (conditionScores[payload.inspection?.engine] || 7 +
-                                     conditionScores[payload.inspection?.transmission] || 7 +
-                                     conditionScores[payload.inspection?.suspension] || 7 +
-                                     conditionScores[payload.inspection?.brakes] || 7 +
-                                     conditionScores[payload.inspection?.paint] || 7 +
-                                     conditionScores[payload.inspection?.interior] || 7) / 6;
-                const conditionScore = Math.round(avgCondition * 10) / 10;
-                
-                // Risk score
-                const riskScore = Math.round(100 - confidence + (payload.history?.accident_history !== 'None' ? 15 : 0) + (payload.odometer > 150000 ? 10 : 0));
-                
-                // Generate comparables
-                const comparables = [
-                    { make: 'Toyota', model: payload.model || 'Unknown', year: payload.year, price: Math.round(marketValue * (1 + (Math.random() - 0.5) * 0.15)) },
-                    { make: 'Toyota', model: payload.model || 'Unknown', year: payload.year - 1, price: Math.round(marketValue * 0.9 * (1 + (Math.random() - 0.5) * 0.15)) },
-                    { make: 'Toyota', model: payload.model || 'Unknown', year: payload.year + 1, price: Math.round(marketValue * 1.1 * (1 + (Math.random() - 0.5) * 0.15)) }
-                ];
-                
-                return {
-                    market_value: marketValue,
-                    insurance_value: insuranceValue,
-                    forced_sale_value: forcedSaleValue,
-                    confidence_score: confidence,
-                    condition_score: conditionScore,
-                    risk_score: Math.min(100, riskScore),
-                    comparables: comparables
-                };
-            }
-
             // ─── DISPLAY RESULTS ──────────────────────────────────
             function displayResults(result) {
                 document.getElementById('dataEntryCard').classList.add('hidden');
@@ -1060,12 +950,12 @@
                 const confidenceColor = result.confidence_score >= 80 ? '#22c55e' : result.confidence_score >= 60 ? '#eab308' : '#ef4444';
                 const qrData = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id || result.valuationId || 'VAL-' + Date.now()}`;
 
-                const marketValue = result.market_value || 0;
-                const insuranceValue = result.insurance_value || 0;
-                const fsv = result.forced_sale_value || 0;
-                const confidence = result.confidence_score || 0;
-                const riskScore = result.risk_score || 0;
-                const conditionScore = result.condition_score || 0;
+                const marketValue = result.market_value || result.marketValue || 0;
+                const insuranceValue = result.insurance_value || result.insuranceValue || 0;
+                const fsv = result.forced_sale_value || result.fsv || 0;
+                const confidence = result.confidence_score || result.confidenceScore || 0;
+                const riskScore = result.risk_score || result.riskScore || 0;
+                const conditionScore = result.condition_score || result.conditionScore || 0;
                 const valuationId = result.valuation_id || result.valuationId || 'VAL-' + Date.now();
                 const methodology = result.methodology || 'Market Comparison';
                 const purpose = result.purpose || selectedPurpose || 'Market Value';
@@ -1211,7 +1101,6 @@
                 const models = vehicleModels[make] || ['Other'];
                 document.getElementById('vehicleModel').innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
 
-                // Check URL parameters for pre-selection
                 const urlParams = new URLSearchParams(window.location.search);
                 const purposeParam = urlParams.get('purpose');
                 if (purposeParam && purposeOptions.valuation.includes(purposeParam)) {
@@ -1237,6 +1126,9 @@
 
                 updateValidationSummary();
                 updateDocumentProgress();
+
+                console.log('✅ AUTO-V Professional Valuation Engine ready');
+                console.log('📡 API URL:', API_BASE_URL);
             }
             init();
         })();
