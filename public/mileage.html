@@ -518,6 +518,43 @@
         .fuel-filter-btn .fuel-dot.lpg { background: #3b82f6; }
         .fuel-filter-btn .fuel-dot.electric { background: #8b5cf6; }
 
+        /* Show All Classes Toggle */
+        .all-classes-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0 6px 0;
+        }
+        .all-classes-toggle label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--cream-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 0;
+        }
+        .all-classes-toggle input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--amber);
+            cursor: pointer;
+            border-radius: 3px;
+            background: var(--cream);
+            flex-shrink: 0;
+        }
+        .all-classes-toggle .toggle-label {
+            font-size: 10px;
+            color: var(--cream-dim);
+            font-family: var(--font-body);
+        }
+        .all-classes-toggle .toggle-label strong {
+            color: var(--amber);
+        }
+
         .report-footer {
             border-top: 1px solid var(--line);
             padding-top: 24px;
@@ -592,6 +629,7 @@
             .cost-detail-grid .item { border-bottom-color: #ddd !important; }
             .cost-detail-grid .item .label { color: #666 !important; }
             .fuel-filter-group { display: none !important; }
+            .all-classes-toggle { display: none !important; }
         }
     </style>
 </head>
@@ -627,7 +665,15 @@
             </div>
 
             <div class="form-group">
-                <label for="variantSelect">Engine / Class</label>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <label for="variantSelect">Engine / Class</label>
+                    <div class="all-classes-toggle">
+                        <label>
+                            <input type="checkbox" id="showAllClasses" />
+                            <span class="toggle-label">Show <strong>All</strong> Classes</span>
+                        </label>
+                    </div>
+                </div>
                 <select id="variantSelect">
                     <option value="">Select a category first</option>
                 </select>
@@ -774,6 +820,7 @@
     const distanceInput = $('distanceInput');
     const routeChips = $('routeChips');
     const dbStatus = $('dbStatus');
+    const showAllClasses = $('showAllClasses');
 
     const fmtKShs = (n) => new Intl.NumberFormat('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
     const fmtKShsInt = (n) => new Intl.NumberFormat('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
@@ -781,6 +828,7 @@
     let categories = [];
     let routes = [];
     let selectedFuel = 'all';
+    let allVariants = [];
 
     async function fetchData() {
         try {
@@ -824,6 +872,38 @@
                 (variants[0].hasOwnProperty('name') ? 'name' : 
                  variants[0].hasOwnProperty('label') ? 'label' : 
                  variants[0].hasOwnProperty('variant_name') ? 'variant_name' : 'name') : 'name';
+
+            // Build all variants list for "Show All Classes"
+            allVariants = variants.map(v => {
+                const comp = components.find(c => c.variant_id === v.id) || {};
+                const category = categories.find(c => c.id === v.category_id);
+                return {
+                    id: v.id,
+                    label: v[variantNameCol] || 'Unknown',
+                    category_id: v.category_id,
+                    category_name: category ? category[categoryNameCol] || 'Unknown' : 'Unknown',
+                    fuel_type: category ? (fuelCol ? category[fuelCol] || '—' : '—') : '—',
+                    fixed_per_km: v.fixed_per_km || v.fixed_cost || 0,
+                    operating_per_km: v.operating_per_km || v.operating_cost || 0,
+                    total_per_km: v.total_per_km || v.total_rate || 0,
+                    initial_cost: v.initial_cost || 0,
+                    year1: v.year1 || v.total_per_km || v.total_rate || 0,
+                    year2: v.year2 || v.total_per_km || v.total_rate || 0,
+                    year3: v.year3 || v.total_per_km || v.total_rate || 0,
+                    year4: v.year4 || v.total_per_km || v.total_rate || 0,
+                    year5: v.year5 || v.total_per_km || v.total_rate || 0,
+                    components: {
+                        insurance: comp.insurance || 0,
+                        depreciation: comp.depreciation || 0,
+                        interest: comp.interest || 0,
+                        fuel: comp.fuel || 0,
+                        servicing: comp.servicing || 0,
+                        repairs: comp.repairs || 0,
+                        tyres: comp.tyres || 0,
+                        licences: comp.licences || 0
+                    }
+                };
+            });
 
             const variantsByCategory = {};
             variants.forEach(v => {
@@ -910,7 +990,40 @@
     function populateVariants(categoryId) {
         const category = categories.find(c => c.id === categoryId);
         variantSelect.innerHTML = '';
-        
+
+        // If "Show All Classes" is checked, show all variants with category name
+        if (showAllClasses.checked) {
+            let filteredVariants = allVariants;
+            if (selectedFuel !== 'all') {
+                filteredVariants = allVariants.filter(v => 
+                    v.fuel_type && v.fuel_type.toLowerCase() === selectedFuel.toLowerCase()
+                );
+            }
+            if (filteredVariants.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No variants available';
+                opt.disabled = true;
+                variantSelect.appendChild(opt);
+                return;
+            }
+            // Sort variants by category name then variant name
+            filteredVariants.sort((a, b) => {
+                if (a.category_name < b.category_name) return -1;
+                if (a.category_name > b.category_name) return 1;
+                return a.label.localeCompare(b.label);
+            });
+            filteredVariants.forEach((variant, index) => {
+                const opt = document.createElement('option');
+                opt.value = variant.id;
+                opt.textContent = `${variant.category_name} — ${variant.label}`;
+                if (index === 0) opt.selected = true;
+                variantSelect.appendChild(opt);
+            });
+            return;
+        }
+
+        // Normal mode: show variants for selected category
         if (!category || !category.variants || category.variants.length === 0) {
             const opt = document.createElement('option');
             opt.value = '';
@@ -953,16 +1066,25 @@
     }
 
     function getSelectedVehicle() {
-        const categoryId = categorySelect.value;
         const variantId = variantSelect.value;
+        if (!variantId) return null;
         
-        if (!categoryId || !variantId) return null;
-        
-        const category = categories.find(c => c.id === categoryId);
-        if (!category) return null;
-        
-        const variant = category.variants.find(v => v.id === variantId);
+        // Find variant in allVariants first (for "Show All Classes" mode)
+        let variant = allVariants.find(v => v.id === variantId);
+        if (!variant) {
+            // Try to find in categories
+            for (const cat of categories) {
+                const v = cat.variants.find(v => v.id === variantId);
+                if (v) {
+                    variant = v;
+                    break;
+                }
+            }
+        }
         if (!variant) return null;
+        
+        const category = categories.find(c => c.id === variant.category_id);
+        if (!category) return null;
         
         return { category, variant };
     }
@@ -1071,8 +1193,19 @@
             this.classList.add('active');
             selectedFuel = this.dataset.fuel;
             populateCategories();
+            // If "Show All Classes" is checked, refresh variants
+            if (showAllClasses.checked) {
+                populateVariants(null);
+            }
             calculate();
         });
+    });
+
+    // Show All Classes toggle
+    showAllClasses.addEventListener('change', function() {
+        const categoryId = categorySelect.value;
+        populateVariants(categoryId);
+        calculate();
     });
 
     categorySelect.addEventListener('change', (e) => {
