@@ -733,7 +733,7 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
     // ─── INIT SUPABASE ───────────────────────────────────────────
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // ─── DOM REFS ────────────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
@@ -749,7 +749,6 @@
     // ─── STATE ────────────────────────────────────────────────────
     let categories = [];
     let routes = [];
-    let allData = {};
 
     // ─── FETCH FROM SUPABASE ─────────────────────────────────────
     async function fetchData() {
@@ -757,12 +756,32 @@
             dbStatus.textContent = '● Fetching...';
             dbStatus.style.color = 'var(--amber)';
 
-            // Fetch all data in parallel
+            // First, get column names from the categories table
+            const { data: columnsData, error: columnsError } = await _supabase
+                .from('vehicle_categories')
+                .select('*')
+                .limit(1);
+
+            if (columnsError) throw columnsError;
+
+            // Determine column names
+            const categoryNameCol = columnsData && columnsData[0] ? 
+                (columnsData[0].hasOwnProperty('name') ? 'name' : 
+                 columnsData[0].hasOwnProperty('label') ? 'label' : 
+                 columnsData[0].hasOwnProperty('category_name') ? 'category_name' : 'name') : 'name';
+
+            const fuelCol = columnsData && columnsData[0] ? 
+                (columnsData[0].hasOwnProperty('fuel_type') ? 'fuel_type' : null) : null;
+
+            console.log('Category name column:', categoryNameCol);
+            console.log('Fuel column:', fuelCol);
+
+            // Fetch all data
             const [categoriesRes, routesRes, variantsRes, componentsRes] = await Promise.all([
-                supabase.from('vehicle_categories').select('*').order('label'),
-                supabase.from('routes').select('*').order('km'),
-                supabase.from('vehicle_variants').select('*'),
-                supabase.from('running_cost_components').select('*')
+                _supabase.from('vehicle_categories').select('*').order(categoryNameCol),
+                _supabase.from('routes').select('*').order('km'),
+                _supabase.from('vehicle_variants').select('*'),
+                _supabase.from('running_cost_components').select('*')
             ]);
 
             if (categoriesRes.error) throw categoriesRes.error;
@@ -775,17 +794,22 @@
             const variants = variantsRes.data || [];
             const components = componentsRes.data || [];
 
+            // Determine variant name column
+            const variantNameCol = variants && variants.length > 0 ? 
+                (variants[0].hasOwnProperty('name') ? 'name' : 
+                 variants[0].hasOwnProperty('label') ? 'label' : 
+                 variants[0].hasOwnProperty('variant_name') ? 'variant_name' : 'name') : 'name';
+
             // Group variants by category
             const variantsByCategory = {};
             variants.forEach(v => {
                 if (!variantsByCategory[v.category_id]) {
                     variantsByCategory[v.category_id] = [];
                 }
-                // Find components for this variant
                 const comp = components.find(c => c.variant_id === v.id) || {};
-                variantsByCategory[v.category_id].push({
+                const variantObj = {
                     id: v.id,
-                    label: v.label,
+                    label: v[variantNameCol] || 'Unknown',
                     fixed_per_km: v.fixed_per_km || 0,
                     operating_per_km: v.operating_per_km || 0,
                     total_per_km: v.total_per_km || 0,
@@ -805,12 +829,15 @@
                         tyres: comp.tyres || 0,
                         licences: comp.licences || 0
                     }
-                });
+                };
+                variantsByCategory[v.category_id].push(variantObj);
             });
 
-            // Attach variants to categories
+            // Attach variants to categories and add fuel type
             categories.forEach(cat => {
                 cat.variants = variantsByCategory[cat.id] || [];
+                cat.fuel_type = fuelCol ? cat[fuelCol] || '—' : '—';
+                cat.label = cat[categoryNameCol] || 'Unknown';
             });
 
             dbStatus.textContent = '● Connected';
@@ -820,7 +847,7 @@
 
         } catch (error) {
             console.error('Supabase error:', error);
-            dbStatus.textContent = '● Error';
+            dbStatus.textContent = '● Error: ' + error.message;
             dbStatus.style.color = 'var(--rust)';
             throw error;
         }
@@ -839,7 +866,7 @@
         categories.forEach(cat => {
             const opt = document.createElement('option');
             opt.value = cat.id;
-            opt.textContent = cat.label + (cat.engine_range ? ' (' + cat.engine_range + ')' : '');
+            opt.textContent = cat.label;
             categorySelect.appendChild(opt);
         });
 
@@ -882,7 +909,9 @@
             const chip = document.createElement('button');
             chip.type = 'button';
             chip.className = 'chip';
-            chip.innerHTML = `${r.from_city} → ${r.to_city} <span class="km-badge">${r.km}km</span>`;
+            const fromCity = r.from_city || r.from || 'Unknown';
+            const toCity = r.to_city || r.to || 'Unknown';
+            chip.innerHTML = `${fromCity} → ${toCity} <span class="km-badge">${r.km}km</span>`;
             chip.addEventListener('click', () => {
                 document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                 chip.classList.add('active');
