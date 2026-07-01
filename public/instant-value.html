@@ -1000,11 +1000,13 @@
 
     <script>
         // ─── SUPABASE SINGLE SOURCE OF TRUTH ──────────────────────────
-        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-        const SUPABASE_ANON_KEY =
+        // Use a different variable name to avoid conflicts
+        const SB_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
+        const SB_ANON_KEY =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
 
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Create Supabase client with a unique variable name
+        const sbClient = window.supabase.createClient(SB_URL, SB_ANON_KEY);
 
         // ─── MODEL MAPPING FROM SUPABASE ──────────────────────────────
         let MODEL_MAP = {};
@@ -1046,7 +1048,7 @@
         async function loadVehicleData() {
             try {
                 // Fetch makes and models from Supabase
-                const { data: vehicles, error } = await supabase
+                const { data: vehicles, error } = await sbClient
                     .from('vehicle_models')
                     .select('make, model')
                     .order('make');
@@ -1276,7 +1278,7 @@
         // ─── FETCH SERVICE FEE FROM SUPABASE ─────────────────────────
         async function fetchServiceFee() {
             try {
-                const { data, error } = await supabase
+                const { data, error } = await sbClient
                     .from('system_settings')
                     .select('setting_value')
                     .eq('setting_key', 'instant_fee')
@@ -1560,7 +1562,7 @@
             updateLoadingStep(1);
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await sbClient.auth.getUser();
                 if (!user) {
                     statusBox.className = 'status-box status-error';
                     statusBox.textContent = '❌ Please login again.';
@@ -1570,7 +1572,7 @@
                     return;
                 }
 
-                const { data: { session } } = await supabase.auth.getSession();
+                const { data: { session } } = await sbClient.auth.getSession();
                 const token = session?.access_token || '';
 
                 let step = 1;
@@ -1582,9 +1584,9 @@
                 // ─── STORE IN SUPABASE FIRST ──────────────────────────
                 const valuationData = {
                     user_id: user.id,
-                    vehicle_make: formData.make,
-                    vehicle_model: formData.model,
-                    vehicle_year: formData.year,
+                    make: formData.make,
+                    model: formData.model,
+                    year: formData.year,
                     engine_capacity: formData.engineCapacity,
                     fuel_type: formData.fuelType,
                     transmission: formData.transmission,
@@ -1601,7 +1603,7 @@
                 };
 
                 // Save to Supabase valuations table
-                const { data: savedValuation, error: saveError } = await supabase
+                const { data: savedValuation, error: saveError } = await sbClient
                     .from('valuations')
                     .insert(valuationData)
                     .select()
@@ -1655,7 +1657,7 @@
 
                 // ─── UPDATE SUPABASE WITH RESULTS ────────────────────
                 if (savedValuation?.id) {
-                    await supabase
+                    await sbClient
                         .from('valuations')
                         .update({
                             market_value: result.market_value,
