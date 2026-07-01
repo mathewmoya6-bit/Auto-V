@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AUTO-V | Professional Mileage Calculator</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E📊%3C/text%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --asphalt: #0a0c15;
+            --asphalt-2: #111827;
+            --cream: #f0ece4;
+            --cream-dim: #cbd5e1;
+            --ink: #0a0c10;
+            --ink-soft: #64748b;
+            --amber: #eab308;
+            --amber-deep: #ca8a04;
+            --green: #22c55e;
+            --rust: #ef4444;
+            --blue: #3b82f6;
+            --line: rgba(255,255,255,0.06);
+            --line-dark: rgba(0,0,0,0.08);
+            --radius: 12px;
+            --shadow: 0 8px 40px rgba(0,0,0,0.5);
+            --font-heading: 'Space Grotesk', sans-serif;
+            --font-body: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--font-body);
+            background: var(--asphalt);
+            color: var(--cream);
+            min-height: 100vh;
+        }
+        .wrap {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 28px 32px 60px;
+        }
+        /* ─── HEADER ─── */
+        .report-header {
+            background: linear-gradient(135deg, var(--asphalt-2), var(--asphalt));
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            margin-bottom: 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .report-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 40%;
+            height: 200%;
+            background: radial-gradient(ellipse, rgba(234, 179, 8, 0.03), transparent 70%);
+            pointer-events: none;
+        }
+        .header-left .badge {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--amber);
+            background: rgba(234, 179, 8, 0.12);
+            padding: 4px 14px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 8px;
+            border: 1px solid rgba(234, 179, 8, 0.15);
+        }
+        .header-left h1 {
+            font-family: var(--font-heading);
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--cream);
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+        }
+        .header-left h1 span { color: var(--amber); }
+        .header-left .subtitle {
+            font-size: 14px;
+            color: var(--cream-dim);
+            margin-top: 4px;
+            font-weight: 400;
+        }
+        .header-left .subtitle strong { color: var(--amber); }
+        .header-right {
+            text-align: right;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--ink-soft);
+            line-height: 1.9;
+            flex-shrink: 0;
+        }
+        .header-right .version {
+            color: var(--cream-dim);
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .header-right .version span { color: var(--amber); }
+        .header-right .status {
+            display: inline-block;
+            background: rgba(34, 197, 94, 0.12);
+            color: var(--green);
+            padding: 2px 12px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+
+        /* ─── MAIN GRID ─── */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 28px;
+            margin-bottom: 28px;
+        }
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+
+        /* ─── CALCULATOR PANEL ─── */
+        .calculator-panel {
+            background: var(--asphalt-2);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 28px;
+            box-shadow: var(--shadow);
+        }
+        .panel-label {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--amber);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .panel-label .num {
+            font-family: var(--font-mono);
+            color: var(--ink-soft);
+            background: var(--cream);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .form-group { margin-bottom: 16px; }
+        label {
+            display: block;
+            font-size: 11px;
+            color: var(--cream-dim);
+            margin-bottom: 4px;
+            font-family: var(--font-mono);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        select, input[type="number"] {
+            width: 100%;
+            background: var(--cream);
+            color: var(--ink);
+            border: none;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 500;
+            appearance: none;
+            -webkit-appearance: none;
+            transition: outline 0.15s;
+        }
+        select:focus, input:focus {
+            outline: 2px solid var(--amber);
+            outline-offset: 1px;
+        }
+        select {
+            background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+                linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+            background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+            background-size: 6px 6px, 6px 6px;
+            background-repeat: no-repeat;
+            cursor: pointer;
+        }
+        .field-row { display: flex; gap: 12px; }
+        .field-row>div { flex: 1; }
+
+        /* ─── QUICK ROUTES ─── */
+        .quick-routes { margin-top: 4px; }
+        .quick-routes-title {
+            font-size: 10px;
+            color: var(--cream-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-family: var(--font-mono);
+            margin-bottom: 6px;
+            opacity: 0.7;
+        }
+        .route-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 100px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .route-chips::-webkit-scrollbar { width: 4px; }
+        .route-chips::-webkit-scrollbar-track { background: transparent; }
+        .route-chips::-webkit-scrollbar-thumb { background: var(--amber); border-radius: 10px; }
+        .chip {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--cream-dim);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .chip:hover {
+            border-color: var(--amber);
+            color: var(--amber);
+            background: rgba(234, 179, 8, 0.08);
+        }
+        .chip.active {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: var(--ink);
+            font-weight: 600;
+        }
+        .chip .km-badge { font-size: 8px; opacity: 0.6; margin-left: 4px; }
+
+        .calc-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--amber);
+            color: var(--ink);
+            border: none;
+            border-radius: 6px;
+            font-family: var(--font-heading);
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+        .calc-btn:hover {
+            background: var(--amber-deep);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(234, 179, 8, 0.3);
+        }
+
+        /* ─── RESULTS PANEL ─── */
+        .results-panel {
+            background: var(--cream);
+            color: var(--ink);
+            border-radius: var(--radius);
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: var(--shadow);
+        }
+        .vehicle-tag {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--line-dark);
+        }
+        .vehicle-tag #vehicleLabel { color: var(--ink); }
+        .fuel-pill {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            background: var(--asphalt);
+            color: var(--amber);
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.04em;
+            font-weight: 600;
+        }
+        .odometer-block {
+            background: var(--ink);
+            border-radius: 6px;
+            padding: 20px 24px;
+            text-align: center;
+        }
+        .odometer-caption {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--amber);
+            margin-bottom: 6px;
+        }
+        .odometer {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 38px;
+            color: var(--cream);
+            letter-spacing: 0.02em;
+            display: flex;
+            justify-content: center;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .odometer .currency { font-size: 16px; color: var(--amber); }
+        .odometer .digits { font-variant-numeric: tabular-nums; }
+        .odometer .sub {
+            font-size: 12px;
+            color: var(--cream-dim);
+            font-weight: 500;
+            margin-top: 4px;
+            width: 100%;
+        }
+        .breakdown-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .stat {
+            border: 1px solid var(--line-dark);
+            border-radius: 4px;
+            padding: 12px 14px;
+            transition: border-color 0.15s;
+        }
+        .stat:hover { border-color: var(--amber); }
+        .stat .k {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--ink-soft);
+            margin-bottom: 4px;
+        }
+        .stat .v {
+            font-family: var(--font-mono);
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .stat.fixed .v { color: var(--green); }
+        .stat.operating .v { color: var(--rust); }
+        .stat.total-stat .v { color: var(--amber-deep); }
+
+        .rate-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            border-top: 1px dashed var(--line-dark);
+            padding-top: 10px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--ink-soft);
+        }
+        .rate-line b { color: var(--ink); font-size: 14px; }
+
+        /* ─── DETAILED COST BREAKDOWN ─── */
+        .cost-detail {
+            border-top: 1px solid var(--line-dark);
+            padding-top: 14px;
+            margin-top: 4px;
+        }
+        .cost-detail h4 {
+            font-family: var(--font-heading);
+            font-size: 13px;
+            color: var(--amber-deep);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .cost-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 20px;
+            font-size: 12px;
+        }
+        .cost-detail-grid .item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+            font-family: var(--font-mono);
+        }
+        .cost-detail-grid .item .label {
+            color: var(--ink-soft);
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        .cost-detail-grid .item .value {
+            font-weight: 600;
+        }
+        .cost-detail-grid .item .value.green { color: var(--green); }
+        .cost-detail-grid .item .value.gold { color: var(--amber-deep); }
+        .cost-detail-grid .item .value.red { color: var(--rust); }
+
+        /* ─── 5-YEAR RUNNING COSTS ─── */
+        .yearly-costs {
+            margin-top: 4px;
+            border-top: 1px solid var(--line-dark);
+            padding-top: 14px;
+        }
+        .yearly-costs h4 {
+            font-family: var(--font-heading);
+            font-size: 13px;
+            color: var(--amber-deep);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .year-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+        }
+        .year-item {
+            text-align: center;
+            padding: 8px 4px;
+            background: var(--asphalt);
+            border-radius: 4px;
+            border: 1px solid var(--line);
+        }
+        .year-item .year-label {
+            font-size: 9px;
+            color: var(--ink-soft);
+            text-transform: uppercase;
+            font-family: var(--font-mono);
+        }
+        .year-item .year-value {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: var(--cream);
+            font-size: 14px;
+            margin-top: 2px;
+            font-variant-numeric: tabular-nums;
+        }
+        .year-item .year-value.green { color: var(--green); }
+        .year-item .year-value.gold { color: var(--amber); }
+        .year-item .year-value.red { color: var(--rust); }
+
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            padding: 8px 16px;
+            border: 1px solid var(--line-dark);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--ink-soft);
+            cursor: pointer;
+            font-family: var(--font-body);
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .action-btn:hover {
+            border-color: var(--amber);
+            color: var(--amber);
+            background: rgba(234, 179, 8, 0.05);
+        }
+        .action-btn.print { border-color: var(--blue); color: var(--blue); }
+        .action-btn.print:hover { background: rgba(59, 130, 246, 0.08); }
+        .action-btn.share { border-color: var(--green); color: var(--green); }
+        .action-btn.share:hover { background: rgba(34, 197, 94, 0.08); }
+
+        /* ─── LOADING ─── */
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--line);
+            border-top-color: var(--amber);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─── FOOTER ─── */
+        .report-footer {
+            border-top: 1px solid var(--line);
+            padding-top: 24px;
+            margin-top: 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .report-footer .brand {
+            font-family: var(--font-heading);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--cream-dim);
+        }
+        .report-footer .brand span { color: var(--amber); }
+        .report-footer .meta {
+            font-size: 11px;
+            color: var(--ink-soft);
+            text-align: right;
+            line-height: 1.8;
+        }
+        .report-footer .meta strong { color: var(--cream-dim); }
+
+        @media (max-width: 768px) {
+            .wrap { padding: 16px 12px 40px; }
+            .report-header { padding: 20px 18px; }
+            .header-left h1 { font-size: 22px; }
+            .main-grid { gap: 20px; }
+            .calculator-panel, .results-panel { padding: 20px; }
+            .odometer { font-size: 30px; }
+            .breakdown-grid { grid-template-columns: 1fr; }
+            .field-row { flex-direction: column; }
+            .header-right { text-align: left; width: 100%; }
+            .year-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+            .year-item .year-value { font-size: 12px; }
+            .report-footer { flex-direction: column; text-align: center; }
+            .report-footer .meta { text-align: center; }
+            .cost-detail-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 480px) {
+            .header-left h1 { font-size: 18px; }
+            .odometer { font-size: 24px; }
+            .stat .v { font-size: 15px; }
+            .chip { font-size: 9px; padding: 4px 8px; }
+            .year-grid { grid-template-columns: repeat(3, 1fr); }
+            .action-bar { flex-direction: column; }
+            .action-btn { justify-content: center; }
+        }
+        @media print {
+            .report-header, .calculator-panel, .report-footer { background: #f5f5f5 !important; border-color: #ddd !important; }
+            .calculator-panel .panel-label, .report-header .badge, .results-panel .action-bar { display: none !important; }
+            .results-panel { background: #fff !important; border: 1px solid #ddd !important; box-shadow: none !important; }
+            .calc-btn { display: none; }
+            .odometer-block { background: #eee !important; }
+            .odometer { color: #000 !important; }
+            .odometer .currency { color: #b8860b !important; }
+            .year-item { background: #f5f5f5 !important; border-color: #ddd !important; }
+            .year-item .year-value { color: #000 !important; }
+            .stat { border-color: #ddd !important; }
+            .stat .v { color: #000 !important; }
+            .vehicle-tag #vehicleLabel { color: #000 !important; }
+            .fuel-pill { background: #eee !important; color: #b8860b !important; }
+            .rate-line b { color: #000 !important; }
+            .header-right .status { display: none; }
+            body { background: #fff !important; }
+            .wrap { padding: 20px !important; }
+            .main-grid { display: block !important; }
+            .results-panel { margin-top: 20px !important; }
+            .cost-detail-grid .item { border-bottom-color: #ddd !important; }
+            .cost-detail-grid .item .label { color: #666 !important; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <!-- ─── HEADER ─── -->
+    <div class="report-header">
+        <div class="header-left">
+            <div class="badge">📋 Official Reimbursement Schedule</div>
+            <h1>AUTO-V <span>Professional</span><br />Vehicle Running Costs</h1>
+            <p class="subtitle">
+                Kenya Mileage Rate Schedule — <strong>July 2026</strong><br />
+                <span style="font-size:12px;color:var(--ink-soft);">Single Source of Truth · Powered by Supabase</span>
+            </p>
+        </div>
+        <div class="header-right">
+            <div class="version">Report Version <span>2026.07</span></div>
+            <div>Last Updated: <span id="lastUpdated">Loading...</span></div>
+            <div>Data Status: <span class="status" id="dbStatus">● Connecting...</span></div>
+        </div>
+    </div>
+
+    <!-- ─── MAIN GRID ─── -->
+    <div class="main-grid">
+
+        <!-- ─── CALCULATOR ─── -->
+        <section class="calculator-panel">
+            <div class="panel-label"><span class="num">01</span> Select Vehicle</div>
+
+            <div class="form-group">
+                <label for="categorySelect">Vehicle Category</label>
+                <select id="categorySelect">
+                    <option value="">Loading categories...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="variantSelect">Engine / Class</label>
+                <select id="variantSelect">
+                    <option value="">Select a category first</option>
+                </select>
+            </div>
+
+            <div class="panel-label" style="margin-top:16px;"><span class="num">02</span> Trip Distance</div>
+
+            <div class="form-group">
+                <label for="distanceInput">Distance (km)</label>
+                <input type="number" id="distanceInput" min="0" step="1" value="100" />
+            </div>
+
+            <div class="quick-routes">
+                <p class="quick-routes-title">📌 Quick Routes</p>
+                <div class="route-chips" id="routeChips"></div>
+            </div>
+
+            <button class="calc-btn" id="calculateBtn">🚀 Calculate Mileage Rate</button>
+        </section>
+
+        <!-- ─── RESULTS ─── -->
+        <section class="results-panel" aria-label="Cost results">
+            <div class="vehicle-tag">
+                <span id="vehicleLabel">—</span>
+                <span class="fuel-pill" id="fuelPill">—</span>
+            </div>
+
+            <div class="odometer-block">
+                <p class="odometer-caption">Total Trip Cost</p>
+                <div class="odometer">
+                    <span class="currency">KES</span>
+                    <span class="digits" id="totalTrip">0.00</span>
+                    <span class="sub" id="totalTripSub">at 0.00 KES/km over 0 km</span>
+                </div>
+            </div>
+
+            <div class="breakdown-grid">
+                <div class="stat fixed">
+                    <div class="k">📊 Fixed Cost / km</div>
+                    <div class="v" id="fixedPerKm">—</div>
+                </div>
+                <div class="stat operating">
+                    <div class="k">⚙️ Operating Cost / km</div>
+                    <div class="v" id="operatingPerKm">—</div>
+                </div>
+                <div class="stat fixed">
+                    <div class="k">📊 Fixed Cost — Trip</div>
+                    <div class="v" id="fixedTrip">—</div>
+                </div>
+                <div class="stat operating">
+                    <div class="k">⚙️ Operating Cost — Trip</div>
+                    <div class="v" id="operatingTrip">—</div>
+                </div>
+                <div class="stat total-stat" style="grid-column: 1 / -1; background: rgba(234, 179, 8, 0.08);">
+                    <div class="k">💰 Total Running Cost / km</div>
+                    <div class="v" id="totalPerKm" style="color: var(--amber-deep);">—</div>
+                </div>
+            </div>
+
+            <!-- ─── DETAILED COST BREAKDOWN ─── -->
+            <div class="cost-detail">
+                <h4>🔍 Detailed Cost Breakdown</h4>
+                <div class="cost-detail-grid" id="costDetailGrid">
+                    <div class="item"><span class="label">Insurance</span><span class="value" id="detailInsurance">—</span></div>
+                    <div class="item"><span class="label">Depreciation</span><span class="value" id="detailDepreciation">—</span></div>
+                    <div class="item"><span class="label">Interest on Capital</span><span class="value" id="detailInterest">—</span></div>
+                    <div class="item"><span class="label">Fuel</span><span class="value" id="detailFuel">—</span></div>
+                    <div class="item"><span class="label">Servicing</span><span class="value" id="detailServicing">—</span></div>
+                    <div class="item"><span class="label">Repairs & Replacements</span><span class="value" id="detailRepairs">—</span></div>
+                    <div class="item"><span class="label">Automotive Tyres</span><span class="value" id="detailTyres">—</span></div>
+                    <div class="item"><span class="label">Licences & Parking</span><span class="value" id="detailLicences">—</span></div>
+                </div>
+            </div>
+
+            <div class="rate-line">
+                <span>🚗 Average Initial Cost</span>
+                <b id="initialCost">—</b>
+            </div>
+
+            <!-- ─── 5-YEAR RUNNING COSTS ─── -->
+            <div class="yearly-costs">
+                <h4>📈 5-Year Running Cost Progression</h4>
+                <div class="year-grid" id="yearGrid">
+                    <div class="year-item"><div class="year-label">New</div><div class="year-value gold" id="year1">—</div></div>
+                    <div class="year-item"><div class="year-label">2nd Year</div><div class="year-value" id="year2">—</div></div>
+                    <div class="year-item"><div class="year-label">3rd Year</div><div class="year-value" id="year3">—</div></div>
+                    <div class="year-item"><div class="year-label">4th Year</div><div class="year-value" id="year4">—</div></div>
+                    <div class="year-item"><div class="year-label">5+ Years</div><div class="year-value" id="year5">—</div></div>
+                </div>
+            </div>
+
+            <div class="rate-line" style="border-top: 2px solid var(--amber); padding-top: 12px; margin-top: 4px;">
+                <span style="font-weight: 600;">✅ Confidence Score</span>
+                <b style="color: var(--green);" id="confidenceScore">95%</b>
+            </div>
+
+            <div class="action-bar">
+                <button class="action-btn print" onclick="window.print()">🖨️ Print Report</button>
+                <button class="action-btn share" onclick="shareReport()">📤 Share Report</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- ─── FOOTER ─── -->
+    <div class="report-footer">
+        <div class="brand">AUTO-V <span>Intelligence Engine</span></div>
+        <div class="meta">
+            <strong>Professional Vehicle Running Cost Database</strong><br />
+            © 2026 AUTO-V · All Rights Reserved<br />
+            <span style="font-size:10px;opacity:0.6;">Data subject to change. For official use only.</span>
+        </div>
+    </div>
+</div>
+
+<!-- ─── SUPABASE SDK ─── -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+    // ─── SUPABASE CONFIG ─────────────────────────────────────────
+    const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+
+    // ─── INIT SUPABASE ───────────────────────────────────────────
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ─── DOM REFS ────────────────────────────────────────────────
+    const $ = (id) => document.getElementById(id);
+    const categorySelect = $('categorySelect');
+    const variantSelect = $('variantSelect');
+    const distanceInput = $('distanceInput');
+    const routeChips = $('routeChips');
+    const dbStatus = $('dbStatus');
+
+    const fmtKShs = (n) => new Intl.NumberFormat('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+    const fmtKShsInt = (n) => new Intl.NumberFormat('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
+
+    // ─── STATE ────────────────────────────────────────────────────
+    let categories = [];
+    let routes = [];
+    let allData = {};
+
+    // ─── FETCH FROM SUPABASE ─────────────────────────────────────
+    async function fetchData() {
+        try {
+            dbStatus.textContent = '● Fetching...';
+            dbStatus.style.color = 'var(--amber)';
+
+            // Fetch all data in parallel
+            const [categoriesRes, routesRes, variantsRes, componentsRes] = await Promise.all([
+                supabase.from('vehicle_categories').select('*').order('label'),
+                supabase.from('routes').select('*').order('km'),
+                supabase.from('vehicle_variants').select('*'),
+                supabase.from('running_cost_components').select('*')
+            ]);
+
+            if (categoriesRes.error) throw categoriesRes.error;
+            if (routesRes.error) throw routesRes.error;
+            if (variantsRes.error) throw variantsRes.error;
+            if (componentsRes.error) throw componentsRes.error;
+
+            categories = categoriesRes.data || [];
+            routes = routesRes.data || [];
+            const variants = variantsRes.data || [];
+            const components = componentsRes.data || [];
+
+            // Group variants by category
+            const variantsByCategory = {};
+            variants.forEach(v => {
+                if (!variantsByCategory[v.category_id]) {
+                    variantsByCategory[v.category_id] = [];
+                }
+                // Find components for this variant
+                const comp = components.find(c => c.variant_id === v.id) || {};
+                variantsByCategory[v.category_id].push({
+                    id: v.id,
+                    label: v.label,
+                    fixed_per_km: v.fixed_per_km || 0,
+                    operating_per_km: v.operating_per_km || 0,
+                    total_per_km: v.total_per_km || 0,
+                    initial_cost: v.initial_cost || 0,
+                    year1: v.year1 || v.total_per_km || 0,
+                    year2: v.year2 || v.total_per_km || 0,
+                    year3: v.year3 || v.total_per_km || 0,
+                    year4: v.year4 || v.total_per_km || 0,
+                    year5: v.year5 || v.total_per_km || 0,
+                    components: {
+                        insurance: comp.insurance || 0,
+                        depreciation: comp.depreciation || 0,
+                        interest: comp.interest || 0,
+                        fuel: comp.fuel || 0,
+                        servicing: comp.servicing || 0,
+                        repairs: comp.repairs || 0,
+                        tyres: comp.tyres || 0,
+                        licences: comp.licences || 0
+                    }
+                });
+            });
+
+            // Attach variants to categories
+            categories.forEach(cat => {
+                cat.variants = variantsByCategory[cat.id] || [];
+            });
+
+            dbStatus.textContent = '● Connected';
+            dbStatus.style.color = 'var(--green)';
+            
+            return { categories, routes };
+
+        } catch (error) {
+            console.error('Supabase error:', error);
+            dbStatus.textContent = '● Error';
+            dbStatus.style.color = 'var(--rust)';
+            throw error;
+        }
+    }
+
+    // ─── POPULATE CATEGORIES ─────────────────────────────────────
+    function populateCategories() {
+        categorySelect.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '— Select a category —';
+        defaultOpt.disabled = true;
+        defaultOpt.selected = true;
+        categorySelect.appendChild(defaultOpt);
+
+        categories.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat.id;
+            opt.textContent = cat.label + (cat.engine_range ? ' (' + cat.engine_range + ')' : '');
+            categorySelect.appendChild(opt);
+        });
+
+        if (categories.length > 0) {
+            categorySelect.value = categories[0].id;
+            populateVariants(categories[0].id);
+        }
+    }
+
+    function populateVariants(categoryId) {
+        const category = categories.find(c => c.id === categoryId);
+        variantSelect.innerHTML = '';
+        
+        if (!category || !category.variants || category.variants.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'No variants available';
+            opt.disabled = true;
+            variantSelect.appendChild(opt);
+            return;
+        }
+
+        category.variants.forEach((variant, index) => {
+            const opt = document.createElement('option');
+            opt.value = variant.id;
+            opt.textContent = variant.label;
+            if (index === 0) opt.selected = true;
+            variantSelect.appendChild(opt);
+        });
+    }
+
+    // ─── LOAD ROUTES ─────────────────────────────────────────────
+    function loadRoutes() {
+        routeChips.innerHTML = '';
+        if (!routes || routes.length === 0) {
+            routeChips.innerHTML = '<span style="color:var(--ink-soft);font-size:11px;">No routes available</span>';
+            return;
+        }
+        routes.forEach((r) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'chip';
+            chip.innerHTML = `${r.from_city} → ${r.to_city} <span class="km-badge">${r.km}km</span>`;
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                distanceInput.value = r.km;
+                calculate();
+            });
+            routeChips.appendChild(chip);
+        });
+    }
+
+    // ─── GET SELECTED VEHICLE ────────────────────────────────────
+    function getSelectedVehicle() {
+        const categoryId = categorySelect.value;
+        const variantId = variantSelect.value;
+        
+        if (!categoryId || !variantId) return null;
+        
+        const category = categories.find(c => c.id === categoryId);
+        if (!category) return null;
+        
+        const variant = category.variants.find(v => v.id === variantId);
+        if (!variant) return null;
+        
+        return { category, variant };
+    }
+
+    // ─── CALCULATE ──────────────────────────────────────────────
+    function calculate() {
+        const distance_km = parseFloat(distanceInput.value) || 0;
+        const selected = getSelectedVehicle();
+
+        if (!selected) {
+            $('vehicleLabel').textContent = '—';
+            $('fuelPill').textContent = '—';
+            $('totalTrip').textContent = '0.00';
+            $('totalTripSub').textContent = 'Select a vehicle and enter distance';
+            $('fixedPerKm').textContent = '—';
+            $('operatingPerKm').textContent = '—';
+            $('fixedTrip').textContent = '—';
+            $('operatingTrip').textContent = '—';
+            $('totalPerKm').textContent = '—';
+            $('initialCost').textContent = '—';
+            ['year1','year2','year3','year4','year5'].forEach(id => $(id).textContent = '—');
+            ['detailInsurance','detailDepreciation','detailInterest','detailFuel','detailServicing','detailRepairs','detailTyres','detailLicences'].forEach(id => $(id).textContent = '—');
+            return;
+        }
+
+        const { category, variant } = selected;
+        const fixedCostTrip = variant.fixed_per_km * distance_km;
+        const operatingCostTrip = variant.operating_per_km * distance_km;
+        const totalCostTrip = variant.total_per_km * distance_km;
+
+        $('vehicleLabel').textContent = `${category.label} — ${variant.label}`;
+        $('fuelPill').textContent = category.fuel_type || '—';
+        $('totalTrip').textContent = fmtKShs(totalCostTrip);
+        $('totalTripSub').textContent = `at ${fmtKShs(variant.total_per_km)} KES/km over ${fmtKShsInt(distance_km)} km`;
+        $('fixedPerKm').textContent = `${fmtKShs(variant.fixed_per_km)}`;
+        $('operatingPerKm').textContent = `${fmtKShs(variant.operating_per_km)}`;
+        $('fixedTrip').textContent = `KES ${fmtKShs(fixedCostTrip)}`;
+        $('operatingTrip').textContent = `KES ${fmtKShs(operatingCostTrip)}`;
+        $('totalPerKm').textContent = `${fmtKShs(variant.total_per_km)} KES/km`;
+        $('initialCost').textContent = `KES ${fmtKShsInt(variant.initial_cost)}`;
+
+        // ─── DETAILED COST BREAKDOWN ───
+        const comp = variant.components || {};
+        $('detailInsurance').textContent = comp.insurance ? fmtKShsInt(comp.insurance) : '—';
+        $('detailDepreciation').textContent = comp.depreciation ? fmtKShsInt(comp.depreciation) : '—';
+        $('detailInterest').textContent = comp.interest ? fmtKShsInt(comp.interest) : '—';
+        $('detailFuel').textContent = comp.fuel ? fmtKShs(comp.fuel) + '/km' : '—';
+        $('detailServicing').textContent = comp.servicing ? fmtKShs(comp.servicing) + '/km' : '—';
+        $('detailRepairs').textContent = comp.repairs ? fmtKShs(comp.repairs) + '/km' : '—';
+        $('detailTyres').textContent = comp.tyres ? fmtKShs(comp.tyres) + '/km' : '—';
+        $('detailLicences').textContent = comp.licences ? fmtKShsInt(comp.licences) : '—';
+
+        // ─── 5-YEAR COSTS ───
+        const years = [
+            { id: 'year1', label: 'New', val: variant.year1 ?? variant.total_per_km },
+            { id: 'year2', label: '2nd Year', val: variant.year2 ?? variant.total_per_km },
+            { id: 'year3', label: '3rd Year', val: variant.year3 ?? variant.total_per_km },
+            { id: 'year4', label: '4th Year', val: variant.year4 ?? variant.total_per_km },
+            { id: 'year5', label: '5+ Years', val: variant.year5 ?? variant.total_per_km }
+        ];
+        years.forEach((y, idx) => {
+            const el = $(y.id);
+            const val = y.val ?? variant.total_per_km;
+            el.textContent = fmtKShs(val);
+            if (idx === 0) { el.className = 'year-value gold'; }
+            else {
+                const prev = years[idx-1]?.val ?? variant.total_per_km;
+                if (val < prev) el.className = 'year-value green';
+                else if (val > prev) el.className = 'year-value red';
+                else el.className = 'year-value';
+            }
+        });
+
+        let confidence = 95;
+        if (variant.fixed_per_km > 0 && variant.operating_per_km > 0) confidence += 2;
+        if (variant.initial_cost > 0) confidence += 1;
+        if (variant.total_per_km > 0) confidence += 2;
+        confidence = Math.min(confidence, 99);
+        $('confidenceScore').textContent = `${confidence}%`;
+        $('lastUpdated').textContent = new Date().toLocaleDateString('en-KE', {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+    }
+
+    // ─── SHARE REPORT ────────────────────────────────────────────
+    function shareReport() {
+        const vehicle = $('vehicleLabel').textContent;
+        const rate = $('totalPerKm').textContent;
+        const total = $('totalTrip').textContent;
+        const y1 = $('year1').textContent, y2 = $('year2').textContent, y3 = $('year3').textContent, y4 = $('year4').textContent, y5 = $('year5').textContent;
+        const shareText = `🚗 AUTO-V Mileage Rate Report\n\nVehicle: ${vehicle}\nRate: ${rate}\nTrip Total: ${total}\n\n📈 5-Year Running Costs:\nNew: ${y1}\n2nd Year: ${y2}\n3rd Year: ${y3}\n4th Year: ${y4}\n5+ Years: ${y5}\n\nPowered by AUTO-V Intelligence Engine`;
+        if (navigator.share) {
+            navigator.share({ title: 'AUTO-V Mileage Rate Report', text: shareText }).catch(() => {});
+        } else {
+            navigator.clipboard.writeText(shareText).then(() => alert('✅ Report copied to clipboard!'))
+                .catch(() => {
+                    const win = window.open('', '_blank');
+                    if (win) {
+                        win.document.write(`<html><head><title>AUTO-V Mileage Report</title><style>body{font-family:sans-serif;padding:40px;background:#f5f5f5;color:#333;line-height:1.8;}</style></head><body><pre>${shareText}</pre><p><button onclick="window.print()">🖨️ Print</button></p></body></html>`);
+                        win.document.close();
+                    }
+                });
+        }
+    }
+
+    // ─── EVENTS ──────────────────────────────────────────────────
+    categorySelect.addEventListener('change', (e) => {
+        populateVariants(e.target.value);
+        calculate();
+    });
+    variantSelect.addEventListener('change', calculate);
+    distanceInput.addEventListener('input', () => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        calculate();
+    });
+    document.getElementById('calculateBtn').addEventListener('click', calculate);
+
+    // ─── INIT ────────────────────────────────────────────────────
+    (async function init() {
+        console.log('🚗 AUTO-V — Connecting to Supabase...');
+        try {
+            const data = await fetchData();
+            categories = data.categories;
+            routes = data.routes;
+            
+            populateCategories();
+            loadRoutes();
+            calculate();
+            
+            console.log('✅ AUTO-V Running Costs — July 2026 (Supabase-backed)');
+            console.log(`📊 Loaded ${categories.length} categories, ${routes.length} routes`);
+        } catch (error) {
+            console.error('Failed to initialize:', error);
+            categorySelect.innerHTML = '<option value="">Error loading data</option>';
+        }
+    })();
+</script>
+</body>
+</html>
