@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Admin Login</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         /* ─── RESET & BASE ─── */
@@ -367,48 +370,33 @@
     </div>
 
     <script>
-        // ================================================================
-        // AUTO-V ADMIN LOGIN — PRODUCTION SECURE VERSION (fixed)
-        // ================================================================
+        // ═══════════════════════════════════════════════════════════════
+        // AUTO-V ADMIN LOGIN — FastAPI Backend Integration
+        // ═══════════════════════════════════════════════════════════════
 
         (function() {
-            // ─── SUPABASE CLIENT ─────────────────────────────────────────
-            // FIX: previously this fell into `supabaseJs.createClient(...)`
-            // on failure — `supabaseJs` was never defined anywhere, so that
-            // branch always threw, and the catch block just retried the
-            // exact same failing call. Now: reuse the shared client from
-            // supabase.js (window.autoV.supabase) when it's ready, since
-            // that's the single source of truth for the rest of the app;
-            // otherwise create one directly from the CDN global with no
-            // undefined fallback path.
-            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-            const SUPABASE_ANON_KEY =
-                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+            'use strict';
 
-            let supabase = null;
-            if (window.autoV && window.autoV.supabase) {
-                supabase = window.autoV.supabase;
-            } else if (window.supabase && typeof window.supabase.createClient === 'function') {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            }
-
+            // ─── CONFIG ──────────────────────────────────────────────────
+            const API_BASE = 'http://localhost:8000/api'; // Change to your backend URL
             const ADMIN_DASHBOARD = 'admin-dashboard.html';
+            const USER_DASHBOARD = 'dashboard.html';
 
+            // ─── DOM REFS ───────────────────────────────────────────────
             const emailInput = document.getElementById('email');
             const passwordInput = document.getElementById('password');
             const loginBtn = document.getElementById('loginBtn');
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
 
-            if (!supabase) {
-                // Both the shared client and the CDN global failed to
-                // materialize — surface this clearly instead of letting
-                // every subsequent call throw a cryptic "Cannot read
-                // properties of null" error.
-                showMessage('⚠️ Could not connect to authentication service. Please refresh the page.', 'error');
+            // ─── API CLIENT CHECK ──────────────────────────────────────
+            if (typeof api === 'undefined') {
+                showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
                 loginBtn.disabled = true;
+                console.error('API client not found. Ensure js/api-client.js is loaded.');
             }
 
+            // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
                 messageBox.className = 'message ' + type + '-message';
@@ -424,13 +412,9 @@
                 clearTimeout(window._msgTimer);
             }
 
+            // ─── VALIDATION ─────────────────────────────────────────────
             function isValidEmail(email) {
                 return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
-            }
-
-            function isAdminRole(role) {
-                if (!role) return false;
-                return String(role).toLowerCase().trim() === 'admin';
             }
 
             function setLoading(state) {
@@ -440,47 +424,45 @@
                     'Admin Login';
             }
 
-            async function verifyAdminRole(userId) {
+            // ─── CHECK EXISTING SESSION ────────────────────────────────
+            async function checkExistingSession() {
                 try {
-                    const { data, error } = await supabase
-                        .from('user_profiles')
-                        .select('id, email, role')
-                        .eq('id', userId)
-                        .single();
+                    const token = localStorage.getItem('access_token');
+                    if (!token) return;
 
-                    if (error) {
-                        console.error('Admin verification error:', error.message);
-                        return { isAdmin: false, profile: null, error };
+                    // Verify token is still valid
+                    const user = await api.get('/auth/me');
+                    
+                    // Check if user is admin
+                    if (user.role === 'admin' || user.role === 'super_admin') {
+                        console.log('✅ Admin session valid — redirecting');
+                        window.location.href = ADMIN_DASHBOARD;
+                    } else {
+                        // User is logged in but not admin
+                        console.log('👤 User is not admin — redirecting to user dashboard');
+                        window.location.href = USER_DASHBOARD;
                     }
-
-                    if (!data) {
-                        return { isAdmin: false, profile: null, error: null };
-                    }
-
-                    return { isAdmin: isAdminRole(data.role), profile: data, error: null };
-
-                } catch (err) {
-                    console.error('Admin verification exception:', err);
-                    return { isAdmin: false, profile: null, error: err };
+                } catch (error) {
+                    // Token expired or invalid
+                    console.log('Session expired or invalid');
+                    localStorage.removeItem('access_token');
                 }
             }
 
-            function redirectToAdmin() {
-                window.location.href = ADMIN_DASHBOARD;
-            }
-
+            // ─── LOGIN HANDLER ──────────────────────────────────────────
             async function handleLogin(e) {
                 e.preventDefault();
                 clearMessage();
 
-                if (!supabase) {
-                    showMessage('⚠️ Authentication service unavailable. Please refresh the page.', 'error');
+                if (typeof api === 'undefined') {
+                    showMessage('⚠️ API service unavailable. Please refresh the page.', 'error');
                     return;
                 }
 
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
 
+                // ─── Validation ─────────────────────────────────────────
                 if (!email || !password) {
                     showMessage('Please enter both email and password.', 'error');
                     if (!email) emailInput.focus();
@@ -497,123 +479,110 @@
                 setLoading(true);
 
                 try {
-                    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                        email,
-                        password
+                    // ─── Call FastAPI Login Endpoint ────────────────────
+                    const response = await api.post('/auth/login', {
+                        email: email,
+                        password: password
                     });
 
-                    if (authError) {
-                        console.warn('Auth error:', authError.message);
-                        if (authError.message === 'Invalid login credentials') {
-                            showMessage('❌ Invalid email or password. Please try again.', 'error');
-                        } else if (authError.message.toLowerCase().includes('email not confirmed')) {
-                            showMessage('📧 Please verify your email address before logging in.', 'info');
-                        } else {
-                            showMessage('Login failed: ' + authError.message, 'error');
-                        }
-                        setLoading(false);
-                        return;
+                    // ─── Store Token ─────────────────────────────────────
+                    if (response.access_token) {
+                        api.setToken(response.access_token);
+                        localStorage.setItem('access_token', response.access_token);
                     }
 
-                    if (!authData || !authData.user) {
-                        showMessage('Login failed. Please try again.', 'error');
-                        setLoading(false);
-                        return;
-                    }
+                    // ─── Get User Info ──────────────────────────────────
+                    const user = await api.get('/auth/me');
 
-                    const user = authData.user;
-                    console.log('✅ Authenticated:', user.email);
-
-                    const { isAdmin, profile, error } = await verifyAdminRole(user.id);
-
-                    if (error) {
-                        console.error('Verification error:', error);
-                        showMessage('Error verifying admin privileges. Please contact support.', 'error');
-                        await supabase.auth.signOut();
-                        setLoading(false);
-                        return;
-                    }
-
-                    if (!isAdmin) {
-                        console.warn('⛔ Access denied for:', user.email, 'Role:', profile?.role);
-                        showMessage('⛔ Access denied. Admin privileges required.', 'error');
-                        await supabase.auth.signOut();
-                        setLoading(false);
-                        return;
-                    }
-
-                    localStorage.setItem('autoV_admin', JSON.stringify({
+                    // ─── Check Admin Role ───────────────────────────────
+                    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+                    
+                    // Store user info
+                    localStorage.setItem('autoV_user', JSON.stringify({
                         id: user.id,
                         email: user.email,
-                        role: profile.role,
-                        isAdmin: true,
+                        role: user.role,
+                        isAdmin: isAdmin,
                         verifiedAt: new Date().toISOString()
                     }));
 
-                    showMessage('✅ Login successful! Redirecting to dashboard...', 'success');
+                    if (isAdmin) {
+                        showMessage('✅ Admin login successful! Redirecting...', 'success');
+                        setTimeout(() => {
+                            window.location.href = ADMIN_DASHBOARD;
+                        }, 1000);
+                    } else {
+                        showMessage('✅ Login successful! Redirecting to dashboard...', 'success');
+                        setTimeout(() => {
+                            window.location.href = USER_DASHBOARD;
+                        }, 1000);
+                    }
 
-                    setTimeout(() => {
-                        redirectToAdmin();
-                    }, 1200);
-
-                } catch (err) {
-                    console.error('Login error:', err);
-                    showMessage('Network error. Please check your connection.', 'error');
+                } catch (error) {
+                    console.error('Login error:', error);
+                    
+                    // ─── Handle specific error cases ─────────────────────
+                    if (error.message.includes('401') || error.message.includes('Invalid credentials')) {
+                        showMessage('❌ Invalid email or password. Please try again.', 'error');
+                    } else if (error.message.includes('403')) {
+                        showMessage('⛔ Access denied. Admin privileges required.', 'error');
+                    } else if (error.message.includes('429')) {
+                        showMessage('⏳ Too many login attempts. Please wait a moment.', 'error');
+                    } else if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+                        showMessage('🌐 Network error. Please check your connection.', 'error');
+                    } else {
+                        showMessage('❌ Login failed: ' + error.message, 'error');
+                    }
+                    
                     setLoading(false);
                 } finally {
-                    if (loginBtn.disabled && !loginBtn.textContent.includes('Redirecting')) {
+                    // Only reset if not redirecting
+                    if (!loginBtn.textContent.includes('Redirecting')) {
                         setLoading(false);
                     }
                 }
             }
 
-            async function checkExistingSession() {
-                if (!supabase) return;
-                try {
-                    const { data: { session }, error } = await supabase.auth.getSession();
-
-                    if (error) {
-                        console.warn('Session check error:', error.message);
-                        return;
-                    }
-
-                    if (session && session.user) {
-                        console.log('🔍 Active session:', session.user.email);
-
-                        const { isAdmin, profile } = await verifyAdminRole(session.user.id);
-
-                        if (isAdmin) {
-                            localStorage.setItem('autoV_admin', JSON.stringify({
-                                id: session.user.id,
-                                email: session.user.email,
-                                role: profile?.role,
-                                isAdmin: true,
-                                verifiedAt: new Date().toISOString()
-                            }));
-                            console.log('✅ Admin verified — redirecting');
-                            redirectToAdmin();
-                        } else {
-                            console.log('👤 User is not admin — staying on login');
-                            localStorage.removeItem('autoV_admin');
-                            emailInput.value = session.user.email;
-                        }
-                    } else {
-                        localStorage.removeItem('autoV_admin');
-                    }
-                } catch (err) {
-                    console.warn('Session check error:', err);
-                }
+            // ─── DEMO MODE (for testing without backend) ───────────────
+            // Remove this function in production
+            async function demoLogin() {
+                console.warn('⚠️ DEMO MODE: Bypassing backend login');
+                localStorage.setItem('access_token', 'demo_token');
+                localStorage.setItem('autoV_user', JSON.stringify({
+                    id: 'demo_user',
+                    email: 'admin@autov.co.ke',
+                    role: 'admin',
+                    isAdmin: true,
+                    verifiedAt: new Date().toISOString()
+                }));
+                window.location.href = ADMIN_DASHBOARD;
             }
 
+            // ─── EVENT LISTENERS ──────────────────────────────────────
             loginForm.addEventListener('submit', handleLogin);
             emailInput.addEventListener('focus', clearMessage);
             passwordInput.addEventListener('focus', clearMessage);
 
-            setTimeout(() => emailInput.focus(), 150);
+            // ─── CHECK FOR EXISTING SESSION ON LOAD ────────────────────
             checkExistingSession();
 
-            console.log('🚀 AUTO-V Admin Login (secure, fixed client init)');
-            console.log('📌 Dashboard:', ADMIN_DASHBOARD);
+            // ─── FOCUS EMAIL ────────────────────────────────────────────
+            setTimeout(() => emailInput.focus(), 150);
+
+            console.log('🚀 AUTO-V Admin Login (FastAPI Backend)');
+            console.log('📌 Admin Dashboard:', ADMIN_DASHBOARD);
+            console.log('📌 User Dashboard:', USER_DASHBOARD);
+            
+            // ─── DEMO MODE SHORTCUT (remove in production) ──────────────
+            // Uncomment the line below to enable demo mode
+            // console.log('💡 Press Ctrl+Shift+D for demo login');
+            // document.addEventListener('keydown', (e) => {
+            //     if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+            //         e.preventDefault();
+            //         demoLogin();
+            //     }
+            // });
+
         })();
     </script>
 </body>
