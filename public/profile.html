@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V User Profile</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -53,6 +58,11 @@
             padding: 10px 20px;
             text-decoration: none;
             border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: #444;
         }
 
         nav {
@@ -75,6 +85,11 @@
         }
 
         nav a:hover {
+            background: #eab308;
+            color: black;
+        }
+
+        nav a.active {
             background: #eab308;
             color: black;
         }
@@ -207,6 +222,7 @@
             display: flex;
             gap: 10px;
             margin-top: 20px;
+            flex-wrap: wrap;
         }
 
         .stats-grid {
@@ -275,6 +291,23 @@
             margin-top: 5px;
         }
 
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn .3s ease;
+            max-width: 380px;
+            font-size: 14px;
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        @keyframes slideIn { from{opacity:0; transform:translateX(80px);} to{opacity:1; transform:translateX(0);} }
+
         @media (max-width: 768px) {
             .profile-grid {
                 grid-template-columns: 1fr;
@@ -285,8 +318,14 @@
             .btn-group {
                 flex-direction: column;
             }
+            .btn-group button {
+                width: 100%;
+            }
             nav {
                 flex-direction: column;
+            }
+            nav a {
+                text-align: center;
             }
         }
     </style>
@@ -304,7 +343,7 @@
 
     <nav>
         <a href="dashboard.html">🏠 Dashboard</a>
-        <a href="profile.html" style="background:#eab308;color:black;">👤 Profile</a>
+        <a href="profile.html" class="active">👤 Profile</a>
         <a href="valuation.html">💰 Valuation</a>
         <a href="inspection.html">🔍 Inspection</a>
         <a href="certificates.html">📜 Certificates</a>
@@ -468,370 +507,387 @@
 </div>
 
 <script>
+(function() {
+    'use strict';
 
-// ============================================
-// SUPABASE - SINGLE SOURCE OF TRUTH
-// ============================================
-const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+    // ─── CONFIG ──────────────────────────────────────────────────
+    const API_BASE = 'http://localhost:8000/api';
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // ─── STATE ──────────────────────────────────────────────────
+    let currentUser = null;
+    let userProfile = null;
 
-let currentUser = null;
-let userProfile = null;
-
-// ============================================
-// CHECK AUTHENTICATION
-// ============================================
-async function checkAuth() {
-    const { data: { user }, error } = await sb.auth.getUser();
-    if (error || !user) {
-        window.location.href = "login.html";
-        return false;
+    // ─── Toast / Error handling ──────────────────────────────
+    function showToast(message, type = 'info') {
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.className = `toast toast-${type}`;
+        div.textContent = message;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 5000);
     }
-    currentUser = user;
-    return true;
-}
 
-// ============================================
-// LOAD USER PROFILE FROM SUPABASE
-// ============================================
-async function loadProfile() {
-    try {
-        // Get user profile from profiles table
-        const { data: profile, error } = await sb
-            .from('profiles')
-            .select('*')
-            .eq('id', currentUser.id)
-            .single();
-        
-        if (error && error.code !== 'PGRST116') {
-            console.error('Error loading profile:', error);
+    function showError(message) {
+        const errorDiv = document.getElementById('errorMsg');
+        errorDiv.innerHTML = message;
+        errorDiv.style.display = 'block';
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 5000);
+        showToast(message, 'error');
+    }
+
+    function showSuccess(message) {
+        const successDiv = document.getElementById('successMsg');
+        successDiv.innerHTML = message;
+        successDiv.style.display = 'block';
+        setTimeout(() => {
+            successDiv.style.display = 'none';
+        }, 3000);
+        showToast(message, 'success');
+    }
+
+    // ─── Token helpers ──────────────────────────────────────────
+    function getAuthToken() {
+        return localStorage.getItem('access_token');
+    }
+
+    function getAuthHeaders() {
+        const token = getAuthToken();
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        };
+    }
+
+    // ─── Check Authentication ──────────────────────────────────
+    async function checkAuth() {
+        const token = getAuthToken();
+        if (!token) {
+            window.location.href = "login.html";
+            return false;
         }
-        
-        userProfile = profile || {};
-        
-        // Populate form fields
-        document.getElementById('email').value = currentUser.email || '';
-        document.getElementById('userId').value = currentUser.id;
-        document.getElementById('fullName').value = userProfile.full_name || '';
-        document.getElementById('phone').value = userProfile.phone || '';
-        document.getElementById('company').value = userProfile.company || '';
-        
-        // Set avatar
-        const avatarInitial = (userProfile.full_name || currentUser.email || 'U').charAt(0).toUpperCase();
-        document.getElementById('avatar').innerHTML = avatarInitial;
-        
-        // Member since
-        const memberSince = currentUser.created_at ? new Date(currentUser.created_at).toLocaleDateString() : 'N/A';
-        document.getElementById('memberSince').value = memberSince;
-        
-        // Last login (from user metadata or current time)
-        const lastLogin = userProfile.last_login ? new Date(userProfile.last_login).toLocaleString() : new Date().toLocaleString();
-        document.getElementById('lastLogin').value = lastLogin;
-        
-        // Load statistics
-        await loadStatistics();
-        
-        // Load preferences
-        loadPreferences();
-        
-    } catch (error) {
-        console.error('Error loading profile:', error);
-        showError('Failed to load profile: ' + error.message);
-    }
-}
 
-// ============================================
-// LOAD USER STATISTICS
-// ============================================
-async function loadStatistics() {
-    try {
-        const [vehicles, valuations, inspections, certificates] = await Promise.all([
-            sb.from('vehicles').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id),
-            sb.from('valuations').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id),
-            sb.from('inspections').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id),
-            sb.from('certificates').select('*', { count: 'exact', head: true }).eq('user_id', currentUser.id)
-        ]);
-        
-        document.getElementById('totalVehicles').innerText = vehicles.count || 0;
-        document.getElementById('totalValuations').innerText = valuations.count || 0;
-        document.getElementById('totalInspections').innerText = inspections.count || 0;
-        document.getElementById('totalCertificates').innerText = certificates.count || 0;
-        
-    } catch (error) {
-        console.error('Error loading statistics:', error);
-    }
-}
-
-// ============================================
-// UPDATE PROFILE
-// ============================================
-async function updateProfile() {
-    const updateBtn = event.target;
-    updateBtn.disabled = true;
-    updateBtn.innerHTML = '<span class="spinner"></span> Saving...';
-    
-    try {
-        const fullName = document.getElementById('fullName').value;
-        const phone = document.getElementById('phone').value;
-        const company = document.getElementById('company').value;
-        
-        // Update profiles table
-        const { error } = await sb
-            .from('profiles')
-            .upsert({
-                id: currentUser.id,
-                full_name: fullName,
-                phone: phone,
-                company: company,
-                updated_at: new Date().toISOString()
+        try {
+            const response = await fetch(`${API_BASE}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
-        
-        if (error) throw error;
-        
-        // Update avatar
-        const avatarInitial = (fullName || currentUser.email || 'U').charAt(0).toUpperCase();
-        document.getElementById('avatar').innerHTML = avatarInitial;
-        
-        showSuccess('Profile updated successfully!');
-        
-    } catch (error) {
-        showError('Error updating profile: ' + error.message);
-    } finally {
-        updateBtn.disabled = false;
-        updateBtn.innerHTML = '💾 Save Changes';
-    }
-}
 
-// ============================================
-// CHANGE PASSWORD
-// ============================================
-async function changePassword() {
-    const currentPassword = document.getElementById('currentPassword').value;
-    const newPassword = document.getElementById('newPassword').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
-    
-    if (!currentPassword || !newPassword || !confirmPassword) {
-        showError('Please fill in all password fields');
-        return;
-    }
-    
-    if (newPassword !== confirmPassword) {
-        showError('New passwords do not match');
-        return;
-    }
-    
-    if (newPassword.length < 6) {
-        showError('Password must be at least 6 characters');
-        return;
-    }
-    
-    const updateBtn = event.target;
-    updateBtn.disabled = true;
-    updateBtn.innerHTML = '<span class="spinner"></span> Updating...';
-    
-    try {
-        // First verify current password by attempting to sign in
-        const { error: signInError } = await sb.auth.signInWithPassword({
-            email: currentUser.email,
-            password: currentPassword
-        });
-        
-        if (signInError) {
-            throw new Error('Current password is incorrect');
+            if (!response.ok) {
+                localStorage.removeItem('access_token');
+                window.location.href = "login.html";
+                return false;
+            }
+
+            currentUser = await response.json();
+            return true;
+        } catch (error) {
+            console.error('Auth check failed:', error);
+            window.location.href = "login.html";
+            return false;
         }
-        
-        // Update password
-        const { error } = await sb.auth.updateUser({
-            password: newPassword
-        });
-        
-        if (error) throw error;
-        
-        // Clear password fields
-        document.getElementById('currentPassword').value = '';
-        document.getElementById('newPassword').value = '';
-        document.getElementById('confirmPassword').value = '';
-        
-        showSuccess('Password updated successfully! Please login again.');
-        
-        setTimeout(() => {
-            sb.auth.signOut();
-            window.location.href = 'login.html';
-        }, 2000);
-        
-    } catch (error) {
-        showError('Error updating password: ' + error.message);
-        updateBtn.disabled = false;
-        updateBtn.innerHTML = '🔒 Update Password';
     }
-}
 
-// ============================================
-// SAVE PREFERENCES
-// ============================================
-function savePreferences() {
-    const preferences = {
-        emailNotifications: document.getElementById('emailNotifications').value,
-        currency: document.getElementById('currency').value,
-        language: document.getElementById('language').value,
-        twoFactor: document.getElementById('twoFactor').value
+    // ─── Load User Profile ──────────────────────────────────────
+    async function loadProfile() {
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Not authenticated');
+
+            // Get user profile
+            const response = await fetch(`${API_BASE}/users/profile`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load profile');
+            }
+
+            userProfile = await response.json();
+
+            // Populate form fields
+            document.getElementById('email').value = currentUser.email || '';
+            document.getElementById('userId').value = currentUser.id || currentUser.sub || 'N/A';
+            document.getElementById('fullName').value = userProfile.full_name || '';
+            document.getElementById('phone').value = userProfile.phone || '';
+            document.getElementById('company').value = userProfile.company || '';
+
+            // Set avatar
+            const avatarInitial = (userProfile.full_name || currentUser.email || 'U').charAt(0).toUpperCase();
+            document.getElementById('avatar').innerHTML = avatarInitial;
+
+            // Member since
+            const memberSince = userProfile.created_at ? new Date(userProfile.created_at).toLocaleDateString() : 'N/A';
+            document.getElementById('memberSince').value = memberSince;
+
+            // Last login
+            const lastLogin = userProfile.last_login ? new Date(userProfile.last_login).toLocaleString() : new Date().toLocaleString();
+            document.getElementById('lastLogin').value = lastLogin;
+
+            // Load statistics
+            await loadStatistics();
+
+            // Load preferences
+            loadPreferences();
+
+        } catch (error) {
+            console.error('Error loading profile:', error);
+            showError('Failed to load profile: ' + error.message);
+        }
+    }
+
+    // ─── Load User Statistics ──────────────────────────────────
+    async function loadStatistics() {
+        try {
+            const token = getAuthToken();
+            if (!token) return;
+
+            const response = await fetch(`${API_BASE}/users/stats`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) return;
+
+            const stats = await response.json();
+
+            document.getElementById('totalVehicles').innerText = stats.total_vehicles || 0;
+            document.getElementById('totalValuations').innerText = stats.total_valuations || 0;
+            document.getElementById('totalInspections').innerText = stats.total_inspections || 0;
+            document.getElementById('totalCertificates').innerText = stats.total_certificates || 0;
+
+        } catch (error) {
+            console.error('Error loading statistics:', error);
+        }
+    }
+
+    // ─── Update Profile ──────────────────────────────────────────
+    window.updateProfile = async function() {
+        const updateBtn = event.target;
+        updateBtn.disabled = true;
+        updateBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Not authenticated');
+
+            const fullName = document.getElementById('fullName').value;
+            const phone = document.getElementById('phone').value;
+            const company = document.getElementById('company').value;
+
+            const response = await fetch(`${API_BASE}/users/profile`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    full_name: fullName,
+                    phone: phone,
+                    company: company
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Failed to update profile');
+            }
+
+            // Update avatar
+            const avatarInitial = (fullName || currentUser.email || 'U').charAt(0).toUpperCase();
+            document.getElementById('avatar').innerHTML = avatarInitial;
+
+            showSuccess('Profile updated successfully!');
+
+        } catch (error) {
+            showError('Error updating profile: ' + error.message);
+        } finally {
+            updateBtn.disabled = false;
+            updateBtn.innerHTML = '💾 Save Changes';
+        }
     };
-    
-    localStorage.setItem('user_preferences', JSON.stringify(preferences));
-    showSuccess('Preferences saved successfully!');
-}
 
-// ============================================
-// LOAD PREFERENCES
-// ============================================
-function loadPreferences() {
-    const saved = localStorage.getItem('user_preferences');
-    if (saved) {
-        const prefs = JSON.parse(saved);
-        document.getElementById('emailNotifications').value = prefs.emailNotifications || 'all';
-        document.getElementById('currency').value = prefs.currency || 'KES';
-        document.getElementById('language').value = prefs.language || 'en';
-        document.getElementById('twoFactor').value = prefs.twoFactor || 'disabled';
+    // ─── Change Password ──────────────────────────────────────────
+    window.changePassword = async function() {
+        const currentPassword = document.getElementById('currentPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            showError('Please fill in all password fields');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            showError('New passwords do not match');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            showError('Password must be at least 6 characters');
+            return;
+        }
+
+        const updateBtn = event.target;
+        updateBtn.disabled = true;
+        updateBtn.innerHTML = '<span class="spinner"></span> Updating...';
+
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Not authenticated');
+
+            const response = await fetch(`${API_BASE}/auth/change-password`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    current_password: currentPassword,
+                    new_password: newPassword
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Failed to update password');
+            }
+
+            // Clear password fields
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+
+            showSuccess('Password updated successfully! Please login again.');
+
+            setTimeout(() => {
+                localStorage.removeItem('access_token');
+                window.location.href = 'login.html';
+            }, 2000);
+
+        } catch (error) {
+            showError('Error updating password: ' + error.message);
+            updateBtn.disabled = false;
+            updateBtn.innerHTML = '🔒 Update Password';
+        }
+    };
+
+    // ─── Save Preferences ──────────────────────────────────────────
+    window.savePreferences = function() {
+        const preferences = {
+            emailNotifications: document.getElementById('emailNotifications').value,
+            currency: document.getElementById('currency').value,
+            language: document.getElementById('language').value,
+            twoFactor: document.getElementById('twoFactor').value
+        };
+
+        localStorage.setItem('user_preferences', JSON.stringify(preferences));
+        showSuccess('Preferences saved successfully!');
+    };
+
+    // ─── Load Preferences ──────────────────────────────────────────
+    function loadPreferences() {
+        const saved = localStorage.getItem('user_preferences');
+        if (saved) {
+            const prefs = JSON.parse(saved);
+            document.getElementById('emailNotifications').value = prefs.emailNotifications || 'all';
+            document.getElementById('currency').value = prefs.currency || 'KES';
+            document.getElementById('language').value = prefs.language || 'en';
+            document.getElementById('twoFactor').value = prefs.twoFactor || 'disabled';
+        }
     }
-}
 
-// ============================================
-// REFRESH PROFILE
-// ============================================
-async function refreshProfile() {
-    const refreshBtn = event.target;
-    refreshBtn.disabled = true;
-    refreshBtn.innerHTML = '<span class="spinner"></span> Refreshing...';
-    
-    await loadProfile();
-    await loadStatistics();
-    
-    refreshBtn.disabled = false;
-    refreshBtn.innerHTML = '🔄 Refresh';
-    showSuccess('Profile refreshed!');
-}
+    // ─── Refresh Profile ──────────────────────────────────────────
+    window.refreshProfile = async function() {
+        const refreshBtn = event.target;
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = '<span class="spinner"></span> Refreshing...';
 
-// ============================================
-// CHANGE AVATAR
-// ============================================
-function changeAvatar() {
-    const emojis = ['🚗', '👤', '⭐', '🏆', '🔧', '💰', '📜', '🔍', '🛡️', '✅'];
-    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-    document.getElementById('avatar').innerHTML = randomEmoji;
-    showSuccess('Avatar updated!');
-}
-
-// ============================================
-// DELETE ACCOUNT
-// ============================================
-async function deleteAccount() {
-    const confirmed = confirm(
-        '⚠️ WARNING: This action is irreversible!\n\n' +
-        'Deleting your account will permanently remove:\n' +
-        '- All your vehicles\n' +
-        '- All valuations\n' +
-        '- All inspections\n' +
-        '- All certificates\n\n' +
-        'Type "DELETE" to confirm.'
-    );
-    
-    if (!confirmed) return;
-    
-    const confirmation = prompt('Type "DELETE" to confirm account deletion:');
-    if (confirmation !== 'DELETE') {
-        showError('Confirmation failed. Account not deleted.');
-        return;
-    }
-    
-    const deleteBtn = event.target;
-    deleteBtn.disabled = true;
-    deleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
-    
-    try {
-        // First delete all user data
-        await sb.from('vehicles').delete().eq('user_id', currentUser.id);
-        await sb.from('valuations').delete().eq('user_id', currentUser.id);
-        await sb.from('inspections').delete().eq('user_id', currentUser.id);
-        await sb.from('certificates').delete().eq('user_id', currentUser.id);
-        await sb.from('profiles').delete().eq('id', currentUser.id);
-        
-        // Delete the user account
-        const { error } = await sb.auth.admin.deleteUser(currentUser.id);
-        
-        if (error) throw error;
-        
-        showSuccess('Account deleted successfully. Redirecting...');
-        
-        setTimeout(() => {
-            window.location.href = 'login.html';
-        }, 2000);
-        
-    } catch (error) {
-        showError('Error deleting account: ' + error.message);
-        deleteBtn.disabled = false;
-        deleteBtn.innerHTML = '🗑️ Delete Account';
-    }
-}
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-function showError(message) {
-    const errorDiv = document.getElementById('errorMsg');
-    errorDiv.innerHTML = message;
-    errorDiv.style.display = 'block';
-    setTimeout(() => {
-        errorDiv.style.display = 'none';
-    }, 5000);
-}
-
-function showSuccess(message) {
-    const successDiv = document.getElementById('successMsg');
-    successDiv.innerHTML = message;
-    successDiv.style.display = 'block';
-    setTimeout(() => {
-        successDiv.style.display = 'none';
-    }, 3000);
-}
-
-// ============================================
-// CREATE PROFILES TABLE (Run once in Supabase)
-// ============================================
-// Run this SQL in Supabase SQL Editor:
-/*
-CREATE TABLE IF NOT EXISTS profiles (
-    id UUID REFERENCES auth.users(id) PRIMARY KEY,
-    full_name TEXT,
-    phone TEXT,
-    company TEXT,
-    avatar_url TEXT,
-    last_login TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-*/
-
-// ============================================
-// INITIALIZE
-// ============================================
-async function init() {
-    try {
-        const isAuth = await checkAuth();
-        if (!isAuth) return;
-        
         await loadProfile();
-        console.log('AUTO-V Profile initialized successfully');
-        
-    } catch (err) {
-        console.error('Initialization Error:', err);
-        showError('System initialization failed: ' + err.message);
+        await loadStatistics();
+
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = '🔄 Refresh';
+        showSuccess('Profile refreshed!');
+    };
+
+    // ─── Change Avatar ──────────────────────────────────────────
+    window.changeAvatar = function() {
+        const emojis = ['🚗', '👤', '⭐', '🏆', '🔧', '💰', '📜', '🔍', '🛡️', '✅'];
+        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+        document.getElementById('avatar').innerHTML = randomEmoji;
+        showSuccess('Avatar updated!');
+    };
+
+    // ─── Delete Account ──────────────────────────────────────────
+    window.deleteAccount = async function() {
+        const confirmed = confirm(
+            '⚠️ WARNING: This action is irreversible!\n\n' +
+            'Deleting your account will permanently remove:\n' +
+            '- All your vehicles\n' +
+            '- All valuations\n' +
+            '- All inspections\n' +
+            '- All certificates\n\n' +
+            'Type "DELETE" to confirm.'
+        );
+
+        if (!confirmed) return;
+
+        const confirmation = prompt('Type "DELETE" to confirm account deletion:');
+        if (confirmation !== 'DELETE') {
+            showError('Confirmation failed. Account not deleted.');
+            return;
+        }
+
+        const deleteBtn = event.target;
+        deleteBtn.disabled = true;
+        deleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
+
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Not authenticated');
+
+            const response = await fetch(`${API_BASE}/users/delete`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Failed to delete account');
+            }
+
+            showSuccess('Account deleted successfully. Redirecting...');
+            localStorage.removeItem('access_token');
+
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 2000);
+
+        } catch (error) {
+            showError('Error deleting account: ' + error.message);
+            deleteBtn.disabled = false;
+            deleteBtn.innerHTML = '🗑️ Delete Account';
+        }
+    };
+
+    // ─── Init ──────────────────────────────────────────────────
+    async function init() {
+        try {
+            const isAuth = await checkAuth();
+            if (!isAuth) return;
+
+            await loadProfile();
+            console.log('AUTO-V Profile initialized successfully');
+
+        } catch (err) {
+            console.error('Initialization Error:', err);
+            showError('System initialization failed: ' + err.message);
+        }
     }
-}
 
-document.addEventListener('DOMContentLoaded', init);
+    // Start when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 
+})();
 </script>
 
 </body>
