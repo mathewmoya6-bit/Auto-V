@@ -8,6 +8,11 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Import API Client (for auth detection) -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    
     <style>
         /* ─── RESET & ROOT ─── */
         *,
@@ -177,6 +182,12 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 30px var(--gold-glow);
         }
+        .btn-gold.dashboard-btn {
+            background: linear-gradient(135deg, var(--emerald), #059669);
+        }
+        .btn-gold.dashboard-btn:hover {
+            box-shadow: 0 4px 30px rgba(16, 185, 129, 0.3);
+        }
         .nav-mobile-toggle {
             display: none;
             background: none;
@@ -184,6 +195,23 @@
             color: var(--text-primary);
             font-size: 24px;
             cursor: pointer;
+        }
+        .user-avatar-small {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--gold);
+            color: var(--bg-deep);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .user-avatar-small:hover {
+            transform: scale(1.05);
         }
 
         /* ─── HERO SPLIT ─── */
@@ -1098,6 +1126,25 @@
             font-size: 14px;
         }
 
+        /* ─── TOAST OVERRIDE ─── */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Inter', system-ui, sans-serif;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
         /* ─── RESPONSIVE ─── */
         @media (max-width: 1024px) {
             .hero-split {
@@ -1285,15 +1332,13 @@
                 <li><a href="#products">Products</a></li>
                 <li><a href="#solutions">Solutions</a></li>
                 <li><a href="#pricing">Pricing</a></li>
-                <li><a href="#">API</a></li>
-                <li><a href="#">Resources</a></li>
-                <li><a href="#">About</a></li>
+                <li><a href="/api/docs">API</a></li>
+                <li><a href="#resources">Resources</a></li>
+                <li><a href="#about">About</a></li>
             </ul>
         </div>
-        <div class="nav-right">
-            <a href="login.html" class="btn-outline">Login</a>
-            <a href="register.html" class="btn-gold">Start Free</a>
-            <button class="nav-mobile-toggle" aria-label="Toggle menu">☰</button>
+        <div class="nav-right" id="navRight">
+            <!-- Dynamically populated -->
         </div>
     </nav>
 
@@ -1318,7 +1363,7 @@
                     <a href="instant-value.html" class="btn-hero-primary">
                         <i data-lucide="search"></i> Value My Vehicle
                     </a>
-                    <a href="#demo" class="btn-hero-secondary">
+                    <a href="#demo" class="btn-hero-secondary" onclick="event.preventDefault(); showDemo();">
                         <i data-lucide="play-circle"></i> Watch Demo
                     </a>
                 </div>
@@ -1408,8 +1453,10 @@
     <section class="quick-tools" id="search">
         <div class="container">
             <div class="search-bar-wrap">
-                <input type="text" placeholder="Search Registration, VIN, or QR Code" />
-                <a href="instant-value.html" class="btn-search"><i data-lucide="search"></i> Search</a>
+                <input type="text" id="searchInput" placeholder="Search Registration, VIN, or QR Code" />
+                <a href="#" class="btn-search" onclick="event.preventDefault(); handleSearch();">
+                    <i data-lucide="search"></i> Search
+                </a>
             </div>
             <div class="tools-grid">
                 <a href="vin-decoder.html" class="tool-chip"><i data-lucide="scan"></i> VIN Decoder</a>
@@ -1530,8 +1577,12 @@
                     <div class="item"><div class="label">QR Code</div><div class="val"><i data-lucide="qr-code" style="stroke:var(--gold);width:28px;"></i></div></div>
                 </div>
                 <div class="report-actions">
-                    <button class="btn-gold" style="padding:12px 28px;font-size:14px;"><i data-lucide="download"></i> Download PDF</button>
-                    <button class="btn-outline" style="padding:12px 28px;font-size:14px;"><i data-lucide="share-2"></i> Share Report</button>
+                    <button class="btn-gold" style="padding:12px 28px;font-size:14px;" onclick="handleDownloadReport()">
+                        <i data-lucide="download"></i> Download PDF
+                    </button>
+                    <button class="btn-outline" style="padding:12px 28px;font-size:14px;" onclick="handleShareReport()">
+                        <i data-lucide="share-2"></i> Share Report
+                    </button>
                 </div>
             </div>
         </div>
@@ -1723,24 +1774,24 @@
             </div>
             <div class="footer-col">
                 <h4>Company</h4>
-                <a href="#">About</a>
-                <a href="#">Careers</a>
-                <a href="#">Blog</a>
-                <a href="#">Contact</a>
+                <a href="#about">About</a>
+                <a href="#careers">Careers</a>
+                <a href="#blog">Blog</a>
+                <a href="#contact">Contact</a>
             </div>
             <div class="footer-col">
                 <h4>Resources</h4>
-                <a href="#">API</a>
-                <a href="#">Developers</a>
-                <a href="#">Support</a>
-                <a href="#">Documentation</a>
+                <a href="/api/docs">API</a>
+                <a href="#developers">Developers</a>
+                <a href="#support">Support</a>
+                <a href="#docs">Documentation</a>
             </div>
             <div class="footer-col">
                 <h4>Legal</h4>
-                <a href="#">Privacy</a>
-                <a href="#">Terms</a>
-                <a href="#">Security</a>
-                <a href="#">GDPR</a>
+                <a href="#privacy">Privacy</a>
+                <a href="#terms">Terms</a>
+                <a href="#security">Security</a>
+                <a href="#gdpr">GDPR</a>
             </div>
         </div>
         <div class="footer-bottom">
@@ -1751,7 +1802,15 @@
     <!-- ===== SCRIPTS ===== -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // ─── Lucide Icons ──────────────────────────────────────
+            // ─── Check if API client exists ──────────────────────────
+            if (typeof api === 'undefined') {
+                console.warn('API client not loaded - using fallback mode');
+            }
+
+            // ─── Auth-aware Navigation ────────────────────────────────
+            updateNavigation();
+
+            // ─── Lucide Icons ──────────────────────────────────────────
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
@@ -1851,7 +1910,123 @@
                     }
                 });
             }
+
+            // ─── Search Handler ──────────────────────────────────────
+            window.handleSearch = function() {
+                const input = document.getElementById('searchInput');
+                const query = input.value.trim();
+                if (query) {
+                    window.location.href = `/search-results.html?q=${encodeURIComponent(query)}`;
+                } else {
+                    ErrorHandler.showToast('Please enter a registration, VIN, or QR code', 'warning');
+                }
+            };
+
+            // Enter key on search
+            document.getElementById('searchInput')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    window.handleSearch();
+                }
+            });
+
+            // ─── Report Actions ──────────────────────────────────────
+            window.handleDownloadReport = function() {
+                if (isLoggedIn()) {
+                    window.location.href = '/dashboard.html?action=download-report';
+                } else {
+                    ErrorHandler.showToast('Please login to download reports', 'warning');
+                    window.location.href = '/login.html?redirect=/dashboard.html';
+                }
+            };
+
+            window.handleShareReport = function() {
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'AUTO-V Vehicle Valuation Report',
+                        text: 'Check out this vehicle valuation report from AUTO-V',
+                        url: window.location.href
+                    }).catch(() => {});
+                } else {
+                    // Fallback: copy link
+                    navigator.clipboard.writeText(window.location.href).then(() => {
+                        ErrorHandler.showToast('Link copied to clipboard!', 'success');
+                    }).catch(() => {
+                        ErrorHandler.showToast('Share: ' + window.location.href, 'info');
+                    });
+                }
+            };
+
+            // ─── Demo Video ──────────────────────────────────────────
+            window.showDemo = function() {
+                ErrorHandler.showToast('🎬 Demo video coming soon!', 'info');
+            };
         });
+
+        // ─── Auth Functions ────────────────────────────────────────────
+
+        function isLoggedIn() {
+            return !!localStorage.getItem('access_token');
+        }
+
+        function getUserInitials() {
+            try {
+                const token = localStorage.getItem('access_token');
+                if (!token) return '?';
+                // Try to decode JWT to get user info
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const email = payload.email || payload.sub || '';
+                return email.charAt(0).toUpperCase() || '?';
+            } catch {
+                return '?';
+            }
+        }
+
+        async function updateNavigation() {
+            const navRight = document.getElementById('navRight');
+            
+            if (isLoggedIn()) {
+                // User is logged in - show dashboard link and avatar
+                navRight.innerHTML = `
+                    <a href="dashboard.html" class="btn-gold dashboard-btn">
+                        <i data-lucide="layout-dashboard"></i> Dashboard
+                    </a>
+                    <div class="user-avatar-small" onclick="window.location.href='profile.html'" title="My Profile">
+                        ${getUserInitials()}
+                    </div>
+                `;
+            } else {
+                // User is not logged in - show login/register buttons
+                navRight.innerHTML = `
+                    <a href="login.html" class="btn-outline">Login</a>
+                    <a href="register.html" class="btn-gold">Start Free</a>
+                    <button class="nav-mobile-toggle" aria-label="Toggle menu">☰</button>
+                `;
+            }
+
+            // Re-initialize Lucide icons for new elements
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        // ─── Expose functions globally ──────────────────────────────────
+        window.isLoggedIn = isLoggedIn;
+        window.getUserInitials = getUserInitials;
+        window.updateNavigation = updateNavigation;
+        window.handleSearch = window.handleSearch || function() {};
+        window.handleDownloadReport = window.handleDownloadReport || function() {};
+        window.handleShareReport = window.handleShareReport || function() {};
+        window.showDemo = window.showDemo || function() {};
+
+        // ─── Handle storage events for cross-tab auth ──────────────────
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'access_token') {
+                updateNavigation();
+            }
+        });
+
+        // ─── Periodically check auth status ────────────────────────────
+        setInterval(updateNavigation, 30000); // Check every 30 seconds
     </script>
 
 </body>
