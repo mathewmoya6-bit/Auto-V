@@ -56,6 +56,7 @@
             border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
+            transition: background 0.2s;
         }
         .logout-btn:hover {
             background: #b91c1c;
@@ -106,6 +107,7 @@
             font-size: 12px;
             font-weight: 600;
             min-width: 80px;
+            transition: all 0.3s;
         }
         .progress-step.active {
             background: #eab308;
@@ -183,13 +185,6 @@
             background: #555;
             cursor: not-allowed;
             transform: none;
-        }
-        .btn-danger {
-            background: #dc2626;
-            color: white;
-        }
-        .btn-danger:hover {
-            background: #b91c1c;
         }
         .nav-buttons {
             display: flex;
@@ -370,33 +365,29 @@
                 transform: translateX(0);
             }
         }
-        .debug-info {
-            background: #1e293b;
-            padding: 12px;
+        .service-status {
+            padding: 10px;
             border-radius: 8px;
-            font-size: 12px;
-            color: #94a3b8;
-            margin-top: 10px;
-            border: 1px solid #334155;
+            margin-bottom: 15px;
             display: none;
         }
-        .debug-info.show {
+        .service-status.info {
+            background: #1e3a5f;
+            color: #93c5fd;
+            border-left: 4px solid #3b82f6;
             display: block;
         }
-        .debug-info .error {
-            color: #ef4444;
+        .service-status.success {
+            background: #14532d;
+            color: #bbf7d0;
+            border-left: 4px solid #22c55e;
+            display: block;
         }
-        .debug-info .success {
-            color: #22c55e;
-        }
-        .debug-info pre {
-            font-size: 10px;
-            margin-top: 5px;
-            background: #0b1120;
-            padding: 8px;
-            border-radius: 4px;
-            max-height: 100px;
-            overflow: auto;
+        .service-status.error {
+            background: #7f1d1d;
+            color: #fecaca;
+            border-left: 4px solid #ef4444;
+            display: block;
         }
         @media (max-width: 600px) {
             header {
@@ -440,7 +431,10 @@
         <div id="step1" class="card step active">
             <h2 style="color:#eab308;margin-bottom:15px;">🔧 Choose a Service</h2>
             <p style="color:#94a3b8;margin-bottom:20px;">Select the service you need. Prices are dynamic and updated in real-time.</p>
-            <div id="serviceStatus" style="display:none;padding:10px;border-radius:8px;margin-bottom:15px;"></div>
+            <div id="serviceStatus" class="service-status info">
+                <span class="spinner" style="border-top-color:#eab308;"></span>
+                Loading services...
+            </div>
             <div class="service-cards" id="serviceCards">
                 <div style="text-align:center;padding:30px;color:#94a3b8;">
                     <div class="spinner" style="border-top-color:#eab308;"></div>
@@ -452,8 +446,6 @@
                 <button class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
                 <button class="btn btn-primary" onclick="confirmService()">Next →</button>
             </div>
-            <button onclick="toggleDebug()" style="margin-top:10px;background:#334155;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;">🐞 Toggle Debug</button>
-            <div id="debugInfo" class="debug-info"></div>
         </div>
 
         <!-- STEP 2: DETAILS -->
@@ -461,13 +453,34 @@
             <h2 id="step2Title" style="color:#eab308;margin-bottom:15px;">📝 Enter Vehicle Details</h2>
             <p style="color:#94a3b8;margin-bottom:15px;">Provide the vehicle information for the service.</p>
             <form id="detailsForm">
-                <div class="form-group"><label class="required">Registration Number</label><input type="text" id="regNumber" placeholder="KCA 123A" required></div>
-                <div class="form-group"><label class="required">Make</label><input type="text" id="make" placeholder="Toyota" required></div>
-                <div class="form-group"><label class="required">Model</label><input type="text" id="model" placeholder="Axio" required></div>
-                <div class="form-group"><label class="required">Year</label><input type="number" id="year" placeholder="2020" required min="1950" max="2026"></div>
-                <div class="form-group" id="mileageGroup" style="display:none;"><label>Mileage (km)</label><input type="number" id="mileage" placeholder="50000" min="0"></div>
-                <div class="form-group" id="conditionGroup" style="display:none;"><label>Condition</label>
-                    <select id="condition"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select>
+                <div class="form-group">
+                    <label class="required">Registration Number</label>
+                    <input type="text" id="regNumber" placeholder="KCA 123A" required>
+                </div>
+                <div class="form-group">
+                    <label class="required">Make</label>
+                    <input type="text" id="make" placeholder="Toyota" required>
+                </div>
+                <div class="form-group">
+                    <label class="required">Model</label>
+                    <input type="text" id="model" placeholder="Axio" required>
+                </div>
+                <div class="form-group">
+                    <label class="required">Year</label>
+                    <input type="number" id="year" placeholder="2020" required min="1950" max="2026">
+                </div>
+                <div class="form-group" id="mileageGroup" style="display:none;">
+                    <label>Mileage (km)</label>
+                    <input type="number" id="mileage" placeholder="50000" min="0">
+                </div>
+                <div class="form-group" id="conditionGroup" style="display:none;">
+                    <label>Condition</label>
+                    <select id="condition">
+                        <option value="Excellent">Excellent</option>
+                        <option value="Good" selected>Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
                 </div>
                 <div class="nav-buttons">
                     <button type="button" class="btn btn-secondary" onclick="showStep(1)">← Back</button>
@@ -481,12 +494,22 @@
             <h2 style="color:#eab308;margin-bottom:15px;">💳 Payment</h2>
             <div id="statusMessage" class="status-box"></div>
             <div class="payment-summary">
-                <div class="row"><span class="label">Service</span><span class="value" id="summaryService">-</span></div>
-                <div class="row"><span class="label">Vehicle</span><span class="value" id="summaryVehicle">-</span></div>
-                <div class="row"><span class="label">Amount</span><span class="value" id="summaryAmount" style="font-size:24px;color:#22c55e;font-weight:bold;">KES 0</span></div>
+                <div class="row">
+                    <span class="label">Service</span>
+                    <span class="value" id="summaryService">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">Vehicle</span>
+                    <span class="value" id="summaryVehicle">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">Amount</span>
+                    <span class="value" id="summaryAmount" style="font-size:24px;color:#22c55e;font-weight:bold;">KES 0</span>
+                </div>
             </div>
             <form id="paymentForm">
-                <div class="form-group"><label class="required">M-Pesa Phone Number</label>
+                <div class="form-group">
+                    <label class="required">M-Pesa Phone Number</label>
                     <input type="tel" id="mpesaPhone" placeholder="0712345678" required pattern="[0-9]{10}">
                     <small style="color:#94a3b8;font-size:11px;">Enter your M-Pesa registered phone number (e.g., 0712345678)</small>
                 </div>
@@ -505,7 +528,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL - DYNAMIC SERVICE MAPPING
+        // AUTO-V CUSTOMER PORTAL - PRODUCTION READY
         // ============================================================
         (function() {
             if (window.autoVPortalInitialized) return;
@@ -517,7 +540,6 @@
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
             // ─── SERVICE CONFIGURATION ──────────────────────────────
-            // Map database service keys to display names and icons
             const SERVICE_MAP = {
                 'instant': { icon: '💡', name: 'Instant Value Check', badge: 'popular', page: 'instant-value.html' },
                 'valuation': { icon: '💰', name: 'Professional Valuation', badge: 'premium', page: 'valuation.html' },
@@ -528,7 +550,6 @@
                 'verification': { icon: '✅', name: 'Document Verification', badge: 'new', page: 'verification.html' }
             };
 
-            // Role-based service access (using database keys)
             const ROLE_SERVICES = {
                 'individual': ['instant', 'mileage'],
                 'corporate': ['instant', 'mileage', 'fleet'],
@@ -544,7 +565,6 @@
             let currentUser = null;
             let userRole = 'individual';
             let serviceFees = {};
-            let debugMode = false;
 
             // ─── DOM REFS ──────────────────────────────────────────
             const $ = (id) => document.getElementById(id);
@@ -560,9 +580,6 @@
             const paymentForm = $('paymentForm');
             const statusMessage = $('statusMessage');
             const payBtn = $('payBtn');
-            const resultBox = $('resultBox');
-            const resultContent = $('resultContent');
-            const debugInfo = $('debugInfo');
             const serviceStatus = $('serviceStatus');
 
             // ─── HELPERS ─────────────────────────────────────────────
@@ -589,8 +606,8 @@
             }
 
             function getServiceDisplay(key) {
-                return SERVICE_MAP[key] || { icon: '📄', name: key.charAt(0).toUpperCase() + key.slice(1), badge: '', page: key +
-                        '.html' };
+                return SERVICE_MAP[key] || { icon: '📄', name: key.charAt(0).toUpperCase() + key.slice(1), badge: '',
+                    page: key + '.html' };
             }
 
             function formatName(key) {
@@ -609,38 +626,12 @@
                 return getServiceDisplay(key).page;
             }
 
-            function toggleDebug() {
-                debugMode = !debugMode;
-                debugInfo.classList.toggle('show');
-                if (debugMode) {
-                    updateDebugInfo();
-                }
-            }
-
-            function updateDebugInfo() {
-                const allowedServices = ROLE_SERVICES[userRole] || [];
-                const availableServices = Object.keys(serviceFees).filter(key => allowedServices.includes(key));
-                
-                debugInfo.innerHTML = `
-                    <div><strong>🔍 DEBUG INFO</strong></div>
-                    <div>User Role: <span class="${userRole ? 'success' : 'error'}">${userRole || 'Not set'}</span></div>
-                    <div>User ID: <span class="${currentUser ? 'success' : 'error'}">${currentUser?.id || 'Not logged in'}</span></div>
-                    <div>Services Found: <span class="${Object.keys(serviceFees).length > 0 ? 'success' : 'error'}">${Object.keys(serviceFees).length}</span></div>
-                    <div>Available Services: <span class="${availableServices.length > 0 ? 'success' : 'error'}">${availableServices.join(', ') || 'None'}</span></div>
-                    <div>Selected Service: <span class="${selectedService ? 'success' : 'error'}">${selectedService || 'None'}</span></div>
-                    <div>Service Fee: <span class="${serviceFee > 0 ? 'success' : 'error'}">${serviceFee > 0 ? 'KES ' + serviceFee : 'Not set'}</span></div>
-                    <div>All Fees: <pre>${JSON.stringify(serviceFees, null, 2)}</pre></div>
-                    <div>Allowed Services for Role: <span>${allowedServices.join(', ') || 'None'}</span></div>
-                    <div>Service Map: <pre>${JSON.stringify(SERVICE_MAP, null, 2)}</pre></div>
-                `;
-            }
-
             // ─── LOAD FEES FROM SUPABASE ─────────────────────────────
             async function loadFees() {
                 try {
+                    serviceStatus.className = 'service-status info';
+                    serviceStatus.innerHTML = '<span class="spinner" style="border-top-color:#eab308;"></span> Loading services...';
                     serviceStatus.style.display = 'block';
-                    serviceStatus.className = 'status-box status-info';
-                    serviceStatus.textContent = '⏳ Loading services from database...';
 
                     console.log('🔍 Fetching fees from system_fees table...');
 
@@ -659,19 +650,17 @@
                     if (data && data.length > 0) {
                         serviceFees = {};
                         data.forEach(row => {
-                            // Handle different column names
                             const serviceKey = row.service_type || row.key || row.name;
                             const amount = row.amount || row.fee || row.price || 0;
                             serviceFees[serviceKey] = amount;
                         });
                         console.log('✅ Parsed service fees:', serviceFees);
-                        serviceStatus.className = 'status-box status-success';
-                        serviceStatus.textContent = `✅ Loaded ${Object.keys(serviceFees).length} services from database`;
+                        serviceStatus.className = 'service-status success';
+                        serviceStatus.textContent = `✅ Loaded ${Object.keys(serviceFees).length} services`;
                     } else {
                         console.warn('⚠️ No fees found in database, using defaults');
-                        serviceStatus.className = 'status-box status-warning';
-                        serviceStatus.textContent = '⚠️ No fees in database, using default values';
-                        // Use default fees with database keys
+                        serviceStatus.className = 'service-status info';
+                        serviceStatus.textContent = '⚠️ Using default service prices';
                         serviceFees = {
                             'instant': 1500,
                             'mileage': 1000,
@@ -684,7 +673,6 @@
                     }
 
                     renderServices();
-                    updateDebugInfo();
 
                     setTimeout(() => {
                         serviceStatus.style.display = 'none';
@@ -693,10 +681,9 @@
                     return serviceFees;
                 } catch (error) {
                     console.error('❌ Error loading fees:', error);
-                    serviceStatus.className = 'status-box status-error';
-                    serviceStatus.textContent = `❌ Error loading fees: ${error.message}. Using defaults.`;
-
-                    // Use default fees as fallback
+                    serviceStatus.className = 'service-status error';
+                    serviceStatus.textContent = `❌ Error loading services. Using defaults.`;
+                    
                     serviceFees = {
                         'instant': 1500,
                         'mileage': 1000,
@@ -707,7 +694,6 @@
                         'verification': 750
                     };
                     renderServices();
-                    updateDebugInfo();
 
                     setTimeout(() => {
                         serviceStatus.style.display = 'none';
@@ -730,9 +716,7 @@
                         loadFees();
                         showToast('💰 Service fees updated!', 'warning');
                     })
-                    .subscribe((status) => {
-                        console.log('📡 Subscription status:', status);
-                    });
+                    .subscribe();
             }
 
             // ─── RENDER SERVICES ─────────────────────────────────────
@@ -746,9 +730,8 @@
                 if (availableServices.length === 0) {
                     serviceCards.innerHTML = `
                         <div style="text-align:center;padding:30px;color:#94a3b8;grid-column:1/-1;">
-                            <p style="font-size:18px;margin-bottom:10px;">🚫 No services available for your role</p>
+                            <p style="font-size:18px;margin-bottom:10px;">🚫 No services available</p>
                             <p style="font-size:12px;">Role: ${userRole}</p>
-                            <p style="font-size:12px;margin-top:10px;color:#64748b;">Available roles: individual, corporate, valuer, admin</p>
                             <button onclick="window.location.reload()" style="margin-top:15px;background:#eab308;color:#000;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:600;">🔄 Reload</button>
                         </div>
                     `;
@@ -782,7 +765,6 @@
                 serviceFee = serviceFees[key] || 0;
                 const display = getServiceDisplay(key);
                 selectedServiceMsg.textContent = `✅ Selected: ${display.name} - KES ${serviceFee.toLocaleString()}`;
-                updateDebugInfo();
             };
 
             // ─── CONFIRM SERVICE ─────────────────────────────────────
@@ -971,7 +953,7 @@
 
                     // Success
                     statusBox.className = 'status-box status-success';
-                    statusBox.textContent = '✅ Payment successful! Redirecting to service page...';
+                    statusBox.textContent = '✅ Payment successful! Redirecting...';
                     statusBox.style.display = 'block';
                     btn.innerHTML = '✅ Completed';
                     btn.disabled = true;
@@ -1012,27 +994,9 @@
 
                     showStep(1);
                     console.log('✅ AUTO-V Customer Portal ready');
-
-                    // Show debug info by default if there's an issue
-                    const allowedServices = ROLE_SERVICES[userRole] || [];
-                    const availableServices = Object.keys(serviceFees).filter(key => allowedServices.includes(key));
-                    if (availableServices.length === 0) {
-                        debugInfo.classList.add('show');
-                        debugMode = true;
-                        updateDebugInfo();
-                        showToast('⚠️ No services available for your role. Check debug info.', 'warning');
-                    }
                 } catch (error) {
                     console.error('❌ Init error:', error);
                     showToast('Failed to initialize portal: ' + error.message, 'error');
-
-                    debugInfo.classList.add('show');
-                    debugMode = true;
-                    debugInfo.innerHTML = `
-                        <div><strong>❌ INIT ERROR</strong></div>
-                        <div class="error">${error.message}</div>
-                        <div style="margin-top:10px;font-size:11px;color:#94a3b8;">Check console for more details</div>
-                    `;
                 }
             }
 
@@ -1043,7 +1007,6 @@
             window.logout = logout;
             window.formatName = formatName;
             window.getIcon = getIcon;
-            window.toggleDebug = toggleDebug;
 
             // Start the app
             document.addEventListener('DOMContentLoaded', init);
