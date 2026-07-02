@@ -1,80 +1,249 @@
-<!-- app/templates/email/account_locked.html -->
-{% extends "email/base.html" %}
-
-{% block title %}Account Locked{% endblock %}
-
-{% block content %}
-<h2>Account Security Alert 🔒</h2>
-
-<p>Hello {{ name }},</p>
-
-<div class="alert alert-danger">
-    <strong>⚠️ Account Locked:</strong> Your AUTO-V account has been temporarily locked due to multiple failed login attempts.
-</div>
-
-<h3>What Happened?</h3>
-
-<p>For your security, we have temporarily locked your account after detecting {{ failed_attempts }} consecutive failed login attempts.</p>
-
-<div class="summary-card">
-    <h4 style="margin-top: 0;">Lock Details</h4>
-    
-    <ul class="info-list">
-        <li>
-            <span class="label">Lock Time</span>
-            <span class="value">{{ lock_time }}</span>
-        </li>
-        <li>
-            <span class="label">Attempts</span>
-            <span class="value">{{ failed_attempts }}</span>
-        </li>
-        <li>
-            <span class="label">Lock Duration</span>
-            <span class="value">{{ lock_duration }}</span>
-        </li>
-        <li>
-            <span class="label">IP Address</span>
-            <span class="value">{{ ip_address }}</span>
-        </li>
-        <li>
-            <span class="label">Location</span>
-            <span class="value">{{ location }}</span>
-        </li>
-    </ul>
-</div>
-
-<h3>What You Can Do</h3>
-
-<div class="button-center">
-    <a href="{{ unlock_url }}" class="button">Unlock Account</a>
-</div>
-
-<ul style="padding-left: 20px; margin: 10px 0;">
-    <li>Wait for the lock to expire automatically</li>
-    <li>Reset your password for added security</li>
-    <li>Contact support if this was unexpected</li>
-</ul>
-
-<div class="alert alert-warning">
-    <strong>🔐 Security Tips:</strong>
-    <ul style="margin: 10px 0 0 20px;">
-        <li>Use a strong, unique password</li>
-        <li>Enable two-factor authentication</li>
-        <li>Never share your password with anyone</li>
-        <li>Be cautious of phishing attempts</li>
-    </ul>
-</div>
-
-<p>If you did not attempt to log in multiple times, someone else may be trying to access your account. Please:</p>
-
-<ul style="padding-left: 20px; margin: 10px 0;">
-    <li>Change your password immediately</li>
-    <li>Review your recent account activity</li>
-    <li>Contact our support team for assistance</li>
-</ul>
-
-<p>Need immediate assistance? <a href="{{ base_url|default('#') }}/support">Contact Support</a></p>
-
-<p>Stay safe,<br>
-<strong>The AUTO-V Security Team</strong></p>
-{% endblock %}
+<!-- app/templates/email/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AUTO-V{% endblock %}</title>
+    <style>
+        /* ─── Reset & Base ────────────────────────────────── */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0a0c15;
+            color: #ffffff;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #0f172a;
+            border-radius: 12px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #eab308;
+        }
+        .header h1 {
+            color: #eab308;
+            font-size: 28px;
+            margin: 0;
+            font-weight: 700;
+        }
+        .header .tagline {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            border-top: 1px solid #1e293b;
+            font-size: 12px;
+            color: #64748b;
+        }
+        .footer a {
+            color: #eab308;
+            text-decoration: none;
+        }
+        .footer .social {
+            margin: 10px 0;
+        }
+        .footer .social a {
+            display: inline-block;
+            margin: 0 10px;
+            color: #94a3b8;
+            text-decoration: none;
+        }
+        .footer .social a:hover {
+            color: #eab308;
+        }
+        
+        /* ─── Typography ────────────────────────────────── */
+        h2 {
+            color: #eab308;
+            font-size: 22px;
+            margin-bottom: 20px;
+            border-left: 4px solid #eab308;
+            padding-left: 15px;
+        }
+        h3 {
+            color: #eab308;
+            font-size: 18px;
+            margin: 25px 0 15px 0;
+        }
+        h4 {
+            color: #eab308;
+            font-size: 16px;
+            margin: 15px 0 10px 0;
+        }
+        p {
+            margin: 10px 0;
+            color: #e2e8f0;
+        }
+        a {
+            color: #eab308;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        /* ─── Alerts ────────────────────────────────────── */
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .alert-success {
+            background: #14532d;
+            border-left: 4px solid #22c55e;
+            color: #bbf7d0;
+        }
+        .alert-danger {
+            background: #7f1d1d;
+            border-left: 4px solid #ef4444;
+            color: #fecaca;
+        }
+        .alert-warning {
+            background: #78350f;
+            border-left: 4px solid #eab308;
+            color: #fde68a;
+        }
+        .alert-info {
+            background: #1e3a5f;
+            border-left: 4px solid #3b82f6;
+            color: #bfdbfe;
+        }
+        
+        /* ─── Buttons ────────────────────────────────────── */
+        .button {
+            display: inline-block;
+            padding: 12px 32px;
+            background: #eab308;
+            color: #0a0c10;
+            text-decoration: none;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .button:hover {
+            background: #facc15;
+            transform: translateY(-2px);
+            text-decoration: none;
+        }
+        .button-center {
+            text-align: center;
+            margin: 25px 0;
+        }
+        
+        /* ─── Cards & Lists ────────────────────────────── */
+        .summary-card {
+            background: #1e293b;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            border: 1px solid #334155;
+        }
+        .info-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .info-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #2d3a4e;
+            font-size: 14px;
+        }
+        .info-list li:last-child {
+            border-bottom: none;
+        }
+        .info-list .label {
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        .info-list .value {
+            color: #ffffff;
+            font-weight: 500;
+        }
+        .divider {
+            border-top: 1px solid #1e293b;
+            margin: 20px 0;
+        }
+        
+        /* ─── Responsive ────────────────────────────────── */
+        @media (max-width: 600px) {
+            .container {
+                padding: 15px;
+            }
+            .content {
+                padding: 20px 15px;
+            }
+            .info-list li {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+            .header h1 {
+                font-size: 24px;
+            }
+            h2 {
+                font-size: 20px;
+            }
+            .button {
+                padding: 10px 24px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ─── HEADER ─────────────────────────────────────────── -->
+        <div class="header">
+            <h1>🚗 AUTO-V</h1>
+            <div class="tagline">Vehicle Intelligence Platform</div>
+        </div>
+        
+        <!-- ─── CONTENT ─────────────────────────────────────────── -->
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+        
+        <!-- ─── FOOTER ─────────────────────────────────────────── -->
+        <div class="footer">
+            <div class="social">
+                <a href="{{ base_url }}/" target="_blank">🌐 Website</a>
+                <a href="https://twitter.com/autov" target="_blank">🐦 Twitter</a>
+                <a href="https://linkedin.com/company/autov" target="_blank">💼 LinkedIn</a>
+                <a href="{{ base_url }}/support" target="_blank">📧 Support</a>
+            </div>
+            
+            <p>
+                &copy; {% now "Y" %} AUTO-V Vehicle Intelligence Platform<br>
+                Professional Vehicle Valuation &amp; Inspection Services
+            </p>
+            
+            <p style="margin-top: 10px; font-size: 11px; color: #64748b;">
+                This email was sent to <strong>{{ email }}</strong>.<br>
+                <a href="{{ base_url }}/settings/email-preferences" style="color: #64748b;">Manage email preferences</a> |
+                <a href="{{ base_url }}/unsubscribe" style="color: #64748b;">Unsubscribe</a>
+            </p>
+            
+            <p style="margin-top: 10px; font-size: 11px; color: #64748b;">
+                AUTO-V is a registered trademark.<br>
+                All rights reserved.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
