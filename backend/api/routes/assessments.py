@@ -1,82 +1,48 @@
 """
-Assessment Routes - FastAPI Version
+Assessment Routes - FastAPI Backend
 Vehicle assessment, damage analysis, and risk evaluation
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
 import logging
+import re
 
-from app.core.database import supabase
-from app.core.dependencies import get_current_user
+from app.core.database import get_db, execute_query
+from app.core.dependencies import get_current_user, get_current_active_user, require_role
 from app.services.assessment import run_assessment
 from app.utils.decorators import rate_limit, require_auth, require_role, log_request, handle_errors
+from app.models.assessment import (
+    AssessmentCreate, 
+    AssessmentUpdate, 
+    AssessmentResponse, 
+    AssessmentListResponse,
+    AssessmentType,
+    QuickAssessmentRequest,
+    QuickAssessmentResponse
+)
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/assessments", tags=["Assessments"])
+router = APIRouter(prefix="/api/v1/assessments", tags=["Assessments"])
 
-
-# ─── Pydantic Models ──────────────────────────────────────────
-
-class VehicleAssessmentData(BaseModel):
-    """Vehicle assessment data model"""
-    make: str = Field(..., description="Vehicle make")
-    model: str = Field(..., description="Vehicle model")
-    year: Optional[int] = Field(None, description="Vehicle year")
-    vin: Optional[str] = Field(None, description="Vehicle VIN")
-    registration: Optional[str] = Field(None, description="Vehicle registration")
-    mileage: Optional[int] = Field(None, description="Vehicle mileage")
-    condition: Optional[str] = Field(None, description="Vehicle condition")
-    accident_history: Optional[str] = Field(None, description="Accident history")
-    fuel_type: Optional[str] = Field(None, description="Fuel type")
-    transmission: Optional[str] = Field(None, description="Transmission type")
-    engine_cc: Optional[int] = Field(None, description="Engine capacity")
-    color: Optional[str] = Field(None, description="Vehicle color")
-    location: Optional[str] = Field(None, description="Vehicle location")
-    
-    @validator('vin')
-    def validate_vin(cls, v):
-        if v and len(v) != 17:
-            raise ValueError('VIN must be 17 characters')
-        return v.upper() if v else v
-
-
-class AssessmentRequest(BaseModel):
-    """Assessment request model"""
-    assessment_type: str = Field(..., description="Assessment type")
-    vehicle: VehicleAssessmentData = Field(..., description="Vehicle data")
-    notes: Optional[str] = Field(None, description="Additional notes")
-    images: Optional[List[str]] = Field(None, description="List of image URLs")
-    documents: Optional[List[str]] = Field(None, description="List of document URLs")
-
-
-class AssessmentResponse(BaseModel):
-    """Assessment response model"""
-    success: bool
-    data: Optional[Dict[str, Any]] = None
-    message: Optional[str] = None
-    error: Optional[str] = None
-    assessment_id: Optional[str] = None
-    timestamp: Optional[str] = None
-
-
-# ─── Assessment Types ──────────────────────────────────────────
+# ─── Constants ──────────────────────────────────────────────────
 
 ASSESSMENT_TYPES = {
-    "damage": "Damage Assessment",
-    "risk": "Risk Assessment",
-    "condition": "Condition Assessment",
-    "value": "Value Assessment",
-    "safety": "Safety Assessment",
-    "theft": "Theft Risk Assessment",
-    "insurance": "Insurance Risk Assessment",
-    "comprehensive": "Comprehensive Assessment"
+    "damage": {"name": "Damage Assessment", "description": "Assess vehicle damage and repair costs"},
+    "risk": {"name": "Risk Assessment", "description": "Evaluate vehicle risk factors"},
+    "condition": {"name": "Condition Assessment", "description": "Assess overall vehicle condition"},
+    "value": {"name": "Value Assessment", "description": "Assess vehicle market value"},
+    "safety": {"name": "Safety Assessment", "description": "Evaluate vehicle safety features"},
+    "theft": {"name": "Theft Risk Assessment", "description": "Assess theft risk factors"},
+    "insurance": {"name": "Insurance Risk Assessment", "description": "Evaluate insurance risk factors"},
+    "comprehensive": {"name": "Comprehensive Assessment", "description": "Full vehicle assessment"}
 }
 
+ASSESSMENT_STATUSES = ["pending", "processing", "completed", "failed", "cancelled"]
 
 # ─── Helper Functions ──────────────────────────────────────────
 
@@ -84,16 +50,53 @@ def generate_assessment_id() -> str:
     """Generate a unique assessment ID."""
     return f"ASS-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
 
-
 def validate_assessment_type(assessment_type: str) -> bool:
     """Validate assessment type."""
     return assessment_type in ASSESSMENT_TYPES
 
+def validate_status(status: str) -> bool:
+    """Validate assessment status."""
+    return status in ASSESSMENT_STATUSES
 
 def format_timestamp() -> str:
     """Get formatted timestamp."""
     return datetime.now().isoformat()
 
+def build_assessment_query(user_id: str, filters: Dict[str, Any] = None):
+    """Build assessment query with filters."""
+    query = "SELECT * FROM assessments WHERE user_id = $1"
+    params = [user_id]
+    param_count = 1
+    
+    if filters:
+        if filters.get('assessment_type'):
+            param_count += 1
+            query += f" AND assessment_type = ${param_count}"
+            params.append(filters['assessment_type'])
+        
+        if filters.get('status'):
+            param_count += 1
+            query += f" AND status = ${param_count}"
+            params.append(filters['status'])
+        
+        if filters.get('vehicle_make'):
+            param_count += 1
+            query += f" AND vehicle_data->>'make' ILIKE $${param_count}"
+            params.append(f"%{filters['vehicle_make']}%")
+        
+        if filters.get('date_from'):
+            param_count += 1
+            query += f" AND created_at >= $${param_count}"
+            params.append(filters['date_from'])
+        
+        if filters.get('date_to'):
+            param_count += 1
+            query += f" AND created_at <= $${param_count}"
+            params.append(filters['date_to'])
+    
+    query += " ORDER BY created_at DESC"
+    
+    return query, params
 
 # ─── Routes ──────────────────────────────────────────────────
 
@@ -103,8 +106,8 @@ def format_timestamp() -> str:
 @log_request
 @handle_errors
 async def create_assessment(
-    request: AssessmentRequest,
-    current_user: dict = Depends(get_current_user)
+    request: AssessmentCreate,
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Create a new vehicle assessment.
@@ -121,70 +124,75 @@ async def create_assessment(
     - `data`: Assessment results
     - `assessment_id`: Unique assessment ID
     - `message`: Status message
-    - `error`: Error message if unsuccessful
     """
     try:
         # Validate assessment type
         if not validate_assessment_type(request.assessment_type):
-            return AssessmentResponse(
-                success=False,
-                error=f"Invalid assessment type. Must be one of: {', '.join(ASSESSMENT_TYPES.keys())}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid assessment type. Must be one of: {', '.join(ASSESSMENT_TYPES.keys())}"
             )
-        
-        # Get vehicle data
-        vehicle = request.vehicle.dict()
         
         # Generate assessment ID
         assessment_id = generate_assessment_id()
         
-        # Prepare assessment data
-        assessment_data = {
-            "user_id": current_user.get("id"),
-            "assessment_type": request.assessment_type,
+        # Get vehicle data as dict
+        vehicle_data = request.vehicle.dict()
+        
+        # Run assessment
+        result = run_assessment(request.assessment_type, vehicle_data)
+        
+        # Prepare data for insertion
+        insert_data = {
             "assessment_id": assessment_id,
-            "vehicle": vehicle,
+            "user_id": current_user['id'],
+            "assessment_type": request.assessment_type,
+            "vehicle_data": vehicle_data,
+            "result": result,
             "notes": request.notes,
             "images": request.images or [],
             "documents": request.documents or [],
-            "status": "processing",
-            "created_at": format_timestamp()
-        }
-        
-        # Run assessment
-        result = run_assessment(request.assessment_type, **assessment_data)
-        
-        # Save to Supabase
-        save_data = {
-            "user_id": current_user.get("id"),
-            "assessment_type": request.assessment_type,
-            "assessment_id": assessment_id,
-            "vehicle_data": vehicle,
-            "result": result,
             "status": "completed",
             "created_at": format_timestamp(),
             "updated_at": format_timestamp()
         }
         
-        # Save to database
-        db_response = supabase.table("assessments").insert(save_data).execute()
+        # Insert into database
+        columns = ', '.join(insert_data.keys())
+        placeholders = ', '.join([f'${i+1}' for i in range(len(insert_data))])
+        values = list(insert_data.values())
         
-        if db_response.data:
-            assessment_id = db_response.data[0].get("id")
-            result["id"] = assessment_id
+        query = f"""
+            INSERT INTO assessments ({columns}) 
+            VALUES ({placeholders}) 
+            RETURNING id, assessment_id, created_at
+        """
+        
+        db_result = await execute_query(query, values)
+        
+        if not db_result or len(db_result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save assessment"
+            )
+        
+        assessment_record = db_result[0]
         
         return AssessmentResponse(
             success=True,
             data=result,
             assessment_id=assessment_id,
-            message=f"{ASSESSMENT_TYPES[request.assessment_type]} completed successfully",
+            message=f"{ASSESSMENT_TYPES[request.assessment_type]['name']} completed successfully",
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Create assessment error: {str(e)}", exc_info=True)
-        return AssessmentResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create assessment: {str(e)}"
         )
 
 
@@ -195,7 +203,7 @@ async def create_assessment(
 @handle_errors
 async def get_assessment(
     assessment_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get assessment by ID.
@@ -206,46 +214,49 @@ async def get_assessment(
     **Response:**
     - `success`: Boolean indicating success
     - `data`: Assessment data
-    - `error`: Error message if unsuccessful
     """
     try:
-        # Get assessment from database
-        response = supabase.table("assessments") \
-            .select("*") \
-            .eq("assessment_id", assessment_id) \
-            .execute()
+        # Query assessment from database
+        query = """
+            SELECT * FROM assessments 
+            WHERE assessment_id = $1
+        """
         
-        if not response.data:
-            return AssessmentResponse(
-                success=False,
-                error="Assessment not found"
+        result = await execute_query(query, [assessment_id])
+        
+        if not result or len(result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assessment not found"
             )
         
-        assessment = response.data[0]
+        assessment = result[0]
         
         # Check permissions
-        if assessment.get("user_id") != current_user.get("id") and current_user.get("role") not in ["admin", "super_admin"]:
-            return AssessmentResponse(
-                success=False,
-                error="Access denied"
+        if assessment['user_id'] != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
             )
         
         return AssessmentResponse(
             success=True,
             data=assessment,
-            assessment_id=assessment.get("assessment_id"),
+            assessment_id=assessment['assessment_id'],
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get assessment error: {str(e)}", exc_info=True)
-        return AssessmentResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve assessment: {str(e)}"
         )
 
 
-@router.get("/", response_model=AssessmentResponse)
+@router.get("/", response_model=AssessmentListResponse)
 @rate_limit(limit=30, per=60)
 @require_auth
 @log_request
@@ -255,7 +266,10 @@ async def list_assessments(
     offset: int = Query(0, ge=0),
     assessment_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
-    current_user: dict = Depends(get_current_user)
+    vehicle_make: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     List user assessments.
@@ -265,47 +279,94 @@ async def list_assessments(
     - `offset`: Number of results to skip (default: 0)
     - `assessment_type`: Filter by assessment type
     - `status`: Filter by status
+    - `vehicle_make`: Filter by vehicle make
+    - `date_from`: Filter from date
+    - `date_to`: Filter to date
     
     **Response:**
     - `success`: Boolean indicating success
     - `data`: List of assessments
-    - `count`: Total count
-    - `error`: Error message if unsuccessful
+    - `total`: Total count
     """
     try:
-        # Build query
-        query = supabase.table("assessments") \
-            .select("*") \
-            .eq("user_id", current_user.get("id"))
-        
-        # Apply filters
+        # Build filters
+        filters = {}
         if assessment_type:
-            query = query.eq("assessment_type", assessment_type)
+            filters['assessment_type'] = assessment_type
         if status:
-            query = query.eq("status", status)
+            filters['status'] = status
+        if vehicle_make:
+            filters['vehicle_make'] = vehicle_make
+        if date_from:
+            filters['date_from'] = date_from
+        if date_to:
+            filters['date_to'] = date_to
         
-        # Apply pagination
-        query = query.order("created_at", desc=True) \
-            .range(offset, offset + limit - 1)
+        # Get total count
+        count_query = """
+            SELECT COUNT(*) as total FROM assessments 
+            WHERE user_id = $1
+        """
+        count_params = [current_user['id']]
         
-        response = query.execute()
+        if assessment_type:
+            count_query += " AND assessment_type = $2"
+            count_params.append(assessment_type)
+        if status:
+            count_query += " AND status = $3"
+            count_params.append(status)
         
-        return AssessmentResponse(
+        count_result = await execute_query(count_query, count_params)
+        total = count_result[0]['total'] if count_result else 0
+        
+        # Get assessments with pagination
+        query = """
+            SELECT * FROM assessments 
+            WHERE user_id = $1
+        """
+        params = [current_user['id']]
+        param_idx = 2
+        
+        if assessment_type:
+            query += f" AND assessment_type = ${param_idx}"
+            params.append(assessment_type)
+            param_idx += 1
+        if status:
+            query += f" AND status = ${param_idx}"
+            params.append(status)
+            param_idx += 1
+        if vehicle_make:
+            query += f" AND vehicle_data->>'make' ILIKE $${param_idx}"
+            params.append(f"%{vehicle_make}%")
+            param_idx += 1
+        if date_from:
+            query += f" AND created_at >= $${param_idx}"
+            params.append(date_from)
+            param_idx += 1
+        if date_to:
+            query += f" AND created_at <= $${param_idx}"
+            params.append(date_to)
+            param_idx += 1
+        
+        query += f" ORDER BY created_at DESC LIMIT ${param_idx} OFFSET ${param_idx + 1}"
+        params.extend([limit, offset])
+        
+        result = await execute_query(query, params)
+        
+        return AssessmentListResponse(
             success=True,
-            data={
-                "assessments": response.data,
-                "count": len(response.data),
-                "limit": limit,
-                "offset": offset
-            },
+            data=result or [],
+            total=total,
+            limit=limit,
+            offset=offset,
             timestamp=format_timestamp()
         )
         
     except Exception as e:
         logger.error(f"List assessments error: {str(e)}", exc_info=True)
-        return AssessmentResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list assessments: {str(e)}"
         )
 
 
@@ -316,8 +377,8 @@ async def list_assessments(
 @handle_errors
 async def update_assessment(
     assessment_id: str,
-    update_data: Dict[str, Any],
-    current_user: dict = Depends(get_current_user)
+    update_data: AssessmentUpdate,
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Update assessment.
@@ -331,51 +392,91 @@ async def update_assessment(
     **Response:**
     - `success`: Boolean indicating success
     - `data`: Updated assessment data
-    - `message`: Status message
-    - `error`: Error message if unsuccessful
     """
     try:
-        # Get assessment
-        response = supabase.table("assessments") \
-            .select("*") \
-            .eq("assessment_id", assessment_id) \
-            .execute()
+        # Check if assessment exists
+        check_query = """
+            SELECT * FROM assessments 
+            WHERE assessment_id = $1
+        """
+        check_result = await execute_query(check_query, [assessment_id])
         
-        if not response.data:
-            return AssessmentResponse(
-                success=False,
-                error="Assessment not found"
+        if not check_result or len(check_result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assessment not found"
             )
         
-        assessment = response.data[0]
+        assessment = check_result[0]
         
         # Check permissions
-        if assessment.get("user_id") != current_user.get("id") and current_user.get("role") not in ["admin", "super_admin"]:
-            return AssessmentResponse(
-                success=False,
-                error="Access denied"
+        if assessment['user_id'] != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
             )
         
-        # Update assessment
-        update_data["updated_at"] = format_timestamp()
+        # Build update query
+        update_dict = update_data.dict(exclude_unset=True)
+        if not update_dict:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No fields to update"
+            )
         
-        result = supabase.table("assessments") \
-            .update(update_data) \
-            .eq("assessment_id", assessment_id) \
-            .execute()
+        # Add updated_at
+        update_dict['updated_at'] = format_timestamp()
+        
+        # Validate status if provided
+        if 'status' in update_dict and not validate_status(update_dict['status']):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status. Must be one of: {', '.join(ASSESSMENT_STATUSES)}"
+            )
+        
+        # Build SET clause
+        set_clauses = []
+        values = []
+        param_idx = 1
+        
+        for key, value in update_dict.items():
+            set_clauses.append(f"{key} = ${param_idx}")
+            values.append(value)
+            param_idx += 1
+        
+        # Add assessment_id as last parameter
+        values.append(assessment_id)
+        
+        update_query = f"""
+            UPDATE assessments 
+            SET {', '.join(set_clauses)} 
+            WHERE assessment_id = ${param_idx}
+            RETURNING *
+        """
+        
+        result = await execute_query(update_query, values)
+        
+        if not result or len(result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update assessment"
+            )
         
         return AssessmentResponse(
             success=True,
-            data=result.data[0] if result.data else None,
+            data=result[0],
+            assessment_id=assessment_id,
             message="Assessment updated successfully",
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Update assessment error: {str(e)}", exc_info=True)
-        return AssessmentResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update assessment: {str(e)}"
         )
 
 
@@ -386,7 +487,7 @@ async def update_assessment(
 @handle_errors
 async def delete_assessment(
     assessment_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Delete assessment.
@@ -397,35 +498,37 @@ async def delete_assessment(
     **Response:**
     - `success`: Boolean indicating success
     - `message`: Status message
-    - `error`: Error message if unsuccessful
     """
     try:
-        # Get assessment
-        response = supabase.table("assessments") \
-            .select("*") \
-            .eq("assessment_id", assessment_id) \
-            .execute()
+        # Check if assessment exists
+        check_query = """
+            SELECT * FROM assessments 
+            WHERE assessment_id = $1
+        """
+        check_result = await execute_query(check_query, [assessment_id])
         
-        if not response.data:
-            return AssessmentResponse(
-                success=False,
-                error="Assessment not found"
+        if not check_result or len(check_result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assessment not found"
             )
         
-        assessment = response.data[0]
+        assessment = check_result[0]
         
         # Check permissions
-        if assessment.get("user_id") != current_user.get("id") and current_user.get("role") not in ["admin", "super_admin"]:
-            return AssessmentResponse(
-                success=False,
-                error="Access denied"
+        if assessment['user_id'] != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
             )
         
         # Delete assessment
-        supabase.table("assessments") \
-            .delete() \
-            .eq("assessment_id", assessment_id) \
-            .execute()
+        delete_query = """
+            DELETE FROM assessments 
+            WHERE assessment_id = $1
+        """
+        
+        await execute_query(delete_query, [assessment_id])
         
         return AssessmentResponse(
             success=True,
@@ -433,11 +536,13 @@ async def delete_assessment(
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Delete assessment error: {str(e)}", exc_info=True)
-        return AssessmentResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete assessment: {str(e)}"
         )
 
 
@@ -457,14 +562,8 @@ async def get_assessment_types():
         success=True,
         data={
             "types": [
-                {"key": "damage", "name": "Damage Assessment", "description": "Assess vehicle damage and repair costs"},
-                {"key": "risk", "name": "Risk Assessment", "description": "Evaluate vehicle risk factors"},
-                {"key": "condition", "name": "Condition Assessment", "description": "Assess overall vehicle condition"},
-                {"key": "value", "name": "Value Assessment", "description": "Assess vehicle market value"},
-                {"key": "safety", "name": "Safety Assessment", "description": "Evaluate vehicle safety features"},
-                {"key": "theft", "name": "Theft Risk Assessment", "description": "Assess theft risk factors"},
-                {"key": "insurance", "name": "Insurance Risk Assessment", "description": "Evaluate insurance risk factors"},
-                {"key": "comprehensive", "name": "Comprehensive Assessment", "description": "Full vehicle assessment"}
+                {"key": key, "name": info["name"], "description": info["description"]}
+                for key, info in ASSESSMENT_TYPES.items()
             ]
         },
         timestamp=format_timestamp()
@@ -477,8 +576,8 @@ async def get_assessment_types():
 @log_request
 @handle_errors
 async def quick_assessment(
-    vehicle: VehicleAssessmentData,
-    current_user: dict = Depends(get_current_user)
+    request: QuickAssessmentRequest,
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Quick vehicle assessment.
@@ -491,15 +590,56 @@ async def quick_assessment(
     - `data`: Quick assessment results
     """
     try:
-        # Run quick assessment
+        # Run quick assessment logic
+        vehicle = request.vehicle
+        
+        # Calculate estimated value (simplified)
+        base_value = 2000000
+        make_factors = {
+            "toyota": 1.2,
+            "honda": 1.1,
+            "mercedes": 1.5,
+            "bmw": 1.4,
+            "audi": 1.3,
+            "nissan": 1.0,
+            "ford": 1.0,
+            "volkswagen": 1.1
+        }
+        
+        make_factor = make_factors.get(vehicle.make.lower(), 1.0)
+        
+        # Adjust for year
+        current_year = datetime.now().year
+        year_factor = 1 - ((current_year - (vehicle.year or current_year)) * 0.08)
+        year_factor = max(0.3, year_factor)
+        
+        # Adjust for mileage
+        mileage_factor = 1 - ((vehicle.mileage or 0) / 200000 * 0.3)
+        mileage_factor = max(0.5, mileage_factor)
+        
+        estimated_value = base_value * make_factor * year_factor * mileage_factor
+        
+        # Determine risk level
+        risk_level = "Medium"
+        if vehicle.condition == "Excellent":
+            risk_level = "Low"
+        elif vehicle.condition == "Poor":
+            risk_level = "High"
+        
         result = {
             "make": vehicle.make,
             "model": vehicle.model,
             "year": vehicle.year,
             "condition": vehicle.condition or "Unknown",
-            "estimated_value": "To be determined",
-            "risk_level": "Medium",
-            "assessment_date": format_timestamp()
+            "estimated_value": round(estimated_value / 1000) * 1000,
+            "risk_level": risk_level,
+            "assessment_date": format_timestamp(),
+            "factors_used": {
+                "base_value": base_value,
+                "make_factor": make_factor,
+                "year_factor": year_factor,
+                "mileage_factor": mileage_factor
+            }
         }
         
         return AssessmentResponse(
@@ -511,9 +651,9 @@ async def quick_assessment(
         
     except Exception as e:
         logger.error(f"Quick assessment error: {str(e)}", exc_info=True)
-        return AssessmentResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to perform quick assessment: {str(e)}"
         )
 
 
