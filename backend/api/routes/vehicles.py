@@ -1,6 +1,7 @@
 """
 Vehicle Routes - FastAPI Version
 VIN decoding, valuation, search, photos, stolen check, recalls, plate to VIN, auto-fill
+Uses SQLAlchemy ORM with FastAPI - No Supabase dependency
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
@@ -8,12 +9,15 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
+from sqlalchemy.orm import Session
+from sqlalchemy import func
 
-from app.core.database import supabase
+from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_user_optional
 from app.services.carapi_service import get_carapi_service
 from app.services.vin_validator import vin_validator
 from app.services.valuation_service import get_valuation_service
+from app.models import Vehicle, User, ServiceRequest, VehicleImage
 from app.utils.decorators import rate_limit, require_auth, require_role, log_request, handle_errors
 
 logger = logging.getLogger(__name__)
@@ -25,23 +29,27 @@ router = APIRouter(prefix="/api/vehicles", tags=["Vehicles"])
 
 class VinDecodeRequest(BaseModel):
     """VIN decode request model"""
-    vin: str = Field(..., description="Vehicle VIN")
+    vin: str = Field(..., description="Vehicle VIN", min_length=17, max_length=17)
     
     @validator('vin')
     def validate_vin(cls, v):
         v = v.upper().strip()
         if len(v) != 17:
             raise ValueError('VIN must be 17 characters')
+        invalid_chars = ['I', 'O', 'Q']
+        for char in invalid_chars:
+            if char in v:
+                raise ValueError(f'VIN contains invalid character: {char}')
         return v
 
 
 class ValuationRequest(BaseModel):
     """Valuation request model"""
-    vin: str = Field(..., description="Vehicle VIN")
+    vin: str = Field(..., description="Vehicle VIN", min_length=17, max_length=17)
     make: Optional[str] = Field(None, description="Vehicle make")
     model: Optional[str] = Field(None, description="Vehicle model")
-    year: Optional[int] = Field(None, description="Vehicle year")
-    odometer: Optional[int] = Field(0, description="Vehicle odometer")
+    year: Optional[int] = Field(None, description="Vehicle year", ge=1900, le=datetime.now().year + 1)
+    odometer: Optional[int] = Field(0, description="Vehicle odometer in km", ge=0)
     condition: Optional[str] = Field("Good", description="Vehicle condition")
     purpose: Optional[str] = Field("Market Value", description="Valuation purpose")
     region: Optional[str] = Field("Nairobi", description="Region")
@@ -58,7 +66,7 @@ class SearchVehiclesRequest(BaseModel):
     """Search vehicles request model"""
     make: Optional[str] = Field(None, description="Vehicle make")
     model: Optional[str] = Field(None, description="Vehicle model")
-    year: Optional[int] = Field(None, description="Vehicle year")
+    year: Optional[int] = Field(None, description="Vehicle year", ge=1900, le=datetime.now().year + 1)
     limit: Optional[int] = Field(10, ge=1, le=50, description="Number of results")
 
 
@@ -66,14 +74,14 @@ class VehiclePhotosRequest(BaseModel):
     """Vehicle photos request model"""
     make: str = Field(..., description="Vehicle make")
     model: str = Field(..., description="Vehicle model")
-    year: Optional[int] = Field(None, description="Vehicle year")
+    year: Optional[int] = Field(None, description="Vehicle year", ge=1900, le=datetime.now().year + 1)
 
 
 class RecallsRequest(BaseModel):
     """Recalls request model"""
     make: str = Field(..., description="Vehicle make")
     model: str = Field(..., description="Vehicle model")
-    year: Optional[int] = Field(None, description="Vehicle year")
+    year: Optional[int] = Field(None, description="Vehicle year", ge=1900, le=datetime.now().year + 1)
 
 
 class PlateToVinRequest(BaseModel):
@@ -84,7 +92,7 @@ class PlateToVinRequest(BaseModel):
 
 class AutoFillRequest(BaseModel):
     """Auto-fill request model"""
-    vin: str = Field(..., description="Vehicle VIN")
+    vin: str = Field(..., description="Vehicle VIN", min_length=17, max_length=17)
     
     @validator('vin')
     def validate_vin(cls, v):
@@ -111,6 +119,11 @@ def format_timestamp() -> str:
     return datetime.now().isoformat()
 
 
+def get_vehicle_by_vin(db: Session, vin: str) -> Optional[Vehicle]:
+    """Get vehicle by VIN from database."""
+    return db.query(Vehicle).filter(Vehicle.vin == vin.upper()).first()
+
+
 # ─── Routes ──────────────────────────────────────────────────
 
 @router.post("/decode-vin", response_model=VehicleResponse)
@@ -120,7 +133,8 @@ def format_timestamp() -> str:
 @handle_errors
 async def decode_vin(
     request: VinDecodeRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Decode VIN using CarAPI.
@@ -155,14 +169,20 @@ async def decode_vin(
             )
         
         # Check if vehicle exists in our database
-        existing = supabase.get_vehicle_by_vin(vin)
+        existing_vehicle = get_vehicle_by_vin(db, vin)
         
         return VehicleResponse(
             success=True,
             data={
                 "vehicle": result,
-                "in_database": bool(existing),
-                "database_vehicle": existing[0] if existing else None
+                "in_database": bool(existing_vehicle),
+                "database_vehicle": {
+                    "id": existing_vehicle.id,
+                    "registration_number": existing_vehicle.registration_number,
+                    "make": existing_vehicle.make,
+                    "model": existing_vehicle.model,
+                    "year": existing_vehicle.year,
+                } if existing_vehicle else None
             },
             source="CarAPI",
             timestamp=format_timestamp()
@@ -183,7 +203,8 @@ async def decode_vin(
 @handle_errors
 async def get_vehicle_valuation(
     request: ValuationRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Get vehicle valuation using CarAPI and AUTO-V.
@@ -214,6 +235,15 @@ async def get_vehicle_valuation(
                 error="Invalid VIN format"
             )
         
+        # Get existing vehicle from database
+        existing_vehicle = get_vehicle_by_vin(db, vin)
+        
+        # Use provided data or fallback to database
+        make = request.make or (existing_vehicle.make if existing_vehicle else None)
+        model = request.model or (existing_vehicle.model if existing_vehicle else None)
+        year = request.year or (existing_vehicle.year if existing_vehicle else None)
+        odometer = request.odometer or (existing_vehicle.odometer if existing_vehicle else 0)
+        
         # Get CarAPI service
         carapi = get_carapi_service()
         carapi_result = carapi.get_valuation(vin)
@@ -228,10 +258,10 @@ async def get_vehicle_valuation(
         valuation_service = get_valuation_service()
         our_valuation = valuation_service.calculate_valuation({
             'vin': vin,
-            'make': request.make,
-            'model': request.model,
-            'year': request.year,
-            'odometer': request.odometer or 0,
+            'make': make,
+            'model': model,
+            'year': year,
+            'odometer': odometer,
             'condition': request.condition or 'Good',
             'purpose': request.purpose or 'Market Value',
             'region': request.region or 'Nairobi'
@@ -252,6 +282,13 @@ async def get_vehicle_valuation(
                     "difference_percentage": round(
                         abs(carapi_value - autov_value) / max(carapi_value, 1) * 100, 2
                     )
+                },
+                "vehicle_info": {
+                    "make": make,
+                    "model": model,
+                    "year": year,
+                    "odometer": odometer,
+                    "in_database": bool(existing_vehicle)
                 }
             },
             source="CarAPI + AUTO-V",
@@ -276,10 +313,11 @@ async def search_vehicles(
     model: Optional[str] = Query(None, description="Vehicle model"),
     year: Optional[int] = Query(None, description="Vehicle year"),
     limit: int = Query(10, ge=1, le=50, description="Number of results"),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
-    Search for vehicles using CarAPI.
+    Search for vehicles in database and CarAPI.
     
     **Query Parameters:**
     - `make`: Vehicle make (optional)
@@ -301,21 +339,47 @@ async def search_vehicles(
                 error="At least make or model is required"
             )
         
-        # Get CarAPI service
-        carapi = get_carapi_service()
-        result = carapi.search_vehicles(make, model, year, limit)
+        # Search in local database first
+        query = db.query(Vehicle)
+        if make:
+            query = query.filter(Vehicle.make.ilike(f"%{make}%"))
+        if model:
+            query = query.filter(Vehicle.model.ilike(f"%{model}%"))
+        if year:
+            query = query.filter(Vehicle.year == year)
         
-        if "error" in result:
+        db_results = query.limit(limit).all()
+        
+        # Get CarAPI results
+        carapi = get_carapi_service()
+        carapi_result = carapi.search_vehicles(make, model, year, limit)
+        
+        if "error" in carapi_result:
             return VehicleResponse(
                 success=False,
-                error=result["error"]
+                error=carapi_result["error"]
             )
         
         return VehicleResponse(
             success=True,
-            data=result,
-            count=len(result.get('vehicles', [])),
-            source="CarAPI",
+            data={
+                "database_results": [
+                    {
+                        "id": v.id,
+                        "registration_number": v.registration_number,
+                        "make": v.make,
+                        "model": v.model,
+                        "year": v.year,
+                        "vin": v.vin,
+                        "color": v.color,
+                        "odometer": v.odometer
+                    } for v in db_results
+                ],
+                "carapi_results": carapi_result,
+                "total_db_results": len(db_results)
+            },
+            count=len(db_results) + len(carapi_result.get('vehicles', [])),
+            source="Database + CarAPI",
             timestamp=format_timestamp()
         )
         
@@ -613,7 +677,8 @@ async def auto_fill_from_vin(
 @log_request
 @handle_errors
 async def get_vehicle_stats(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Get vehicle statistics.
@@ -625,7 +690,15 @@ async def get_vehicle_stats(
     """
     try:
         # Get database stats
-        db_stats = supabase.get_stats()
+        total_vehicles = db.query(Vehicle).count()
+        total_users = db.query(User).count()
+        total_requests = db.query(ServiceRequest).filter(ServiceRequest.service_type == 'valuation').count()
+        
+        # Get stats by make
+        make_stats = db.query(
+            Vehicle.make,
+            func.count(Vehicle.id).label('count')
+        ).group_by(Vehicle.make).all()
         
         # Get CarAPI stats
         carapi = get_carapi_service()
@@ -634,7 +707,12 @@ async def get_vehicle_stats(
         return VehicleResponse(
             success=True,
             data={
-                "database": db_stats,
+                "database": {
+                    "total_vehicles": total_vehicles,
+                    "total_users": total_users,
+                    "total_valuations": total_requests,
+                    "by_make": [{"make": m.make, "count": m.count} for m in make_stats]
+                },
                 "carapi": carapi_stats,
                 "timestamp": format_timestamp()
             },
@@ -655,31 +733,40 @@ async def get_vehicle_stats(
 @log_request
 @handle_errors
 async def get_vehicle_makes(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Get list of vehicle makes.
     
     **Response:**
     - `success`: Boolean indicating success
-    - `data`: List of makes
+    - `data`: List of makes from database and CarAPI
     - `error`: Error message if unsuccessful
     """
     try:
-        # Get CarAPI service
-        carapi = get_carapi_service()
-        result = carapi.get_makes()
+        # Get makes from database
+        db_makes = db.query(Vehicle.make).distinct().order_by(Vehicle.make).all()
+        db_make_list = [m[0] for m in db_makes if m[0]]
         
-        if "error" in result:
+        # Get makes from CarAPI
+        carapi = get_carapi_service()
+        carapi_result = carapi.get_makes()
+        
+        if "error" in carapi_result:
             return VehicleResponse(
                 success=False,
-                error=result["error"]
+                error=carapi_result["error"]
             )
         
         return VehicleResponse(
             success=True,
-            data=result,
-            source="CarAPI",
+            data={
+                "database_makes": db_make_list,
+                "carapi_makes": carapi_result.get('makes', []),
+                "merged": list(set(db_make_list + carapi_result.get('makes', [])))
+            },
+            source="Database + CarAPI",
             timestamp=format_timestamp()
         )
         
@@ -698,7 +785,8 @@ async def get_vehicle_makes(
 @handle_errors
 async def get_vehicle_models(
     make: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Get list of vehicle models for a make.
@@ -708,29 +796,127 @@ async def get_vehicle_models(
     
     **Response:**
     - `success`: Boolean indicating success
-    - `data`: List of models
+    - `data`: List of models from database and CarAPI
     - `error`: Error message if unsuccessful
     """
     try:
-        # Get CarAPI service
-        carapi = get_carapi_service()
-        result = carapi.get_models(make)
+        # Get models from database
+        db_models = db.query(Vehicle.model).filter(
+            Vehicle.make.ilike(f"%{make}%")
+        ).distinct().order_by(Vehicle.model).all()
+        db_model_list = [m[0] for m in db_models if m[0]]
         
-        if "error" in result:
+        # Get models from CarAPI
+        carapi = get_carapi_service()
+        carapi_result = carapi.get_models(make)
+        
+        if "error" in carapi_result:
             return VehicleResponse(
                 success=False,
-                error=result["error"]
+                error=carapi_result["error"]
             )
         
         return VehicleResponse(
             success=True,
-            data=result,
-            source="CarAPI",
+            data={
+                "database_models": db_model_list,
+                "carapi_models": carapi_result.get('models', []),
+                "merged": list(set(db_model_list + carapi_result.get('models', [])))
+            },
+            source="Database + CarAPI",
             timestamp=format_timestamp()
         )
         
     except Exception as e:
         logger.error(f"Get models error: {str(e)}", exc_info=True)
+        return VehicleResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.post("/save", response_model=VehicleResponse)
+@rate_limit(limit=10, per=60)
+@require_auth
+@log_request
+@handle_errors
+async def save_vehicle(
+    vehicle_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Save vehicle to database.
+    
+    **Request Body:**
+    - Vehicle data (make, model, year, vin, registration_number, etc.)
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `data`: Saved vehicle
+    - `error`: Error message if unsuccessful
+    """
+    try:
+        # Check if vehicle already exists
+        existing = None
+        if vehicle_data.get('vin'):
+            existing = db.query(Vehicle).filter(
+                Vehicle.vin == vehicle_data['vin'].upper()
+            ).first()
+        elif vehicle_data.get('registration_number'):
+            existing = db.query(Vehicle).filter(
+                Vehicle.registration_number == vehicle_data['registration_number'].upper()
+            ).first()
+        
+        if existing:
+            # Update existing vehicle
+            for key, value in vehicle_data.items():
+                if hasattr(existing, key) and value is not None:
+                    setattr(existing, key, value)
+            db.commit()
+            db.refresh(existing)
+            return VehicleResponse(
+                success=True,
+                data={
+                    "id": existing.id,
+                    "message": "Vehicle updated successfully"
+                },
+                source="Database",
+                timestamp=format_timestamp()
+            )
+        else:
+            # Create new vehicle
+            new_vehicle = Vehicle(
+                user_id=current_user.get('id'),
+                registration_number=vehicle_data.get('registration_number', '').upper(),
+                vin=vehicle_data.get('vin', '').upper(),
+                make=vehicle_data.get('make', ''),
+                model=vehicle_data.get('model', ''),
+                year=vehicle_data.get('year', 0),
+                body_type=vehicle_data.get('body_type', ''),
+                engine_cc=vehicle_data.get('engine_cc', 0),
+                transmission=vehicle_data.get('transmission', ''),
+                fuel_type=vehicle_data.get('fuel_type', ''),
+                odometer=vehicle_data.get('odometer', 0),
+                color=vehicle_data.get('color', ''),
+                vehicle_metadata=vehicle_data.get('metadata', {})
+            )
+            db.add(new_vehicle)
+            db.commit()
+            db.refresh(new_vehicle)
+            return VehicleResponse(
+                success=True,
+                data={
+                    "id": new_vehicle.id,
+                    "message": "Vehicle saved successfully"
+                },
+                source="Database",
+                timestamp=format_timestamp()
+            )
+        
+    except Exception as e:
+        logger.error(f"Save vehicle error: {str(e)}", exc_info=True)
+        db.rollback()
         return VehicleResponse(
             success=False,
             error=str(e)
