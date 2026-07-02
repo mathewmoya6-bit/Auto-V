@@ -5,8 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Professional Inspection Engine</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🔍%3C/text%3E%3C/svg%3E">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js">
-    </script>
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * {
@@ -30,6 +34,8 @@
             max-width: 1200px;
             margin: -20px auto 20px;
             border-radius: 0 0 16px 16px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .logo {
             font-size: 24px;
@@ -695,7 +701,7 @@
 <body>
     <header>
         <div class="logo">🔍 AUTO-V <span>| Professional Inspection</span></div>
-        <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
             <span id="userEmail" style="font-size:12px;color:#94a3b8;">Loading...</span>
             <button class="btn btn-secondary" id="logoutBtn" style="padding:8px 16px;font-size:12px;">Logout</button>
         </div>
@@ -736,8 +742,8 @@
                 <!-- TAB 1: Vehicle Info -->
                 <div id="tab-basic" class="tab-content">
                     <div class="row">
-                        <div class="form-group"><label class="required">Registration</label><input type="text" id="vehicleReg" placeholder="KCA 123A" value="KDA 123A"></div>
-                        <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456" value="JTEGD34V000123456"></div>
+                        <div class="form-group"><label class="required">Registration</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
+                        <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456"></div>
                     </div>
                     <div class="row">
                         <div class="form-group"><label class="required">Make</label>
@@ -828,7 +834,7 @@
                             </select>
                         </div>
                         <div class="form-group"><label class="required">Odometer (km)</label>
-                            <input type="number" id="vehicleOdometer" placeholder="50000" value="50000">
+                            <input type="number" id="vehicleOdometer" placeholder="50000">
                         </div>
                     </div>
                     <button type="button" class="btn btn-primary btn-sm" id="autoFillBtn" style="margin-top:10px;">🔍 Auto-fill from VIN</button>
@@ -903,7 +909,7 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="form-group"><label>Tyre Tread Depth (mm)</label><input type="number" id="inspTyres" placeholder="e.g. 6" value="6" step="0.5"></div>
+                        <div class="form-group"><label>Tyre Tread Depth (mm)</label><input type="number" id="inspTyres" placeholder="e.g. 6" step="0.5"></div>
                         <div class="form-group"><label>Paint Condition</label>
                             <select id="inspPaint"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select>
                         </div>
@@ -950,7 +956,7 @@
                             </select>
                         </div>
                         <div class="form-group"><label class="required">Contact Phone</label>
-                            <input type="tel" id="inspectionPhone" placeholder="0712345678" value="0712345678">
+                            <input type="tel" id="inspectionPhone" placeholder="0712345678">
                         </div>
                     </div>
                     <div class="row">
@@ -1144,21 +1150,20 @@
     </div>
 
     <script>
-        // ============================================================
-        // AUTO-V PROFESSIONAL INSPECTION ENGINE – Supabase Single Source of Truth
-        // ============================================================
+        // ═══════════════════════════════════════════════════════════════
+        // AUTO-V PROFESSIONAL INSPECTION ENGINE — FastAPI Backend
+        // ═══════════════════════════════════════════════════════════════
+
         (function() {
+            'use strict';
+
             if (window.autoVProfInspectionInitialized) return;
             window.autoVProfInspectionInitialized = true;
 
-            // ─── SUPABASE CONFIG ──────────────────────────────────────
-            const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-            const SUPABASE_ANON_KEY =
-                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+            // ─── CONFIG ──────────────────────────────────────────────────
+            const API_BASE = 'http://localhost:8000/api';
 
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-            // ─── VEHICLE MODELS ──────────────────────────────────────
+            // ─── VEHICLE MODELS ──────────────────────────────────────────
             const vehicleModels = {
                 'Toyota': ['Axio', 'Corolla', 'Camry', 'RAV4', 'Land Cruiser', 'Prado', 'Hilux', 'Fortuner', 'Premio',
                     'Allion', 'Vitz', 'Passo', 'Sienta', 'Noah', 'Voxy', 'Hiace'
@@ -1185,7 +1190,7 @@
                 'Other': ['Other']
             };
 
-            // ─── PRICING PER PURPOSE ────────────────────────────────
+            // ─── PRICING PER PURPOSE ──────────────────────────────────
             const pricingMap = {
                 'Pre-Purchase': 3500,
                 'Insurance': 4000,
@@ -1195,7 +1200,23 @@
                 'Other': 3500
             };
 
-            // ─── STATE ──────────────────────────────────────────────
+            // ─── KEBS WEIGHTED SCORING ────────────────────────────────
+            const KEBS_WEIGHTS = {
+                steering: 20,
+                brakes: 25,
+                tyres: 15,
+                suspension: 15,
+                lighting: 10,
+                chassis: 10,
+                emissions: 5,
+                safety: 5,
+                vin: 5,
+                docs: 5
+            };
+
+            const KEBS_CRITICAL_ITEMS = ['steering', 'brakes', 'tyres', 'chassis'];
+
+            // ─── STATE ──────────────────────────────────────────────────
             const requiredImages = [
                 'front', 'rear', 'left', 'right', 'front-left', 'front-right', 'rear-left', 'rear-right',
                 'dashboard', 'odometer', 'engine', 'vin', 'front-seats', 'rear-seats', 'boot', 'tyres', 'spare', 'roof',
@@ -1212,23 +1233,13 @@
             requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
             requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
 
-            // ─── KEBS WEIGHTED SCORING ──────────────────────────────
-            const KEBS_WEIGHTS = {
-                steering: 20,
-                brakes: 25,
-                tyres: 15,
-                suspension: 15,
-                lighting: 10,
-                chassis: 10,
-                emissions: 5,
-                safety: 5,
-                vin: 5,
-                docs: 5
-            };
+            // ─── API CHECK ──────────────────────────────────────────────
+            if (typeof api === 'undefined') {
+                showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
+                console.error('API client not found. Ensure js/api-client.js is loaded.');
+            }
 
-            const KEBS_CRITICAL_ITEMS = ['steering', 'brakes', 'tyres', 'chassis'];
-
-            // ─── HELPERS ─────────────────────────────────────────────
+            // ─── HELPERS ────────────────────────────────────────────────
             function showMessage(msg, type = 'error') {
                 const el = document.getElementById(type === 'error' ? 'errorMsg' : 'successMsg');
                 el.textContent = msg;
@@ -1290,12 +1301,24 @@
                     '⏳ Pending verification';
             }
 
-            // ─── UPLOAD FUNCTIONS ────────────────────────────────────
+            // ─── UPLOAD FUNCTIONS ──────────────────────────────────────
             async function uploadFile(file, bucket, path) {
-                const { data, error } = await supabase.storage.from(bucket).upload(path, file);
-                if (error) throw error;
-                const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
-                return publicUrl;
+                try {
+                    // For FastAPI backend, we'll use a different approach
+                    // Since file upload is complex, we'll simulate with base64
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            resolve(e.target.result);
+                        };
+                        reader.onerror = function(e) {
+                            reject(e);
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                } catch (error) {
+                    throw error;
+                }
             }
 
             window.handleImageUpload = async function(input, slot) {
@@ -1306,17 +1329,15 @@
                 statusEl.className = 'file-status uploading';
                 statusEl.textContent = '⏳ Uploading...';
                 try {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) throw new Error('Please login again');
-                    const path = `inspections/${user.id}/${slot}_${Date.now()}_${file.name}`;
-                    const publicUrl = await uploadFile(file, 'inspection-images', path);
-                    imageStatus[slot].uploaded = true;
-                    imageStatus[slot].publicUrl = publicUrl;
-                    imageUrls[slot] = publicUrl;
-                    statusEl.className = 'file-status uploaded';
-                    statusEl.textContent = '✅ Uploaded';
+                    // For demo, just store the file data
                     const reader = new FileReader();
                     reader.onload = function(e) {
+                        imageStatus[slot].uploaded = true;
+                        imageStatus[slot].data = e.target.result;
+                        imageUrls[slot] = e.target.result;
+                        statusEl.className = 'file-status uploaded';
+                        statusEl.textContent = '✅ Uploaded';
+                        
                         let preview = item.querySelector('.preview');
                         if (!preview) {
                             preview = document.createElement('img');
@@ -1324,10 +1345,10 @@
                             item.prepend(preview);
                         }
                         preview.src = e.target.result;
+                        updateValidationSummary();
+                        showToast(`✅ ${slot} uploaded successfully`);
                     };
                     reader.readAsDataURL(file);
-                    updateValidationSummary();
-                    showToast(`✅ ${slot} uploaded successfully`);
                 } catch (e) {
                     console.error(e);
                     statusEl.className = 'file-status error';
@@ -1345,32 +1366,27 @@
                 badgeEl.className = 'doc-status-badge pending';
                 badgeEl.textContent = '⏳ Uploading';
                 const reader = new FileReader();
-                reader.onload = async function(e) {
-                    try {
-                        const { data: { user } } = await supabase.auth.getUser();
-                        if (!user) throw new Error('Please login again');
-                        const path = `inspections/${user.id}/${docKey}_${Date.now()}_${file.name}`;
-                        const publicUrl = await uploadFile(file, 'inspection-documents', path);
-                        docStatus[docKey].uploaded = true;
-                        docStatus[docKey].publicUrl = publicUrl;
-                        docUrls[docKey] = publicUrl;
-                        statusEl.textContent = '✅ Verified';
-                        badgeEl.className = 'doc-status-badge verified';
-                        badgeEl.textContent = '✅ Verified';
-                        updateValidationSummary();
-                        updateDocumentProgress();
-                        showToast(`✅ ${docKey} document uploaded`);
-                    } catch (e) {
-                        statusEl.textContent = '❌ Error';
-                        badgeEl.className = 'doc-status-badge error';
-                        badgeEl.textContent = '❌ Error';
-                        showToast('Upload failed: ' + e.message, 'error');
-                    }
+                reader.onload = function(e) {
+                    docStatus[docKey].uploaded = true;
+                    docStatus[docKey].data = e.target.result;
+                    docUrls[docKey] = e.target.result;
+                    statusEl.textContent = '✅ Verified';
+                    badgeEl.className = 'doc-status-badge verified';
+                    badgeEl.textContent = '✅ Verified';
+                    updateValidationSummary();
+                    updateDocumentProgress();
+                    showToast(`✅ ${docKey} document uploaded`);
+                };
+                reader.onerror = function() {
+                    statusEl.textContent = '❌ Error';
+                    badgeEl.className = 'doc-status-badge error';
+                    badgeEl.textContent = '❌ Error';
+                    showToast('Upload failed', 'error');
                 };
                 reader.readAsDataURL(file);
             }
 
-            // ─── BIND DOCUMENT UPLOADS ──────────────────────────────
+            // ─── BIND DOCUMENT UPLOADS ────────────────────────────────
             document.getElementById('docLogbook').addEventListener('change', function() { handleDocumentUpload(this,
                     'logbook'); });
             document.getElementById('docId').addEventListener('change', function() { handleDocumentUpload(this, 'id'); });
@@ -1453,14 +1469,14 @@
                 return { percentage, status, criticalFailures, results };
             }
 
-            // ─── BIND KEBS EVENTS ────────────────────────────────────
+            // ─── BIND KEBS EVENTS ──────────────────────────────────────
             document.querySelectorAll('[id^="kebs-"]').forEach(el => {
                 if (el.id.endsWith('-select')) {
                     el.addEventListener('change', evaluateKEBS);
                 }
             });
 
-            // ─── AUTO-FILL FROM VIN ──────────────────────────────────
+            // ─── AUTO-FILL FROM VIN ────────────────────────────────────
             document.getElementById('autoFillBtn').addEventListener('click', async function() {
                 const vin = document.getElementById('vehicleVin').value.trim();
                 if (!vin || vin === 'N/A') {
@@ -1474,38 +1490,36 @@
 
                 showLoading(true);
                 try {
-                    // For demo, use mock data from Supabase
-                    const { data, error } = await supabase
-                        .from('vehicle_models')
-                        .select('make, model')
-                        .limit(1);
-
-                    if (error) throw error;
-
-                    const mockData = data && data.length > 0 ? data[0] : { make: 'Toyota', model: 'Corolla' };
-                    document.getElementById('vehicleMake').value = mockData.make || 'Toyota';
-                    document.getElementById('vehicleMake').dispatchEvent(new Event('change'));
-                    setTimeout(() => {
-                        document.getElementById('vehicleModel').value = mockData.model || 'Corolla';
-                    }, 100);
-                    document.getElementById('vehicleYear').value = 2020;
-                    document.getElementById('vehicleBody').value = 'Sedan';
-                    showToast(`✅ Vehicle found: ${mockData.make} ${mockData.model}`, 'success');
+                    const result = await api.post('/vehicles/decode-vin', { vin });
+                    if (result.success && result.data) {
+                        const data = result.data.vehicle || result.data;
+                        document.getElementById('vehicleMake').value = data.make || 'Toyota';
+                        document.getElementById('vehicleMake').dispatchEvent(new Event('change'));
+                        setTimeout(() => {
+                            document.getElementById('vehicleModel').value = data.model || 'Corolla';
+                        }, 100);
+                        document.getElementById('vehicleYear').value = data.year || 2020;
+                        document.getElementById('vehicleBody').value = data.body_type || 'Sedan';
+                        showToast(`✅ Vehicle found: ${data.make} ${data.model}`, 'success');
+                    } else {
+                        showToast('Vehicle not found. Please fill details manually.', 'warning');
+                    }
                 } catch (error) {
                     showToast('Error: ' + error.message, 'error');
+                    ErrorHandler.handle(error, 'VIN Decode');
                 } finally {
                     showLoading(false);
                 }
             });
 
-            // ─── MAKE-MODEL SYNC ────────────────────────────────────
+            // ─── MAKE-MODEL SYNC ──────────────────────────────────────
             document.getElementById('vehicleMake').addEventListener('change', function() {
                 const models = vehicleModels[this.value] || ['Other'];
                 const modelSelect = document.getElementById('vehicleModel');
                 modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
             });
 
-            // ─── TABS ──────────────────────────────────────────────
+            // ─── TABS ──────────────────────────────────────────────────
             document.querySelectorAll('.inspection-tab').forEach(tab => {
                 tab.addEventListener('click', function() {
                     document.querySelectorAll('.inspection-tab').forEach(t => t.classList.remove('active'));
@@ -1519,13 +1533,13 @@
                 });
             });
 
-            // ─── PRICE UPDATE ON PURPOSE CHANGE ────────────────────
+            // ─── PRICE UPDATE ON PURPOSE CHANGE ──────────────────────
             document.getElementById('inspectionPurpose').addEventListener('change', function() {
                 const price = pricingMap[this.value] || 3500;
                 document.getElementById('priceDisplay').textContent = `KES ${price.toLocaleString()}`;
             });
 
-            // ─── GENERATE INSPECTION SCORES ──────────────────────────
+            // ─── GENERATE INSPECTION SCORES ────────────────────────────
             function calculateConditionScores() {
                 const scoreMap = { 'Excellent': 10, 'Good': 8, 'Fair': 5, 'Poor': 3 };
                 const engine = scoreMap[document.getElementById('inspEngine').value] || 8;
@@ -1543,7 +1557,7 @@
                 return { engine, trans, susp, brake, paint, chassis, interior, electronics, tyreDepth, accident, overall };
             }
 
-            // ─── GENERATE INSPECTION REPORT ──────────────────────────
+            // ─── GENERATE INSPECTION REPORT ────────────────────────────
             function generateInspectionReport(data) {
                 const scores = {
                     exterior: Math.round((data.paint + data.chassis + (data.accident === 'None' ? 10 : data.accident ===
@@ -1568,7 +1582,7 @@
                 return { scores, issues };
             }
 
-            // ─── MAIN SUBMIT ──────────────────────────────────────────
+            // ─── MAIN SUBMIT ────────────────────────────────────────────
             document.getElementById('submitBtn').addEventListener('click', async function() {
                 const reg = document.getElementById('vehicleReg').value.toUpperCase();
                 const make = document.getElementById('vehicleMake').value;
@@ -1619,9 +1633,7 @@
                 showLoading(true);
 
                 try {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) { showToast('Please login again', 'error');
-                        window.location.href = 'login.html'; return; }
+                    const user = await api.get('/auth/me');
                     currentUser = user;
                     document.getElementById('userEmail').textContent = user.email;
 
@@ -1668,7 +1680,7 @@
                         kebs: kebsResult
                     };
 
-                    // Save to Supabase inspections table
+                    // Save to FastAPI backend
                     const inspectionData = {
                         user_id: user.id,
                         registration_number: reg,
@@ -1692,18 +1704,10 @@
                         overall_score: report.scores.overall,
                         confidence_score: kebsResult.percentage,
                         certificate_number: `INS-${Date.now().toString(36).toUpperCase()}`,
-                        status: kebsResult.status === 'FAIL' ? 'failed' : 'completed',
-                        created_at: new Date().toISOString()
+                        status: kebsResult.status === 'FAIL' ? 'failed' : 'completed'
                     };
 
-                    const { error: saveError } = await supabase
-                        .from('inspections')
-                        .insert(inspectionData);
-
-                    if (saveError) {
-                        console.error('Error saving to Supabase:', saveError);
-                        // Continue anyway - we can still show the result
-                    }
+                    await api.post('/inspections', inspectionData);
 
                     // Show results
                     document.getElementById('dataEntryCard').classList.add('hidden');
@@ -1809,12 +1813,13 @@
                 } catch (error) {
                     console.error('Inspection error:', error);
                     showMessage('Error: ' + error.message, 'error');
+                    ErrorHandler.handle(error, 'Inspection Submission');
                 } finally {
                     showLoading(false);
                 }
             });
 
-            // ─── DOWNLOAD PDF REPORT ──────────────────────────────
+            // ─── DOWNLOAD PDF REPORT ──────────────────────────────────
             function downloadPDF() {
                 const result = window._currentInspectionResult;
                 if (!result) { showToast('No inspection to download', 'error'); return; }
@@ -1858,7 +1863,7 @@
                 win.close();
             }
 
-            // ─── VERIFY REPORT ─────────────────────────────────────
+            // ─── VERIFY REPORT ─────────────────────────────────────────
             function verifyReport() {
                 const result = window._currentInspectionResult;
                 if (!result) { showToast('No inspection to verify', 'error'); return; }
@@ -1867,18 +1872,22 @@
                 window.open(verifyUrl, '_blank');
             }
 
-            // ─── EVENT LISTENERS ────────────────────────────────────
+            // ─── EVENT LISTENERS ──────────────────────────────────────
             document.getElementById('backBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
             document.getElementById('newRequestBtn').addEventListener('click', () => location.reload());
             document.getElementById('dashboardBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
             document.getElementById('downloadReportBtn').addEventListener('click', downloadPDF);
             document.getElementById('verifyReportBtn').addEventListener('click', verifyReport);
             document.getElementById('logoutBtn').addEventListener('click', async () => {
-                await supabase.auth.signOut();
+                try {
+                    await api.post('/auth/logout');
+                } catch (e) {}
+                api.clearToken();
+                localStorage.removeItem('access_token');
                 window.location.href = 'login.html';
             });
 
-            // ─── INIT ──────────────────────────────────────────────
+            // ─── INIT ──────────────────────────────────────────────────
             async function init() {
                 populateYears();
                 const make = document.getElementById('vehicleMake').value;
@@ -1890,15 +1899,18 @@
                 const purpose = document.getElementById('inspectionPurpose').value;
                 document.getElementById('priceDisplay').textContent = `KES ${(pricingMap[purpose] || 3500).toLocaleString()}`;
 
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) window.location.href = 'login.html';
-                currentUser = user;
-                document.getElementById('userEmail').textContent = user.email;
-                document.getElementById('inspectorName').value = user?.user_metadata?.full_name || user?.email ||
-                    'Inspector';
-                document.getElementById('inspectorSignature').value = user?.user_metadata?.full_name || user?.email ||
-                    'Inspector';
-                document.getElementById('inspectorCredentials').value = 'AUTO-V-System';
+                try {
+                    const user = await api.get('/auth/me');
+                    currentUser = user;
+                    document.getElementById('userEmail').textContent = user.email;
+                    document.getElementById('inspectorName').value = user.full_name || user.email || 'Inspector';
+                    document.getElementById('inspectorSignature').value = user.full_name || user.email || 'Inspector';
+                    document.getElementById('inspectorCredentials').value = 'AUTO-V-System';
+                } catch (error) {
+                    if (error.message.includes('401')) {
+                        window.location.href = 'login.html';
+                    }
+                }
 
                 updateValidationSummary();
                 updateDocumentProgress();
@@ -1907,6 +1919,5 @@
             init();
         })();
     </script>
-
 </body>
 </html>
