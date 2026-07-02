@@ -1,17 +1,18 @@
 """
-Inspection Routes - FastAPI Version
+Inspection Routes - FastAPI Backend
 Vehicle inspection creation, retrieval, and quick estimates
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
 import logging
+import re
 
-from app.core.database import supabase
-from app.core.dependencies import get_current_user
+from app.core.database import execute_query, get_db
+from app.core.dependencies import get_current_user, get_current_active_user, require_role
 from app.services.inspection import (
     calculate_inspection,
     get_inspection_price,
@@ -21,88 +22,26 @@ from app.services.inspection import (
 from app.services.carapi_service import get_carapi_service
 from app.services.vin_validator import vin_validator
 from app.utils.decorators import rate_limit, require_auth, require_role, log_request, handle_errors
+from app.models.inspection import (
+    InspectorData,
+    VehicleInspectionData,
+    CreateInspectionRequest,
+    QuickEstimateRequest,
+    InspectionResponse,
+    InspectionListResponse,
+    InspectionPriceResponse,
+    InspectionStatsResponse
+)
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/inspections", tags=["Inspections"])
+router = APIRouter(prefix="/api/v1/inspections", tags=["Inspections"])
 
+# ─── Constants ──────────────────────────────────────────────────
 
-# ─── Pydantic Models ──────────────────────────────────────────
-
-class InspectorData(BaseModel):
-    """Inspector data model"""
-    name: str = Field(..., description="Inspector name")
-    credentials: Optional[str] = Field(None, description="Inspector credentials")
-    signature: Optional[str] = Field(None, description="Inspector signature")
-    license_number: Optional[str] = Field(None, description="Inspector license number")
-
-
-class VehicleInspectionData(BaseModel):
-    """Vehicle inspection data model"""
-    make: str = Field(..., description="Vehicle make")
-    model: str = Field(..., description="Vehicle model")
-    year: int = Field(..., description="Vehicle year")
-    vin: Optional[str] = Field(None, description="Vehicle VIN")
-    registration_number: Optional[str] = Field(None, description="Vehicle registration")
-    odometer: Optional[int] = Field(0, description="Vehicle odometer reading")
-    condition: Optional[str] = Field("Good", description="Vehicle condition")
-    accident_history: Optional[str] = Field("None", description="Accident history")
-    
-    # Ratings
-    engine_rating: Optional[str] = Field("Good", description="Engine rating")
-    transmission_rating: Optional[str] = Field("Good", description="Transmission rating")
-    suspension_rating: Optional[str] = Field("Good", description="Suspension rating")
-    brakes_rating: Optional[str] = Field("Good", description="Brakes rating")
-    paint_rating: Optional[str] = Field("Good", description="Paint rating")
-    chassis_rating: Optional[str] = Field("Good", description="Chassis rating")
-    interior_rating: Optional[str] = Field("Good", description="Interior rating")
-    electronics_rating: Optional[str] = Field("Good", description="Electronics rating")
-    
-    tyre_depth_mm: Optional[float] = Field(6.0, description="Tyre depth in mm")
-    
-    @validator('vin')
-    def validate_vin(cls, v):
-        if v and len(v) != 17:
-            raise ValueError('VIN must be 17 characters')
-        return v.upper() if v else v
-    
-    @validator('year')
-    def validate_year(cls, v):
-        if v < 1900 or v > datetime.now().year + 1:
-            raise ValueError(f'Year must be between 1900 and {datetime.now().year + 1}')
-        return v
-
-
-class CreateInspectionRequest(BaseModel):
-    """Create inspection request model"""
-    vehicle_data: VehicleInspectionData = Field(..., description="Vehicle data")
-    inspection_type: Optional[str] = Field("Premium", description="Inspection type")
-    purpose: Optional[str] = Field("Pre-Purchase", description="Inspection purpose")
-    region: Optional[str] = Field("Nairobi", description="Region")
-    inspector: Optional[InspectorData] = Field(None, description="Inspector data")
-    image_urls: Optional[Dict[str, str]] = Field(None, description="Image URLs")
-    document_urls: Optional[Dict[str, str]] = Field(None, description="Document URLs")
-
-
-class QuickEstimateRequest(BaseModel):
-    """Quick estimate request model"""
-    make: str = Field(..., description="Vehicle make")
-    model: str = Field(..., description="Vehicle model")
-    year: int = Field(..., description="Vehicle year")
-    odometer: Optional[int] = Field(0, description="Vehicle odometer")
-    condition: Optional[str] = Field("good", description="Vehicle condition")
-
-
-class InspectionResponse(BaseModel):
-    """Inspection response model"""
-    success: bool
-    data: Optional[Dict[str, Any]] = None
-    inspection: Optional[Dict[str, Any]] = None
-    message: Optional[str] = None
-    error: Optional[str] = None
-    count: Optional[int] = None
-    timestamp: Optional[str] = None
-
+INSPECTION_TYPES = ["Standard", "Premium", "Express", "Comprehensive"]
+INSPECTION_PURPOSES = ["Pre-Purchase", "Insurance", "Lease", "Certification", "Auction", "Export", "Fleet"]
+INSPECTION_REGIONS = ["Nairobi", "Mombasa", "Kisumu", "Nakuru", "Eldoret", "National", "International"]
 
 # ─── Helper Functions ──────────────────────────────────────────
 
@@ -110,11 +49,58 @@ def generate_certificate_number() -> str:
     """Generate a unique certificate number."""
     return f"INS-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
 
-
 def format_timestamp() -> str:
     """Get formatted timestamp."""
     return datetime.now().isoformat()
 
+def build_inspection_query(user_id: str, filters: Dict[str, Any] = None):
+    """Build inspection query with filters."""
+    query = """
+        SELECT * FROM service_requests 
+        WHERE user_id = $1 AND service_type = 'inspection'
+    """
+    params = [user_id]
+    param_count = 1
+    
+    if filters:
+        if filters.get('status'):
+            param_count += 1
+            query += f" AND status = ${param_count}"
+            params.append(filters['status'])
+        
+        if filters.get('inspection_type'):
+            param_count += 1
+            query += f" AND inspection_type = ${param_count}"
+            params.append(filters['inspection_type'])
+        
+        if filters.get('purpose'):
+            param_count += 1
+            query += f" AND purpose = ${param_count}"
+            params.append(filters['purpose'])
+        
+        if filters.get('make'):
+            param_count += 1
+            query += f" AND make ILIKE $${param_count}"
+            params.append(f"%{filters['make']}%")
+        
+        if filters.get('registration_number'):
+            param_count += 1
+            query += f" AND registration_number ILIKE $${param_count}"
+            params.append(f"%{filters['registration_number']}%")
+        
+        if filters.get('date_from'):
+            param_count += 1
+            query += f" AND created_at >= $${param_count}"
+            params.append(filters['date_from'])
+        
+        if filters.get('date_to'):
+            param_count += 1
+            query += f" AND created_at <= $${param_count}"
+            params.append(filters['date_to'])
+    
+    query += " ORDER BY created_at DESC"
+    
+    return query, params
 
 # ─── Routes ──────────────────────────────────────────────────
 
@@ -125,16 +111,16 @@ def format_timestamp() -> str:
 @handle_errors
 async def create_inspection(
     request: CreateInspectionRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Create a new vehicle inspection.
     
     **Request Body:**
     - `vehicle_data`: Vehicle details (make, model, year, vin, etc.)
-    - `inspection_type`: Type of inspection (Standard, Premium, Express)
-    - `purpose`: Purpose of inspection (Pre-Purchase, Insurance, etc.)
-    - `region`: Region
+    - `inspection_type`: Type of inspection (Standard, Premium, Express, Comprehensive)
+    - `purpose`: Purpose of inspection (Pre-Purchase, Insurance, Lease, Certification, Auction, Export, Fleet)
+    - `region`: Region (Nairobi, Mombasa, Kisumu, Nakuru, Eldoret, National, International)
     - `inspector`: Inspector details
     - `image_urls`: Image URLs
     - `document_urls`: Document URLs
@@ -143,7 +129,6 @@ async def create_inspection(
     - `success`: Boolean indicating success
     - `data`: Inspection record
     - `inspection`: Inspection results
-    - `error`: Error message if unsuccessful
     """
     try:
         vehicle_data = request.vehicle_data.dict()
@@ -167,17 +152,17 @@ async def create_inspection(
         required = ['make', 'model', 'year']
         for field in required:
             if not vehicle_data.get(field):
-                return InspectionResponse(
-                    success=False,
-                    error=f"Missing field: {field}"
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Missing field: {field}"
                 )
         
         # Validate data
         is_valid, error = validate_inspection_data(vehicle_data)
         if not is_valid:
-            return InspectionResponse(
-                success=False,
-                error=error
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error
             )
         
         # Get inspector from data or use default
@@ -186,7 +171,8 @@ async def create_inspection(
             inspector_data = {
                 'name': current_user.get('full_name', current_user.get('email', 'Unknown')),
                 'credentials': 'AUTO-V-System',
-                'signature': current_user.get('email', 'Unknown')
+                'signature': current_user.get('email', 'Unknown'),
+                'license_number': 'AUTO-V-System'
             }
         
         # Get inspection parameters
@@ -220,25 +206,25 @@ async def create_inspection(
                 inspector=inspector_data
             )
         except ValueError as e:
-            return InspectionResponse(
-                success=False,
-                error=f"Invalid numeric value: {str(e)}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid numeric value: {str(e)}"
             )
         except Exception as e:
             logger.error(f"Inspection calculation error: {e}")
-            return InspectionResponse(
-                success=False,
-                error="Inspection calculation failed"
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Inspection calculation failed"
             )
         
         # Generate certificate number
         certificate_number = generate_certificate_number()
         result['certificate_number'] = certificate_number
-        result['user_id'] = current_user.get('id')
+        result['user_id'] = current_user['id']
         
-        # Save to Supabase
-        request_data = {
-            'user_id': current_user.get('id'),
+        # Prepare data for insertion
+        insert_data = {
+            'user_id': current_user['id'],
             'service_type': 'inspection',
             'registration_number': vehicle_data.get('registration_number'),
             'vin': vehicle_data.get('vin'),
@@ -250,6 +236,7 @@ async def create_inspection(
             'accident_history': vehicle_data.get('accident_history', 'None'),
             'inspection_type': inspection_type,
             'purpose': purpose,
+            'region': region,
             'amount': get_inspection_price(purpose),
             'payment_status': 'paid',
             'status': 'completed',
@@ -262,28 +249,43 @@ async def create_inspection(
         }
         
         # Insert into database
-        response = supabase.table('service_requests').insert(request_data).execute()
+        columns = ', '.join(insert_data.keys())
+        placeholders = ', '.join([f'${i+1}' for i in range(len(insert_data))])
+        values = list(insert_data.values())
         
-        if not response.data:
-            logger.error("Failed to save inspection for user %s", current_user.get('id'))
-            return InspectionResponse(
-                success=False,
-                error="Failed to save inspection"
+        query = f"""
+            INSERT INTO service_requests ({columns}) 
+            VALUES ({placeholders}) 
+            RETURNING id, created_at
+        """
+        
+        db_result = await execute_query(query, values)
+        
+        if not db_result or len(db_result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save inspection"
             )
+        
+        inspection_record = db_result[0]
+        insert_data['id'] = inspection_record['id']
+        insert_data['created_at'] = inspection_record['created_at']
         
         return InspectionResponse(
             success=True,
-            data=response.data[0],
+            data=insert_data,
             inspection=result,
             message="Inspection created successfully",
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Create inspection error: {str(e)}", exc_info=True)
-        return InspectionResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create inspection: {str(e)}"
         )
 
 
@@ -294,7 +296,7 @@ async def create_inspection(
 @handle_errors
 async def get_inspection(
     inspection_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get inspection by ID.
@@ -305,28 +307,29 @@ async def get_inspection(
     **Response:**
     - `success`: Boolean indicating success
     - `data`: Inspection data
-    - `error`: Error message if unsuccessful
     """
     try:
-        # Get inspection from database
-        response = supabase.table('service_requests') \
-            .select('*') \
-            .eq('id', inspection_id) \
-            .execute()
+        # Query inspection from database
+        query = """
+            SELECT * FROM service_requests 
+            WHERE id = $1 AND service_type = 'inspection'
+        """
         
-        if not response.data:
-            return InspectionResponse(
-                success=False,
-                error="Inspection not found"
+        result = await execute_query(query, [inspection_id])
+        
+        if not result or len(result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Inspection not found"
             )
         
-        inspection = response.data[0]
+        inspection = result[0]
         
         # Check permissions
-        if inspection.get('user_id') != current_user.get('id') and current_user.get('role') not in ["admin", "super_admin"]:
-            return InspectionResponse(
-                success=False,
-                error="Access denied"
+        if inspection['user_id'] != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
             )
         
         return InspectionResponse(
@@ -335,15 +338,17 @@ async def get_inspection(
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get inspection error: {str(e)}", exc_info=True)
-        return InspectionResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve inspection: {str(e)}"
         )
 
 
-@router.get("/user/{user_id}", response_model=InspectionResponse)
+@router.get("/user/{user_id}", response_model=InspectionListResponse)
 @rate_limit(limit=30, per=60)
 @require_auth
 @log_request
@@ -352,7 +357,13 @@ async def get_user_inspections(
     user_id: str,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(get_current_user)
+    status: Optional[str] = Query(None),
+    inspection_type: Optional[str] = Query(None),
+    purpose: Optional[str] = Query(None),
+    make: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get all inspections for a user.
@@ -361,44 +372,82 @@ async def get_user_inspections(
     - `user_id`: User ID
     
     **Query Parameters:**
-    - `limit`: Number of results to return (default: 50)
+    - `limit`: Number of results to return (default: 50, max: 100)
     - `offset`: Number of results to skip (default: 0)
+    - `status`: Filter by status
+    - `inspection_type`: Filter by inspection type
+    - `purpose`: Filter by purpose
+    - `make`: Filter by vehicle make
+    - `date_from`: Filter from date
+    - `date_to`: Filter to date
     
     **Response:**
     - `success`: Boolean indicating success
     - `data`: List of inspections
-    - `count`: Total count
-    - `error`: Error message if unsuccessful
+    - `total`: Total count
     """
     try:
         # Check permissions
-        if user_id != current_user.get('id') and current_user.get('role') not in ["admin", "super_admin"]:
-            return InspectionResponse(
-                success=False,
-                error="Access denied"
+        if user_id != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
             )
         
-        # Get inspections from database
-        response = supabase.table('service_requests') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .eq('service_type', 'inspection') \
-            .order('created_at', desc=True) \
-            .range(offset, offset + limit - 1) \
-            .execute()
+        # Build filters
+        filters = {
+            'status': status,
+            'inspection_type': inspection_type,
+            'purpose': purpose,
+            'make': make,
+            'date_from': date_from,
+            'date_to': date_to
+        }
+        filters = {k: v for k, v in filters.items() if v is not None}
         
-        return InspectionResponse(
+        # Get total count
+        count_query = """
+            SELECT COUNT(*) as total FROM service_requests 
+            WHERE user_id = $1 AND service_type = 'inspection'
+        """
+        count_params = [user_id]
+        
+        if status:
+            count_query += " AND status = $2"
+            count_params.append(status)
+        if inspection_type:
+            count_query += " AND inspection_type = $3"
+            count_params.append(inspection_type)
+        if purpose:
+            count_query += " AND purpose = $4"
+            count_params.append(purpose)
+        
+        count_result = await execute_query(count_query, count_params)
+        total = count_result[0]['total'] if count_result else 0
+        
+        # Get inspections with pagination
+        query, params = build_inspection_query(user_id, filters)
+        query += f" LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}"
+        params.extend([limit, offset])
+        
+        result = await execute_query(query, params)
+        
+        return InspectionListResponse(
             success=True,
-            data=response.data,
-            count=len(response.data),
+            data=result or [],
+            total=total,
+            limit=limit,
+            offset=offset,
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get user inspections error: {str(e)}", exc_info=True)
-        return InspectionResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve inspections: {str(e)}"
         )
 
 
@@ -409,7 +458,7 @@ async def get_user_inspections(
 @handle_errors
 async def quick_estimate(
     request: QuickEstimateRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Quick inspection estimate.
@@ -424,14 +473,13 @@ async def quick_estimate(
     **Response:**
     - `success`: Boolean indicating success
     - `data`: Quick estimate results
-    - `error`: Error message if unsuccessful
     """
     try:
         # Validate required fields
         if not request.make or not request.model or not request.year:
-            return InspectionResponse(
-                success=False,
-                error="Make, model, and year are required"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Make, model, and year are required"
             )
         
         # Calculate quick estimate
@@ -450,79 +498,101 @@ async def quick_estimate(
                 'safety_score': result.get('safety_score', 0),
                 'mechanical_score': result.get('mechanical_score', 0),
                 'confidence_score': result.get('confidence_score', 0),
-                'issues': result.get('issues', [])[:3]
+                'issues': result.get('issues', [])[:3],
+                'estimated_value': result.get('estimated_value', 0)
             },
             message="Quick estimate completed",
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Quick estimate error: {str(e)}", exc_info=True)
-        return InspectionResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate quick estimate: {str(e)}"
         )
 
 
-@router.get("/stats", response_model=InspectionResponse)
+@router.get("/stats", response_model=InspectionStatsResponse)
 @rate_limit(limit=20, per=60)
 @require_auth
 @log_request
 @handle_errors
 async def get_inspection_stats(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get inspection statistics.
     
     **Response:**
     - `success`: Boolean indicating success
-    - `data`: Statistics (total, completed, pending, avg_score)
-    - `error`: Error message if unsuccessful
+    - `data`: Statistics (total, completed, pending, avg_score, by_type, by_purpose)
     """
     try:
-        # Get inspections from database
-        response = supabase.table('service_requests') \
-            .select('*') \
-            .eq('user_id', current_user.get('id')) \
-            .eq('service_type', 'inspection') \
-            .execute()
+        # Get all inspections for user
+        query = """
+            SELECT * FROM service_requests 
+            WHERE user_id = $1 AND service_type = 'inspection'
+        """
         
-        total = len(response.data)
-        completed = len([r for r in response.data if r.get('status') == 'completed'])
-        pending = total - completed
+        result = await execute_query(query, [current_user['id']])
+        inspections = result or []
+        
+        total = len(inspections)
+        completed = len([r for r in inspections if r.get('status') == 'completed'])
+        pending = len([r for r in inspections if r.get('status') == 'pending'])
+        processing = len([r for r in inspections if r.get('status') == 'processing'])
+        failed = len([r for r in inspections if r.get('status') == 'failed'])
         
         # Calculate average score from results
         total_score = 0
         score_count = 0
-        for r in response.data:
-            result = r.get('result', {})
-            if result.get('overall_score'):
-                total_score += result.get('overall_score', 0)
+        by_type = {}
+        by_purpose = {}
+        
+        for r in inspections:
+            # By type
+            insp_type = r.get('inspection_type', 'Unknown')
+            by_type[insp_type] = by_type.get(insp_type, 0) + 1
+            
+            # By purpose
+            purpose = r.get('purpose', 'Unknown')
+            by_purpose[purpose] = by_purpose.get(purpose, 0) + 1
+            
+            # Scores
+            result_data = r.get('result', {})
+            if result_data.get('overall_score'):
+                total_score += result_data.get('overall_score', 0)
                 score_count += 1
         
-        avg_score = total_score / score_count if score_count > 0 else 0
+        avg_score = round(total_score / score_count, 1) if score_count > 0 else 0
         
-        return InspectionResponse(
+        return InspectionStatsResponse(
             success=True,
             data={
                 'total': total,
                 'completed': completed,
                 'pending': pending,
-                'avg_score': avg_score
+                'processing': processing,
+                'failed': failed,
+                'avg_score': avg_score,
+                'by_type': by_type,
+                'by_purpose': by_purpose
             },
             timestamp=format_timestamp()
         )
         
     except Exception as e:
         logger.error(f"Inspection stats error: {str(e)}", exc_info=True)
-        return InspectionResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get inspection stats: {str(e)}"
         )
 
 
-@router.get("/prices", response_model=InspectionResponse)
+@router.get("/prices", response_model=InspectionPriceResponse)
 @rate_limit(limit=20, per=60)
 @log_request
 @handle_errors
@@ -541,10 +611,11 @@ async def get_inspection_prices():
             "Lease": get_inspection_price("Lease"),
             "Certification": get_inspection_price("Certification"),
             "Auction": get_inspection_price("Auction"),
-            "Export": get_inspection_price("Export")
+            "Export": get_inspection_price("Export"),
+            "Fleet": get_inspection_price("Fleet")
         }
         
-        return InspectionResponse(
+        return InspectionPriceResponse(
             success=True,
             data=prices,
             timestamp=format_timestamp()
@@ -552,9 +623,75 @@ async def get_inspection_prices():
         
     except Exception as e:
         logger.error(f"Inspection prices error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get inspection prices: {str(e)}"
+        )
+
+
+@router.delete("/{inspection_id}", response_model=InspectionResponse)
+@rate_limit(limit=5, per=60)
+@require_auth
+@log_request
+@handle_errors
+async def delete_inspection(
+    inspection_id: str,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """
+    Delete inspection.
+    
+    **Path Parameter:**
+    - `inspection_id`: Inspection ID to delete
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `message`: Status message
+    """
+    try:
+        # Check if inspection exists
+        check_query = """
+            SELECT * FROM service_requests 
+            WHERE id = $1 AND service_type = 'inspection'
+        """
+        check_result = await execute_query(check_query, [inspection_id])
+        
+        if not check_result or len(check_result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Inspection not found"
+            )
+        
+        inspection = check_result[0]
+        
+        # Check permissions
+        if inspection['user_id'] != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Delete inspection
+        delete_query = """
+            DELETE FROM service_requests 
+            WHERE id = $1 AND service_type = 'inspection'
+        """
+        
+        await execute_query(delete_query, [inspection_id])
+        
         return InspectionResponse(
-            success=False,
-            error=str(e)
+            success=True,
+            message="Inspection deleted successfully",
+            timestamp=format_timestamp()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete inspection error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete inspection: {str(e)}"
         )
 
 
