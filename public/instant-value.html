@@ -6,8 +6,11 @@
     <title>AUTO-V | Instant Value Check</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js">
-    </script>
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js">
     </script>
     <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" rel="stylesheet">
@@ -993,635 +996,614 @@
             </button>
 
             <div class="result-footer">
-                Powered by <strong>AUTO-V Intelligence Engine</strong> by MEI Press Group
+                Powered by <strong>AUTO-V Intelligence Engine</strong>
             </div>
         </div>
     </div>
 
     <script>
-        // ─── SUPABASE SINGLE SOURCE OF TRUTH ──────────────────────────
-        // Use a different variable name to avoid conflicts
-        const SB_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-        const SB_ANON_KEY =
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+        // ═══════════════════════════════════════════════════════════════
+        // AUTO-V INSTANT VALUE CHECK — FastAPI Backend Integration
+        // ═══════════════════════════════════════════════════════════════
 
-        // Create Supabase client with a unique variable name
-        const sbClient = window.supabase.createClient(SB_URL, SB_ANON_KEY);
+        (function() {
+            'use strict';
 
-        // ─── MODEL MAPPING FROM SUPABASE ──────────────────────────────
-        let MODEL_MAP = {};
-        let ENGINE_CAPACITIES = {
-            'Car': ['800', '1000', '1200', '1500', '1800', '2000', '2500', '3000', '3500', '4000', '5000', '6000'],
-            'Bike': ['50', '100', '125', '150', '200', '250', '300', '400', '500', '600', '800', '1000', '1200', '1500',
-                '1800'
-            ],
-            'Tricycle': ['50', '100', '125', '150', '200', '250', '300', '400', '500', '600', '800']
-        };
-        const BODY_TYPES = {
-            'Car': ['Sedan', 'SUV', 'Hatchback', 'Pickup', 'Van', 'Coupe', 'Convertible', 'Wagon', 'Other'],
-            'Bike': ['Standard', 'Sport', 'Cruiser', 'Touring', 'Adventure', 'Scooter', 'Off-Road', 'Other'],
-            'Tricycle': ['Passenger', 'Cargo', 'Auto', 'Other']
-        };
-        const VEHICLE_ICONS = {
-            'Sedan': '🚗',
-            'SUV': '🚙',
-            'Hatchback': '🚗',
-            'Pickup': '🛻',
-            'Van': '🚐',
-            'Coupe': '🏎️',
-            'Convertible': '🚗',
-            'Wagon': '🚗',
-            'Other': '🚗',
-            'Standard': '🏍️',
-            'Sport': '🏍️',
-            'Cruiser': '🏍️',
-            'Touring': '🏍️',
-            'Adventure': '🏍️',
-            'Scooter': '🛵',
-            'Off-Road': '🏍️',
-            'Passenger': '🛺',
-            'Cargo': '🛺',
-            'Auto': '🛺'
-        };
+            if (window.autoVInstantCheckInitialized) return;
+            window.autoVInstantCheckInitialized = true;
 
-        // ─── FETCH VEHICLE DATA FROM SUPABASE ─────────────────────────
-        async function loadVehicleData() {
-            try {
-                // Fetch makes and models from Supabase
-                const { data: vehicles, error } = await sbClient
-                    .from('vehicle_models')
-                    .select('make, model')
-                    .order('make');
+            // ─── CONFIG ──────────────────────────────────────────────────
+            const API_BASE = 'http://localhost:8000/api';
 
-                if (error) throw error;
+            // ─── API CHECK ──────────────────────────────────────────────
+            if (typeof api === 'undefined') {
+                console.error('API client not found. Ensure js/api-client.js is loaded.');
+                document.getElementById('statusBox').className = 'status-box status-error';
+                document.getElementById('statusBox').textContent = '⚠️ API client not loaded. Please refresh the page.';
+                document.getElementById('statusBox').style.display = 'block';
+            }
 
-                // Build MODEL_MAP from Supabase data
-                MODEL_MAP = {};
-                vehicles.forEach(v => {
-                    if (!MODEL_MAP[v.make]) {
-                        MODEL_MAP[v.make] = [];
-                    }
-                    if (!MODEL_MAP[v.make].includes(v.model)) {
-                        MODEL_MAP[v.make].push(v.model);
-                    }
+            // ─── MODEL MAPPING ──────────────────────────────────────────
+            let MODEL_MAP = {};
+            const ENGINE_CAPACITIES = {
+                'Car': ['800', '1000', '1200', '1500', '1800', '2000', '2500', '3000', '3500', '4000', '5000', '6000'],
+                'Bike': ['50', '100', '125', '150', '200', '250', '300', '400', '500', '600', '800', '1000', '1200', '1500',
+                    '1800'
+                ],
+                'Tricycle': ['50', '100', '125', '150', '200', '250', '300', '400', '500', '600', '800']
+            };
+            const BODY_TYPES = {
+                'Car': ['Sedan', 'SUV', 'Hatchback', 'Pickup', 'Van', 'Coupe', 'Convertible', 'Wagon', 'Other'],
+                'Bike': ['Standard', 'Sport', 'Cruiser', 'Touring', 'Adventure', 'Scooter', 'Off-Road', 'Other'],
+                'Tricycle': ['Passenger', 'Cargo', 'Auto', 'Other']
+            };
+            const VEHICLE_ICONS = {
+                'Sedan': '🚗',
+                'SUV': '🚙',
+                'Hatchback': '🚗',
+                'Pickup': '🛻',
+                'Van': '🚐',
+                'Coupe': '🏎️',
+                'Convertible': '🚗',
+                'Wagon': '🚗',
+                'Other': '🚗',
+                'Standard': '🏍️',
+                'Sport': '🏍️',
+                'Cruiser': '🏍️',
+                'Touring': '🏍️',
+                'Adventure': '🏍️',
+                'Scooter': '🛵',
+                'Off-Road': '🏍️',
+                'Passenger': '🛺',
+                'Cargo': '🛺',
+                'Auto': '🛺'
+            };
+
+            // ─── DOM ELEMENTS ──────────────────────────────────────────
+            const vehicleTypeSelect = document.getElementById('vehicleType');
+            const makeSelect = document.getElementById('make');
+            const modelSelect = document.getElementById('model');
+            const engineCapacitySelect = document.getElementById('engineCapacity');
+            const bodyTypeSelect = document.getElementById('bodyType');
+            const serviceFeeDisplay = document.getElementById('serviceFeeDisplay');
+            const form = document.getElementById('instantForm');
+            const submitBtn = document.getElementById('submitBtn');
+            const statusBox = document.getElementById('statusBox');
+            const resultBox = document.getElementById('resultBox');
+            const progressFill = document.getElementById('progressFill');
+            const stepLabel = document.getElementById('stepLabel');
+            const progressPercent = document.getElementById('progressPercent');
+            const vehiclePreview = document.getElementById('vehiclePreview');
+            const previewIcon = document.getElementById('previewIcon');
+            const previewTitle = document.getElementById('previewTitle');
+            const previewSubtitle = document.getElementById('previewSubtitle');
+
+            // ─── TOM SELECT ──────────────────────────────────────────
+            let tomMake, tomModel, tomLocation;
+
+            function initTomSelect() {
+                tomMake = new TomSelect('#make', {
+                    create: true,
+                    createFilter: function(input) { return input.length >= 2; },
+                    createOnBlur: true,
+                    placeholder: 'Select or type make...',
+                    maxItems: 1,
                 });
 
-                // Sort models alphabetically
-                Object.keys(MODEL_MAP).forEach(make => {
-                    MODEL_MAP[make].sort();
+                tomModel = new TomSelect('#model', {
+                    create: true,
+                    createFilter: function(input) { return input.length >= 2; },
+                    createOnBlur: true,
+                    placeholder: 'Select or type model...',
+                    maxItems: 1,
                 });
 
-                console.log('✅ Vehicle data loaded from Supabase:', Object.keys(MODEL_MAP).length, 'makes');
-
-                // Update dropdowns with loaded data
-                updateModelDropdown();
-                updateEngineDropdown();
-                updateBodyTypeDropdown();
-
-                return true;
-            } catch (err) {
-                console.error('Error loading vehicle data:', err);
-                // Fallback to hardcoded data if Supabase fails
-                MODEL_MAP = {
-                    'Toyota': ['Corolla', 'Axio', 'Camry', 'RAV4', 'Hilux', 'Land Cruiser'],
-                    'Honda': ['Civic', 'Accord', 'CR-V', 'Fit'],
-                    'Nissan': ['X-Trail', 'Patrol', 'Note', 'Qashqai'],
-                    'BMW': ['X5', '3 Series', '5 Series', '7 Series'],
-                    'Mercedes': ['C-Class', 'E-Class', 'GLC', 'GLE'],
-                    'Other': ['Other']
-                };
-                updateModelDropdown();
-                updateEngineDropdown();
-                updateBodyTypeDropdown();
-                return false;
-            }
-        }
-
-        // ─── DOM ELEMENTS ─────────────────────────────────────────────
-        const vehicleTypeSelect = document.getElementById('vehicleType');
-        const makeSelect = document.getElementById('make');
-        const modelSelect = document.getElementById('model');
-        const engineCapacitySelect = document.getElementById('engineCapacity');
-        const bodyTypeSelect = document.getElementById('bodyType');
-        const serviceFeeDisplay = document.getElementById('serviceFeeDisplay');
-        const form = document.getElementById('instantForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const statusBox = document.getElementById('statusBox');
-        const resultBox = document.getElementById('resultBox');
-        const progressFill = document.getElementById('progressFill');
-        const stepLabel = document.getElementById('stepLabel');
-        const progressPercent = document.getElementById('progressPercent');
-        const vehiclePreview = document.getElementById('vehiclePreview');
-        const previewIcon = document.getElementById('previewIcon');
-        const previewTitle = document.getElementById('previewTitle');
-        const previewSubtitle = document.getElementById('previewSubtitle');
-
-        // ─── TOM SELECT ──────────────────────────────────────────────
-        let tomMake, tomModel, tomLocation;
-
-        function initTomSelect() {
-            tomMake = new TomSelect('#make', {
-                create: true,
-                createFilter: function(input) { return input.length >= 2; },
-                createOnBlur: true,
-                placeholder: 'Select or type make...',
-                maxItems: 1,
-            });
-
-            tomModel = new TomSelect('#model', {
-                create: true,
-                createFilter: function(input) { return input.length >= 2; },
-                createOnBlur: true,
-                placeholder: 'Select or type model...',
-                maxItems: 1,
-            });
-
-            tomLocation = new TomSelect('#location', {
-                create: true,
-                createFilter: function(input) { return input.length >= 2; },
-                createOnBlur: true,
-                placeholder: 'Select or type location...',
-                maxItems: 1,
-            });
-        }
-
-        // ─── UPDATE MODEL DROPDOWN ──────────────────────────────────
-        function updateModelDropdown() {
-            const selectedMake = makeSelect.value;
-            const models = MODEL_MAP[selectedMake] || ['Other'];
-
-            modelSelect.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = '-- Select Model --';
-            modelSelect.appendChild(placeholder);
-
-            models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m;
-                opt.textContent = m;
-                modelSelect.appendChild(opt);
-            });
-
-            if (tomModel) tomModel.clearOptions();
-            if (tomModel) {
-                tomModel.addOption(models.map(m => ({ value: m, text: m })));
-                tomModel.refreshOptions();
+                tomLocation = new TomSelect('#location', {
+                    create: true,
+                    createFilter: function(input) { return input.length >= 2; },
+                    createOnBlur: true,
+                    placeholder: 'Select or type location...',
+                    maxItems: 1,
+                });
             }
 
-            updateVehiclePreview();
-            updateProgress();
-        }
+            // ─── UPDATE MODEL DROPDOWN ──────────────────────────────
+            function updateModelDropdown() {
+                const selectedMake = makeSelect.value;
+                const models = MODEL_MAP[selectedMake] || ['Other'];
 
-        // ─── UPDATE ENGINE DROPDOWN ──────────────────────────────────
-        function updateEngineDropdown() {
-            const type = vehicleTypeSelect.value;
-            const capacities = ENGINE_CAPACITIES[type] || ['Other'];
+                modelSelect.innerHTML = '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = '-- Select Model --';
+                modelSelect.appendChild(placeholder);
 
-            engineCapacitySelect.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = '-- Select Engine --';
-            engineCapacitySelect.appendChild(placeholder);
+                models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    modelSelect.appendChild(opt);
+                });
 
-            capacities.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c;
-                opt.textContent = `${c}cc`;
-                engineCapacitySelect.appendChild(opt);
-            });
-
-            updateProgress();
-        }
-
-        // ─── UPDATE BODY TYPE DROPDOWN ──────────────────────────────
-        function updateBodyTypeDropdown() {
-            const type = vehicleTypeSelect.value;
-            const types = BODY_TYPES[type] || ['Other'];
-
-            bodyTypeSelect.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = '-- Select Body Type --';
-            bodyTypeSelect.appendChild(placeholder);
-
-            types.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t;
-                opt.textContent = t;
-                bodyTypeSelect.appendChild(opt);
-            });
-
-            updateProgress();
-        }
-
-        // ─── UPDATE VEHICLE PREVIEW ──────────────────────────────────
-        function updateVehiclePreview() {
-            const make = makeSelect.value;
-            const model = modelSelect.value;
-            const bodyType = bodyTypeSelect.value;
-
-            if (make && model) {
-                const icon = VEHICLE_ICONS[bodyType] || '🚗';
-                previewIcon.textContent = icon;
-                previewTitle.textContent = `${make} ${model}`;
-                previewSubtitle.textContent = bodyType || 'Select body type';
-                vehiclePreview.classList.add('show');
-            } else if (make) {
-                previewIcon.textContent = '🚗';
-                previewTitle.textContent = `${make}`;
-                previewSubtitle.textContent = 'Select model...';
-                vehiclePreview.classList.add('show');
-            } else {
-                vehiclePreview.classList.remove('show');
-            }
-            updateProgress();
-        }
-
-        // ─── UPDATE PROGRESS ──────────────────────────────────────────
-        function updateProgress() {
-            const fields = [
-                vehicleTypeSelect, makeSelect, modelSelect,
-                document.getElementById('year'), engineCapacitySelect,
-                document.getElementById('fuelType'), document.getElementById('transmission'),
-                bodyTypeSelect, document.getElementById('mileage'),
-                document.getElementById('previousOwners'), document.getElementById('usageType'),
-                document.getElementById('condition'), document.getElementById('accidentHistory'),
-                document.getElementById('location'), document.getElementById('mpesaPhone')
-            ];
-
-            let filled = 0;
-            let total = fields.length;
-
-            fields.forEach(field => {
-                if (field.value && field.value !== '' && field.value !== '-- Select Model --' && field.value !==
-                    '-- Select Engine --' && field.value !== '-- Select Body Type --') {
-                    filled++;
+                if (tomModel) tomModel.clearOptions();
+                if (tomModel) {
+                    tomModel.addOption(models.map(m => ({ value: m, text: m })));
+                    tomModel.refreshOptions();
                 }
-            });
 
-            const percent = Math.round((filled / total) * 100);
-            progressFill.style.width = `${Math.min(percent, 100)}%`;
-            progressPercent.textContent = `${Math.min(percent, 100)}%`;
-
-            if (percent < 30) {
-                stepLabel.textContent = 'Step 1: Vehicle Information';
-            } else if (percent < 60) {
-                stepLabel.textContent = 'Step 2: Vehicle Details';
-            } else if (percent < 85) {
-                stepLabel.textContent = 'Step 3: Condition & History';
-            } else {
-                stepLabel.textContent = 'Step 4: Ready for Valuation!';
-            }
-        }
-
-        // ─── FETCH SERVICE FEE FROM SUPABASE ─────────────────────────
-        async function fetchServiceFee() {
-            try {
-                const { data, error } = await sbClient
-                    .from('system_settings')
-                    .select('setting_value')
-                    .eq('setting_key', 'instant_fee')
-                    .single();
-
-                if (error) throw error;
-
-                const fee = parseInt(data.setting_value) || 500;
-                serviceFeeDisplay.textContent = `KES ${fee.toLocaleString()}`;
-                return fee;
-            } catch (error) {
-                console.error('Error fetching service fee from Supabase:', error);
-                serviceFeeDisplay.textContent = 'KES 500';
-                return 500;
-            }
-        }
-
-        // ─── VALIDATION ──────────────────────────────────────────────
-        function validateField(field, errorId, condition) {
-            const errorEl = document.getElementById(errorId);
-            if (!condition) {
-                field.classList.add('input-error');
-                errorEl.classList.add('show');
-                return false;
-            } else {
-                field.classList.remove('input-error');
-                errorEl.classList.remove('show');
-                return true;
-            }
-        }
-
-        function validateAll() {
-            const year = parseInt(document.getElementById('year').value);
-            const currentYear = new Date().getFullYear();
-            const mileage = parseInt(document.getElementById('mileage').value);
-            const phone = document.getElementById('mpesaPhone').value.trim();
-
-            const validations = [
-                validateField(makeSelect, 'makeError', makeSelect.value && makeSelect.value !== ''),
-                validateField(modelSelect, 'modelError', modelSelect.value && modelSelect.value !== ''),
-                validateField(document.getElementById('year'), 'yearError', year >= 1980 && year <= currentYear),
-                validateField(engineCapacitySelect, 'engineError', engineCapacitySelect.value && engineCapacitySelect
-                    .value !== ''),
-                validateField(bodyTypeSelect, 'bodyTypeError', bodyTypeSelect.value && bodyTypeSelect.value !== ''),
-                validateField(document.getElementById('mileage'), 'mileageError', mileage >= 0 && mileage < 1000000),
-                validateField(document.getElementById('mpesaPhone'), 'phoneError', phone.length >= 10 && /^[0-9]{10,12}$/
-                    .test(phone))
-            ];
-
-            return validations.every(v => v === true);
-        }
-
-        // ─── CONFETTI ──────────────────────────────────────────────────
-        function fireConfetti() {
-            const container = document.createElement('div');
-            container.className = 'confetti-container';
-            document.body.appendChild(container);
-
-            const colors = ['#eab308', '#22c55e', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#f59e0b'];
-            for (let i = 0; i < 80; i++) {
-                const piece = document.createElement('div');
-                piece.className = 'confetti-piece';
-                piece.style.left = Math.random() * 100 + '%';
-                piece.style.background = colors[Math.floor(Math.random() * colors.length)];
-                piece.style.width = (Math.random() * 8 + 4) + 'px';
-                piece.style.height = (Math.random() * 8 + 4) + 'px';
-                piece.style.animationDuration = (Math.random() * 2 + 2) + 's';
-                piece.style.animationDelay = (Math.random() * 2) + 's';
-                piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
-                container.appendChild(piece);
+                updateVehiclePreview();
+                updateProgress();
             }
 
-            setTimeout(() => { container.remove(); }, 5000);
-        }
+            // ─── UPDATE ENGINE DROPDOWN ──────────────────────────────
+            function updateEngineDropdown() {
+                const type = vehicleTypeSelect.value;
+                const capacities = ENGINE_CAPACITIES[type] || ['Other'];
 
-        // ─── UPDATE LOADING STEPS ──────────────────────────────────
-        function updateLoadingStep(step) {
-            const steps = document.querySelectorAll('.loading-step');
-            steps.forEach((el, index) => {
-                const num = index + 1;
-                el.classList.remove('active', 'done');
-                if (num < step) {
-                    el.classList.add('done');
-                    el.querySelector('.icon').textContent = '✅';
-                } else if (num === step) {
-                    el.classList.add('active');
-                    el.querySelector('.icon').innerHTML = '<div class="spinner-small"></div>';
+                engineCapacitySelect.innerHTML = '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = '-- Select Engine --';
+                engineCapacitySelect.appendChild(placeholder);
+
+                capacities.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = `${c}cc`;
+                    engineCapacitySelect.appendChild(opt);
+                });
+
+                updateProgress();
+            }
+
+            // ─── UPDATE BODY TYPE DROPDOWN ──────────────────────────
+            function updateBodyTypeDropdown() {
+                const type = vehicleTypeSelect.value;
+                const types = BODY_TYPES[type] || ['Other'];
+
+                bodyTypeSelect.innerHTML = '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = '-- Select Body Type --';
+                bodyTypeSelect.appendChild(placeholder);
+
+                types.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t;
+                    opt.textContent = t;
+                    bodyTypeSelect.appendChild(opt);
+                });
+
+                updateProgress();
+            }
+
+            // ─── UPDATE VEHICLE PREVIEW ──────────────────────────────
+            function updateVehiclePreview() {
+                const make = makeSelect.value;
+                const model = modelSelect.value;
+                const bodyType = bodyTypeSelect.value;
+
+                if (make && model) {
+                    const icon = VEHICLE_ICONS[bodyType] || '🚗';
+                    previewIcon.textContent = icon;
+                    previewTitle.textContent = `${make} ${model}`;
+                    previewSubtitle.textContent = bodyType || 'Select body type';
+                    vehiclePreview.classList.add('show');
+                } else if (make) {
+                    previewIcon.textContent = '🚗';
+                    previewTitle.textContent = `${make}`;
+                    previewSubtitle.textContent = 'Select model...';
+                    vehiclePreview.classList.add('show');
                 } else {
-                    el.querySelector('.icon').textContent = '⏳';
+                    vehiclePreview.classList.remove('show');
                 }
-            });
-        }
-
-        // ─── SHOW RESULT WITH ANIMATION ──────────────────────────────
-        function showResult(data) {
-            const marketValue = data.market_value || 0;
-            const rangeMin = Math.round(marketValue * 0.88);
-            const rangeMax = Math.round(marketValue * 1.05);
-            const confidence = data.confidence_score || 87;
-
-            const el = document.getElementById('resultMarketValue');
-            el.textContent = 'KES 0';
-
-            let current = 0;
-            const target = marketValue;
-            const step = Math.max(1, Math.floor(target / 50));
-            const interval = setInterval(() => {
-                current += step;
-                if (current >= target) {
-                    current = target;
-                    clearInterval(interval);
-                }
-                el.textContent = `KES ${current.toLocaleString()}`;
-            }, 30);
-
-            document.getElementById('resultRange').textContent =
-                `KES ${rangeMin.toLocaleString()} - ${rangeMax.toLocaleString()}`;
-            document.getElementById('resultVehicle').textContent = `${makeSelect.value} ${modelSelect.value}`;
-            document.getElementById('resultYear').textContent = document.getElementById('year').value;
-            document.getElementById('resultEngine').textContent = `${engineCapacitySelect.value}cc`;
-            document.getElementById('resultColor').textContent = document.getElementById('bodyColor').value;
-            document.getElementById('resultLocation').textContent = document.getElementById('location').value;
-            document.getElementById('resultDate').textContent = new Date().toLocaleDateString('en-KE', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-            document.getElementById('resultCert').textContent =
-                `AUTO-VAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-            const confidenceFill = document.getElementById('confidenceFill');
-            confidenceFill.style.width = '0%';
-            setTimeout(() => {
-                confidenceFill.style.width = `${confidence}%`;
-            }, 300);
-            document.getElementById('confidenceLabel').textContent = `${confidence}%`;
-
-            resultBox.classList.add('show');
-            resultBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-            fireConfetti();
-        }
-
-        // ─── EVENT LISTENERS ──────────────────────────────────────────
-        vehicleTypeSelect.addEventListener('change', function() {
-            updateEngineDropdown();
-            updateBodyTypeDropdown();
-            updateProgress();
-
-            const type = this.value;
-            let categoryLabel = 'Cars';
-            if (type === 'Bike') categoryLabel = 'Bikes';
-            else if (type === 'Tricycle') categoryLabel = 'Tricycles';
-
-            const firstMake = makeSelect.querySelector(`optgroup[label="${categoryLabel}"] option`);
-            if (firstMake) {
-                makeSelect.value = firstMake.value;
-                updateModelDropdown();
-                if (tomMake) tomMake.setValue(firstMake.value);
+                updateProgress();
             }
-        });
 
-        makeSelect.addEventListener('change', function() {
-            updateModelDropdown();
-            if (tomModel) tomModel.setValue('');
-        });
+            // ─── UPDATE PROGRESS ──────────────────────────────────────
+            function updateProgress() {
+                const fields = [
+                    vehicleTypeSelect, makeSelect, modelSelect,
+                    document.getElementById('year'), engineCapacitySelect,
+                    document.getElementById('fuelType'), document.getElementById('transmission'),
+                    bodyTypeSelect, document.getElementById('mileage'),
+                    document.getElementById('previousOwners'), document.getElementById('usageType'),
+                    document.getElementById('condition'), document.getElementById('accidentHistory'),
+                    document.getElementById('location'), document.getElementById('mpesaPhone')
+                ];
 
-        modelSelect.addEventListener('change', updateVehiclePreview);
-        bodyTypeSelect.addEventListener('change', updateVehiclePreview);
+                let filled = 0;
+                let total = fields.length;
 
-        document.querySelectorAll('input, select').forEach(el => {
-            el.addEventListener('input', function() {
-                this.classList.remove('input-error');
-                const errorEl = this.closest('.form-group')?.querySelector('.error-text');
-                if (errorEl) errorEl.classList.remove('show');
-                updateProgress();
-                saveDraft();
-            });
-            el.addEventListener('change', function() {
-                updateProgress();
-                saveDraft();
-            });
-        });
+                fields.forEach(field => {
+                    if (field.value && field.value !== '' && field.value !== '-- Select Model --' && field.value !==
+                        '-- Select Engine --' && field.value !== '-- Select Body Type --') {
+                        filled++;
+                    }
+                });
 
-        // ─── AUTO-SAVE DRAFT ──────────────────────────────────────────
-        function saveDraft() {
-            const formData = {
-                vehicleType: vehicleTypeSelect.value,
-                make: makeSelect.value,
-                model: modelSelect.value,
-                year: document.getElementById('year').value,
-                engineCapacity: engineCapacitySelect.value,
-                fuelType: document.getElementById('fuelType').value,
-                transmission: document.getElementById('transmission').value,
-                bodyType: bodyTypeSelect.value,
-                bodyColor: document.getElementById('bodyColor').value,
-                mileage: document.getElementById('mileage').value,
-                previousOwners: document.getElementById('previousOwners').value,
-                usageType: document.getElementById('usageType').value,
-                condition: document.getElementById('condition').value,
-                accidentHistory: document.getElementById('accidentHistory').value,
-                location: document.getElementById('location').value,
-                phone: document.getElementById('mpesaPhone').value
-            };
-            localStorage.setItem('valuationDraft', JSON.stringify(formData));
-        }
+                const percent = Math.round((filled / total) * 100);
+                progressFill.style.width = `${Math.min(percent, 100)}%`;
+                progressPercent.textContent = `${Math.min(percent, 100)}%`;
 
-        function loadDraft() {
-            try {
-                const data = JSON.parse(localStorage.getItem('valuationDraft'));
-                if (data) {
-                    vehicleTypeSelect.value = data.vehicleType || 'Car';
-                    makeSelect.value = data.make || '';
+                if (percent < 30) {
+                    stepLabel.textContent = 'Step 1: Vehicle Information';
+                } else if (percent < 60) {
+                    stepLabel.textContent = 'Step 2: Vehicle Details';
+                } else if (percent < 85) {
+                    stepLabel.textContent = 'Step 3: Condition & History';
+                } else {
+                    stepLabel.textContent = 'Step 4: Ready for Valuation!';
+                }
+            }
+
+            // ─── FETCH SERVICE FEE FROM API ──────────────────────────
+            async function fetchServiceFee() {
+                try {
+                    const data = await api.get('/settings/instant_fee');
+                    const fee = parseInt(data.setting_value) || 500;
+                    serviceFeeDisplay.textContent = `KES ${fee.toLocaleString()}`;
+                    return fee;
+                } catch (error) {
+                    console.error('Error fetching service fee:', error);
+                    serviceFeeDisplay.textContent = 'KES 500';
+                    return 500;
+                }
+            }
+
+            // ─── FETCH VEHICLE DATA FROM API ─────────────────────────
+            async function loadVehicleData() {
+                try {
+                    const vehicles = await api.get('/vehicles/models');
+                    
+                    // Build MODEL_MAP from API data
+                    MODEL_MAP = {};
+                    vehicles.forEach(v => {
+                        if (!MODEL_MAP[v.make]) {
+                            MODEL_MAP[v.make] = [];
+                        }
+                        if (!MODEL_MAP[v.make].includes(v.model)) {
+                            MODEL_MAP[v.make].push(v.model);
+                        }
+                    });
+
+                    // Sort models alphabetically
+                    Object.keys(MODEL_MAP).forEach(make => {
+                        MODEL_MAP[make].sort();
+                    });
+
+                    console.log('✅ Vehicle data loaded from API:', Object.keys(MODEL_MAP).length, 'makes');
+
                     updateModelDropdown();
-                    setTimeout(() => {
-                        modelSelect.value = data.model || '';
-                        document.getElementById('year').value = data.year || '';
-                        engineCapacitySelect.value = data.engineCapacity || '';
-                        document.getElementById('fuelType').value = data.fuelType || 'Petrol';
-                        document.getElementById('transmission').value = data.transmission || 'Automatic';
-                        bodyTypeSelect.value = data.bodyType || '';
-                        document.getElementById('bodyColor').value = data.bodyColor || 'White';
-                        document.getElementById('mileage').value = data.mileage || '';
-                        document.getElementById('previousOwners').value = data.previousOwners || '0';
-                        document.getElementById('usageType').value = data.usageType || 'Personal';
-                        document.getElementById('condition').value = data.condition || 'Good';
-                        document.getElementById('accidentHistory').value = data.accidentHistory || 'None';
-                        document.getElementById('location').value = data.location || 'Nairobi';
-                        document.getElementById('mpesaPhone').value = data.phone || '';
+                    updateEngineDropdown();
+                    updateBodyTypeDropdown();
 
-                        updateEngineDropdown();
-                        updateBodyTypeDropdown();
-                        updateVehiclePreview();
-                        updateProgress();
-                    }, 100);
+                    return true;
+                } catch (error) {
+                    console.error('Error loading vehicle data:', error);
+                    // Fallback to hardcoded data
+                    MODEL_MAP = {
+                        'Toyota': ['Corolla', 'Axio', 'Camry', 'RAV4', 'Hilux', 'Land Cruiser'],
+                        'Honda': ['Civic', 'Accord', 'CR-V', 'Fit'],
+                        'Nissan': ['X-Trail', 'Patrol', 'Note', 'Qashqai'],
+                        'BMW': ['X5', '3 Series', '5 Series', '7 Series'],
+                        'Mercedes': ['C-Class', 'E-Class', 'GLC', 'GLE'],
+                        'Other': ['Other']
+                    };
+                    updateModelDropdown();
+                    updateEngineDropdown();
+                    updateBodyTypeDropdown();
+                    return false;
                 }
-            } catch (e) {
-                console.log('No draft found');
-            }
-        }
-
-        // ─── FORM SUBMISSION ──────────────────────────────────────────
-        form.addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            if (!validateAll()) {
-                statusBox.className = 'status-box status-error';
-                statusBox.textContent = '❌ Please fix the highlighted fields before continuing.';
-                statusBox.style.display = 'block';
-                return;
             }
 
-            const formData = {
-                vehicleType: vehicleTypeSelect.value,
-                make: makeSelect.value,
-                model: modelSelect.value,
-                year: parseInt(document.getElementById('year').value),
-                engineCapacity: parseInt(engineCapacitySelect.value),
-                fuelType: document.getElementById('fuelType').value,
-                transmission: document.getElementById('transmission').value,
-                bodyType: bodyTypeSelect.value,
-                bodyColor: document.getElementById('bodyColor').value,
-                mileage: parseInt(document.getElementById('mileage').value),
-                condition: document.getElementById('condition').value,
-                accidentHistory: document.getElementById('accidentHistory').value,
-                location: document.getElementById('location').value,
-                previousOwners: parseInt(document.getElementById('previousOwners').value),
-                usageType: document.getElementById('usageType').value,
-                phone: document.getElementById('mpesaPhone').value.trim()
-            };
+            // ─── VALIDATION ──────────────────────────────────────────
+            function validateField(field, errorId, condition) {
+                const errorEl = document.getElementById(errorId);
+                if (!condition) {
+                    field.classList.add('input-error');
+                    errorEl.classList.add('show');
+                    return false;
+                } else {
+                    field.classList.remove('input-error');
+                    errorEl.classList.remove('show');
+                    return true;
+                }
+            }
 
-            statusBox.style.display = 'none';
-            resultBox.classList.remove('show');
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner"></span> Processing Valuation...';
+            function validateAll() {
+                const year = parseInt(document.getElementById('year').value);
+                const currentYear = new Date().getFullYear();
+                const mileage = parseInt(document.getElementById('mileage').value);
+                const phone = document.getElementById('mpesaPhone').value.trim();
 
-            const loadingSteps = document.getElementById('loadingSteps');
-            loadingSteps.classList.add('show');
-            updateLoadingStep(1);
+                const validations = [
+                    validateField(makeSelect, 'makeError', makeSelect.value && makeSelect.value !== ''),
+                    validateField(modelSelect, 'modelError', modelSelect.value && modelSelect.value !== ''),
+                    validateField(document.getElementById('year'), 'yearError', year >= 1980 && year <= currentYear),
+                    validateField(engineCapacitySelect, 'engineError', engineCapacitySelect.value && engineCapacitySelect
+                        .value !== ''),
+                    validateField(bodyTypeSelect, 'bodyTypeError', bodyTypeSelect.value && bodyTypeSelect.value !== ''),
+                    validateField(document.getElementById('mileage'), 'mileageError', mileage >= 0 && mileage < 1000000),
+                    validateField(document.getElementById('mpesaPhone'), 'phoneError', phone.length >= 10 && /^[0-9]{10,12}$/
+                        .test(phone))
+                ];
 
-            try {
-                const { data: { user } } = await sbClient.auth.getUser();
-                if (!user) {
+                return validations.every(v => v === true);
+            }
+
+            // ─── CONFETTI ──────────────────────────────────────────────
+            function fireConfetti() {
+                const container = document.createElement('div');
+                container.className = 'confetti-container';
+                document.body.appendChild(container);
+
+                const colors = ['#eab308', '#22c55e', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#f59e0b'];
+                for (let i = 0; i < 80; i++) {
+                    const piece = document.createElement('div');
+                    piece.className = 'confetti-piece';
+                    piece.style.left = Math.random() * 100 + '%';
+                    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+                    piece.style.width = (Math.random() * 8 + 4) + 'px';
+                    piece.style.height = (Math.random() * 8 + 4) + 'px';
+                    piece.style.animationDuration = (Math.random() * 2 + 2) + 's';
+                    piece.style.animationDelay = (Math.random() * 2) + 's';
+                    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+                    container.appendChild(piece);
+                }
+
+                setTimeout(() => { container.remove(); }, 5000);
+            }
+
+            // ─── UPDATE LOADING STEPS ──────────────────────────────
+            function updateLoadingStep(step) {
+                const steps = document.querySelectorAll('.loading-step');
+                steps.forEach((el, index) => {
+                    const num = index + 1;
+                    el.classList.remove('active', 'done');
+                    if (num < step) {
+                        el.classList.add('done');
+                        el.querySelector('.icon').textContent = '✅';
+                    } else if (num === step) {
+                        el.classList.add('active');
+                        el.querySelector('.icon').innerHTML = '<div class="spinner-small"></div>';
+                    } else {
+                        el.querySelector('.icon').textContent = '⏳';
+                    }
+                });
+            }
+
+            // ─── SHOW RESULT WITH ANIMATION ──────────────────────────
+            function showResult(data) {
+                const marketValue = data.market_value || 0;
+                const rangeMin = Math.round(marketValue * 0.88);
+                const rangeMax = Math.round(marketValue * 1.05);
+                const confidence = data.confidence_score || 87;
+
+                const el = document.getElementById('resultMarketValue');
+                el.textContent = 'KES 0';
+
+                let current = 0;
+                const target = marketValue;
+                const step = Math.max(1, Math.floor(target / 50));
+                const interval = setInterval(() => {
+                    current += step;
+                    if (current >= target) {
+                        current = target;
+                        clearInterval(interval);
+                    }
+                    el.textContent = `KES ${current.toLocaleString()}`;
+                }, 30);
+
+                document.getElementById('resultRange').textContent =
+                    `KES ${rangeMin.toLocaleString()} - ${rangeMax.toLocaleString()}`;
+                document.getElementById('resultVehicle').textContent = `${makeSelect.value} ${modelSelect.value}`;
+                document.getElementById('resultYear').textContent = document.getElementById('year').value;
+                document.getElementById('resultEngine').textContent = `${engineCapacitySelect.value}cc`;
+                document.getElementById('resultColor').textContent = document.getElementById('bodyColor').value;
+                document.getElementById('resultLocation').textContent = document.getElementById('location').value;
+                document.getElementById('resultDate').textContent = new Date().toLocaleDateString('en-KE', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                document.getElementById('resultCert').textContent =
+                    `AUTO-VAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+                const confidenceFill = document.getElementById('confidenceFill');
+                confidenceFill.style.width = '0%';
+                setTimeout(() => {
+                    confidenceFill.style.width = `${confidence}%`;
+                }, 300);
+                document.getElementById('confidenceLabel').textContent = `${confidence}%`;
+
+                resultBox.classList.add('show');
+                resultBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                fireConfetti();
+            }
+
+            // ─── EVENT LISTENERS ──────────────────────────────────────
+            vehicleTypeSelect.addEventListener('change', function() {
+                updateEngineDropdown();
+                updateBodyTypeDropdown();
+                updateProgress();
+
+                const type = this.value;
+                let categoryLabel = 'Cars';
+                if (type === 'Bike') categoryLabel = 'Bikes';
+                else if (type === 'Tricycle') categoryLabel = 'Tricycles';
+
+                const firstMake = makeSelect.querySelector(`optgroup[label="${categoryLabel}"] option`);
+                if (firstMake) {
+                    makeSelect.value = firstMake.value;
+                    updateModelDropdown();
+                    if (tomMake) tomMake.setValue(firstMake.value);
+                }
+            });
+
+            makeSelect.addEventListener('change', function() {
+                updateModelDropdown();
+                if (tomModel) tomModel.setValue('');
+            });
+
+            modelSelect.addEventListener('change', updateVehiclePreview);
+            bodyTypeSelect.addEventListener('change', updateVehiclePreview);
+
+            document.querySelectorAll('input, select').forEach(el => {
+                el.addEventListener('input', function() {
+                    this.classList.remove('input-error');
+                    const errorEl = this.closest('.form-group')?.querySelector('.error-text');
+                    if (errorEl) errorEl.classList.remove('show');
+                    updateProgress();
+                    saveDraft();
+                });
+                el.addEventListener('change', function() {
+                    updateProgress();
+                    saveDraft();
+                });
+            });
+
+            // ─── AUTO-SAVE DRAFT ──────────────────────────────────────
+            function saveDraft() {
+                const formData = {
+                    vehicleType: vehicleTypeSelect.value,
+                    make: makeSelect.value,
+                    model: modelSelect.value,
+                    year: document.getElementById('year').value,
+                    engineCapacity: engineCapacitySelect.value,
+                    fuelType: document.getElementById('fuelType').value,
+                    transmission: document.getElementById('transmission').value,
+                    bodyType: bodyTypeSelect.value,
+                    bodyColor: document.getElementById('bodyColor').value,
+                    mileage: document.getElementById('mileage').value,
+                    previousOwners: document.getElementById('previousOwners').value,
+                    usageType: document.getElementById('usageType').value,
+                    condition: document.getElementById('condition').value,
+                    accidentHistory: document.getElementById('accidentHistory').value,
+                    location: document.getElementById('location').value,
+                    phone: document.getElementById('mpesaPhone').value
+                };
+                localStorage.setItem('valuationDraft', JSON.stringify(formData));
+            }
+
+            function loadDraft() {
+                try {
+                    const data = JSON.parse(localStorage.getItem('valuationDraft'));
+                    if (data) {
+                        vehicleTypeSelect.value = data.vehicleType || 'Car';
+                        makeSelect.value = data.make || '';
+                        updateModelDropdown();
+                        setTimeout(() => {
+                            modelSelect.value = data.model || '';
+                            document.getElementById('year').value = data.year || '';
+                            engineCapacitySelect.value = data.engineCapacity || '';
+                            document.getElementById('fuelType').value = data.fuelType || 'Petrol';
+                            document.getElementById('transmission').value = data.transmission || 'Automatic';
+                            bodyTypeSelect.value = data.bodyType || '';
+                            document.getElementById('bodyColor').value = data.bodyColor || 'White';
+                            document.getElementById('mileage').value = data.mileage || '';
+                            document.getElementById('previousOwners').value = data.previousOwners || '0';
+                            document.getElementById('usageType').value = data.usageType || 'Personal';
+                            document.getElementById('condition').value = data.condition || 'Good';
+                            document.getElementById('accidentHistory').value = data.accidentHistory || 'None';
+                            document.getElementById('location').value = data.location || 'Nairobi';
+                            document.getElementById('mpesaPhone').value = data.phone || '';
+
+                            updateEngineDropdown();
+                            updateBodyTypeDropdown();
+                            updateVehiclePreview();
+                            updateProgress();
+                        }, 100);
+                    }
+                } catch (e) {
+                    console.log('No draft found');
+                }
+            }
+
+            // ─── FORM SUBMISSION ──────────────────────────────────────
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                if (typeof api === 'undefined') {
                     statusBox.className = 'status-box status-error';
-                    statusBox.textContent = '❌ Please login again.';
+                    statusBox.textContent = '❌ API service unavailable. Please refresh the page.';
                     statusBox.style.display = 'block';
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = '🚀 Get AI Valuation';
                     return;
                 }
 
-                const { data: { session } } = await sbClient.auth.getSession();
-                const token = session?.access_token || '';
-
-                let step = 1;
-                const stepInterval = setInterval(() => {
-                    step++;
-                    if (step <= 5) updateLoadingStep(step);
-                }, 1200);
-
-                // ─── STORE IN SUPABASE FIRST ──────────────────────────
-                const valuationData = {
-                    user_id: user.id,
-                    make: formData.make,
-                    model: formData.model,
-                    year: formData.year,
-                    engine_capacity: formData.engineCapacity,
-                    fuel_type: formData.fuelType,
-                    transmission: formData.transmission,
-                    body_type: formData.bodyType,
-                    body_color: formData.bodyColor,
-                    mileage: formData.mileage,
-                    condition: formData.condition,
-                    accident_history: formData.accidentHistory,
-                    location: formData.location,
-                    previous_owners: formData.previousOwners,
-                    usage_type: formData.usageType,
-                    phone: formData.phone,
-                    created_at: new Date().toISOString()
-                };
-
-                // Save to Supabase valuations table
-                const { data: savedValuation, error: saveError } = await sbClient
-                    .from('valuations')
-                    .insert(valuationData)
-                    .select()
-                    .single();
-
-                if (saveError) {
-                    console.error('Error saving to Supabase:', saveError);
-                    // Continue anyway - we can still show the result
+                if (!validateAll()) {
+                    statusBox.className = 'status-box status-error';
+                    statusBox.textContent = '❌ Please fix the highlighted fields before continuing.';
+                    statusBox.style.display = 'block';
+                    return;
                 }
 
-                // ─── CALL BACKEND FOR VALUATION ──────────────────────
-                const response = await fetch(`https://auto-v.onrender.com/instant-check/valuate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
+                const formData = {
+                    vehicleType: vehicleTypeSelect.value,
+                    make: makeSelect.value,
+                    model: modelSelect.value,
+                    year: parseInt(document.getElementById('year').value),
+                    engineCapacity: parseInt(engineCapacitySelect.value),
+                    fuelType: document.getElementById('fuelType').value,
+                    transmission: document.getElementById('transmission').value,
+                    bodyType: bodyTypeSelect.value,
+                    bodyColor: document.getElementById('bodyColor').value,
+                    mileage: parseInt(document.getElementById('mileage').value),
+                    condition: document.getElementById('condition').value,
+                    accidentHistory: document.getElementById('accidentHistory').value,
+                    location: document.getElementById('location').value,
+                    previousOwners: parseInt(document.getElementById('previousOwners').value),
+                    usageType: document.getElementById('usageType').value,
+                    phone: document.getElementById('mpesaPhone').value.trim()
+                };
+
+                statusBox.style.display = 'none';
+                resultBox.classList.remove('show');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner"></span> Processing Valuation...';
+
+                const loadingSteps = document.getElementById('loadingSteps');
+                loadingSteps.classList.add('show');
+                updateLoadingStep(1);
+
+                try {
+                    // Get current user
+                    const user = await api.get('/auth/me');
+
+                    let step = 1;
+                    const stepInterval = setInterval(() => {
+                        step++;
+                        if (step <= 5) updateLoadingStep(step);
+                    }, 1200);
+
+                    // ─── STORE IN API FIRST ──────────────────────────
+                    const valuationData = {
+                        user_id: user.id,
+                        make: formData.make,
+                        model: formData.model,
+                        year: formData.year,
+                        engine_capacity: formData.engineCapacity,
+                        fuel_type: formData.fuelType,
+                        transmission: formData.transmission,
+                        body_type: formData.bodyType,
+                        body_color: formData.bodyColor,
+                        mileage: formData.mileage,
+                        condition: formData.condition,
+                        accident_history: formData.accidentHistory,
+                        location: formData.location,
+                        previous_owners: formData.previousOwners,
+                        usage_type: formData.usageType,
+                        phone: formData.phone
+                    };
+
+                    // Save to API valuations endpoint
+                    const savedValuation = await api.post('/valuations', valuationData);
+
+                    // ─── CALL VALUATION ENGINE ──────────────────────
+                    const result = await api.post('/valuations/instant', {
                         user_id: user.id,
                         vehicle: {
                             type: formData.vehicleType,
@@ -1641,79 +1623,75 @@
                             usage_type: formData.usageType
                         },
                         phone: formData.phone,
-                        valuation_id: savedValuation?.id || null
-                    })
-                });
+                        valuation_id: savedValuation.id
+                    });
 
-                clearInterval(stepInterval);
-                updateLoadingStep(5);
+                    clearInterval(stepInterval);
+                    updateLoadingStep(5);
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Valuation failed');
+                    // ─── UPDATE VALUATION WITH RESULTS ──────────────
+                    await api.put(`/valuations/${savedValuation.id}`, {
+                        market_value: result.market_value,
+                        confidence_score: result.confidence_score,
+                        certificate_number: result.certificate_number,
+                        status: 'completed'
+                    });
+
+                    loadingSteps.classList.remove('show');
+
+                    statusBox.className = 'status-box status-success';
+                    statusBox.textContent = '✅ Valuation complete! Your result is ready below.';
+                    statusBox.style.display = 'block';
+
+                    showResult(result);
+
+                    submitBtn.textContent = '✅ Valuation Complete';
+                    submitBtn.disabled = true;
+
+                } catch (err) {
+                    console.error('Error:', err);
+                    loadingSteps.classList.remove('show');
+                    statusBox.className = 'status-box status-error';
+                    statusBox.textContent = `❌ ${err.message || 'An error occurred. Please try again.'}`;
+                    statusBox.style.display = 'block';
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '🚀 Get AI Valuation';
+                    
+                    ErrorHandler.handle(err, 'Valuation Processing');
+                }
+            });
+
+            // ─── INIT ──────────────────────────────────────────────────
+            async function init() {
+                initTomSelect();
+
+                vehicleTypeSelect.value = 'Car';
+
+                // Load vehicle data from API first
+                await loadVehicleData();
+
+                // Check auth and set user info
+                try {
+                    const user = await api.get('/auth/me');
+                    console.log('✅ Authenticated user:', user.email);
+                } catch (error) {
+                    if (error.message.includes('401')) {
+                        window.location.href = 'login.html';
+                    }
                 }
 
-                const result = await response.json();
+                loadDraft();
+                await fetchServiceFee();
+                updateProgress();
 
-                // ─── UPDATE SUPABASE WITH RESULTS ────────────────────
-                if (savedValuation?.id) {
-                    await sbClient
-                        .from('valuations')
-                        .update({
-                            market_value: result.market_value,
-                            confidence_score: result.confidence_score,
-                            certificate_number: result.certificate_number,
-                            status: 'completed'
-                        })
-                        .eq('id', savedValuation.id);
-                }
+                const currentYear = new Date().getFullYear();
+                document.getElementById('year').max = currentYear;
 
-                loadingSteps.classList.remove('show');
-
-                statusBox.className = 'status-box status-success';
-                statusBox.textContent = '✅ Valuation complete! Your result is ready below.';
-                statusBox.style.display = 'block';
-
-                showResult(result);
-
-                submitBtn.textContent = '✅ Valuation Complete';
-                submitBtn.disabled = true;
-
-            } catch (err) {
-                console.error('Error:', err);
-                loadingSteps.classList.remove('show');
-                statusBox.className = 'status-box status-error';
-                statusBox.textContent = `❌ ${err.message || 'An error occurred. Please try again.'}`;
-                statusBox.style.display = 'block';
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '🚀 Get AI Valuation';
+                console.log('🚗 AUTO-V Instant Value Check loaded successfully with FastAPI backend!');
             }
-        });
 
-        // ─── INIT ──────────────────────────────────────────────────────
-        async function init() {
-            initTomSelect();
-
-            vehicleTypeSelect.value = 'Car';
-
-            // Load vehicle data from Supabase first
-            await loadVehicleData();
-
-            loadDraft();
-            await fetchServiceFee();
-            updateProgress();
-
-            const currentYear = new Date().getFullYear();
-            document.getElementById('year').max = currentYear;
-
-            console.log('🚗 AUTO-V Instant Value Check loaded successfully with Supabase as single source of truth!');
-        }
-
-        if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
-        }
+        })();
     </script>
 
 </body>
