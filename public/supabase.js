@@ -62,24 +62,23 @@ if (window.autoV && window.autoV._initialized) {
         // ─── Data Fetching Functions ────────────────────────────────────
         async function fetchFees() {
             try {
+                // Try to fetch from system_settings table
                 const { data, error } = await supabase
                     .from('system_settings')
                     .select('setting_key, setting_value');
                 
-                if (error) throw error;
-                
-                const feeMap = {
-                    'instant_fee': 'instant',
-                    'valuation_fee': 'valuation',
-                    'inspection_fee': 'inspection',
-                    'assessment_fee': 'assessment',
-                    'mileage_fee': 'mileage',
-                    'fleet_fee': 'fleet',
-                    'verification_fee': 'verification',
-                    'professional_fee': 'professional'
-                };
-                
-                if (data) {
+                if (!error && data) {
+                    const feeMap = {
+                        'instant_fee': 'instant',
+                        'valuation_fee': 'valuation',
+                        'inspection_fee': 'inspection',
+                        'assessment_fee': 'assessment',
+                        'mileage_fee': 'mileage',
+                        'fleet_fee': 'fleet',
+                        'verification_fee': 'verification',
+                        'professional_fee': 'professional'
+                    };
+                    
                     data.forEach(row => {
                         const key = feeMap[row.setting_key];
                         if (key) {
@@ -87,6 +86,30 @@ if (window.autoV && window.autoV._initialized) {
                         }
                     });
                 }
+                
+                // Also try system_fees table
+                const { data: feeData, error: feeError } = await supabase
+                    .from('system_fees')
+                    .select('service_type, fee');
+                
+                if (!feeError && feeData) {
+                    const feeMap = {
+                        'instant-value-check': 'instant',
+                        'mileage-rate': 'mileage',
+                        'valuation': 'valuation',
+                        'inspection': 'inspection',
+                        'assessment': 'assessment',
+                        'fleet': 'fleet'
+                    };
+                    
+                    feeData.forEach(row => {
+                        const key = feeMap[row.service_type];
+                        if (key) {
+                            state.fees[key] = row.fee || state.fees[key];
+                        }
+                    });
+                }
+                
                 return state.fees;
             } catch (err) {
                 console.warn('⚠️ Could not fetch fees:', err.message);
@@ -96,29 +119,65 @@ if (window.autoV && window.autoV._initialized) {
 
         async function fetchStats() {
             try {
-                const [{ count: users }, { count: requests }, { count: instant }] = await Promise.all([
-                    supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
-                    supabase.from('service_requests').select('*', { count: 'exact', head: true }),
-                    supabase.from('service_requests').select('*', { count: 'exact', head: true }).eq('service_type', 'instant')
-                ]);
+                // Try to get counts from various tables
+                let users = 0, requests = 0, instant = 0, vehicles = 0, inspections = 0;
+                
+                try {
+                    const { count: userCount } = await supabase
+                        .from('user_profiles')
+                        .select('*', { count: 'exact', head: true });
+                    users = userCount || 0;
+                } catch (e) { /* table may not exist */ }
+                
+                try {
+                    const { count: requestCount } = await supabase
+                        .from('service_requests')
+                        .select('*', { count: 'exact', head: true });
+                    requests = requestCount || 0;
+                } catch (e) { /* table may not exist */ }
+                
+                try {
+                    const { count: instantCount } = await supabase
+                        .from('service_requests')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('service_type', 'instant');
+                    instant = instantCount || 0;
+                } catch (e) { /* table may not exist */ }
+                
+                try {
+                    const { count: vehicleCount } = await supabase
+                        .from('service_requests')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('service_type', 'valuation');
+                    vehicles = vehicleCount || 0;
+                } catch (e) { /* table may not exist */ }
+                
+                try {
+                    const { count: inspectionCount } = await supabase
+                        .from('service_requests')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('service_type', 'inspection');
+                    inspections = inspectionCount || 0;
+                } catch (e) { /* table may not exist */ }
 
-                const { data: payments } = await supabase
-                    .from('payments')
-                    .select('amount, status');
-
-                const revenue = payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0;
-                const pending = payments?.filter(p => p.status === 'pending').length || 0;
-
-                const [{ count: vehicles }, { count: inspections }] = await Promise.all([
-                    supabase.from('service_requests').select('*', { count: 'exact', head: true }).eq('service_type', 'valuation'),
-                    supabase.from('service_requests').select('*', { count: 'exact', head: true }).eq('service_type', 'inspection')
-                ]);
+                // Try to get revenue from payments
+                let revenue = 0, pending = 0;
+                try {
+                    const { data: payments } = await supabase
+                        .from('payments')
+                        .select('amount, status');
+                    
+                    if (payments) {
+                        revenue = payments.reduce((s, p) => s + (p.amount || 0), 0) || 0;
+                        pending = payments.filter(p => p.status === 'pending').length || 0;
+                    }
+                } catch (e) { /* table may not exist */ }
 
                 state.stats = {
                     users: users || 0,
                     requests: requests || 0,
-                    revenue,
-                    pending,
+                    revenue: revenue || 0,
+                    pending: pending || 0,
                     instant: instant || 0,
                     vehicles: vehicles || 0,
                     inspections: inspections || 0
@@ -140,23 +199,27 @@ if (window.autoV && window.autoV._initialized) {
 
         // ─── Real-time Subscriptions ────────────────────────────────────
         function subscribeToChanges(callback) {
-            const tables = ['system_settings', 'service_requests', 'payments', 'user_profiles'];
+            const tables = ['system_settings', 'system_fees', 'service_requests', 'payments', 'user_profiles'];
             
             tables.forEach(table => {
-                const channel = supabase
-                    .channel(`public:${table}`)
-                    .on('postgres_changes', 
-                        { event: '*', schema: 'public', table: table },
-                        () => {
-                            console.log(`🔄 ${table} changed, refreshing...`);
-                            fetchAllData().then(() => {
-                                if (callback) callback();
-                            });
-                        }
-                    )
-                    .subscribe();
-                
-                state.subscriptions.push(channel);
+                try {
+                    const channel = supabase
+                        .channel(`public:${table}`)
+                        .on('postgres_changes', 
+                            { event: '*', schema: 'public', table: table },
+                            () => {
+                                console.log(`🔄 ${table} changed, refreshing...`);
+                                fetchAllData().then(() => {
+                                    if (callback) callback();
+                                });
+                            }
+                        )
+                        .subscribe();
+                    
+                    state.subscriptions.push(channel);
+                } catch (e) {
+                    console.warn(`⚠️ Could not subscribe to ${table}:`, e.message);
+                }
             });
         }
 
@@ -221,9 +284,7 @@ if (window.autoV && window.autoV._initialized) {
             `;
         }
 
-        // ================================================================
-        // 🔥 CRITICAL FIX: Build the complete object inside the scope
-        // ================================================================
+        // ─── Build the complete object ─────────────────────────────────
         const autoVInstance = {
             // Core
             supabase: supabase,
@@ -301,9 +362,13 @@ if (window.autoV && window.autoV._initialized) {
             
             // ─── AUTHENTICATION ──────────────────────────────────────────
             async getCurrentUser() {
-                const { data: { user }, error } = await supabase.auth.getUser();
-                if (error || !user) return null;
-                return user;
+                try {
+                    const { data: { user }, error } = await supabase.auth.getUser();
+                    if (error || !user) return null;
+                    return user;
+                } catch (e) {
+                    return null;
+                }
             },
             
             async requireAuth() {
@@ -322,17 +387,18 @@ if (window.autoV && window.autoV._initialized) {
                 window.location.href = "login.html";
             },
             
-            // ─── ✅ ADDED: USER PROFILE UPSERT ─────────────────────────
+            // ─── USER PROFILE ─────────────────────────────────────────
             async upsertUserProfile(userId, email, role) {
                 try {
                     const { data, error } = await supabase
                         .from('user_profiles')
                         .upsert({
-                            id: userId,
+                            user_id: userId,
+                            full_name: email?.split('@')[0] || 'User',
                             email: email,
-                            role: role,
+                            role: role || 'individual',
                             updated_at: new Date().toISOString()
-                        }, { onConflict: 'id' })
+                        }, { onConflict: 'user_id' })
                         .select();
                     
                     if (error) {
@@ -351,7 +417,7 @@ if (window.autoV && window.autoV._initialized) {
                     const { data, error } = await supabase
                         .from('user_profiles')
                         .select('role')
-                        .eq('id', userId)
+                        .eq('user_id', userId)
                         .single();
                     if (error || !data) return 'individual';
                     return data.role;
@@ -438,28 +504,38 @@ if (window.autoV && window.autoV._initialized) {
                 const user = await this.getCurrentUser();
                 if (!user) return { error: 'Not authenticated' };
                 
-                const { data, error } = await supabase
-                    .from('service_requests')
-                    .insert([{
-                        user_id: user.id,
-                        ...requestData,
-                        payment_status: 'paid',
-                        status: 'completed',
-                        created_at: new Date().toISOString()
-                    }]);
-                return { data, error };
+                try {
+                    const { data, error } = await supabase
+                        .from('service_requests')
+                        .insert([{
+                            user_id: user.id,
+                            ...requestData,
+                            payment_status: 'paid',
+                            status: 'completed',
+                            created_at: new Date().toISOString()
+                        }])
+                        .select();
+                    
+                    return { data, error };
+                } catch (e) {
+                    return { data: null, error: e };
+                }
             },
             
             async getUserServiceHistory() {
                 const user = await this.getCurrentUser();
                 if (!user) return [];
-                const { data, error } = await supabase
-                    .from('service_requests')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false });
-                if (error) return [];
-                return data;
+                try {
+                    const { data, error } = await supabase
+                        .from('service_requests')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false });
+                    if (error) return [];
+                    return data || [];
+                } catch (e) {
+                    return [];
+                }
             },
             
             // ─── Report Generation ──────────────────────────────────────
@@ -469,16 +545,16 @@ if (window.autoV && window.autoV._initialized) {
                         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
                             <div style="text-align: center; border-bottom: 2px solid #eab308; padding-bottom: 20px;">
                                 <h1 style="color: #eab308;">AUTO-V Valuation Report</h1>
-                                <p>Certificate: ${data.certificate_number}</p>
+                                <p>Certificate: ${data.certificate_number || 'N/A'}</p>
                                 <p>Date: ${this.formatDate(new Date(), 'long')}</p>
                             </div>
                             <div style="margin: 20px 0;">
                                 <h3>Vehicle Details</h3>
                                 <table style="width: 100%; border-collapse: collapse;">
-                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Make:</strong></td><td>${data.make}</td></tr>
-                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Model:</strong></td><td>${data.model}</td></tr>
-                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Year:</strong></td><td>${data.year}</td></tr>
-                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Registration:</strong></td><td>${data.registration_number}</td></tr>
+                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Make:</strong></td><td>${data.make || 'N/A'}</td></tr>
+                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Model:</strong></td><td>${data.model || 'N/A'}</td></tr>
+                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Year:</strong></td><td>${data.year || 'N/A'}</td></tr>
+                                    <tr><td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Registration:</strong></td><td>${data.registration_number || 'N/A'}</td></tr>
                                 </table>
                             </div>
                             <div style="margin: 20px 0;">
@@ -516,86 +592,120 @@ if (window.autoV && window.autoV._initialized) {
             // ─── Mileage ──────────────────────────────────────────────────
             async getMileageRate(vehicleCategory) {
                 if (!vehicleCategory) return 25;
-                const { data, error } = await supabase
-                    .from('mileage_rates')
-                    .select('rate_per_km')
-                    .eq('vehicle_category', vehicleCategory)
-                    .eq('is_active', true)
-                    .single();
-                if (error || !data) return 25;
-                return data.rate_per_km;
+                try {
+                    const { data, error } = await supabase
+                        .from('mileage_rates')
+                        .select('rate_per_km')
+                        .eq('vehicle_category', vehicleCategory)
+                        .eq('is_active', true)
+                        .single();
+                    if (error || !data) return 25;
+                    return data.rate_per_km;
+                } catch (e) {
+                    return 25;
+                }
             },
             
             async getAllMileageRates() {
-                const { data, error } = await supabase
-                    .from('mileage_rates')
-                    .select('*')
-                    .eq('is_active', true)
-                    .order('rate_per_km');
-                if (error) return [];
-                return data;
+                try {
+                    const { data, error } = await supabase
+                        .from('mileage_rates')
+                        .select('*')
+                        .eq('is_active', true)
+                        .order('rate_per_km');
+                    if (error) return [];
+                    return data || [];
+                } catch (e) {
+                    return [];
+                }
             },
             
             async submitMileageClaim(claimData) {
                 const user = await this.getCurrentUser();
                 if (!user) return { error: 'Not authenticated' };
                 
-                const { data, error } = await supabase
-                    .from('mileage_claims')
-                    .insert([{
-                        user_id: user.id,
-                        employee_name: user.email?.split('@')[0] || 'Employee',
-                        ...claimData,
-                        status: 'pending'
-                    }]);
-                return { data, error };
+                try {
+                    const { data, error } = await supabase
+                        .from('mileage_claims')
+                        .insert([{
+                            user_id: user.id,
+                            employee_name: user.email?.split('@')[0] || 'Employee',
+                            ...claimData,
+                            status: 'pending'
+                        }])
+                        .select();
+                    return { data, error };
+                } catch (e) {
+                    return { data: null, error: e };
+                }
             },
             
             async getUserMileageClaims() {
                 const user = await this.getCurrentUser();
                 if (!user) return [];
-                const { data, error } = await supabase
-                    .from('mileage_claims')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('trip_date', { ascending: false });
-                if (error) return [];
-                return data;
+                try {
+                    const { data, error } = await supabase
+                        .from('mileage_claims')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('trip_date', { ascending: false });
+                    if (error) return [];
+                    return data || [];
+                } catch (e) {
+                    return [];
+                }
             },
             
             async cancelMileageClaim(claimId) {
-                const { error } = await supabase
-                    .from('mileage_claims')
-                    .delete()
-                    .eq('id', claimId);
-                return { success: !error, error };
+                try {
+                    const { error } = await supabase
+                        .from('mileage_claims')
+                        .delete()
+                        .eq('id', claimId);
+                    return { success: !error, error };
+                } catch (e) {
+                    return { success: false, error: e };
+                }
             },
             
             // ─── Fleet ───────────────────────────────────────────────────
             async getFleetVehicles(organizationId = null) {
-                let query = supabase.from('fleet_vehicles').select('*');
-                if (organizationId) query = query.eq('organization_id', organizationId);
-                const { data, error } = await query;
-                if (error) return [];
-                return data;
+                try {
+                    let query = supabase.from('fleet_vehicles').select('*');
+                    if (organizationId) query = query.eq('organization_id', organizationId);
+                    const { data, error } = await query;
+                    if (error) return [];
+                    return data || [];
+                } catch (e) {
+                    return [];
+                }
             },
             
             async addFleetVehicle(vehicleData) {
-                const { data, error } = await supabase
-                    .from('fleet_vehicles')
-                    .insert([vehicleData]);
-                return { data, error };
+                try {
+                    const { data, error } = await supabase
+                        .from('fleet_vehicles')
+                        .insert([vehicleData])
+                        .select();
+                    return { data, error };
+                } catch (e) {
+                    return { data: null, error: e };
+                }
             },
             
             // ─── Fuel Prices ─────────────────────────────────────────────
             async getCurrentFuelPrices(region = 'National') {
-                const { data, error } = await supabase
-                    .from('fuel_prices')
-                    .select('*')
-                    .eq('region', region)
-                    .order('effective_date', { ascending: false });
-                if (error) return [];
-                return data;
+                try {
+                    const { data, error } = await supabase
+                        .from('fuel_prices')
+                        .select('*')
+                        .eq('region', region)
+                        .order('effective_date', { ascending: false });
+                    if (error) return [];
+                    return data || [];
+                } catch (e) {
+                    return [];
+                }
             }
         };
 
