@@ -5,8 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AUTO-V | Customer Portal</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js">
-    </script>
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -331,6 +335,30 @@
                 transform: rotate(360deg);
             }
         }
+        .service-status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .service-status.info {
+            background: #1e3a5f;
+            color: #93c5fd;
+            border-left: 4px solid #3b82f6;
+            display: block;
+        }
+        .service-status.success {
+            background: #14532d;
+            color: #bbf7d0;
+            border-left: 4px solid #22c55e;
+            display: block;
+        }
+        .service-status.error {
+            background: #7f1d1d;
+            color: #fecaca;
+            border-left: 4px solid #ef4444;
+            display: block;
+        }
         .toast {
             position: fixed;
             bottom: 20px;
@@ -364,30 +392,6 @@
                 opacity: 1;
                 transform: translateX(0);
             }
-        }
-        .service-status {
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        .service-status.info {
-            background: #1e3a5f;
-            color: #93c5fd;
-            border-left: 4px solid #3b82f6;
-            display: block;
-        }
-        .service-status.success {
-            background: #14532d;
-            color: #bbf7d0;
-            border-left: 4px solid #22c55e;
-            display: block;
-        }
-        .service-status.error {
-            background: #7f1d1d;
-            color: #fecaca;
-            border-left: 4px solid #ef4444;
-            display: block;
         }
         @media (max-width: 600px) {
             header {
@@ -527,19 +531,20 @@
     </div>
 
     <script>
-        // ============================================================
-        // AUTO-V CUSTOMER PORTAL - PRODUCTION READY
-        // ============================================================
+        // ═══════════════════════════════════════════════════════════════
+        // AUTO-V CUSTOMER PORTAL — FastAPI Backend Integration
+        // ═══════════════════════════════════════════════════════════════
+
         (function() {
+            'use strict';
+
             if (window.autoVPortalInitialized) return;
             window.autoVPortalInitialized = true;
 
-            // ─── SUPABASE CONFIG ──────────────────────────────────────
-            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
-            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            // ─── CONFIG ──────────────────────────────────────────────────
+            const API_BASE = 'http://localhost:8000/api';
 
-            // ─── SERVICE CONFIGURATION ──────────────────────────────
+            // ─── SERVICE CONFIGURATION ──────────────────────────────────
             const SERVICE_MAP = {
                 'instant': { icon: '💡', name: 'Instant Value Check', badge: 'popular', page: 'instant-value.html' },
                 'valuation': { icon: '💰', name: 'Professional Valuation', badge: 'premium', page: 'valuation.html' },
@@ -557,16 +562,15 @@
                 'admin': ['instant', 'mileage', 'valuation', 'inspection', 'assessment', 'fleet', 'verification']
             };
 
-            // ─── STATE ──────────────────────────────────────────────
+            // ─── STATE ──────────────────────────────────────────────────
             let selectedService = null;
             let serviceFee = 0;
             let vehicleDetails = {};
-            let feesChannel = null;
             let currentUser = null;
             let userRole = 'individual';
             let serviceFees = {};
 
-            // ─── DOM REFS ──────────────────────────────────────────
+            // ─── DOM REFS ──────────────────────────────────────────────
             const $ = (id) => document.getElementById(id);
             const step1 = $('step1');
             const step2 = $('step2');
@@ -582,7 +586,7 @@
             const payBtn = $('payBtn');
             const serviceStatus = $('serviceStatus');
 
-            // ─── HELPERS ─────────────────────────────────────────────
+            // ─── HELPERS ────────────────────────────────────────────────
             function showToast(msg, type = 'success') {
                 const t = document.createElement('div');
                 t.className = `toast toast-${type}`;
@@ -606,8 +610,12 @@
             }
 
             function getServiceDisplay(key) {
-                return SERVICE_MAP[key] || { icon: '📄', name: key.charAt(0).toUpperCase() + key.slice(1), badge: '',
-                    page: key + '.html' };
+                return SERVICE_MAP[key] || { 
+                    icon: '📄', 
+                    name: key.charAt(0).toUpperCase() + key.slice(1), 
+                    badge: '',
+                    page: key + '.html' 
+                };
             }
 
             function formatName(key) {
@@ -626,26 +634,24 @@
                 return getServiceDisplay(key).page;
             }
 
-            // ─── LOAD FEES FROM SUPABASE ─────────────────────────────
+            // ─── API CHECK ──────────────────────────────────────────────
+            if (typeof api === 'undefined') {
+                showToast('⚠️ API client not loaded. Please refresh the page.', 'error');
+                console.error('API client not found. Ensure js/api-client.js is loaded.');
+            }
+
+            // ─── LOAD FEES FROM API ─────────────────────────────────────
             async function loadFees() {
                 try {
                     serviceStatus.className = 'service-status info';
                     serviceStatus.innerHTML = '<span class="spinner" style="border-top-color:#eab308;"></span> Loading services...';
                     serviceStatus.style.display = 'block';
 
-                    console.log('🔍 Fetching fees from system_fees table...');
+                    console.log('🔍 Fetching service fees from API...');
 
-                    const { data, error } = await supabase
-                        .from('system_fees')
-                        .select('*')
-                        .eq('is_active', true);
-
-                    if (error) {
-                        console.error('❌ Supabase error:', error);
-                        throw error;
-                    }
-
-                    console.log('✅ Raw data from system_fees:', data);
+                    const data = await api.get('/services/fees');
+                    
+                    console.log('✅ Raw data from API:', data);
 
                     if (data && data.length > 0) {
                         serviceFees = {};
@@ -658,7 +664,7 @@
                         serviceStatus.className = 'service-status success';
                         serviceStatus.textContent = `✅ Loaded ${Object.keys(serviceFees).length} services`;
                     } else {
-                        console.warn('⚠️ No fees found in database, using defaults');
+                        console.warn('⚠️ No fees found in API, using defaults');
                         serviceStatus.className = 'service-status info';
                         serviceStatus.textContent = '⚠️ Using default service prices';
                         serviceFees = {
@@ -703,23 +709,7 @@
                 }
             }
 
-            function subscribeToFees() {
-                if (feesChannel) {
-                    supabase.removeChannel(feesChannel);
-                }
-                feesChannel = supabase.channel('system_fees_changes')
-                    .on('postgres_changes', {
-                        event: '*',
-                        schema: 'public',
-                        table: 'system_fees'
-                    }, () => {
-                        loadFees();
-                        showToast('💰 Service fees updated!', 'warning');
-                    })
-                    .subscribe();
-            }
-
-            // ─── RENDER SERVICES ─────────────────────────────────────
+            // ─── RENDER SERVICES ────────────────────────────────────────
             function renderServices() {
                 const allowedServices = ROLE_SERVICES[userRole] || ['instant', 'mileage'];
                 console.log('🎯 Allowed services for role:', userRole, allowedServices);
@@ -756,7 +746,7 @@
                 }
             }
 
-            // ─── SELECT SERVICE ──────────────────────────────────────
+            // ─── SELECT SERVICE ─────────────────────────────────────────
             window.selectService = function(key) {
                 document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
                 const card = document.querySelector(`.service-card[data-service="${key}"]`);
@@ -767,7 +757,7 @@
                 selectedServiceMsg.textContent = `✅ Selected: ${display.name} - KES ${serviceFee.toLocaleString()}`;
             };
 
-            // ─── CONFIRM SERVICE ─────────────────────────────────────
+            // ─── CONFIRM SERVICE ────────────────────────────────────────
             window.confirmService = function() {
                 if (!selectedService) {
                     showToast('Please select a service first.', 'warning');
@@ -798,22 +788,27 @@
                 showStep(2);
             };
 
-            // ─── AUTH ──────────────────────────────────────────────────
-            async function requireAuth() {
+            // ─── AUTH ────────────────────────────────────────────────────
+            async function checkAuth() {
                 try {
-                    const { data: { user }, error } = await supabase.auth.getUser();
-                    if (error || !user) {
-                        console.warn('⚠️ Not authenticated, redirecting to login');
+                    const token = localStorage.getItem('access_token');
+                    if (!token) {
+                        console.warn('⚠️ No token found, redirecting to login');
                         window.location.href = 'login.html';
                         return null;
                     }
+
+                    const user = await api.get('/auth/me');
                     currentUser = user;
                     $('userEmail').textContent = user.email;
                     console.log('✅ Authenticated user:', user.email);
                     return user;
-                } catch (e) {
-                    console.error('❌ Auth error:', e);
-                    window.location.href = 'login.html';
+                } catch (error) {
+                    console.error('❌ Auth error:', error);
+                    if (error.message.includes('401')) {
+                        localStorage.removeItem('access_token');
+                        window.location.href = 'login.html';
+                    }
                     return null;
                 }
             }
@@ -821,38 +816,30 @@
             async function getUserRole(userId) {
                 try {
                     console.log('🔍 Fetching role for user:', userId);
-                    const { data, error } = await supabase
-                        .from('user_roles')
-                        .select('role')
-                        .eq('user_id', userId)
-                        .maybeSingle();
-
-                    if (error) {
-                        console.error('❌ Error fetching role:', error);
-                        throw error;
-                    }
-
+                    const data = await api.get(`/users/${userId}/role`);
                     userRole = data?.role || 'individual';
                     console.log('✅ User role:', userRole);
                     return userRole;
-                } catch (e) {
-                    console.error('❌ Error getting role:', e);
+                } catch (error) {
+                    console.error('❌ Error getting role:', error);
                     userRole = 'individual';
                     return 'individual';
                 }
             }
 
-            // ─── LOGOUT ──────────────────────────────────────────────
+            // ─── LOGOUT ──────────────────────────────────────────────────
             window.logout = async function() {
                 try {
-                    await supabase.auth.signOut();
+                    await api.post('/auth/logout');
+                    api.clearToken();
+                    localStorage.removeItem('access_token');
                     window.location.href = 'login.html';
-                } catch (e) {
-                    showToast('Logout failed: ' + e.message, 'error');
+                } catch (error) {
+                    showToast('Logout failed: ' + error.message, 'error');
                 }
             };
 
-            // ─── DETAILS FORM SUBMIT ────────────────────────────────
+            // ─── DETAILS FORM SUBMIT ────────────────────────────────────
             detailsForm.onsubmit = function(e) {
                 e.preventDefault();
 
@@ -877,7 +864,7 @@
                 showStep(3);
             };
 
-            // ─── PAYMENT FORM SUBMIT ─────────────────────────────────
+            // ─── PAYMENT FORM SUBMIT ────────────────────────────────────
             paymentForm.onsubmit = async function(e) {
                 e.preventDefault();
 
@@ -895,12 +882,16 @@
                 statusBox.style.display = 'none';
 
                 try {
-                    const user = await requireAuth();
-                    if (!user) return;
+                    // Check auth
+                    const user = await checkAuth();
+                    if (!user) {
+                        btn.innerHTML = '💳 Pay Now';
+                        btn.disabled = false;
+                        return;
+                    }
 
-                    // Create service request
+                    // Create service request via API
                     const requestPayload = {
-                        user_id: user.id,
                         service_type: selectedService,
                         amount: serviceFee,
                         phone: phone,
@@ -908,48 +899,30 @@
                         vehicle_make: vehicleDetails.make,
                         vehicle_model: vehicleDetails.model,
                         vehicle_year: vehicleDetails.year,
-                        payment_status: 'pending',
-                        status: 'awaiting_payment'
+                        vehicle_mileage: vehicleDetails.mileage || 0,
+                        vehicle_condition: vehicleDetails.condition || 'Good',
+                        payment_method: 'mpesa'
                     };
-
-                    if (selectedService === 'mileage' || selectedService === 'inspection') {
-                        requestPayload.vehicle_mileage = vehicleDetails.mileage;
-                    }
-                    if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
-                        requestPayload.vehicle_condition = vehicleDetails.condition;
-                    }
 
                     console.log('📝 Creating service request:', requestPayload);
 
-                    // Insert request
-                    const { data: request, error } = await supabase
-                        .from('service_requests')
-                        .insert(requestPayload)
-                        .select()
-                        .single();
-
-                    if (error) throw error;
+                    const request = await api.post('/service-requests', requestPayload);
 
                     console.log('✅ Service request created:', request);
 
-                    // Simulate payment processing
+                    // Show processing
                     statusBox.className = 'status-box status-info';
                     statusBox.textContent = '⏳ Processing payment... Please wait.';
                     statusBox.style.display = 'block';
 
+                    // Simulate payment processing (or call actual payment API)
                     await new Promise(resolve => setTimeout(resolve, 3000));
 
                     // Update payment status
-                    const { error: updateError } = await supabase
-                        .from('service_requests')
-                        .update({
-                            payment_status: 'paid',
-                            status: 'completed',
-                            paid_at: new Date().toISOString()
-                        })
-                        .eq('id', request.id);
-
-                    if (updateError) throw updateError;
+                    await api.put(`/service-requests/${request.id}/payment`, {
+                        status: 'paid',
+                        payment_reference: `MPESA-${Date.now()}`
+                    });
 
                     // Success
                     statusBox.className = 'status-box status-success';
@@ -969,20 +942,22 @@
                 } catch (error) {
                     console.error('❌ Payment error:', error);
                     statusBox.className = 'status-box status-error';
-                    statusBox.textContent = '❌ Error: ' + error.message;
+                    statusBox.textContent = '❌ Error: ' + (error.message || 'Payment failed');
                     statusBox.style.display = 'block';
                     btn.innerHTML = '💳 Retry Payment';
                     btn.disabled = false;
                     showToast('Payment failed: ' + error.message, 'error');
+                    
+                    ErrorHandler.handle(error, 'Payment Processing');
                 }
             };
 
-            // ─── INIT ──────────────────────────────────────────────────
+            // ─── INIT ────────────────────────────────────────────────────
             async function init() {
                 console.log('🚗 AUTO-V Customer Portal - Initializing...');
 
                 try {
-                    const user = await requireAuth();
+                    const user = await checkAuth();
                     if (!user) return;
 
                     await getUserRole(user.id);
@@ -990,7 +965,6 @@
                     console.log('📧 User email:', user.email);
 
                     await loadFees();
-                    subscribeToFees();
 
                     showStep(1);
                     console.log('✅ AUTO-V Customer Portal ready');
@@ -1000,7 +974,7 @@
                 }
             }
 
-            // Expose functions globally
+            // ─── EXPOSE GLOBALLY ────────────────────────────────────────
             window.showStep = showStep;
             window.confirmService = confirmService;
             window.selectService = selectService;
@@ -1008,7 +982,7 @@
             window.formatName = formatName;
             window.getIcon = getIcon;
 
-            // Start the app
+            // ─── START ──────────────────────────────────────────────────
             document.addEventListener('DOMContentLoaded', init);
         })();
     </script>
