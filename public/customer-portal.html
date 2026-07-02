@@ -286,24 +286,6 @@
             background: #8b5cf6;
             color: #fff;
         }
-        .service-card .loading-shimmer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
-            animation: shimmer 1.5s infinite;
-            border-radius: 12px;
-        }
-        @keyframes shimmer {
-            0% {
-                transform: translateX(-100%);
-            }
-            100% {
-                transform: translateX(100%);
-            }
-        }
         .result-box {
             background: #1e293b;
             padding: 20px;
@@ -407,6 +389,15 @@
         .debug-info .success {
             color: #22c55e;
         }
+        .debug-info pre {
+            font-size: 10px;
+            margin-top: 5px;
+            background: #0b1120;
+            padding: 8px;
+            border-radius: 4px;
+            max-height: 100px;
+            overflow: auto;
+        }
         @media (max-width: 600px) {
             header {
                 flex-direction: column;
@@ -461,9 +452,8 @@
                 <button class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
                 <button class="btn btn-primary" onclick="confirmService()">Next →</button>
             </div>
-            <!-- Debug info -->
-            <div id="debugInfo" class="debug-info"></div>
             <button onclick="toggleDebug()" style="margin-top:10px;background:#334155;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;">🐞 Toggle Debug</button>
+            <div id="debugInfo" class="debug-info"></div>
         </div>
 
         <!-- STEP 2: DETAILS -->
@@ -515,7 +505,7 @@
 
     <script>
         // ============================================================
-        // AUTO-V CUSTOMER PORTAL - FIXED VERSION
+        // AUTO-V CUSTOMER PORTAL - DYNAMIC SERVICE MAPPING
         // ============================================================
         (function() {
             if (window.autoVPortalInitialized) return;
@@ -527,47 +517,23 @@
             const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
             // ─── SERVICE CONFIGURATION ──────────────────────────────
-            const SERVICE_ICONS = {
-                'instant-value-check': '💡',
-                'mileage-rate': '📏',
-                'valuation': '💰',
-                'inspection': '🔍',
-                'assessment': '⚠️',
-                'fleet': '🚛'
+            // Map database service keys to display names and icons
+            const SERVICE_MAP = {
+                'instant': { icon: '💡', name: 'Instant Value Check', badge: 'popular', page: 'instant-value.html' },
+                'valuation': { icon: '💰', name: 'Professional Valuation', badge: 'premium', page: 'valuation.html' },
+                'inspection': { icon: '🔍', name: 'Vehicle Inspection', badge: 'premium', page: 'inspection.html' },
+                'assessment': { icon: '⚠️', name: 'Risk Assessment', badge: 'new', page: 'assessment.html' },
+                'mileage': { icon: '📏', name: 'Mileage Rate Calculator', badge: 'popular', page: 'mileage.html' },
+                'fleet': { icon: '🚛', name: 'Fleet Management', badge: 'premium', page: 'fleet.html' },
+                'verification': { icon: '✅', name: 'Document Verification', badge: 'new', page: 'verification.html' }
             };
 
-            const SERVICE_NAMES = {
-                'instant-value-check': 'Instant Value Check',
-                'mileage-rate': 'Mileage Rate Calculator',
-                'valuation': 'Professional Valuation',
-                'inspection': 'Vehicle Inspection',
-                'assessment': 'Risk Assessment',
-                'fleet': 'Fleet Management'
-            };
-
-            const SERVICE_PAGES = {
-                'instant-value-check': 'instant-value.html',
-                'mileage-rate': 'mileage.html',
-                'valuation': 'valuation.html',
-                'inspection': 'inspection.html',
-                'assessment': 'assessment.html',
-                'fleet': 'fleet.html'
-            };
-
-            const SERVICE_BADGES = {
-                'instant-value-check': 'popular',
-                'mileage-rate': 'popular',
-                'valuation': 'premium',
-                'inspection': 'premium',
-                'assessment': 'new',
-                'fleet': 'premium'
-            };
-
+            // Role-based service access (using database keys)
             const ROLE_SERVICES = {
-                'individual': ['instant-value-check', 'mileage-rate'],
-                'corporate': ['instant-value-check', 'mileage-rate', 'fleet'],
-                'valuer': ['instant-value-check', 'mileage-rate', 'valuation', 'inspection', 'assessment', 'fleet'],
-                'admin': ['instant-value-check', 'mileage-rate', 'valuation', 'inspection', 'assessment', 'fleet']
+                'individual': ['instant', 'mileage'],
+                'corporate': ['instant', 'mileage', 'fleet'],
+                'valuer': ['instant', 'mileage', 'valuation', 'inspection', 'assessment', 'fleet', 'verification'],
+                'admin': ['instant', 'mileage', 'valuation', 'inspection', 'assessment', 'fleet', 'verification']
             };
 
             // ─── STATE ──────────────────────────────────────────────
@@ -622,16 +588,25 @@
                 progMap[step].classList.add('active');
             }
 
+            function getServiceDisplay(key) {
+                return SERVICE_MAP[key] || { icon: '📄', name: key.charAt(0).toUpperCase() + key.slice(1), badge: '', page: key +
+                        '.html' };
+            }
+
             function formatName(key) {
-                return SERVICE_NAMES[key] || key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                return getServiceDisplay(key).name;
             }
 
             function getIcon(key) {
-                return SERVICE_ICONS[key] || '📄';
+                return getServiceDisplay(key).icon;
             }
 
             function getBadge(key) {
-                return SERVICE_BADGES[key] || '';
+                return getServiceDisplay(key).badge;
+            }
+
+            function getPage(key) {
+                return getServiceDisplay(key).page;
             }
 
             function toggleDebug() {
@@ -643,16 +618,20 @@
             }
 
             function updateDebugInfo() {
+                const allowedServices = ROLE_SERVICES[userRole] || [];
+                const availableServices = Object.keys(serviceFees).filter(key => allowedServices.includes(key));
+                
                 debugInfo.innerHTML = `
                     <div><strong>🔍 DEBUG INFO</strong></div>
                     <div>User Role: <span class="${userRole ? 'success' : 'error'}">${userRole || 'Not set'}</span></div>
                     <div>User ID: <span class="${currentUser ? 'success' : 'error'}">${currentUser?.id || 'Not logged in'}</span></div>
                     <div>Services Found: <span class="${Object.keys(serviceFees).length > 0 ? 'success' : 'error'}">${Object.keys(serviceFees).length}</span></div>
-                    <div>Available Services: <span class="${Object.keys(serviceFees).filter(k => ROLE_SERVICES[userRole]?.includes(k)).length > 0 ? 'success' : 'error'}">${Object.keys(serviceFees).filter(k => ROLE_SERVICES[userRole]?.includes(k)).join(', ') || 'None'}</span></div>
+                    <div>Available Services: <span class="${availableServices.length > 0 ? 'success' : 'error'}">${availableServices.join(', ') || 'None'}</span></div>
                     <div>Selected Service: <span class="${selectedService ? 'success' : 'error'}">${selectedService || 'None'}</span></div>
                     <div>Service Fee: <span class="${serviceFee > 0 ? 'success' : 'error'}">${serviceFee > 0 ? 'KES ' + serviceFee : 'Not set'}</span></div>
-                    <div>All Fees: <pre style="font-size:10px;margin-top:5px;background:#0b1120;padding:8px;border-radius:4px;max-height:100px;overflow:auto;">${JSON.stringify(serviceFees, null, 2)}</pre></div>
-                    <div>Allowed Services for Role: <span>${ROLE_SERVICES[userRole]?.join(', ') || 'None'}</span></div>
+                    <div>All Fees: <pre>${JSON.stringify(serviceFees, null, 2)}</pre></div>
+                    <div>Allowed Services for Role: <span>${allowedServices.join(', ') || 'None'}</span></div>
+                    <div>Service Map: <pre>${JSON.stringify(SERVICE_MAP, null, 2)}</pre></div>
                 `;
             }
 
@@ -664,7 +643,7 @@
                     serviceStatus.textContent = '⏳ Loading services from database...';
 
                     console.log('🔍 Fetching fees from system_fees table...');
-                    
+
                     const { data, error } = await supabase
                         .from('system_fees')
                         .select('*')
@@ -692,20 +671,21 @@
                         console.warn('⚠️ No fees found in database, using defaults');
                         serviceStatus.className = 'status-box status-warning';
                         serviceStatus.textContent = '⚠️ No fees in database, using default values';
-                        // Use default fees
+                        // Use default fees with database keys
                         serviceFees = {
-                            'instant-value-check': 500,
-                            'mileage-rate': 1000,
+                            'instant': 1500,
+                            'mileage': 1000,
                             'valuation': 2500,
-                            'inspection': 2000,
-                            'assessment': 1500,
-                            'fleet': 4000
+                            'inspection': 3500,
+                            'assessment': 2000,
+                            'fleet': 5000,
+                            'verification': 750
                         };
                     }
 
                     renderServices();
                     updateDebugInfo();
-                    
+
                     setTimeout(() => {
                         serviceStatus.style.display = 'none';
                     }, 3000);
@@ -715,23 +695,24 @@
                     console.error('❌ Error loading fees:', error);
                     serviceStatus.className = 'status-box status-error';
                     serviceStatus.textContent = `❌ Error loading fees: ${error.message}. Using defaults.`;
-                    
+
                     // Use default fees as fallback
                     serviceFees = {
-                        'instant-value-check': 500,
-                        'mileage-rate': 1000,
+                        'instant': 1500,
+                        'mileage': 1000,
                         'valuation': 2500,
-                        'inspection': 2000,
-                        'assessment': 1500,
-                        'fleet': 4000
+                        'inspection': 3500,
+                        'assessment': 2000,
+                        'fleet': 5000,
+                        'verification': 750
                     };
                     renderServices();
                     updateDebugInfo();
-                    
+
                     setTimeout(() => {
                         serviceStatus.style.display = 'none';
                     }, 5000);
-                    
+
                     return serviceFees;
                 }
             }
@@ -756,9 +737,9 @@
 
             // ─── RENDER SERVICES ─────────────────────────────────────
             function renderServices() {
-                const allowedServices = ROLE_SERVICES[userRole] || ['instant-value-check', 'mileage-rate'];
+                const allowedServices = ROLE_SERVICES[userRole] || ['instant', 'mileage'];
                 console.log('🎯 Allowed services for role:', userRole, allowedServices);
-                
+
                 const availableServices = Object.keys(serviceFees).filter(key => allowedServices.includes(key));
                 console.log('📋 Available services:', availableServices);
 
@@ -774,14 +755,17 @@
                     return;
                 }
 
-                serviceCards.innerHTML = availableServices.map(key => `
-                    <div class="service-card" onclick="window.selectService('${key}')" data-service="${key}">
-                        <span class="service-icon">${getIcon(key)}</span>
-                        <div class="service-name">${formatName(key)}</div>
-                        <span class="service-price">KES ${(serviceFees[key] || 0).toLocaleString()}</span>
-                        ${getBadge(key) ? `<span class="service-badge ${getBadge(key)}">${getBadge(key)}</span>` : ''}
-                    </div>
-                `).join('');
+                serviceCards.innerHTML = availableServices.map(key => {
+                    const display = getServiceDisplay(key);
+                    return `
+                        <div class="service-card" onclick="window.selectService('${key}')" data-service="${key}">
+                            <span class="service-icon">${display.icon}</span>
+                            <div class="service-name">${display.name}</div>
+                            <span class="service-price">KES ${(serviceFees[key] || 0).toLocaleString()}</span>
+                            ${display.badge ? `<span class="service-badge ${display.badge}">${display.badge}</span>` : ''}
+                        </div>
+                    `;
+                }).join('');
 
                 // Select first service by default if none selected
                 if (!selectedService && availableServices.length > 0) {
@@ -796,7 +780,8 @@
                 if (card) card.classList.add('selected');
                 selectedService = key;
                 serviceFee = serviceFees[key] || 0;
-                selectedServiceMsg.textContent = `✅ Selected: ${formatName(key)} - KES ${serviceFee.toLocaleString()}`;
+                const display = getServiceDisplay(key);
+                selectedServiceMsg.textContent = `✅ Selected: ${display.name} - KES ${serviceFee.toLocaleString()}`;
                 updateDebugInfo();
             };
 
@@ -808,8 +793,8 @@
                 }
 
                 // Redirect to service page if it's instant value check
-                if (selectedService === 'instant-value-check') {
-                    window.location.href = SERVICE_PAGES[selectedService] || 'instant-value.html';
+                if (selectedService === 'instant') {
+                    window.location.href = getPage(selectedService);
                     return;
                 }
 
@@ -820,7 +805,7 @@
                 mileageGroup.style.display = 'none';
                 conditionGroup.style.display = 'none';
 
-                if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
+                if (selectedService === 'mileage' || selectedService === 'inspection') {
                     mileageGroup.style.display = 'block';
                 }
                 if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
@@ -864,7 +849,7 @@
                         console.error('❌ Error fetching role:', error);
                         throw error;
                     }
-                    
+
                     userRole = data?.role || 'individual';
                     console.log('✅ User role:', userRole);
                     return userRole;
@@ -945,7 +930,7 @@
                         status: 'awaiting_payment'
                     };
 
-                    if (selectedService === 'mileage-rate' || selectedService === 'inspection') {
+                    if (selectedService === 'mileage' || selectedService === 'inspection') {
                         requestPayload.vehicle_mileage = vehicleDetails.mileage;
                     }
                     if (selectedService === 'valuation' || selectedService === 'inspection' || selectedService === 'assessment') {
@@ -965,7 +950,7 @@
 
                     console.log('✅ Service request created:', request);
 
-                    // Simulate payment processing (in production, integrate with M-Pesa API)
+                    // Simulate payment processing
                     statusBox.className = 'status-box status-info';
                     statusBox.textContent = '⏳ Processing payment... Please wait.';
                     statusBox.style.display = 'block';
@@ -995,7 +980,7 @@
 
                     // Redirect after 2 seconds
                     setTimeout(() => {
-                        const page = SERVICE_PAGES[selectedService] || 'valuation.html';
+                        const page = getPage(selectedService);
                         window.location.href = page + '?request_id=' + request.id;
                     }, 2000);
 
@@ -1013,7 +998,7 @@
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
                 console.log('🚗 AUTO-V Customer Portal - Initializing...');
-                
+
                 try {
                     const user = await requireAuth();
                     if (!user) return;
@@ -1027,18 +1012,20 @@
 
                     showStep(1);
                     console.log('✅ AUTO-V Customer Portal ready');
-                    
+
                     // Show debug info by default if there's an issue
-                    if (Object.keys(serviceFees).length === 0) {
+                    const allowedServices = ROLE_SERVICES[userRole] || [];
+                    const availableServices = Object.keys(serviceFees).filter(key => allowedServices.includes(key));
+                    if (availableServices.length === 0) {
                         debugInfo.classList.add('show');
                         debugMode = true;
                         updateDebugInfo();
+                        showToast('⚠️ No services available for your role. Check debug info.', 'warning');
                     }
                 } catch (error) {
                     console.error('❌ Init error:', error);
                     showToast('Failed to initialize portal: ' + error.message, 'error');
-                    
-                    // Show debug info on error
+
                     debugInfo.classList.add('show');
                     debugMode = true;
                     debugInfo.innerHTML = `
