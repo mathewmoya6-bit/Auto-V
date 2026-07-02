@@ -2,253 +2,789 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AUTO-V Register</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Register</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
-    <!-- Load UMD & Source of Truth -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
-
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #0a0a0a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .card { width: 400px; max-width: 95%; background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; }
-        h2 { text-align: center; color: #eab308; margin-bottom: 20px; }
-        
-        /* Role Selector Styles */
-        .role-selector { display: flex; gap: 10px; margin-bottom: 20px; background: #1a1a1a; border-radius: 8px; padding: 5px; }
-        .role-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; background: transparent; color: #94a3b8; font-weight: bold; cursor: pointer; transition: 0.3s; text-align: center; }
-        .role-btn.active { background: #eab308; color: #000; }
-        
-        .form-section { display: none; animation: fadeIn 0.3s ease; }
-        .form-section.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        
-        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #333; border-radius: 8px; background: #1a1a1a; color: white; box-sizing: border-box; }
-        input:focus { outline: none; border-color: #eab308; }
-        .submit-btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #eab308; color: black; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        .submit-btn:hover { background: #ca8a04; }
-        .error { color: #ef4444; display: none; background: #2a0a0a; padding: 10px; border-radius: 6px; border-left: 4px solid #ef4444; margin-bottom: 15px; }
-        .link { text-align: center; margin-top: 15px; color: #94a3b8; }
-        .link a { color: #eab308; text-decoration: none; }
-
-        /* Valuer Restricted Message */
-        .restricted-message {
-            display: none;
-            background: #2a0a0a;
-            border: 1px solid #ef4444;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            color: #fecaca;
-            margin-bottom: 20px;
+        /* ─── RESET & BASE ─── */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .restricted-message strong { color: #ef4444; display: block; font-size: 18px; margin-bottom: 10px; }
-        .restricted-message .contact-email { color: #eab308; font-weight: bold; text-decoration: underline; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #0a0c15;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* ─── AMBIENT BACKGROUND ─── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(234, 179, 8, 0.07) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 50%, rgba(234, 179, 8, 0.05) 0%, transparent 60%),
+                radial-gradient(ellipse at 50% 100%, rgba(34, 197, 94, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .glow-orb {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(234, 179, 8, 0.06), transparent 70%);
+            top: -200px;
+            right: -200px;
+            pointer-events: none;
+            animation: floatGlow 20s ease-in-out infinite alternate;
+            z-index: 0;
+        }
+
+        .glow-orb-bottom {
+            position: fixed;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(34, 197, 94, 0.04), transparent 70%);
+            bottom: -150px;
+            left: -150px;
+            pointer-events: none;
+            animation: floatGlow 25s ease-in-out infinite alternate-reverse;
+            z-index: 0;
+        }
+
+        @keyframes floatGlow {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(40px, 30px) scale(1.2); }
+        }
+
+        .register-container {
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 32px;
+            padding: 48px 40px 36px;
+            width: 100%;
+            max-width: 480px;
+            border: 1px solid rgba(234, 179, 8, 0.15);
+            box-shadow:
+                0 25px 60px -12px rgba(0, 0, 0, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            position: relative;
+            z-index: 1;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .register-container:hover {
+            box-shadow:
+                0 30px 70px -12px rgba(0, 0, 0, 0.7),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        .logo { text-align: center; margin-bottom: 28px; }
+
+        .logo-icon {
+            font-size: 44px;
+            display: block;
+            margin-bottom: 6px;
+            filter: drop-shadow(0 4px 12px rgba(234, 179, 8, 0.2));
+        }
+
+        .logo h1 {
+            font-size: 30px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #eab308, #facc15);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .logo .subtitle { color: #94a3b8; font-size: 14px; font-weight: 400; margin-top: 4px; }
+
+        .message {
+            padding: 14px 18px;
+            border-radius: 14px;
+            margin-bottom: 20px;
+            display: none;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            animation: slideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .error-message {
+            background: rgba(127, 29, 29, 0.8);
+            color: #fecaca;
+            border-left: 4px solid #ef4444;
+            backdrop-filter: blur(4px);
+        }
+
+        .success-message {
+            background: rgba(20, 83, 45, 0.8);
+            color: #bbf7d0;
+            border-left: 4px solid #22c55e;
+            backdrop-filter: blur(4px);
+        }
+
+        .info-message {
+            background: rgba(30, 41, 59, 0.8);
+            color: #fcd34d;
+            border-left: 4px solid #eab308;
+            backdrop-filter: blur(4px);
+        }
+
+        .form-group { margin-bottom: 16px; }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #94a3b8;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .input-wrapper { position: relative; }
+
+        .input-wrapper input,
+        .input-wrapper select {
+            width: 100%;
+            padding: 13px 16px;
+            background: #0a0f1c;
+            border: 2px solid #1e293b;
+            border-radius: 12px;
+            color: #f1f5f9;
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+
+        .input-wrapper select {
+            appearance: none;
+            cursor: pointer;
+        }
+
+        .input-wrapper select option {
+            background: #0a0f1c;
+            color: #f1f5f9;
+        }
+
+        .input-wrapper input:focus,
+        .input-wrapper select:focus {
+            outline: none;
+            border-color: #eab308;
+            box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.1);
+            background: #0f172a;
+        }
+
+        .input-wrapper input::placeholder { color: #475569; font-weight: 400; }
+
+        .input-wrapper input:-webkit-autofill {
+            -webkit-box-shadow: 0 0 0 1000px #0a0f1c inset !important;
+            -webkit-text-fill-color: #f1f5f9 !important;
+            border-color: #2d3a4e;
+        }
+
+        .password-strength {
+            margin-top: 6px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .password-strength .bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+            background: #1e293b;
+            transition: background 0.3s ease;
+        }
+
+        .password-strength .bar.weak { background: #ef4444; }
+        .password-strength .bar.medium { background: #f59e0b; }
+        .password-strength .bar.strong { background: #22c55e; }
+
+        .password-hint {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        .register-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #eab308, #facc15);
+            color: #0a0c15;
+            border: none;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-top: 8px;
+            font-family: inherit;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .register-btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 40%, rgba(255, 255, 255, 0.15) 100%);
+            pointer-events: none;
+        }
+
+        .register-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px -8px rgba(234, 179, 8, 0.35);
+        }
+
+        .register-btn:active:not(:disabled) { transform: translateY(0px) scale(0.98); }
+
+        .register-btn:disabled {
+            background: #334155;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .register-btn .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(10, 12, 21, 0.2);
+            border-radius: 50%;
+            border-top-color: #0a0c15;
+            animation: spin 0.6s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .terms {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: 16px 0 8px;
+        }
+
+        .terms input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+            accent-color: #eab308;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .terms label {
+            font-size: 12px;
+            color: #94a3b8;
+            text-transform: none;
+            letter-spacing: 0;
+            font-weight: 400;
+            cursor: pointer;
+            line-height: 1.5;
+        }
+
+        .terms label a {
+            color: #eab308;
+            text-decoration: none;
+        }
+        .terms label a:hover { text-decoration: underline; }
+
+        .footer-links {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding-top: 18px;
+            border-top: 1px solid #1e293b;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .footer-links a {
+            color: #64748b;
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.2s;
+        }
+        .footer-links a:hover { color: #eab308; }
+
+        .mpesa-info {
+            text-align: center;
+            padding-top: 16px;
+            font-size: 11px;
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        .mpesa-info strong { color: #22c55e; font-size: 13px; }
+        .mpesa-info .highlight { color: #eab308; }
+
+        .security-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #475569;
+            margin-top: 14px;
+        }
+
+        .security-badge svg { width: 14px; height: 14px; fill: #22c55e; }
+
+        @media (max-width: 480px) {
+            .register-container { padding: 28px 18px 24px; border-radius: 24px; margin: 12px; }
+            .logo h1 { font-size: 26px; }
+            .logo-icon { font-size: 38px; }
+            .form-row { grid-template-columns: 1fr; gap: 0; }
+            .input-wrapper input { padding: 13px 16px; font-size: 14px; }
+            .register-btn { padding: 14px; font-size: 15px; }
+            .footer-links { flex-direction: column; text-align: center; }
+        }
+
+        @media (max-width: 380px) {
+            .register-container { padding: 20px 14px 18px; }
+            .logo h1 { font-size: 22px; }
+        }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>🚗 Create Account</h2>
 
-        <!-- Role Selector Tabs -->
-        <div class="role-selector">
-            <button type="button" class="role-btn active" data-type="individual">👤 Individual</button>
-            <button type="button" class="role-btn" data-type="corporate">🏢 Corporate</button>
-            <button type="button" class="role-btn" data-type="valuer">🔍 Valuer</button>
+    <div class="glow-orb"></div>
+    <div class="glow-orb-bottom"></div>
+
+    <div class="register-container" role="main" aria-label="Register">
+
+        <div class="logo">
+            <span class="logo-icon">🚗</span>
+            <h1>AUTO‑V</h1>
+            <p class="subtitle">Create your free account</p>
         </div>
 
-        <!-- 🔒 Restricted Message for Valuer -->
-        <div id="valuerRestrictedMsg" class="restricted-message">
-            <strong>🔒 Valuer Registration Restricted</strong>
-            Valuer accounts are managed internally by the AUTO-V administration team.
-            <br><br>
-            If you are a certified valuer, please contact our admin team to set up your account:
-            <br><br>
-            <span class="contact-email">📧 admin@auto-v.meipressgroup.com</span>
-        </div>
+        <div id="messageBox" class="message" role="alert" aria-live="polite"></div>
 
-        <div class="error" id="errorMsg"></div>
-
-        <form id="signupForm">
-            <!-- Shared Fields -->
-            <input type="email" id="email" placeholder="Email Address">
-            <input type="password" id="password" placeholder="Password (min 6 chars)">
-            <input type="tel" id="phone" placeholder="Phone Number (Optional)">
-
-            <!-- Individual Fields -->
-            <div id="individual-fields" class="form-section active">
-                <input type="text" id="full_name" placeholder="Full Name">
-                <input type="text" id="id_passport" placeholder="ID / Passport Number">
+        <form id="registerForm" autocomplete="off" novalidate>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="firstName">First Name</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="firstName" placeholder="John" autocomplete="given-name" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="lastName">Last Name</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="lastName" placeholder="Doe" autocomplete="family-name" required>
+                    </div>
+                </div>
             </div>
 
-            <!-- Corporate Fields -->
-            <div id="corporate-fields" class="form-section">
-                <input type="text" id="company_name" placeholder="Company Name">
-                <input type="text" id="company_reg" placeholder="Company Registration Number">
+            <div class="form-group">
+                <label for="email">📧 Email Address</label>
+                <div class="input-wrapper">
+                    <input type="email" id="email" placeholder="you@example.com" autocomplete="email" required>
+                </div>
             </div>
 
-            <!-- Valuer Fields (Hidden and Blocked) -->
-            <div id="valuer-fields" class="form-section" style="display: none !important;">
-                <!-- The fields are intentionally hidden; the message above handles this case -->
+            <div class="form-group">
+                <label for="phone">📱 Phone Number</label>
+                <div class="input-wrapper">
+                    <input type="tel" id="phone" placeholder="+254 700 000 000" autocomplete="tel">
+                </div>
             </div>
 
-            <button type="submit" class="submit-btn">Create Account</button>
+            <div class="form-group">
+                <label for="password">🔒 Password</label>
+                <div class="input-wrapper">
+                    <input type="password" id="password" placeholder="Min 8 characters" autocomplete="new-password" required>
+                </div>
+                <div class="password-strength" id="passwordStrength">
+                    <div class="bar" id="strength1"></div>
+                    <div class="bar" id="strength2"></div>
+                    <div class="bar" id="strength3"></div>
+                    <div class="bar" id="strength4"></div>
+                </div>
+                <div class="password-hint" id="passwordHint">Use 8+ characters with mix of letters, numbers &amp; symbols</div>
+            </div>
+
+            <div class="form-group">
+                <label for="confirmPassword">✓ Confirm Password</label>
+                <div class="input-wrapper">
+                    <input type="password" id="confirmPassword" placeholder="Confirm your password" autocomplete="new-password" required>
+                </div>
+            </div>
+
+            <div class="terms">
+                <input type="checkbox" id="termsCheck" required>
+                <label for="termsCheck">
+                    I agree to the <a href="terms.html">Terms of Service</a> and <a href="privacy.html">Privacy Policy</a>
+                </label>
+            </div>
+
+            <button type="submit" class="register-btn" id="registerBtn">
+                Create Account
+            </button>
         </form>
 
-        <div class="link">Already have an account? <a href="login.html">Login</a></div>
+        <div class="footer-links">
+            <a href="login.html">← Already have an account? Sign In</a>
+            <a href="admin-login.html">🔒 Admin Login</a>
+        </div>
+
+        <div class="mpesa-info">
+            💳 M‑Pesa Paybill: <strong>4095377</strong> &nbsp;|&nbsp; Account: <strong>AUTO‑V</strong><br>
+            <span style="font-size:10px;">Valuations: <span class="highlight">KES 2,500</span> &nbsp;·&nbsp; Inspections: <span class="highlight">KES 3,500</span></span>
+        </div>
+
+        <div class="security-badge">
+            <svg viewBox="0 0 24 24"><path d="M12 1C8.676 1 5.5 2.5 3.5 4.5 2 6 1 8.5 1 11c0 6 4.5 11 11 12 6.5-1 11-6 11-12 0-2.5-1-5-2.5-6.5C18.5 2.5 15.324 1 12 1zm0 19c-4.5-1-8-4.5-9-9 0-2 1-4 2-5 1.5-1.5 4-2.5 7-2.5s5.5 1 7 2.5c1 1 2 3 2 5-1 4.5-4.5 8-9 9zm0-14c-1.5 0-2.5 1-2.5 2.5S10.5 11 12 11s2.5-1 2.5-2.5S13.5 6 12 6zm0 8c-2 0-3.5 1.5-3.5 3.5h7c0-2-1.5-3.5-3.5-3.5z"/></svg>
+            <span>256‑bit SSL · Secure Registration</span>
+        </div>
     </div>
 
     <script>
-        // 1. Verify Single Source of Truth is loaded
-        if (!window.autoV || !window.autoV.supabase) {
-            document.getElementById('errorMsg').textContent = 
-                'Supabase failed to load. Please refresh or check your internet connection.';
-            document.getElementById('errorMsg').style.display = 'block';
-            throw new Error('Supabase client not found. Ensure supabase.js is loaded.');
-        }
+        // ═══════════════════════════════════════════════════════════════
+        // AUTO-V USER REGISTRATION — FastAPI Backend Integration
+        // ═══════════════════════════════════════════════════════════════
 
-        const { supabase: sb } = window.autoV; 
+        (function() {
+            'use strict';
 
-        let currentType = 'individual';
+            // ─── CONFIG ──────────────────────────────────────────────────
+            const LOGIN_URL = 'login.html';
 
-        // 2. Tab Click Listeners
-        document.querySelectorAll('.role-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentType = this.dataset.type;
+            // ─── DOM REFS ───────────────────────────────────────────────
+            const firstName = document.getElementById('firstName');
+            const lastName = document.getElementById('lastName');
+            const emailInput = document.getElementById('email');
+            const phoneInput = document.getElementById('phone');
+            const passwordInput = document.getElementById('password');
+            const confirmPassword = document.getElementById('confirmPassword');
+            const termsCheck = document.getElementById('termsCheck');
+            const registerBtn = document.getElementById('registerBtn');
+            const messageBox = document.getElementById('messageBox');
+            const registerForm = document.getElementById('registerForm');
 
-                // Hide all sections
-                document.getElementById('individual-fields').classList.remove('active');
-                document.getElementById('corporate-fields').classList.remove('active');
-                document.getElementById('valuer-fields').classList.remove('active');
-                document.getElementById('valuerRestrictedMsg').style.display = 'none';
-
-                if (currentType === 'individual') {
-                    document.getElementById('individual-fields').classList.add('active');
-                } else if (currentType === 'corporate') {
-                    document.getElementById('corporate-fields').classList.add('active');
-                } else if (currentType === 'valuer') {
-                    // 🔒 Instead of showing fields, show the restricted message
-                    document.getElementById('valuerRestrictedMsg').style.display = 'block';
-                }
-            });
-        });
-
-        // 3. Form Submission Handler
-        document.getElementById('signupForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value.trim();
-            const errorDiv = document.getElementById('errorMsg');
-            errorDiv.style.display = 'none';
-
-            if (!email || !password) {
-                errorDiv.textContent = "Please fill in Email and Password.";
-                errorDiv.style.display = 'block';
-                return;
+            // ─── API CLIENT CHECK ──────────────────────────────────────
+            if (typeof api === 'undefined') {
+                showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
+                registerBtn.disabled = true;
+                console.error('API client not found. Ensure js/api-client.js is loaded.');
             }
 
-            if (password.length < 6) {
-                errorDiv.textContent = "Password must be at least 6 characters.";
-                errorDiv.style.display = 'block';
-                return;
+            // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
+            function showMessage(text, type = 'error') {
+                messageBox.textContent = text;
+                messageBox.className = 'message ' + type + '-message';
+                messageBox.style.display = 'block';
+                clearTimeout(window._msgTimer);
+                window._msgTimer = setTimeout(() => {
+                    messageBox.style.display = 'none';
+                }, 5000);
             }
 
-            // 🔐 STRICT CHECK: Block Valuer registration entirely
-            if (currentType === 'valuer') {
-                errorDiv.textContent = "❌ Valuer registration is restricted. Please contact admin@auto-v.meipressgroup.com to set up an account.";
-                errorDiv.style.display = 'block';
-                return;
+            function clearMessage() {
+                messageBox.style.display = 'none';
+                clearTimeout(window._msgTimer);
             }
 
-            // Collect metadata for Auth (for login and session)
-            let metadata = { 
-                phone: document.getElementById('phone').value.trim() || '', 
-                role: currentType
-            };
+            // ─── PASSWORD STRENGTH ──────────────────────────────────────
+            function checkPasswordStrength(password) {
+                let score = 0;
+                if (password.length >= 8) score++;
+                if (password.match(/[a-z]/) && password.match(/[A-Z]/)) score++;
+                if (password.match(/\d/)) score++;
+                if (password.match(/[^a-zA-Z0-9]/)) score++;
+                return score;
+            }
 
-            // Collect profile data for the database
-            let profileData = {
-                id: null, // Will be filled after Auth
-                email: email,
-                role: currentType,
-                phone: metadata.phone || null,
-                full_name: null,
-                // Corporate Fields
-                company_name: null,
-                company_reg: null
-            };
+            function updatePasswordStrength(password) {
+                const bars = [
+                    document.getElementById('strength1'),
+                    document.getElementById('strength2'),
+                    document.getElementById('strength3'),
+                    document.getElementById('strength4')
+                ];
+                const hint = document.getElementById('passwordHint');
 
-            // Validate and assign correct fields based on selection
-            if (currentType === 'individual') {
-                const name = document.getElementById('full_name').value.trim();
-                const id = document.getElementById('id_passport').value.trim();
-                if (!name || !id) {
-                    errorDiv.textContent = "Please fill in Full Name and ID/Passport.";
-                    errorDiv.style.display = 'block';
+                if (!password) {
+                    bars.forEach(bar => bar.className = 'bar');
+                    hint.textContent = 'Use 8+ characters with mix of letters, numbers & symbols';
+                    hint.style.color = '#64748b';
                     return;
                 }
-                metadata.full_name = name;
-                metadata.id_passport = id;
-                profileData.full_name = name;
-            } else if (currentType === 'corporate') {
-                const cName = document.getElementById('company_name').value.trim();
-                const cReg = document.getElementById('company_reg').value.trim();
-                if (!cName || !cReg) {
-                    errorDiv.textContent = "Please fill in Company Name and Registration Number.";
-                    errorDiv.style.display = 'block';
+
+                const score = checkPasswordStrength(password);
+                const levels = ['weak', 'weak', 'medium', 'strong', 'strong'];
+
+                bars.forEach((bar, i) => {
+                    bar.className = 'bar';
+                    if (i < score) {
+                        bar.classList.add(levels[score]);
+                    }
+                });
+
+                const messages = [
+                    'Very weak - add more characters and variety',
+                    'Weak - use uppercase, numbers, and symbols',
+                    'Medium - getting better, add symbols for strength',
+                    'Strong - good password!',
+                    'Excellent - very secure password!'
+                ];
+
+                hint.textContent = messages[Math.min(score, 4)];
+                hint.style.color = ['#ef4444', '#ef4444', '#f59e0b', '#22c55e', '#22c55e'][Math.min(score, 4)];
+            }
+
+            // ─── PASSWORD VALIDATION ────────────────────────────────────
+            function validatePassword(password) {
+                if (password.length < 8) {
+                    return 'Password must be at least 8 characters long.';
+                }
+                if (!password.match(/[A-Z]/)) {
+                    return 'Password must contain at least one uppercase letter.';
+                }
+                if (!password.match(/[a-z]/)) {
+                    return 'Password must contain at least one lowercase letter.';
+                }
+                if (!password.match(/\d/)) {
+                    return 'Password must contain at least one number.';
+                }
+                if (!password.match(/[^a-zA-Z0-9]/)) {
+                    return 'Password must contain at least one special character.';
+                }
+                return null;
+            }
+
+            // ─── SET LOADING ─────────────────────────────────────────────
+            function setLoading(state) {
+                registerBtn.disabled = state;
+                registerBtn.innerHTML = state ?
+                    '<span class="spinner"></span> Creating account...' :
+                    'Create Account';
+            }
+
+            // ─── CHECK EXISTING SESSION ────────────────────────────────
+            async function checkExistingSession() {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    if (!token) return;
+
+                    // Verify token is still valid
+                    await api.get('/auth/me');
+                    
+                    // If valid, redirect to dashboard
+                    console.log('✅ Session valid — redirecting to dashboard');
+                    window.location.href = 'dashboard.html';
+                } catch (error) {
+                    // Token expired or invalid
+                    localStorage.removeItem('access_token');
+                }
+            }
+
+            // ─── REGISTER HANDLER ──────────────────────────────────────
+            async function handleRegister(e) {
+                e.preventDefault();
+                clearMessage();
+
+                if (typeof api === 'undefined') {
+                    showMessage('⚠️ API service unavailable. Please refresh the page.', 'error');
                     return;
                 }
-                metadata.company_name = cName;
-                metadata.company_reg = cReg;
-                profileData.company_name = cName;
-                profileData.company_reg = cReg;
+
+                // ─── Get form values ────────────────────────────────────
+                const firstNameVal = firstName.value.trim();
+                const lastNameVal = lastName.value.trim();
+                const email = emailInput.value.trim();
+                const phone = phoneInput.value.trim();
+                const password = passwordInput.value;
+                const confirm = confirmPassword.value;
+
+                // ─── Validation ─────────────────────────────────────────
+                if (!firstNameVal || !lastNameVal) {
+                    showMessage('Please enter your full name.', 'error');
+                    if (!firstNameVal) firstName.focus();
+                    else lastName.focus();
+                    return;
+                }
+
+                if (!email || !isValidEmail(email)) {
+                    showMessage('Please enter a valid email address.', 'error');
+                    emailInput.focus();
+                    return;
+                }
+
+                if (password.length < 8) {
+                    showMessage('Password must be at least 8 characters.', 'error');
+                    passwordInput.focus();
+                    return;
+                }
+
+                const passwordError = validatePassword(password);
+                if (passwordError) {
+                    showMessage(passwordError, 'error');
+                    passwordInput.focus();
+                    return;
+                }
+
+                if (password !== confirm) {
+                    showMessage('Passwords do not match.', 'error');
+                    confirmPassword.focus();
+                    return;
+                }
+
+                if (!termsCheck.checked) {
+                    showMessage('Please agree to the Terms of Service and Privacy Policy.', 'error');
+                    termsCheck.focus();
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    // ─── Call FastAPI Register Endpoint ─────────────────
+                    const response = await api.post('/auth/register', {
+                        email: email,
+                        password: password,
+                        full_name: `${firstNameVal} ${lastNameVal}`,
+                        phone: phone || undefined
+                    });
+
+                    // ─── Store Token (auto-login) ──────────────────────
+                    if (response.access_token) {
+                        api.setToken(response.access_token);
+                        localStorage.setItem('access_token', response.access_token);
+                    }
+
+                    // Store user info
+                    localStorage.setItem('autoV_user', JSON.stringify({
+                        email: email,
+                        full_name: `${firstNameVal} ${lastNameVal}`,
+                        role: 'user',
+                        verifiedAt: new Date().toISOString()
+                    }));
+
+                    showMessage('✅ Account created successfully! Redirecting...', 'success');
+
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1500);
+
+                } catch (error) {
+                    console.error('Registration error:', error);
+
+                    // ─── Handle specific error cases ─────────────────────
+                    if (error.message.includes('409') || error.message.includes('already exists')) {
+                        showMessage('❌ An account with this email already exists. Please login.', 'error');
+                    } else if (error.message.includes('400') && error.message.includes('invalid')) {
+                        showMessage('❌ Invalid input. Please check your details.', 'error');
+                    } else if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+                        showMessage('🌐 Network error. Please check your connection.', 'error');
+                    } else {
+                        showMessage('❌ Registration failed: ' + error.message, 'error');
+                    }
+
+                    setLoading(false);
+                } finally {
+                    // Only reset if not redirecting
+                    if (!registerBtn.textContent.includes('Redirecting')) {
+                        setLoading(false);
+                    }
+                }
             }
 
-            // 4. Create Auth User
-            const { data, error } = await sb.auth.signUp({
-                email,
-                password,
-                options: { data: metadata }
+            // ─── HELPER FUNCTIONS ──────────────────────────────────────
+            function isValidEmail(email) {
+                return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
+            }
+
+            function formatPhone(phone) {
+                // Basic phone formatting - can be expanded
+                return phone.replace(/\D/g, '');
+            }
+
+            // ─── EVENT LISTENERS ──────────────────────────────────────
+            registerForm.addEventListener('submit', handleRegister);
+
+            // Password strength checker
+            passwordInput.addEventListener('input', function() {
+                updatePasswordStrength(this.value);
             });
 
-            if (error) {
-                errorDiv.textContent = error.message;
-                errorDiv.style.display = 'block';
-                return;
-            }
+            // Confirm password match check
+            confirmPassword.addEventListener('input', function() {
+                if (this.value && this.value !== passwordInput.value) {
+                    this.style.borderColor = '#ef4444';
+                } else {
+                    this.style.borderColor = '#1e293b';
+                }
+            });
 
-            if (!data.user) {
-                errorDiv.textContent = "User creation failed. Please try again.";
-                errorDiv.style.display = 'block';
-                return;
-            }
+            passwordInput.addEventListener('input', function() {
+                if (confirmPassword.value && confirmPassword.value !== this.value) {
+                    confirmPassword.style.borderColor = '#ef4444';
+                } else if (confirmPassword.value) {
+                    confirmPassword.style.borderColor = '#22c55e';
+                }
+            });
 
-            // 5. Create/Update user_profiles (The authoritative source)
-            profileData.id = data.user.id;
-            profileData.full_name = profileData.full_name || email.split('@')[0];
+            // Clear messages on focus
+            document.querySelectorAll('input').forEach(input => {
+                input.addEventListener('focus', clearMessage);
+            });
 
-            const { error: profileError } = await sb
-                .from('user_profiles')
-                .upsert(profileData, { onConflict: 'id' });
+            // Phone number formatting
+            phoneInput.addEventListener('blur', function() {
+                if (this.value) {
+                    this.value = formatPhone(this.value);
+                }
+            });
 
-            // 6. Handle Profile Creation Failure
-            if (profileError) {
-                console.error('Profile creation failed:', profileError);
-                errorDiv.textContent = 
-                    'Account created but profile setup failed. Please contact support.';
-                errorDiv.style.display = 'block';
-                return;
-            }
+            // ─── CHECK FOR EXISTING SESSION ON LOAD ────────────────────
+            checkExistingSession();
 
-            // 7. Success
-            alert('Account created successfully. Please check your email to verify.');
-            window.location.href = 'login.html';
-        });
+            // ─── FOCUS FIRST NAME ──────────────────────────────────────
+            setTimeout(() => firstName.focus(), 150);
+
+            console.log('🚀 AUTO-V User Registration (FastAPI Backend)');
+            console.log('📌 Login URL:', LOGIN_URL);
+
+        })();
     </script>
 </body>
 </html>
