@@ -1,22 +1,37 @@
 <!-- app/templates/email/payment_receipt.html -->
 {% extends "email/base.html" %}
 
-{% block title %}Payment Receipt{% endblock %}
+{% block title %}Payment Receipt - AUTO-V{% endblock %}
 
 {% block content %}
-<h2>Payment Receipt 💳</h2>
+<h2>💳 Payment Receipt</h2>
 
-<p>Hello {{ name }},</p>
+<p>Hello <strong>{{ name }}</strong>,</p>
 
-<p>Thank you for your payment. Your transaction has been successfully processed.</p>
+<p>Thank you for your payment. Your transaction has been successfully processed. Please find your receipt details below.</p>
 
 <div class="summary-card">
-    <h3 style="margin-top: 0;">Payment Details</h3>
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
+        <div>
+            <div class="label">Payment Status</div>
+            <div><span class="status-badge success">✅ Completed</span></div>
+        </div>
+        <div style="text-align: right;">
+            <div class="label">Total Amount</div>
+            <div class="amount">KES {{ amount|format_currency }}</div>
+        </div>
+    </div>
+    
+    <h4 style="margin-top: 15px; color: #eab308;">📋 Payment Details</h4>
     
     <ul class="info-list">
         <li>
+            <span class="label">Receipt Number</span>
+            <span class="value" style="font-family: monospace;">#{{ receipt_number }}</span>
+        </li>
+        <li>
             <span class="label">Transaction ID</span>
-            <span class="value">#{{ transaction_id }}</span>
+            <span class="value" style="font-family: monospace;">#{{ transaction_id }}</span>
         </li>
         <li>
             <span class="label">Payment Method</span>
@@ -27,60 +42,150 @@
             <span class="value">{{ service_description }}</span>
         </li>
         <li>
-            <span class="label">Amount</span>
-            <span class="value" style="font-size: 24px; font-weight: 700; color: #1a237e;">
-                KES {{ amount|format_currency }}
-            </span>
-        </li>
-        <li>
             <span class="label">Payment Date</span>
             <span class="value">{{ payment_date }}</span>
         </li>
         <li>
             <span class="label">Status</span>
-            <span class="value" style="color: #2e7d32; font-weight: 600;">✓ Completed</span>
+            <span class="value green">✅ Completed</span>
+        </li>
+        {% if mpesa_code %}
+        <li>
+            <span class="label">M-Pesa Code</span>
+            <span class="value" style="font-family: monospace;">{{ mpesa_code }}</span>
+        </li>
+        {% endif %}
+        {% if reference %}
+        <li>
+            <span class="label">Reference</span>
+            <span class="value" style="font-family: monospace;">{{ reference }}</span>
+        </li>
+        {% endif %}
+    </ul>
+</div>
+
+<div class="button-center" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+    <a href="{{ receipt_url }}" class="button button-secondary">📄 Download Receipt (PDF)</a>
+    <a href="{{ invoice_url|default('#') }}" class="button button-secondary">📋 Download Invoice</a>
+</div>
+
+<div class="alert alert-success">
+    <strong>✅ Payment Confirmed:</strong> Your payment has been confirmed and the service is now active. You can access your purchased features immediately.
+</div>
+
+<div style="background: #1e293b; border-radius: 10px; padding: 15px 20px; margin: 15px 0;">
+    <h4 style="margin-top: 0; color: #eab308;">📦 Service Details</h4>
+    <ul class="info-list">
+        <li>
+            <span class="label">Service Type</span>
+            <span class="value">{{ service_type }}</span>
+        </li>
+        <li>
+            <span class="label">Valid Until</span>
+            <span class="value">{{ valid_until }}</span>
+        </li>
+        <li>
+            <span class="label">Invoice Number</span>
+            <span class="value" style="font-family: monospace;">#{{ invoice_number }}</span>
+        </li>
+        {% if vehicle_registration %}
+        <li>
+            <span class="label">Vehicle Registration</span>
+            <span class="value">{{ vehicle_registration }}</span>
+        </li>
+        {% endif %}
+        {% if valuation_id %}
+        <li>
+            <span class="label">Valuation ID</span>
+            <span class="value" style="font-family: monospace;">{{ valuation_id }}</span>
+        </li>
+        {% endif %}
+    </ul>
+</div>
+
+<div style="background: #0f172a; border-radius: 10px; padding: 15px 20px; margin: 15px 0; border: 1px solid #1e293b;">
+    <h4 style="margin-top: 0; color: #eab308;">📋 Breakdown</h4>
+    <ul class="info-list">
+        <li>
+            <span class="label">Subtotal</span>
+            <span class="value">KES {{ subtotal|format_currency }}</span>
+        </li>
+        <li>
+            <span class="label">Tax ({{ tax_rate }}%)</span>
+            <span class="value">KES {{ tax_amount|format_currency }}</span>
+        </li>
+        <li style="border-top: 2px solid #334155; padding-top: 12px; margin-top: 4px;">
+            <span class="label" style="font-weight: 700; color: #eab308;">Total</span>
+            <span class="value" style="font-size: 20px; font-weight: 700; color: #22c55e;">KES {{ amount|format_currency }}</span>
         </li>
     </ul>
 </div>
 
+<div class="divider"></div>
+
+<h3>📌 What Happens Next?</h3>
+
+<div style="background: #1e293b; border-radius: 10px; padding: 15px 20px; margin: 10px 0;">
+    <ul style="margin: 0; padding-left: 20px; color: #cbd5e1;">
+        <li>Your valuation report is now available in your <a href="{{ base_url }}/dashboard" style="color: #eab308;">dashboard</a></li>
+        <li>You can access premium features immediately</li>
+        <li>Check your email for the valuation results</li>
+        <li>Download your certificate when ready</li>
+    </ul>
+</div>
+
 <div class="button-center">
-    <a href="{{ receipt_url }}" class="button button-secondary">Download Receipt (PDF)</a>
+    <a href="{{ base_url }}/dashboard" class="button">📊 Go to Dashboard</a>
 </div>
 
-<div class="alert alert-success">
-    <strong>✅ Payment Confirmation:</strong> Your payment has been confirmed and the service is now active. You can access your purchased features immediately.
+<div class="divider"></div>
+
+<div style="background: #1e293b; padding: 15px 20px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #eab308;">
+    <h4 style="margin-top: 0; color: #eab308;">📞 Need Help?</h4>
+    <p style="margin: 4px 0; color: #94a3b8; font-size: 14px;">
+        <strong>Email:</strong> <a href="mailto:finance@autov.africa" style="color: #eab308;">finance@autov.africa</a>
+    </p>
+    <p style="margin: 4px 0; color: #94a3b8; font-size: 14px;">
+        <strong>Phone:</strong> <a href="tel:+254700000000" style="color: #eab308;">+254 700 000 000</a>
+    </p>
+    <p style="margin: 4px 0; color: #94a3b8; font-size: 13px;">
+        <strong>Support Hours:</strong> 24/7, 365 days a year
+    </p>
 </div>
 
-<h3>Service Details</h3>
+<div style="background: #0f172a; padding: 15px 20px; border-radius: 10px; margin: 20px 0; border: 1px solid #1e293b;">
+    <h4 style="margin-top: 0; color: #eab308;">📋 Reference Information</h4>
+    <p style="margin: 4px 0; font-size: 12px; color: #94a3b8;">
+        <strong>Receipt Number:</strong> {{ receipt_number }}
+    </p>
+    <p style="margin: 4px 0; font-size: 12px; color: #94a3b8;">
+        <strong>Invoice Number:</strong> {{ invoice_number }}
+    </p>
+    <p style="margin: 4px 0; font-size: 12px; color: #94a3b8;">
+        <strong>Transaction ID:</strong> {{ transaction_id }}
+    </p>
+    <p style="margin: 4px 0; font-size: 12px; color: #94a3b8;">
+        <strong>Account:</strong> {{ email }}
+    </p>
+    <p style="margin: 4px 0; font-size: 12px; color: #94a3b8;">
+        <strong>Date:</strong> {{ current_date }}
+    </p>
+</div>
 
-<ul class="info-list">
-    <li>
-        <span class="label">Service Type</span>
-        <span class="value">{{ service_type }}</span>
-    </li>
-    <li>
-        <span class="label">Valid Until</span>
-        <span class="value">{{ valid_until }}</span>
-    </li>
-    <li>
-        <span class="label">Invoice Number</span>
-        <span class="value">#{{ invoice_number }}</span>
-    </li>
-</ul>
+<p style="margin-top: 20px; color: #cbd5e1;">
+    Thank you for choosing AUTO-V,<br>
+    <strong style="color: #eab308;">The AUTO-V Finance Team</strong>
+</p>
 
-<p>What happens next?</p>
-<ul style="padding-left: 20px; margin: 10px 0;">
-    <li>Your valuation report is now available</li>
-    <li>You can access premium features immediately</li>
-    <li>Check your <a href="{{ base_url|default('#') }}/dashboard">dashboard</a> for details</li>
-</ul>
+<p style="font-size: 12px; color: #64748b; margin-top: 25px; border-top: 1px solid #1e293b; padding-top: 20px;">
+    This is an official payment receipt from AUTO-V. Please keep this email for your records.
+    <br>
+    <a href="{{ receipt_url }}" style="color: #eab308;">Download PDF receipt</a>
+</p>
 
-<p>Need a VAT invoice? <a href="{{ base_url|default('#') }}/invoice/{{ invoice_number }}">Download VAT Invoice</a></p>
-
-<p>If you have any questions about this payment, please contact our support team.</p>
-
-<p>Thank you for your business!</p>
-
-<p>Best regards,<br>
-<strong>The AUTO-V Finance Team</strong></p>
+<p style="font-size: 11px; color: #475569; margin-top: 10px;">
+    <strong>Tax Information:</strong> VAT registration number: {{ vat_number|default('N/A') }}
+    <br>
+    All prices are inclusive of applicable taxes.
+</p>
 {% endblock %}
