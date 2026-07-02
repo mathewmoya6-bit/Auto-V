@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V | Instant Report & Certificate</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -19,19 +23,22 @@
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #333; }
         .logo { font-size: 28px; font-weight: bold; color: #eab308; }
         .logo span { font-size: 12px; color: #888; display: block; }
-        .back-btn { background: #333; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; }
+        .back-btn { background: #333; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; transition: background 0.3s; }
+        .back-btn:hover { background: #444; }
         
         .card { background: #111; padding: 25px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px; }
         h2 { color: #eab308; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
         
         button { background: #eab308; color: black; padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s; }
-        button:hover { background: #ca8a04; }
+        button:hover { background: #ca8a04; transform: translateY(-2px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         
         .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; border-top-color: #eab308; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
         @keyframes spin { to { transform: rotate(360deg); } }
         
         .error { color: #ef4444; background: #7f1d1d; padding: 10px; border-radius: 6px; margin-bottom: 15px; display: none; }
         .success { color: #22c55e; background: #14532d; padding: 10px; border-radius: 6px; margin-bottom: 15px; display: none; }
+        .info { color: #93c5fd; background: #1e3a5f; padding: 10px; border-radius: 6px; margin-bottom: 15px; display: none; }
 
         /* Stats */
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
@@ -40,7 +47,7 @@
         .stat-label { font-size: 12px; color: #888; margin-top: 5px; }
 
         /* Certificate */
-        .certificate { background: white; color: black; padding: 40px; margin-top: 20px; border-radius: 12px; display: none; font-family: 'Times New Roman', serif; position: relative; }
+        .certificate { background: white; color: black; padding: 40px; margin-top: 20px; border-radius: 12px; display: none; font-family: 'Times New Roman', serif; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
         .certificate-header { text-align: center; border-bottom: 2px solid #eab308; padding-bottom: 15px; margin-bottom: 15px; }
         .cert-title { font-size: 22px; font-weight: bold; text-transform: uppercase; color: #333; letter-spacing: 2px; }
         .cert-body { padding: 15px 0; }
@@ -50,16 +57,30 @@
         .qr-section { text-align: center; margin: 15px 0; }
         .signature-box { width: 45%; text-align: center; margin-top: 20px; }
         .signature-line { border-top: 1px solid #333; width: 100%; margin-top: 30px; padding-top: 5px; }
-        .stamp { width: 70px; height: 70px; border: 2px solid #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; color: #dc2626; font-size: 10px; font-weight: bold; text-align: center; }
+        .stamp { width: 70px; height: 70px; border: 2px solid #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; color: #dc2626; font-size: 10px; font-weight: bold; text-align: center; flex-direction: column; }
+        .stamp div { line-height: 1.2; }
         
-        .action-buttons { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+        .action-buttons { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; flex-wrap: wrap; }
         .btn-pdf { background: #dc2626; color: white; }
         .btn-pdf:hover { background: #b91c1c; }
+        .btn-print { background: #3b82f6; color: white; }
+        .btn-print:hover { background: #2563eb; }
+        
+        .user-badge { display: flex; align-items: center; gap: 10px; }
+        .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #eab308; display: flex; align-items: center; justify-content: center; color: #000; font-weight: bold; }
         
         @media print {
             body { background: white; padding: 0; margin: 0; }
-            .header, .card, .back-btn, .action-buttons, button { display: none !important; }
+            .header, .card, .back-btn, .action-buttons, button, .stats-grid { display: none !important; }
             .certificate { display: block !important; margin: 0; padding: 20px; box-shadow: none; border-radius: 0; }
+        }
+        @media (max-width: 768px) {
+            .header { flex-direction: column; gap: 10px; text-align: center; }
+            .cert-field { flex-direction: column; gap: 4px; }
+            .cert-label { width: 100%; }
+            .cert-value { width: 100%; }
+            .signature-box { width: 100%; }
+            .action-buttons { justify-content: center; }
         }
     </style>
 </head>
@@ -71,11 +92,16 @@
             📊 AUTO-V Generator
             <span>Instant Reports & Certificates</span>
         </div>
-        <a href="dashboard.html" class="back-btn">← Dashboard</a>
+        <div class="user-badge">
+            <div class="user-avatar" id="userAvatar">A</div>
+            <span id="userName" style="color:#94a3b8;font-size:13px;">Loading...</span>
+            <a href="dashboard.html" class="back-btn">← Dashboard</a>
+        </div>
     </div>
 
     <div class="error" id="errorMsg"></div>
     <div class="success" id="successMsg"></div>
+    <div class="info" id="infoMsg"></div>
 
     <!-- LOADING & OPTIONS -->
     <div class="card" id="configCard">
@@ -90,7 +116,7 @@
                     <option value="mileage">📏 Mileage Rate</option>
                 </select>
             </div>
-            <button onclick="generateFromLastCalculation()" style="margin-top: 22px;">➡️ Generate Report & Certificate</button>
+            <button onclick="generateFromLastCalculation()" style="margin-top: 22px;" id="generateBtn">➡️ Generate Report & Certificate</button>
         </div>
     </div>
 
@@ -125,7 +151,7 @@
                 <p style="font-size: 11px; margin-top: 10px;">Scan to verify</p>
             </div>
             
-            <div style="display:flex; justify-content:space-between; margin-top:20px; border-top:1px solid #ddd; padding-top:20px;">
+            <div style="display:flex; justify-content:space-between; margin-top:20px; border-top:1px solid #ddd; padding-top:20px; flex-wrap:wrap; gap:20px;">
                 <div class="signature-box">
                     <div class="stamp"><div>AUTHORIZED</div><div>SEAL</div><div>AUTO-V</div></div>
                     <p style="font-size:11px; color:#666; margin-top:5px;">Digital Stamp</p>
@@ -133,199 +159,351 @@
                 <div class="signature-box">
                     <div class="signature-line"></div>
                     <p style="font-size:11px; color:#666;">Issued by AUTO-V System</p>
+                    <p style="font-size:10px; color:#999; margin-top:4px;">Digitally signed</p>
                 </div>
             </div>
             <div style="text-align:center; font-size:9px; color:#999; margin-top:20px; border-top:1px solid #eee; padding-top:15px;">
-                © 2024 AUTO-V Kenya Limited. Electronically generated certificate.
+                © 2026 AUTO-V Kenya Limited. Electronically generated certificate.
             </div>
         </div>
 
         <div class="action-buttons">
-            <button onclick="downloadPDFCertificate()" class="btn-pdf">📄 Download PDF</button>
-            <button onclick="window.print()">🖨️ Print</button>
+            <button onclick="downloadPDFCertificate()" class="btn-pdf" id="pdfBtn">📄 Download PDF</button>
+            <button onclick="window.print()" class="btn-print">🖨️ Print</button>
         </div>
     </div>
 </div>
 
 <script>
-// ============================================
-// SUPABASE SETUP
-// ============================================
-const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ═══════════════════════════════════════════════════════════════════
+// AUTO-V INSTANT REPORT & CERTIFICATE — FastAPI Backend
+// ═══════════════════════════════════════════════════════════════════
 
-let currentUser = null;
+(function() {
+    'use strict';
 
-// ============================================
-// AUTH & URL PARAMETERS
-// ============================================
-async function checkAuth() {
-    const { data: { user }, error } = await sb.auth.getUser();
-    if (error || !user) {
-        window.location.href = "login.html";
-        return false;
+    if (window.autoVReportInitialized) return;
+    window.autoVReportInitialized = true;
+
+    // ─── CONFIG ──────────────────────────────────────────────────────
+    const API_BASE = 'http://localhost:8000/api';
+
+    // ─── STATE ──────────────────────────────────────────────────────
+    let currentUser = null;
+    let currentCertificate = null;
+    let currentRecord = null;
+
+    // ─── API CHECK ──────────────────────────────────────────────────
+    if (typeof api === 'undefined') {
+        showError('⚠️ API client not loaded. Please refresh the page.');
+        console.error('API client not found. Ensure js/api-client.js is loaded.');
     }
-    currentUser = user;
-    return true;
-}
 
-// ============================================
-// THE CORE GENERATOR
-// ============================================
-async function generateFromLastCalculation() {
-    const btn = event.target;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Processing...';
+    // ─── DOM REFS ──────────────────────────────────────────────────
+    const $ = (id) => document.getElementById(id);
+    const errorMsg = $('errorMsg');
+    const successMsg = $('successMsg');
+    const infoMsg = $('infoMsg');
 
-    try {
-        const calcType = document.getElementById('calcType').value;
-        let tableName, dateColumn, valueColumn, vehicleIdColumn, resultLabel;
-
-        // Map selection to database table and columns
-        if (calcType === 'valuation') {
-            tableName = 'valuations';
-            dateColumn = 'valuation_date';
-            valueColumn = 'valuation_amount';
-            vehicleIdColumn = 'vehicle_id';
-            resultLabel = 'Valuation Amount';
-        } else if (calcType === 'inspection') {
-            tableName = 'inspections';
-            dateColumn = 'inspection_date';
-            valueColumn = 'overall_score';
-            vehicleIdColumn = 'vehicle_id';
-            resultLabel = 'Overall Score';
-        } else if (calcType === 'assessment') {
-            tableName = 'inspections'; // Assuming assessments are in inspections
-            dateColumn = 'created_at';
-            valueColumn = 'final_verdict';
-            vehicleIdColumn = 'vehicle_id';
-            resultLabel = 'Assessment Verdict';
-        } else if (calcType === 'mileage') {
-            tableName = 'vehicles'; // Mileage is stored in vehicles table
-            dateColumn = 'updated_at';
-            valueColumn = 'mileage';
-            vehicleIdColumn = 'id';
-            resultLabel = 'Current Mileage (km)';
-        }
-
-        // Fetch the LATEST record for this user of this specific type
-        const query = sb.from(tableName)
-            .select('*')
-            .eq('user_id', currentUser.id)
-            .order(dateColumn, { ascending: false })
-            .limit(1);
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-        if (!data || data.length === 0) {
-            document.getElementById('errorMsg').innerHTML = `No recent ${calcType} found. Please complete a calculation first.`;
-            document.getElementById('errorMsg').style.display = 'block';
-            btn.disabled = false; btn.innerHTML = '➡️ Generate Report & Certificate';
-            return;
-        }
-
-        const latestRecord = data[0];
-        
-        // Fetch Vehicle Details if we have an ID
-        let vehicleData = { registration: 'N/A', make: 'N/A', model: 'N/A' };
-        if (latestRecord[vehicleIdColumn]) {
-            const { data: vData } = await sb.from('vehicles')
-                .select('registration_number, make, model')
-                .eq('id', latestRecord[vehicleIdColumn])
-                .single();
-            if (vData) vehicleData = vData;
-        }
-
-        // ---- 1. UPDATE REPORT STATS ----
-        document.getElementById('calcId').innerText = latestRecord.id.slice(0, 8) + '...';
-        
-        let displayValue = latestRecord[valueColumn];
-        if (calcType === 'valuation') displayValue = `KES ${Number(displayValue).toLocaleString()}`;
-        else if (calcType === 'mileage') displayValue = `${Number(displayValue).toLocaleString()} km`;
-        document.getElementById('resultValue').innerText = displayValue;
-        
-        document.getElementById('calcDate').innerText = new Date(latestRecord[dateColumn]).toLocaleDateString();
-        document.getElementById('vehicleName').innerText = `${vehicleData.registration_number || 'N/A'}`;
-
-        // ---- 2. GENERATE CERTIFICATE ----
-        const certRef = `AUTOV-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-        
-        let certTitle = `CERTIFICATE OF ${calcType.toUpperCase()}`;
-        if (calcType === 'valuation') certTitle = 'CERTIFICATE OF VALUATION';
-        else if (calcType === 'inspection') certTitle = 'CERTIFICATE OF INSPECTION';
-        else if (calcType === 'assessment') certTitle = 'OFFICIAL ASSESSMENT REPORT';
-        else if (calcType === 'mileage') certTitle = 'MILEAGE VERIFICATION CERTIFICATE';
-
-        document.getElementById('certTitle').innerText = certTitle;
-        document.getElementById('certRef').innerText = certRef;
-        document.getElementById('certType').innerText = calcType.toUpperCase();
-        document.getElementById('certDate').innerText = new Date().toLocaleDateString();
-        document.getElementById('certVehicle').innerText = `${vehicleData.make || 'N/A'} ${vehicleData.model || 'N/A'} (${vehicleData.registration_number || 'N/A'})`;
-        document.getElementById('certResult').innerText = displayValue;
-
-        // Generate QR Code
-        const verifyUrl = `https://autov.vercel.app/verify?ref=${certRef}`;
-        await QRCode.toCanvas(document.getElementById('qrCanvas'), verifyUrl, { width: 120, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-
-        // ---- 3. SAVE THIS GENERATION TO DB ----
-        await sb.from('certificates').insert([{
-            user_id: currentUser.id,
-            vehicle_id: latestRecord[vehicleIdColumn],
-            certificate_number: certRef,
-            certificate_type: calcType,
-            issued_at: new Date().toISOString(),
-            status: 'active'
-        }]);
-
-        // ---- 4. SHOW RESULTS ----
-        document.getElementById('reportSection').style.display = 'block';
-        document.getElementById('configCard').style.display = 'none';
-        document.getElementById('successMsg').innerHTML = `✅ ${calcType} Report & Certificate generated from your latest calculation!`;
-        document.getElementById('successMsg').style.display = 'block';
-        document.getElementById('certificate').scrollIntoView({ behavior: 'smooth' });
-
-    } catch (err) {
-        document.getElementById('errorMsg').innerHTML = 'Error: ' + err.message;
-        document.getElementById('errorMsg').style.display = 'block';
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '➡️ Generate Report & Certificate';
+    // ─── MESSAGE FUNCTIONS ──────────────────────────────────────────
+    function showError(msg) {
+        errorMsg.innerHTML = msg;
+        errorMsg.style.display = 'block';
+        setTimeout(() => errorMsg.style.display = 'none', 8000);
     }
-}
 
-// ============================================
-// DOWNLOAD PDF
-// ============================================
-async function downloadPDFCertificate() {
-    const { jsPDF } = window.jspdf;
-    const certificate = document.getElementById('certificate');
-    const btn = event.target;
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>...';
-
-    try {
-        const canvas = await html2canvas(certificate, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-        const imgWidth = 210; const imgHeight = (canvas.height * imgWidth) / canvas.width;
-        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-        pdf.save(`AUTO-V_Certificate_${document.getElementById('certRef').innerText}.pdf`);
-    } catch (err) {
-        alert('PDF Error: ' + err.message);
-    } finally {
-        btn.disabled = false; btn.innerHTML = '📄 Download PDF';
+    function showSuccess(msg) {
+        successMsg.innerHTML = msg;
+        successMsg.style.display = 'block';
+        setTimeout(() => successMsg.style.display = 'none', 8000);
     }
-}
 
-// ============================================
-// INIT
-// ============================================
-document.addEventListener('DOMContentLoaded', async () => {
-    const isAuth = await checkAuth();
-    if (!isAuth) return;
-});
+    function showInfo(msg) {
+        infoMsg.innerHTML = msg;
+        infoMsg.style.display = 'block';
+        setTimeout(() => infoMsg.style.display = 'none', 5000);
+    }
+
+    function hideMessages() {
+        errorMsg.style.display = 'none';
+        successMsg.style.display = 'none';
+        infoMsg.style.display = 'none';
+    }
+
+    // ─── AUTH ──────────────────────────────────────────────────────
+    async function checkAuth() {
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return false;
+            }
+
+            const user = await api.get('/auth/me');
+            currentUser = user;
+            
+            $('userAvatar').textContent = (user.email || 'A')[0].toUpperCase();
+            $('userName').textContent = user.full_name || user.email;
+            
+            return true;
+        } catch (error) {
+            if (error.message.includes('401')) {
+                localStorage.removeItem('access_token');
+                window.location.href = 'login.html';
+            }
+            return false;
+        }
+    }
+
+    // ─── GET LAST CALCULATION ─────────────────────────────────────
+    async function getLastCalculation(type) {
+        try {
+            const response = await api.get(`/calculations/last`, {
+                type: type,
+                user_id: currentUser.id
+            });
+            
+            if (!response || !response.data) {
+                throw new Error(`No recent ${type} found. Please complete a calculation first.`);
+            }
+            
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching last calculation:', error);
+            throw error;
+        }
+    }
+
+    // ─── GET VEHICLE DETAILS ──────────────────────────────────────
+    async function getVehicle(vehicleId) {
+        if (!vehicleId) return { registration: 'N/A', make: 'N/A', model: 'N/A' };
+        try {
+            const vehicle = await api.get(`/vehicles/${vehicleId}`);
+            return {
+                registration: vehicle.registration_number || 'N/A',
+                make: vehicle.make || 'N/A',
+                model: vehicle.model || 'N/A'
+            };
+        } catch (error) {
+            console.warn('Could not fetch vehicle:', error);
+            return { registration: 'N/A', make: 'N/A', model: 'N/A' };
+        }
+    }
+
+    // ─── SAVE CERTIFICATE ─────────────────────────────────────────
+    async function saveCertificate(data) {
+        try {
+            const cert = await api.post('/certificates', {
+                user_id: currentUser.id,
+                vehicle_id: data.vehicle_id || null,
+                certificate_number: data.certificate_number,
+                certificate_type: data.certificate_type,
+                result: data.result,
+                issued_at: new Date().toISOString(),
+                status: 'active'
+            });
+            return cert;
+        } catch (error) {
+            console.error('Error saving certificate:', error);
+            // Non-critical, continue
+            return null;
+        }
+    }
+
+    // ─── GENERATE REPORT ──────────────────────────────────────────
+    async function generateFromLastCalculation() {
+        hideMessages();
+        
+        const btn = $('generateBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Processing...';
+
+        try {
+            const calcType = $('calcType').value;
+            let resultLabel;
+            let displayValue;
+
+            // ─── Fetch last calculation ──────────────────────────────
+            const record = await getLastCalculation(calcType);
+            currentRecord = record;
+
+            // ─── Fetch vehicle details ────────────────────────────────
+            const vehicleId = record.vehicle_id || record.vehicleId;
+            const vehicleData = await getVehicle(vehicleId);
+
+            // ─── Format display value ─────────────────────────────────
+            let value = record.value || record.result || record.amount || record.score || record.mileage || 0;
+            
+            if (calcType === 'valuation' || calcType === 'value') {
+                displayValue = `KES ${Number(value).toLocaleString()}`;
+                resultLabel = 'Valuation Amount';
+            } else if (calcType === 'mileage') {
+                displayValue = `${Number(value).toLocaleString()} km`;
+                resultLabel = 'Current Mileage';
+            } else if (calcType === 'inspection') {
+                displayValue = `${Number(value).toFixed(1)}%`;
+                resultLabel = 'Overall Score';
+            } else if (calcType === 'assessment') {
+                displayValue = typeof value === 'string' ? value : `Score: ${Number(value).toFixed(1)}%`;
+                resultLabel = 'Assessment Verdict';
+            } else {
+                displayValue = String(value);
+                resultLabel = 'Result';
+            }
+
+            // ─── Update Stats ─────────────────────────────────────────
+            const recordId = record.id || record.calculation_id || 'N/A';
+            $('calcId').innerText = typeof recordId === 'string' ? recordId.slice(0, 8) + '...' : String(recordId).slice(0, 8);
+            $('resultValue').innerText = displayValue;
+            $('calcDate').innerText = new Date(record.created_at || record.date || Date.now()).toLocaleDateString();
+            $('vehicleName').innerText = vehicleData.registration || 'N/A';
+
+            // ─── Generate Certificate ─────────────────────────────────
+            const certRef = `AUTOV-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+            currentCertificate = certRef;
+
+            let certTitle = `CERTIFICATE OF ${calcType.toUpperCase()}`;
+            if (calcType === 'valuation') certTitle = 'CERTIFICATE OF VALUATION';
+            else if (calcType === 'inspection') certTitle = 'CERTIFICATE OF INSPECTION';
+            else if (calcType === 'assessment') certTitle = 'OFFICIAL ASSESSMENT REPORT';
+            else if (calcType === 'mileage') certTitle = 'MILEAGE VERIFICATION CERTIFICATE';
+
+            $('certTitle').innerText = certTitle;
+            $('certRef').innerText = certRef;
+            $('certType').innerText = calcType.toUpperCase();
+            $('certDate').innerText = new Date().toLocaleDateString('en-KE', { 
+                day: '2-digit', 
+                month: 'long', 
+                year: 'numeric' 
+            });
+            $('certVehicle').innerText = `${vehicleData.make || 'N/A'} ${vehicleData.model || 'N/A'} (${vehicleData.registration || 'N/A'})`;
+            $('certResult').innerText = displayValue;
+            $('certStatus').innerText = record.status || 'Approved';
+
+            // ─── Generate QR Code ─────────────────────────────────────
+            const verifyUrl = `https://autov.vercel.app/verify?ref=${certRef}`;
+            try {
+                await QRCode.toCanvas($('qrCanvas'), verifyUrl, { 
+                    width: 120, 
+                    margin: 2, 
+                    color: { dark: '#000000', light: '#ffffff' } 
+                });
+            } catch (qrError) {
+                console.warn('QR generation error:', qrError);
+                // Continue without QR
+            }
+
+            // ─── Save Certificate ─────────────────────────────────────
+            await saveCertificate({
+                vehicle_id: vehicleId,
+                certificate_number: certRef,
+                certificate_type: calcType,
+                result: value
+            });
+
+            // ─── Show Results ─────────────────────────────────────────
+            $('reportSection').style.display = 'block';
+            $('configCard').style.display = 'none';
+            $('certificate').style.display = 'block';
+            
+            showSuccess(`✅ ${calcType} Report & Certificate generated successfully!`);
+            
+            // Scroll to certificate
+            $('certificate').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        } catch (error) {
+            console.error('Generation error:', error);
+            showError(`❌ ${error.message || 'Failed to generate report. Please try again.'}`);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '➡️ Generate Report & Certificate';
+        }
+    }
+
+    // ─── DOWNLOAD PDF ──────────────────────────────────────────────
+    async function downloadPDFCertificate() {
+        const btn = $('pdfBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Generating PDF...';
+
+        try {
+            const certificate = $('certificate');
+            const canvas = await html2canvas(certificate, { 
+                scale: 2, 
+                backgroundColor: '#ffffff', 
+                useCORS: true,
+                logging: false
+            });
+            
+            const imgData = canvas.toDataURL('image/png');
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({ 
+                unit: 'mm', 
+                format: 'a4', 
+                orientation: 'portrait' 
+            });
+            
+            const imgWidth = 210;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            pdf.save(`AUTO-V_Certificate_${$('certRef').innerText}.pdf`);
+            
+            showSuccess('✅ PDF downloaded successfully!');
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            showError('❌ Failed to generate PDF: ' + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '📄 Download PDF';
+        }
+    }
+
+    // ─── EXPOSE GLOBALLY ────────────────────────────────────────────
+    window.generateFromLastCalculation = generateFromLastCalculation;
+    window.downloadPDFCertificate = downloadPDFCertificate;
+
+    // ─── CHECK URL PARAMS ───────────────────────────────────────────
+    function checkUrlParams() {
+        const params = new URLSearchParams(window.location.search);
+        const type = params.get('type');
+        const id = params.get('id');
+        
+        if (type) {
+            const select = $('calcType');
+            if (select) select.value = type;
+        }
+        
+        if (id) {
+            // Auto-generate if ID provided
+            setTimeout(() => generateFromLastCalculation(), 500);
+        }
+    }
+
+    // ─── INIT ──────────────────────────────────────────────────────
+    async function init() {
+        console.log('🚗 AUTO-V Report Generator - FastAPI Backend');
+
+        const isAuth = await checkAuth();
+        if (!isAuth) return;
+
+        checkUrlParams();
+
+        // Add keyboard shortcut for quick generation
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                generateFromLastCalculation();
+            }
+        });
+
+        showInfo('💡 Press Ctrl+Enter to quickly generate a report');
+    }
+
+    // ─── START ──────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', init);
+
+})();
 </script>
-
 </body>
 </html>
