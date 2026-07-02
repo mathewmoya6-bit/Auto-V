@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Settings</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -53,6 +58,11 @@
             padding: 10px 20px;
             text-decoration: none;
             border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .back-btn:hover {
+            background: #444;
         }
 
         nav {
@@ -75,6 +85,11 @@
         }
 
         nav a:hover {
+            background: #eab308;
+            color: black;
+        }
+
+        nav a.active {
             background: #eab308;
             color: black;
         }
@@ -146,6 +161,7 @@
         .checkbox-group input {
             width: auto;
             margin-bottom: 0;
+            accent-color: #eab308;
         }
 
         .checkbox-group label {
@@ -199,51 +215,6 @@
             flex-wrap: wrap;
         }
 
-        .toggle-switch {
-            position: relative;
-            display: inline-block;
-            width: 50px;
-            height: 24px;
-        }
-
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .toggle-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #333;
-            transition: 0.3s;
-            border-radius: 24px;
-        }
-
-        .toggle-slider:before {
-            position: absolute;
-            content: "";
-            height: 18px;
-            width: 18px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: 0.3s;
-            border-radius: 50%;
-        }
-
-        input:checked + .toggle-slider {
-            background-color: #eab308;
-        }
-
-        input:checked + .toggle-slider:before {
-            transform: translateX(26px);
-        }
-
         .spinner {
             display: inline-block;
             width: 20px;
@@ -284,6 +255,23 @@
             margin-top: 5px;
         }
 
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn .3s ease;
+            max-width: 380px;
+            font-size: 14px;
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        @keyframes slideIn { from{opacity:0; transform:translateX(80px);} to{opacity:1; transform:translateX(0);} }
+
         @media (max-width: 768px) {
             .settings-grid {
                 grid-template-columns: 1fr;
@@ -294,8 +282,14 @@
             .btn-group {
                 flex-direction: column;
             }
+            .btn-group button {
+                width: 100%;
+            }
             nav {
                 flex-direction: column;
+            }
+            nav a {
+                text-align: center;
             }
         }
     </style>
@@ -319,7 +313,7 @@
         <a href="certificates.html">📜 Certificates</a>
         <a href="history.html">📋 History</a>
         <a href="reports.html">📊 Reports</a>
-        <a href="settings.html" style="background:#eab308;color:black;">⚙️ Settings</a>
+        <a href="settings.html" class="active">⚙️ Settings</a>
     </nav>
 
     <div class="error" id="errorMsg"></div>
@@ -422,7 +416,7 @@
             </div>
 
             <div class="form-group">
-                <label>Base Depreciation Rate (%) per year</label>
+                <label>Base Depreciation Rate (% per year)</label>
                 <input type="number" id="depreciationRate" step="0.5" value="8">
                 <div class="info-text">Standard depreciation rate for vehicle valuation</div>
             </div>
@@ -560,334 +554,397 @@
 </div>
 
 <script>
+(function() {
+    'use strict';
 
-// ============================================
-// SUPABASE - SINGLE SOURCE OF TRUTH
-// ============================================
-const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+    // ─── CONFIG ──────────────────────────────────────────────────
+    const API_BASE = 'http://localhost:8000/api';
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // ─── STATE ──────────────────────────────────────────────────
+    let currentUser = null;
 
-let currentUser = null;
-
-// ============================================
-// CHECK AUTHENTICATION
-// ============================================
-async function checkAuth() {
-    const { data: { user }, error } = await sb.auth.getUser();
-    if (error || !user) {
-        window.location.href = "login.html";
-        return false;
+    // ─── Toast / Error handling ──────────────────────────────
+    function showToast(message, type = 'info') {
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.className = `toast toast-${type}`;
+        div.textContent = message;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 5000);
     }
-    currentUser = user;
-    return true;
-}
 
-// ============================================
-// LOAD ALL SETTINGS
-// ============================================
-function loadSettings() {
-    const saved = localStorage.getItem('autov_settings');
-    if (saved) {
-        const settings = JSON.parse(saved);
-        
-        // General Settings
-        document.getElementById('currency').value = settings.currency || 'KES';
-        document.getElementById('dateFormat').value = settings.dateFormat || 'DD/MM/YYYY';
-        document.getElementById('timezone').value = settings.timezone || 'Africa/Nairobi';
-        document.getElementById('language').value = settings.language || 'en';
-        
-        // Notification Settings
-        document.getElementById('emailValuation').checked = settings.emailValuation || false;
-        document.getElementById('emailInspection').checked = settings.emailInspection || false;
-        document.getElementById('emailCertificate').checked = settings.emailCertificate || false;
-        document.getElementById('emailReminder').checked = settings.emailReminder || false;
-        document.getElementById('pushNotifications').checked = settings.pushNotifications || false;
-        
-        // Valuation Settings
-        document.getElementById('defaultValuationType').value = settings.defaultValuationType || 'Market Value';
-        document.getElementById('depreciationRate').value = settings.depreciationRate || 8;
-        document.getElementById('highMileageThreshold').value = settings.highMileageThreshold || 150000;
-        
-        // Inspection Settings
-        document.getElementById('defaultInspectionType').value = settings.defaultInspectionType || 'Pre-Purchase';
-        document.getElementById('minTreadDepth').value = settings.minTreadDepth || 1.6;
-        document.getElementById('passingScore').value = settings.passingScore || 70;
-        
-        // Certificate Settings
-        document.getElementById('certificateValidity').value = settings.certificateValidity || 1;
-        document.getElementById('certificatePrefix').value = settings.certificatePrefix || 'AUTOV';
-        document.getElementById('includeWatermark').checked = settings.includeWatermark || false;
-        
-        // Security Settings
-        document.getElementById('sessionTimeout').value = settings.sessionTimeout || 30;
-        document.getElementById('twoFactorAuth').checked = settings.twoFactorAuth || false;
-        document.getElementById('loginAlerts').checked = settings.loginAlerts || false;
-        
-        // Data Management
-        document.getElementById('archiveAfter').value = settings.archiveAfter || '12';
+    function showError(message) {
+        const errorDiv = document.getElementById('errorMsg');
+        errorDiv.innerHTML = message;
+        errorDiv.style.display = 'block';
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 5000);
+        showToast(message, 'error');
     }
-}
 
-// ============================================
-// SAVE GENERAL SETTINGS
-// ============================================
-function saveGeneralSettings() {
-    const settings = getCurrentSettings();
-    settings.currency = document.getElementById('currency').value;
-    settings.dateFormat = document.getElementById('dateFormat').value;
-    settings.timezone = document.getElementById('timezone').value;
-    settings.language = document.getElementById('language').value;
-    
-    saveToLocalStorage(settings);
-    showSuccess('General settings saved successfully!');
-}
+    function showSuccess(message) {
+        const successDiv = document.getElementById('successMsg');
+        successDiv.innerHTML = message;
+        successDiv.style.display = 'block';
+        setTimeout(() => {
+            successDiv.style.display = 'none';
+        }, 3000);
+        showToast(message, 'success');
+    }
 
-// ============================================
-// SAVE NOTIFICATION SETTINGS
-// ============================================
-function saveNotificationSettings() {
-    const settings = getCurrentSettings();
-    settings.emailValuation = document.getElementById('emailValuation').checked;
-    settings.emailInspection = document.getElementById('emailInspection').checked;
-    settings.emailCertificate = document.getElementById('emailCertificate').checked;
-    settings.emailReminder = document.getElementById('emailReminder').checked;
-    settings.pushNotifications = document.getElementById('pushNotifications').checked;
-    
-    saveToLocalStorage(settings);
-    showSuccess('Notification settings saved successfully!');
-}
+    // ─── Token helpers ──────────────────────────────────────────
+    function getAuthToken() {
+        return localStorage.getItem('access_token');
+    }
 
-// ============================================
-// SAVE VALUATION SETTINGS
-// ============================================
-function saveValuationSettings() {
-    const settings = getCurrentSettings();
-    settings.defaultValuationType = document.getElementById('defaultValuationType').value;
-    settings.depreciationRate = parseFloat(document.getElementById('depreciationRate').value);
-    settings.highMileageThreshold = parseInt(document.getElementById('highMileageThreshold').value);
-    
-    saveToLocalStorage(settings);
-    showSuccess('Valuation settings saved successfully!');
-}
-
-// ============================================
-// SAVE INSPECTION SETTINGS
-// ============================================
-function saveInspectionSettings() {
-    const settings = getCurrentSettings();
-    settings.defaultInspectionType = document.getElementById('defaultInspectionType').value;
-    settings.minTreadDepth = parseFloat(document.getElementById('minTreadDepth').value);
-    settings.passingScore = parseInt(document.getElementById('passingScore').value);
-    
-    saveToLocalStorage(settings);
-    showSuccess('Inspection settings saved successfully!');
-}
-
-// ============================================
-// SAVE CERTIFICATE SETTINGS
-// ============================================
-function saveCertificateSettings() {
-    const settings = getCurrentSettings();
-    settings.certificateValidity = parseInt(document.getElementById('certificateValidity').value);
-    settings.certificatePrefix = document.getElementById('certificatePrefix').value;
-    settings.includeWatermark = document.getElementById('includeWatermark').checked;
-    
-    saveToLocalStorage(settings);
-    showSuccess('Certificate settings saved successfully!');
-}
-
-// ============================================
-// SAVE SECURITY SETTINGS
-// ============================================
-function saveSecuritySettings() {
-    const settings = getCurrentSettings();
-    settings.sessionTimeout = parseInt(document.getElementById('sessionTimeout').value);
-    settings.twoFactorAuth = document.getElementById('twoFactorAuth').checked;
-    settings.loginAlerts = document.getElementById('loginAlerts').checked;
-    
-    saveToLocalStorage(settings);
-    showSuccess('Security settings saved successfully!');
-}
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-function getCurrentSettings() {
-    const saved = localStorage.getItem('autov_settings');
-    return saved ? JSON.parse(saved) : {};
-}
-
-function saveToLocalStorage(settings) {
-    localStorage.setItem('autov_settings', JSON.stringify(settings));
-}
-
-// ============================================
-// EXPORT ALL DATA
-// ============================================
-async function exportAllData() {
-    try {
-        const [vehicles, valuations, inspections, certificates] = await Promise.all([
-            sb.from('vehicles').select('*').eq('user_id', currentUser.id),
-            sb.from('valuations').select('*').eq('user_id', currentUser.id),
-            sb.from('inspections').select('*').eq('user_id', currentUser.id),
-            sb.from('certificates').select('*').eq('user_id', currentUser.id)
-        ]);
-        
-        const exportData = {
-            user: { email: currentUser.email, id: currentUser.id },
-            vehicles: vehicles.data,
-            valuations: valuations.data,
-            inspections: inspections.data,
-            certificates: certificates.data,
-            exportDate: new Date().toISOString()
+    function getAuthHeaders() {
+        const token = getAuthToken();
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
         };
-        
-        const dataStr = JSON.stringify(exportData, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `autov_export_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        
-        showSuccess('Data exported successfully!');
-        
-    } catch (error) {
-        showError('Error exporting data: ' + error.message);
     }
-}
 
-// ============================================
-// CLEAR CACHE
-// ============================================
-function clearCache() {
-    if (confirm('Clear local cache? You will need to login again.')) {
-        localStorage.clear();
-        sessionStorage.clear();
-        sb.auth.signOut();
-        window.location.href = 'login.html';
-    }
-}
+    // ─── Check Authentication ──────────────────────────────────
+    async function checkAuth() {
+        const token = getAuthToken();
+        if (!token) {
+            window.location.href = "login.html";
+            return false;
+        }
 
-// ============================================
-// CHANGE EMAIL
-// ============================================
-function changeEmail() {
-    const newEmail = prompt('Enter your new email address:');
-    if (newEmail && newEmail.includes('@')) {
-        alert('Email change request submitted. Please check your email for verification.');
-    } else {
-        showError('Please enter a valid email address');
-    }
-}
+        try {
+            const response = await fetch(`${API_BASE}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
 
-// ============================================
-// RESET PASSWORD
-// ============================================
-async function resetPassword() {
-    const confirmed = confirm('Reset your password? You will receive an email with reset instructions.');
-    if (confirmed) {
-        const { error } = await sb.auth.resetPasswordForEmail(currentUser.email);
-        if (error) {
-            showError('Error: ' + error.message);
-        } else {
-            showSuccess('Password reset email sent! Check your inbox.');
+            if (!response.ok) {
+                localStorage.removeItem('access_token');
+                window.location.href = "login.html";
+                return false;
+            }
+
+            currentUser = await response.json();
+            return true;
+        } catch (error) {
+            console.error('Auth check failed:', error);
+            window.location.href = "login.html";
+            return false;
         }
     }
-}
 
-// ============================================
-// LOGOUT
-// ============================================
-async function logout() {
-    await sb.auth.signOut();
-    window.location.href = "login.html";
-}
-
-// ============================================
-// DELETE ACCOUNT
-// ============================================
-async function deleteAccount() {
-    const confirmed = confirm(
-        '⚠️ WARNING: This action is irreversible!\n\n' +
-        'Deleting your account will permanently remove:\n' +
-        '- All your vehicles\n' +
-        '- All valuations\n' +
-        '- All inspections\n' +
-        '- All certificates\n\n' +
-        'Type "DELETE" to confirm.'
-    );
-    
-    if (!confirmed) return;
-    
-    const confirmation = prompt('Type "DELETE" to confirm account deletion:');
-    if (confirmation !== 'DELETE') {
-        showError('Confirmation failed. Account not deleted.');
-        return;
+    // ─── Load Settings ──────────────────────────────────────────
+    function loadSettings() {
+        const saved = localStorage.getItem('autov_settings');
+        if (saved) {
+            const settings = JSON.parse(saved);
+            
+            // General Settings
+            document.getElementById('currency').value = settings.currency || 'KES';
+            document.getElementById('dateFormat').value = settings.dateFormat || 'DD/MM/YYYY';
+            document.getElementById('timezone').value = settings.timezone || 'Africa/Nairobi';
+            document.getElementById('language').value = settings.language || 'en';
+            
+            // Notification Settings
+            document.getElementById('emailValuation').checked = settings.emailValuation || false;
+            document.getElementById('emailInspection').checked = settings.emailInspection || false;
+            document.getElementById('emailCertificate').checked = settings.emailCertificate || false;
+            document.getElementById('emailReminder').checked = settings.emailReminder || false;
+            document.getElementById('pushNotifications').checked = settings.pushNotifications || false;
+            
+            // Valuation Settings
+            document.getElementById('defaultValuationType').value = settings.defaultValuationType || 'Market Value';
+            document.getElementById('depreciationRate').value = settings.depreciationRate || 8;
+            document.getElementById('highMileageThreshold').value = settings.highMileageThreshold || 150000;
+            
+            // Inspection Settings
+            document.getElementById('defaultInspectionType').value = settings.defaultInspectionType || 'Pre-Purchase';
+            document.getElementById('minTreadDepth').value = settings.minTreadDepth || 1.6;
+            document.getElementById('passingScore').value = settings.passingScore || 70;
+            
+            // Certificate Settings
+            document.getElementById('certificateValidity').value = settings.certificateValidity || 1;
+            document.getElementById('certificatePrefix').value = settings.certificatePrefix || 'AUTOV';
+            document.getElementById('includeWatermark').checked = settings.includeWatermark || false;
+            
+            // Security Settings
+            document.getElementById('sessionTimeout').value = settings.sessionTimeout || 30;
+            document.getElementById('twoFactorAuth').checked = settings.twoFactorAuth || false;
+            document.getElementById('loginAlerts').checked = settings.loginAlerts || false;
+            
+            // Data Management
+            document.getElementById('archiveAfter').value = settings.archiveAfter || '12';
+        }
     }
-    
-    try {
-        await sb.from('vehicles').delete().eq('user_id', currentUser.id);
-        await sb.from('valuations').delete().eq('user_id', currentUser.id);
-        await sb.from('inspections').delete().eq('user_id', currentUser.id);
-        await sb.from('certificates').delete().eq('user_id', currentUser.id);
+
+    // ─── Save helpers ──────────────────────────────────────────
+    function getCurrentSettings() {
+        const saved = localStorage.getItem('autov_settings');
+        return saved ? JSON.parse(saved) : {};
+    }
+
+    function saveToLocalStorage(settings) {
+        localStorage.setItem('autov_settings', JSON.stringify(settings));
+        // Also save to backend if available
+        saveSettingsToBackend(settings);
+    }
+
+    async function saveSettingsToBackend(settings) {
+        try {
+            const token = getAuthToken();
+            if (!token) return;
+
+            await fetch(`${API_BASE}/users/settings`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(settings)
+            });
+        } catch (error) {
+            console.error('Failed to save settings to backend:', error);
+        }
+    }
+
+    // ─── Save Functions ──────────────────────────────────────────
+    window.saveGeneralSettings = function() {
+        const settings = getCurrentSettings();
+        settings.currency = document.getElementById('currency').value;
+        settings.dateFormat = document.getElementById('dateFormat').value;
+        settings.timezone = document.getElementById('timezone').value;
+        settings.language = document.getElementById('language').value;
         
-        const { error } = await sb.auth.admin.deleteUser(currentUser.id);
-        if (error) throw error;
+        saveToLocalStorage(settings);
+        showSuccess('General settings saved successfully!');
+    };
+
+    window.saveNotificationSettings = function() {
+        const settings = getCurrentSettings();
+        settings.emailValuation = document.getElementById('emailValuation').checked;
+        settings.emailInspection = document.getElementById('emailInspection').checked;
+        settings.emailCertificate = document.getElementById('emailCertificate').checked;
+        settings.emailReminder = document.getElementById('emailReminder').checked;
+        settings.pushNotifications = document.getElementById('pushNotifications').checked;
         
-        showSuccess('Account deleted successfully. Redirecting...');
-        setTimeout(() => {
+        saveToLocalStorage(settings);
+        showSuccess('Notification settings saved successfully!');
+    };
+
+    window.saveValuationSettings = function() {
+        const settings = getCurrentSettings();
+        settings.defaultValuationType = document.getElementById('defaultValuationType').value;
+        settings.depreciationRate = parseFloat(document.getElementById('depreciationRate').value);
+        settings.highMileageThreshold = parseInt(document.getElementById('highMileageThreshold').value);
+        
+        saveToLocalStorage(settings);
+        showSuccess('Valuation settings saved successfully!');
+    };
+
+    window.saveInspectionSettings = function() {
+        const settings = getCurrentSettings();
+        settings.defaultInspectionType = document.getElementById('defaultInspectionType').value;
+        settings.minTreadDepth = parseFloat(document.getElementById('minTreadDepth').value);
+        settings.passingScore = parseInt(document.getElementById('passingScore').value);
+        
+        saveToLocalStorage(settings);
+        showSuccess('Inspection settings saved successfully!');
+    };
+
+    window.saveCertificateSettings = function() {
+        const settings = getCurrentSettings();
+        settings.certificateValidity = parseInt(document.getElementById('certificateValidity').value);
+        settings.certificatePrefix = document.getElementById('certificatePrefix').value;
+        settings.includeWatermark = document.getElementById('includeWatermark').checked;
+        
+        saveToLocalStorage(settings);
+        showSuccess('Certificate settings saved successfully!');
+    };
+
+    window.saveSecuritySettings = function() {
+        const settings = getCurrentSettings();
+        settings.sessionTimeout = parseInt(document.getElementById('sessionTimeout').value);
+        settings.twoFactorAuth = document.getElementById('twoFactorAuth').checked;
+        settings.loginAlerts = document.getElementById('loginAlerts').checked;
+        
+        saveToLocalStorage(settings);
+        showSuccess('Security settings saved successfully!');
+    };
+
+    // ─── Export All Data ──────────────────────────────────────────
+    window.exportAllData = async function() {
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Not authenticated');
+
+            const response = await fetch(`${API_BASE}/users/export-data`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Failed to export data');
+            }
+
+            const data = await response.json();
+            
+            const dataStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `autov_export_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showSuccess('Data exported successfully!');
+            
+        } catch (error) {
+            showError('Error exporting data: ' + error.message);
+        }
+    };
+
+    // ─── Clear Cache ──────────────────────────────────────────────
+    window.clearCache = function() {
+        if (confirm('Clear local cache? You will need to login again.')) {
+            localStorage.clear();
+            sessionStorage.clear();
             window.location.href = 'login.html';
-        }, 2000);
+        }
+    };
+
+    // ─── Change Email ──────────────────────────────────────────────
+    window.changeEmail = function() {
+        const newEmail = prompt('Enter your new email address:');
+        if (newEmail && newEmail.includes('@')) {
+            // Send request to backend
+            const token = getAuthToken();
+            if (token) {
+                fetch(`${API_BASE}/auth/change-email`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ new_email: newEmail })
+                }).then(response => {
+                    if (response.ok) {
+                        showSuccess('Email change request submitted. Please check your email for verification.');
+                    } else {
+                        showError('Failed to change email. Please try again.');
+                    }
+                }).catch(() => {
+                    showError('Network error. Please try again.');
+                });
+            }
+        } else {
+            showError('Please enter a valid email address');
+        }
+    };
+
+    // ─── Reset Password ────────────────────────────────────────────
+    window.resetPassword = async function() {
+        const confirmed = confirm('Reset your password? You will receive an email with reset instructions.');
+        if (confirmed) {
+            try {
+                const response = await fetch(`${API_BASE}/auth/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: currentUser.email })
+                });
+
+                if (response.ok) {
+                    showSuccess('Password reset email sent! Check your inbox.');
+                } else {
+                    const err = await response.json();
+                    showError('Error: ' + (err.detail || 'Failed to send reset email'));
+                }
+            } catch (error) {
+                showError('Network error. Please try again.');
+            }
+        }
+    };
+
+    // ─── Logout ────────────────────────────────────────────────────
+    window.logout = async function() {
+        try {
+            const token = getAuthToken();
+            if (token) {
+                await fetch(`${API_BASE}/auth/logout`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            }
+        } catch (e) {}
+        localStorage.removeItem('access_token');
+        window.location.href = 'login.html';
+    };
+
+    // ─── Delete Account ────────────────────────────────────────────
+    window.deleteAccount = async function() {
+        const confirmed = confirm(
+            '⚠️ WARNING: This action is irreversible!\n\n' +
+            'Deleting your account will permanently remove:\n' +
+            '- All your vehicles\n' +
+            '- All valuations\n' +
+            '- All inspections\n' +
+            '- All certificates\n\n' +
+            'Type "DELETE" to confirm.'
+        );
         
-    } catch (error) {
-        showError('Error deleting account: ' + error.message);
+        if (!confirmed) return;
+        
+        const confirmation = prompt('Type "DELETE" to confirm account deletion:');
+        if (confirmation !== 'DELETE') {
+            showError('Confirmation failed. Account not deleted.');
+            return;
+        }
+        
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Not authenticated');
+
+            const response = await fetch(`${API_BASE}/users/delete`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Failed to delete account');
+            }
+
+            showSuccess('Account deleted successfully. Redirecting...');
+            localStorage.removeItem('access_token');
+
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 2000);
+            
+        } catch (error) {
+            showError('Error deleting account: ' + error.message);
+        }
+    };
+
+    // ─── Init ──────────────────────────────────────────────────
+    async function init() {
+        try {
+            const isAuth = await checkAuth();
+            if (!isAuth) return;
+            
+            loadSettings();
+            console.log('AUTO-V Settings initialized successfully');
+            
+        } catch (err) {
+            console.error('Initialization Error:', err);
+            showError('System initialization failed: ' + err.message);
+        }
     }
-}
 
-// ============================================
-// SHOW MESSAGES
-// ============================================
-function showError(message) {
-    const errorDiv = document.getElementById('errorMsg');
-    errorDiv.innerHTML = message;
-    errorDiv.style.display = 'block';
-    setTimeout(() => {
-        errorDiv.style.display = 'none';
-    }, 5000);
-}
-
-function showSuccess(message) {
-    const successDiv = document.getElementById('successMsg');
-    successDiv.innerHTML = message;
-    successDiv.style.display = 'block';
-    setTimeout(() => {
-        successDiv.style.display = 'none';
-    }, 3000);
-}
-
-// ============================================
-// INITIALIZE
-// ============================================
-async function init() {
-    try {
-        const isAuth = await checkAuth();
-        if (!isAuth) return;
-        
-        loadSettings();
-        console.log('AUTO-V Settings initialized successfully');
-        
-    } catch (err) {
-        console.error('Initialization Error:', err);
-        showError('System initialization failed: ' + err.message);
+    // Start when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
     }
-}
 
-document.addEventListener('DOMContentLoaded', init);
-
+})();
 </script>
 
 </body>
