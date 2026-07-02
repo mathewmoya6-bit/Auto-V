@@ -1,39 +1,20 @@
 // ============================================
-// AUTO-V SUPABASE CONFIGURATION
-// Single Source of Truth - Real-time Sync
+// AUTO-V API CLIENT CONFIGURATION
+// Single Source of Truth - FastAPI Backend
 // ============================================
 
 // ✅ GUARD: Prevent double initialization
 if (window.autoV && window.autoV._initialized) {
-    console.log('✅ AUTO-V Supabase already initialized, skipping...');
+    console.log('✅ AUTO-V API already initialized, skipping...');
 } else {
     (function() {
         'use strict';
 
         // ─── Configuration ──────────────────────────────────────────────
-        const SUPABASE_URL = "https://tsvejnzxrxrrecgquxbq.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ";
+        const API_BASE = 'http://localhost:8000/api';
+        const WS_BASE = 'ws://localhost:8000/ws';
 
-        // ─── Create Supabase client ──────────────────────────────────────
-        if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
-            console.error('❌ Supabase CDN not loaded. Please check the script tag.');
-            return;
-        }
-
-        const supabase = window.supabase.createClient(
-            SUPABASE_URL,
-            SUPABASE_ANON_KEY,
-            {
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'apikey': SUPABASE_ANON_KEY
-                }
-            }
-        );
-        console.log('✅ Supabase client created with proper headers');
-
-        // ─── Shared State ──────────────────────────────────────────────
+        // ─── State ──────────────────────────────────────────────────────
         const state = {
             fees: {
                 instant: 500,
@@ -56,18 +37,86 @@ if (window.autoV && window.autoV._initialized) {
             },
             lastUpdated: null,
             listeners: [],
-            subscriptions: []
+            subscriptions: [],
+            wsConnection: null,
+            wsReconnectAttempts: 0,
+            maxReconnectAttempts: 5
         };
+
+        // ─── Token Management ──────────────────────────────────────────
+        function getAuthToken() {
+            return localStorage.getItem('access_token');
+        }
+
+        function setAuthToken(token) {
+            localStorage.setItem('access_token', token);
+        }
+
+        function clearAuthToken() {
+            localStorage.removeItem('access_token');
+        }
+
+        function getAuthHeaders() {
+            const token = getAuthToken();
+            return {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                ...(token && { 'Authorization': `Bearer ${token}` })
+            };
+        }
+
+        // ─── API Request Helper ────────────────────────────────────────
+        async function apiRequest(endpoint, options = {}) {
+            const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+            const config = {
+                ...options,
+                headers: {
+                    ...getAuthHeaders(),
+                    ...(options.headers || {})
+                }
+            };
+
+            try {
+                const response = await fetch(url, config);
+                
+                // Handle 401 Unauthorized
+                if (response.status === 401) {
+                    clearAuthToken();
+                    // Redirect to login if not already there
+                    if (!window.location.pathname.includes('login.html')) {
+                        window.location.href = 'login.html';
+                    }
+                    throw new Error('Session expired. Please login again.');
+                }
+
+                // Handle non-JSON responses
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+                    }
+                    return data;
+                } else {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response;
+                }
+            } catch (error) {
+                if (error.message.includes('fetch')) {
+                    throw new Error('Network error. Please check your connection.');
+                }
+                throw error;
+            }
+        }
 
         // ─── Data Fetching Functions ────────────────────────────────────
         async function fetchFees() {
             try {
-                // Try to fetch from system_settings table
-                const { data, error } = await supabase
-                    .from('system_settings')
-                    .select('setting_key, setting_value');
+                const data = await apiRequest('/admin/settings?keys=instant_fee,valuation_fee,inspection_fee,assessment_fee,mileage_fee,fleet_fee,verification_fee,professional_fee');
                 
-                if (!error && data) {
+                if (data && Array.isArray(data)) {
                     const feeMap = {
                         'instant_fee': 'instant',
                         'valuation_fee': 'valuation',
@@ -87,29 +136,6 @@ if (window.autoV && window.autoV._initialized) {
                     });
                 }
                 
-                // Also try system_fees table
-                const { data: feeData, error: feeError } = await supabase
-                    .from('system_fees')
-                    .select('service_type, fee');
-                
-                if (!feeError && feeData) {
-                    const feeMap = {
-                        'instant-value-check': 'instant',
-                        'mileage-rate': 'mileage',
-                        'valuation': 'valuation',
-                        'inspection': 'inspection',
-                        'assessment': 'assessment',
-                        'fleet': 'fleet'
-                    };
-                    
-                    feeData.forEach(row => {
-                        const key = feeMap[row.service_type];
-                        if (key) {
-                            state.fees[key] = row.fee || state.fees[key];
-                        }
-                    });
-                }
-                
                 return state.fees;
             } catch (err) {
                 console.warn('⚠️ Could not fetch fees:', err.message);
@@ -119,68 +145,16 @@ if (window.autoV && window.autoV._initialized) {
 
         async function fetchStats() {
             try {
-                // Try to get counts from various tables
-                let users = 0, requests = 0, instant = 0, vehicles = 0, inspections = 0;
+                const stats = await apiRequest('/admin/stats');
                 
-                try {
-                    const { count: userCount } = await supabase
-                        .from('user_profiles')
-                        .select('*', { count: 'exact', head: true });
-                    users = userCount || 0;
-                } catch (e) { /* table may not exist */ }
-                
-                try {
-                    const { count: requestCount } = await supabase
-                        .from('service_requests')
-                        .select('*', { count: 'exact', head: true });
-                    requests = requestCount || 0;
-                } catch (e) { /* table may not exist */ }
-                
-                try {
-                    const { count: instantCount } = await supabase
-                        .from('service_requests')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('service_type', 'instant');
-                    instant = instantCount || 0;
-                } catch (e) { /* table may not exist */ }
-                
-                try {
-                    const { count: vehicleCount } = await supabase
-                        .from('service_requests')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('service_type', 'valuation');
-                    vehicles = vehicleCount || 0;
-                } catch (e) { /* table may not exist */ }
-                
-                try {
-                    const { count: inspectionCount } = await supabase
-                        .from('service_requests')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('service_type', 'inspection');
-                    inspections = inspectionCount || 0;
-                } catch (e) { /* table may not exist */ }
-
-                // Try to get revenue from payments
-                let revenue = 0, pending = 0;
-                try {
-                    const { data: payments } = await supabase
-                        .from('payments')
-                        .select('amount, status');
-                    
-                    if (payments) {
-                        revenue = payments.reduce((s, p) => s + (p.amount || 0), 0) || 0;
-                        pending = payments.filter(p => p.status === 'pending').length || 0;
-                    }
-                } catch (e) { /* table may not exist */ }
-
                 state.stats = {
-                    users: users || 0,
-                    requests: requests || 0,
-                    revenue: revenue || 0,
-                    pending: pending || 0,
-                    instant: instant || 0,
-                    vehicles: vehicles || 0,
-                    inspections: inspections || 0
+                    users: stats.total_users || 0,
+                    requests: stats.total_requests || 0,
+                    revenue: stats.total_revenue || 0,
+                    pending: stats.pending_payments || 0,
+                    instant: stats.instant_requests || 0,
+                    vehicles: stats.total_vehicles || 0,
+                    inspections: stats.total_inspections || 0
                 };
                 state.lastUpdated = new Date();
                 
@@ -197,36 +171,71 @@ if (window.autoV && window.autoV._initialized) {
             return { fees: state.fees, stats: state.stats };
         }
 
-        // ─── Real-time Subscriptions ────────────────────────────────────
-        function subscribeToChanges(callback) {
-            const tables = ['system_settings', 'system_fees', 'service_requests', 'payments', 'user_profiles'];
-            
-            tables.forEach(table => {
-                try {
-                    const channel = supabase
-                        .channel(`public:${table}`)
-                        .on('postgres_changes', 
-                            { event: '*', schema: 'public', table: table },
-                            () => {
-                                console.log(`🔄 ${table} changed, refreshing...`);
-                                fetchAllData().then(() => {
-                                    if (callback) callback();
-                                });
-                            }
-                        )
-                        .subscribe();
-                    
-                    state.subscriptions.push(channel);
-                } catch (e) {
-                    console.warn(`⚠️ Could not subscribe to ${table}:`, e.message);
-                }
-            });
+        // ─── WebSocket Connection ──────────────────────────────────────
+        function connectWebSocket() {
+            const token = getAuthToken();
+            if (!token) return;
+
+            try {
+                const ws = new WebSocket(`${WS_BASE}/updates?token=${token}`);
+                
+                ws.onopen = () => {
+                    console.log('🔌 WebSocket connected');
+                    state.wsReconnectAttempts = 0;
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'update') {
+                            console.log('🔄 WebSocket update:', data.payload);
+                            fetchAllData();
+                        }
+                    } catch (e) {
+                        console.warn('WebSocket message parse error:', e);
+                    }
+                };
+
+                ws.onclose = () => {
+                    console.log('🔌 WebSocket disconnected');
+                    attemptReconnect();
+                };
+
+                ws.onerror = (error) => {
+                    console.warn('WebSocket error:', error);
+                };
+
+                state.wsConnection = ws;
+            } catch (error) {
+                console.warn('WebSocket connection failed:', error);
+            }
+        }
+
+        function attemptReconnect() {
+            if (state.wsReconnectAttempts < state.maxReconnectAttempts) {
+                state.wsReconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, state.wsReconnectAttempts - 1), 30000);
+                console.log(`🔄 Reconnecting WebSocket in ${delay}ms (attempt ${state.wsReconnectAttempts})`);
+                setTimeout(() => {
+                    if (getAuthToken()) {
+                        connectWebSocket();
+                    }
+                }, delay);
+            } else {
+                console.warn('⚠️ Max WebSocket reconnect attempts reached');
+            }
         }
 
         // ─── Listener System ────────────────────────────────────────────
         function addListener(callback) {
             if (typeof callback === 'function') {
                 state.listeners.push(callback);
+                // Initial call with current state
+                try {
+                    callback({ fees: state.fees, stats: state.stats });
+                } catch (err) {
+                    console.warn('Listener error:', err);
+                }
             }
         }
 
@@ -287,11 +296,17 @@ if (window.autoV && window.autoV._initialized) {
         // ─── Build the complete object ─────────────────────────────────
         const autoVInstance = {
             // Core
-            supabase: supabase,
-            SUPABASE_URL: SUPABASE_URL,
-            SUPABASE_ANON_KEY: SUPABASE_ANON_KEY,
+            API_BASE: API_BASE,
+            WS_BASE: WS_BASE,
             state: state,
             _initialized: true,
+            
+            // ─── API Methods ─────────────────────────────────────────────
+            apiRequest: apiRequest,
+            getAuthToken: getAuthToken,
+            setAuthToken: setAuthToken,
+            clearAuthToken: clearAuthToken,
+            getAuthHeaders: getAuthHeaders,
             
             // ─── Data Functions ──────────────────────────────────────────
             fetchFees: fetchFees,
@@ -300,7 +315,7 @@ if (window.autoV && window.autoV._initialized) {
             refresh: fetchAllData,
             
             // ─── Real-time Sync ──────────────────────────────────────────
-            subscribeToChanges: subscribeToChanges,
+            connectWebSocket: connectWebSocket,
             addListener: addListener,
             removeListener: removeListener,
             getLiveIndicator: getLiveIndicator,
@@ -363,8 +378,10 @@ if (window.autoV && window.autoV._initialized) {
             // ─── AUTHENTICATION ──────────────────────────────────────────
             async getCurrentUser() {
                 try {
-                    const { data: { user }, error } = await supabase.auth.getUser();
-                    if (error || !user) return null;
+                    const token = getAuthToken();
+                    if (!token) return null;
+                    
+                    const user = await apiRequest('/auth/me');
                     return user;
                 } catch (e) {
                     return null;
@@ -381,7 +398,10 @@ if (window.autoV && window.autoV._initialized) {
             },
             
             async logout() {
-                await supabase.auth.signOut();
+                try {
+                    await apiRequest('/auth/logout', { method: 'POST' });
+                } catch (e) {}
+                clearAuthToken();
                 localStorage.clear();
                 sessionStorage.clear();
                 window.location.href = "login.html";
@@ -390,37 +410,26 @@ if (window.autoV && window.autoV._initialized) {
             // ─── USER PROFILE ─────────────────────────────────────────
             async upsertUserProfile(userId, email, role) {
                 try {
-                    const { data, error } = await supabase
-                        .from('user_profiles')
-                        .upsert({
+                    const data = await apiRequest('/users/profile', {
+                        method: 'PUT',
+                        body: JSON.stringify({
                             user_id: userId,
                             full_name: email?.split('@')[0] || 'User',
                             email: email,
-                            role: role || 'individual',
-                            updated_at: new Date().toISOString()
-                        }, { onConflict: 'user_id' })
-                        .select();
-                    
-                    if (error) {
-                        console.warn('Error upserting user profile:', error.message);
-                        return { data: null, error: error };
-                    }
+                            role: role || 'individual'
+                        })
+                    });
                     return { data, error: null };
                 } catch (err) {
-                    console.warn('Error in upsertUserProfile:', err);
+                    console.warn('Error upserting user profile:', err.message);
                     return { data: null, error: err };
                 }
             },
             
             async getUserRole(userId) {
                 try {
-                    const { data, error } = await supabase
-                        .from('user_profiles')
-                        .select('role')
-                        .eq('user_id', userId)
-                        .single();
-                    if (error || !data) return 'individual';
-                    return data.role;
+                    const profile = await apiRequest(`/users/profile/${userId}`);
+                    return profile?.role || 'individual';
                 } catch (err) {
                     console.warn('Error getting role:', err);
                     return 'individual';
@@ -505,18 +514,16 @@ if (window.autoV && window.autoV._initialized) {
                 if (!user) return { error: 'Not authenticated' };
                 
                 try {
-                    const { data, error } = await supabase
-                        .from('service_requests')
-                        .insert([{
+                    const data = await apiRequest('/service-requests', {
+                        method: 'POST',
+                        body: JSON.stringify({
                             user_id: user.id,
                             ...requestData,
                             payment_status: 'paid',
-                            status: 'completed',
-                            created_at: new Date().toISOString()
-                        }])
-                        .select();
-                    
-                    return { data, error };
+                            status: 'completed'
+                        })
+                    });
+                    return { data, error: null };
                 } catch (e) {
                     return { data: null, error: e };
                 }
@@ -526,12 +533,7 @@ if (window.autoV && window.autoV._initialized) {
                 const user = await this.getCurrentUser();
                 if (!user) return [];
                 try {
-                    const { data, error } = await supabase
-                        .from('service_requests')
-                        .select('*')
-                        .eq('user_id', user.id)
-                        .order('created_at', { ascending: false });
-                    if (error) return [];
+                    const data = await apiRequest('/service-requests');
                     return data || [];
                 } catch (e) {
                     return [];
@@ -593,14 +595,9 @@ if (window.autoV && window.autoV._initialized) {
             async getMileageRate(vehicleCategory) {
                 if (!vehicleCategory) return 25;
                 try {
-                    const { data, error } = await supabase
-                        .from('mileage_rates')
-                        .select('rate_per_km')
-                        .eq('vehicle_category', vehicleCategory)
-                        .eq('is_active', true)
-                        .single();
-                    if (error || !data) return 25;
-                    return data.rate_per_km;
+                    const rates = await apiRequest('/mileage/rates');
+                    const rate = rates.find(r => r.vehicle_category === vehicleCategory && r.is_active);
+                    return rate?.rate_per_km || 25;
                 } catch (e) {
                     return 25;
                 }
@@ -608,12 +605,7 @@ if (window.autoV && window.autoV._initialized) {
             
             async getAllMileageRates() {
                 try {
-                    const { data, error } = await supabase
-                        .from('mileage_rates')
-                        .select('*')
-                        .eq('is_active', true)
-                        .order('rate_per_km');
-                    if (error) return [];
+                    const data = await apiRequest('/mileage/rates');
                     return data || [];
                 } catch (e) {
                     return [];
@@ -625,16 +617,16 @@ if (window.autoV && window.autoV._initialized) {
                 if (!user) return { error: 'Not authenticated' };
                 
                 try {
-                    const { data, error } = await supabase
-                        .from('mileage_claims')
-                        .insert([{
+                    const data = await apiRequest('/mileage/claims', {
+                        method: 'POST',
+                        body: JSON.stringify({
                             user_id: user.id,
-                            employee_name: user.email?.split('@')[0] || 'Employee',
+                            employee_name: user.full_name || user.email?.split('@')[0] || 'Employee',
                             ...claimData,
                             status: 'pending'
-                        }])
-                        .select();
-                    return { data, error };
+                        })
+                    });
+                    return { data, error: null };
                 } catch (e) {
                     return { data: null, error: e };
                 }
@@ -644,12 +636,7 @@ if (window.autoV && window.autoV._initialized) {
                 const user = await this.getCurrentUser();
                 if (!user) return [];
                 try {
-                    const { data, error } = await supabase
-                        .from('mileage_claims')
-                        .select('*')
-                        .eq('user_id', user.id)
-                        .order('trip_date', { ascending: false });
-                    if (error) return [];
+                    const data = await apiRequest('/mileage/claims');
                     return data || [];
                 } catch (e) {
                     return [];
@@ -658,11 +645,8 @@ if (window.autoV && window.autoV._initialized) {
             
             async cancelMileageClaim(claimId) {
                 try {
-                    const { error } = await supabase
-                        .from('mileage_claims')
-                        .delete()
-                        .eq('id', claimId);
-                    return { success: !error, error };
+                    await apiRequest(`/mileage/claims/${claimId}`, { method: 'DELETE' });
+                    return { success: true, error: null };
                 } catch (e) {
                     return { success: false, error: e };
                 }
@@ -671,10 +655,11 @@ if (window.autoV && window.autoV._initialized) {
             // ─── Fleet ───────────────────────────────────────────────────
             async getFleetVehicles(organizationId = null) {
                 try {
-                    let query = supabase.from('fleet_vehicles').select('*');
-                    if (organizationId) query = query.eq('organization_id', organizationId);
-                    const { data, error } = await query;
-                    if (error) return [];
+                    let endpoint = '/fleet/vehicles';
+                    if (organizationId) {
+                        endpoint += `?organization_id=${organizationId}`;
+                    }
+                    const data = await apiRequest(endpoint);
                     return data || [];
                 } catch (e) {
                     return [];
@@ -683,11 +668,11 @@ if (window.autoV && window.autoV._initialized) {
             
             async addFleetVehicle(vehicleData) {
                 try {
-                    const { data, error } = await supabase
-                        .from('fleet_vehicles')
-                        .insert([vehicleData])
-                        .select();
-                    return { data, error };
+                    const data = await apiRequest('/fleet/vehicles', {
+                        method: 'POST',
+                        body: JSON.stringify(vehicleData)
+                    });
+                    return { data, error: null };
                 } catch (e) {
                     return { data: null, error: e };
                 }
@@ -696,12 +681,7 @@ if (window.autoV && window.autoV._initialized) {
             // ─── Fuel Prices ─────────────────────────────────────────────
             async getCurrentFuelPrices(region = 'National') {
                 try {
-                    const { data, error } = await supabase
-                        .from('fuel_prices')
-                        .select('*')
-                        .eq('region', region)
-                        .order('effective_date', { ascending: false });
-                    if (error) return [];
+                    const data = await apiRequest(`/fuel/prices?region=${encodeURIComponent(region)}`);
                     return data || [];
                 } catch (e) {
                     return [];
@@ -771,14 +751,18 @@ if (window.autoV && window.autoV._initialized) {
             document.head.appendChild(style);
         }
 
-        // ─── Auto-initialize real-time subscriptions ────────────────────
+        // ─── Auto-initialize WebSocket if token exists ──────────────────
         setTimeout(() => {
-            if (state.listeners.length > 0) {
-                subscribeToChanges();
-                console.log('🔌 Real-time subscriptions active');
+            if (getAuthToken()) {
+                connectWebSocket();
+                console.log('🔌 WebSocket connection initiated');
             }
+            // Initial data fetch
+            fetchAllData().then(() => {
+                console.log('📊 Initial data loaded');
+            });
         }, 100);
 
-        console.log('✅ AUTO-V Supabase client initialized (Single Source of Truth + Real-time + Auth)');
+        console.log('✅ AUTO-V API client initialized (Single Source of Truth + WebSocket + Auth)');
     })(); // End of IIFE
 }
