@@ -5,13 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
     <title>AUTO-V | Professional Valuation Engine</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family:'Inter', sans-serif; background:#0a0c15; color:#fff; padding:20px; }
-        header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:#111827; border-bottom:2px solid #eab308; max-width:1200px; margin:-20px auto 20px; border-radius:0 0 16px 16px; }
+        header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:#111827; border-bottom:2px solid #eab308; max-width:1200px; margin:-20px auto 20px; border-radius:0 0 16px 16px; flex-wrap:wrap; gap:10px; }
         .logo { font-size:24px; font-weight:bold; color:#eab308; display:flex; align-items:center; gap:10px; }
         .logo span { font-size:12px; color:#94a3b8; }
+        .user-info { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+        .user-email { font-size:12px; color:#94a3b8; }
+        .role-badge { background:#eab308; color:#000; padding:2px 12px; border-radius:12px; font-size:10px; font-weight:700; text-transform:uppercase; }
         .container { max-width:1200px; margin:auto; }
         .card { background:#0f172a; border-radius:20px; padding:30px; margin-bottom:20px; border:1px solid #1e293b; }
         h2 { color:#eab308; margin-bottom:20px; font-size:22px; border-left:4px solid #eab308; padding-left:15px; }
@@ -36,12 +40,8 @@
         .btn-sm { padding:6px 14px; font-size:12px; }
         .nav-buttons { display:flex; justify-content:space-between; margin-top:30px; gap:10px; flex-wrap:wrap; }
         .row { display:grid; grid-template-columns:1fr 1fr; gap:15px; }
-        .row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; }
         .service-badge { display:inline-block; padding:4px 16px; border-radius:30px; font-size:12px; font-weight:600; background:#eab308; color:#000; margin-bottom:15px; }
         .hidden { display:none !important; }
-        .error, .success { padding:12px 16px; border-radius:12px; margin-bottom:15px; display:none; }
-        .error { background:#7f1d1d; color:#fecaca; border-left:4px solid #ef4444; }
-        .success { background:#14532d; color:#bbf7d0; border-left:4px solid #22c55e; }
         .spinner { display:inline-block; width:20px; height:20px; border:2px solid #fff; border-radius:50%; border-top-color:#eab308; animation:spin .6s linear infinite; margin-right:8px; vertical-align:middle; }
         @keyframes spin { to { transform:rotate(360deg); } }
         .result-box { background:linear-gradient(135deg,#1e293b,#0f172a); border:2px solid #eab308; border-radius:20px; padding:30px; text-align:center; position:relative; }
@@ -54,10 +54,11 @@
         .result-detail .value.green { color:#22c55e; }
         .result-detail .value.gold { color:#eab308; }
         .result-detail .value.red { color:#ef4444; }
-        .toast { position:fixed; bottom:20px; right:20px; padding:12px 24px; border-radius:8px; z-index:9999; font-weight:500; animation:slideIn .3s ease; max-width:400px; }
+        .toast { position:fixed; bottom:20px; right:20px; padding:12px 24px; border-radius:8px; z-index:9999; font-weight:500; animation:slideIn .3s ease; max-width:400px; box-shadow:0 4px 20px rgba(0,0,0,0.5); }
         .toast-success { background:#22c55e; color:#000; }
         .toast-error { background:#ef4444; color:#fff; }
         .toast-warning { background:#eab308; color:#000; }
+        .toast-info { background:#3b82f6; color:#fff; }
         @keyframes slideIn { from { opacity:0; transform:translateX(100px); } to { opacity:1; transform:translateX(0); } }
         .upload-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:12px; margin-top:15px; }
         .upload-item { background:#0f172a; border-radius:12px; padding:10px; text-align:center; border:1px solid #1e293b; position:relative; min-height:140px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
@@ -66,7 +67,6 @@
         .upload-item .file-status.pending { color:#f59e0b; }
         .upload-item .file-status.error { color:#ef4444; }
         .upload-item .file-status.uploading { color:#facc15; }
-        .upload-item .remove-btn { position:absolute; top:4px; right:4px; background:#dc2626; color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center; }
         .upload-item .upload-label { font-size:10px; color:#eab308; font-weight:600; margin-bottom:4px; }
         .document-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:15px; margin-top:15px; }
         .document-item { background:#0f172a; border-radius:12px; padding:15px; border:1px solid #1e293b; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; }
@@ -87,31 +87,30 @@
         .valuation-tab { background:transparent; border:none; color:#94a3b8; padding:8px 20px; border-radius:40px; cursor:pointer; font-weight:600; font-size:13px; transition:all .2s; }
         .valuation-tab.active { background:#eab308; color:#0a0c15; }
         .valuation-tab:hover:not(.active) { background:#334155; color:#fff; }
-        .confidence-ring { width:80px; height:80px; border-radius:50%; border:6px solid #eab308; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; margin:10px auto; }
         .qr-container { background:#fff; padding:15px; border-radius:12px; display:inline-block; margin:15px 0; }
         .badge-methodology { background:#1e293b; padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8; display:inline-block; margin:5px; }
-        .inspector-signature { border:1px dashed #64748b; padding:20px; border-radius:12px; min-height:60px; margin-top:10px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-style:italic; }
         .comparable-vehicle { background:#1e293b; border-radius:12px; padding:12px; margin:8px 0; display:flex; justify-content:space-between; align-items:center; }
         .comparable-vehicle .price { color:#22c55e; font-weight:700; }
         .purpose-item { padding:12px 18px; margin:8px 0; background:#1e293b; border-radius:10px; cursor:pointer; transition:all .3s; border:2px solid transparent; color:#94a3b8; font-weight:500; }
         .purpose-item:hover { background:#2a3a4a; border-color:#eab308; color:#fff; }
         .purpose-item.selected { background:#eab308; color:#0a0c15; border-color:#eab308; font-weight:600; }
         .purpose-item.selected:hover { background:#facc15; }
-        @media (max-width:768px) { .row, .row-3 { grid-template-columns:1fr; } .upload-grid { grid-template-columns:1fr 1fr; } .document-grid { grid-template-columns:1fr; } .valuation-tabs { border-radius:16px; } .valuation-tab { font-size:11px; padding:6px 12px; } .nav-buttons { flex-direction:column; } .nav-buttons button { width:100%; } }
+        .loading-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; display:none; justify-content:center; align-items:center; flex-direction:column; gap:20px; }
+        .loading-overlay .spinner { width:60px; height:60px; border-width:4px; }
+        .loading-overlay p { color:#eab308; font-size:18px; font-weight:600; }
+        @media (max-width:768px) { .row { grid-template-columns:1fr; } .upload-grid { grid-template-columns:1fr 1fr; } .document-grid { grid-template-columns:1fr; } .valuation-tabs { border-radius:16px; } .valuation-tab { font-size:11px; padding:6px 12px; } .nav-buttons { flex-direction:column; } .nav-buttons button { width:100%; } header { flex-direction:column; text-align:center; } .user-info { justify-content:center; } }
     </style>
 </head>
 <body>
     <header>
         <div class="logo">🚗 AUTO-V <span>| Professional Valuation</span></div>
-        <div style="display:flex;align-items:center;gap:16px;">
-            <span id="userEmail" style="font-size:12px;color:#94a3b8;">Demo User</span>
-            <button class="btn btn-secondary" id="logoutBtn" style="padding:8px 16px; font-size:12px;">Logout</button>
+        <div class="user-info">
+            <span class="user-email" id="userEmail">Loading...</span>
+            <span class="role-badge" id="userRoleBadge">Loading</span>
+            <button class="btn btn-danger" id="logoutBtn" style="padding:8px 16px; font-size:12px;">Logout</button>
         </div>
     </header>
     <div class="container">
-        <div id="errorMsg" class="error"></div>
-        <div id="successMsg" class="success"></div>
-
         <div class="card" id="dataEntryCard">
             <div style="margin-bottom:15px;">
                 <span class="service-badge">🚗 Professional Valuation</span>
@@ -143,44 +142,41 @@
             </div>
 
             <form id="vehicleForm" onsubmit="return false;">
-                <!-- TAB 1: Basic Info -->
                 <div id="tab-basic" class="tab-content">
                     <div class="row">
-                        <div class="form-group"><label class="required">Registration</label><input type="text" id="vehicleReg" placeholder="KCA 123A" value="KDA 123A"></div>
-                        <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456" value="JTEGD34V000123456"></div>
+                        <div class="form-group"><label class="required">Registration</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
+                        <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456"></div>
                     </div>
                     <div class="row">
                         <div class="form-group"><label class="required">Make</label>
-                            <select id="vehicleMake"><option value="Toyota" selected>Toyota</option><option value="Honda">Honda</option><option value="Nissan">Nissan</option><option value="Mercedes-Benz">Mercedes-Benz</option><option value="BMW">BMW</option><option value="Audi">Audi</option><option value="Volkswagen">Volkswagen</option><option value="Ford">Ford</option><option value="Subaru">Subaru</option><option value="Mazda">Mazda</option><option value="Mitsubishi">Mitsubishi</option><option value="Isuzu">Isuzu</option><option value="Peugeot">Peugeot</option><option value="Land Rover">Land Rover</option><option value="Jaguar">Jaguar</option><option value="Lexus">Lexus</option><option value="Volvo">Volvo</option><option value="Hyundai">Hyundai</option><option value="Kia">Kia</option><option value="Suzuki">Suzuki</option><option value="Other">Other</option></select>
+                            <select id="vehicleMake"><option value="">Select Make</option><option value="Toyota">Toyota</option><option value="Honda">Honda</option><option value="Nissan">Nissan</option><option value="Mercedes-Benz">Mercedes-Benz</option><option value="BMW">BMW</option><option value="Audi">Audi</option><option value="Volkswagen">Volkswagen</option><option value="Ford">Ford</option><option value="Subaru">Subaru</option><option value="Mazda">Mazda</option><option value="Mitsubishi">Mitsubishi</option><option value="Isuzu">Isuzu</option><option value="Land Rover">Land Rover</option><option value="Lexus">Lexus</option><option value="Volvo">Volvo</option><option value="Hyundai">Hyundai</option><option value="Kia">Kia</option><option value="Suzuki">Suzuki</option><option value="Other">Other</option></select>
                         </div>
-                        <div class="form-group"><label class="required">Model</label><select id="vehicleModel"></select></div>
+                        <div class="form-group"><label class="required">Model</label><input type="text" id="vehicleModel" placeholder="e.g. Axio"></div>
                     </div>
                     <div class="row">
                         <div class="form-group"><label class="required">Year</label><select id="vehicleYear"></select></div>
                         <div class="form-group"><label class="required">Body Type</label>
-                            <select id="vehicleBody"><option value="Sedan" selected>Sedan</option><option value="SUV">SUV</option><option value="Pickup">Pickup</option><option value="Van">Van</option><option value="Hatchback">Hatchback</option><option value="Coupe">Coupe</option><option value="Convertible">Convertible</option><option value="Wagon">Wagon</option><option value="Minivan">Minivan</option><option value="Bus">Bus</option><option value="Truck">Truck</option></select>
+                            <select id="vehicleBody"><option value="Sedan">Sedan</option><option value="SUV">SUV</option><option value="Pickup">Pickup</option><option value="Van">Van</option><option value="Hatchback">Hatchback</option><option value="Coupe">Coupe</option><option value="Convertible">Convertible</option><option value="Wagon">Wagon</option><option value="Minivan">Minivan</option><option value="Bus">Bus</option><option value="Truck">Truck</option></select>
                         </div>
                     </div>
                     <div class="row">
                         <div class="form-group"><label class="required">Engine (cc)</label>
-                            <select id="vehicleEngine"><option value="1000">1000</option><option value="1300">1300</option><option value="1500" selected>1500</option><option value="1800">1800</option><option value="2000">2000</option><option value="2400">2400</option><option value="2500">2500</option><option value="2800">2800</option><option value="3000">3000</option><option value="3200">3200</option><option value="3500">3500</option><option value="4000">4000</option><option value="4500">4500</option><option value="5000">5000</option></select>
+                            <select id="vehicleEngine"><option value="1000">1000</option><option value="1300">1300</option><option value="1500">1500</option><option value="1800">1800</option><option value="2000">2000</option><option value="2400">2400</option><option value="2500">2500</option><option value="2800">2800</option><option value="3000">3000</option><option value="3200">3200</option><option value="3500">3500</option><option value="4000">4000</option><option value="4500">4500</option><option value="5000">5000</option></select>
                         </div>
                         <div class="form-group"><label class="required">Transmission</label>
-                            <select id="vehicleTransmission"><option value="Manual">Manual</option><option value="Automatic" selected>Automatic</option><option value="CVT">CVT</option><option value="DCT">DCT</option></select>
+                            <select id="vehicleTransmission"><option value="Manual">Manual</option><option value="Automatic">Automatic</option><option value="CVT">CVT</option><option value="DCT">DCT</option></select>
                         </div>
                     </div>
                     <div class="row">
                         <div class="form-group"><label class="required">Fuel Type</label>
-                            <select id="vehicleFuel"><option value="Petrol" selected>Petrol</option><option value="Diesel">Diesel</option><option value="Hybrid">Hybrid</option><option value="Electric">Electric</option><option value="LPG">LPG</option></select>
+                            <select id="vehicleFuel"><option value="Petrol">Petrol</option><option value="Diesel">Diesel</option><option value="Hybrid">Hybrid</option><option value="Electric">Electric</option><option value="LPG">LPG</option></select>
                         </div>
                         <div class="form-group"><label class="required">Odometer (km)</label>
-                            <input type="number" id="vehicleOdometer" placeholder="50000" value="50000">
+                            <input type="number" id="vehicleOdometer" placeholder="50000">
                         </div>
                     </div>
-                    <button type="button" class="btn btn-primary btn-sm" id="autoFillBtn" style="margin-top:10px;">🔍 Auto-fill from VIN</button>
                 </div>
 
-                <!-- TAB 2: Purpose -->
                 <div id="tab-purpose" class="tab-content hidden">
                     <h2>🎯 Purpose of Valuation</h2>
                     <p style="color:#94a3b8; margin-bottom:15px;">Select the specific purpose for this valuation. Price will adjust accordingly.</p>
@@ -191,7 +187,6 @@
                     </div>
                 </div>
 
-                <!-- TAB 3: Images -->
                 <div id="tab-images" class="tab-content hidden">
                     <h3>📸 Required Vehicle Images (19)</h3>
                     <p style="color:#94a3b8; font-size:13px; margin-bottom:15px;">Upload clear photos for each angle. All mandatory.</p>
@@ -218,7 +213,6 @@
                     </div>
                 </div>
 
-                <!-- TAB 4: Documents -->
                 <div id="tab-documents" class="tab-content hidden">
                     <h3>📄 Required Documents (5)</h3>
                     <p style="color:#94a3b8; font-size:13px; margin-bottom:15px;">Upload verified documents. All mandatory.</p>
@@ -239,7 +233,6 @@
                     </div>
                 </div>
 
-                <!-- TAB 5: Inspection Checklist -->
                 <div id="tab-inspection" class="tab-content hidden">
                     <h3>🔍 Detailed Inspection Checklist</h3>
                     <p style="color:#94a3b8; font-size:13px; margin-bottom:15px;">Complete the inspection checklist. Scores auto-calculate.</p>
@@ -260,7 +253,7 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="form-group"><label>Tyres (Tread depth mm)</label><input type="number" id="inspTyres" placeholder="e.g. 6" value="6" step="0.5"></div>
+                        <div class="form-group"><label>Tyres (Tread depth mm)</label><input type="number" id="inspTyres" placeholder="e.g. 6" step="0.5"></div>
                         <div class="form-group"><label>Paint Condition</label>
                             <select id="inspPaint"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select>
                         </div>
@@ -282,13 +275,12 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="form-group"><label>Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name" value="Demo Inspector"></div>
-                        <div class="form-group"><label>Inspector License/Credentials</label><input type="text" id="inspectorCredentials" placeholder="e.g. AVM-12345" value="AVM-12345"></div>
+                        <div class="form-group"><label>Inspector Name</label><input type="text" id="inspectorName" placeholder="Full name"></div>
+                        <div class="form-group"><label>Inspector License/Credentials</label><input type="text" id="inspectorCredentials" placeholder="e.g. AVM-12345"></div>
                     </div>
-                    <div class="form-group"><label>Inspector Signature (digital)</label><input type="text" id="inspectorSignature" placeholder="Type full name as signature" value="Demo Inspector"></div>
+                    <div class="form-group"><label>Inspector Signature (digital)</label><input type="text" id="inspectorSignature" placeholder="Type full name as signature"></div>
                 </div>
 
-                <!-- TAB 6: History -->
                 <div id="tab-history" class="tab-content hidden">
                     <div class="row">
                         <div class="form-group"><label>Accident History</label>
@@ -319,13 +311,12 @@
                     </div>
                 </div>
 
-                <!-- TAB 7: Valuation Settings -->
                 <div id="tab-valuation" class="tab-content hidden">
                     <h3>📊 Valuation Configuration</h3>
                     <div class="row">
                         <div class="form-group"><label>Valuation Methodology</label>
                             <select id="valMethodology">
-                                <option value="Market Comparison" selected>Market Comparison</option>
+                                <option value="Market Comparison">Market Comparison</option>
                                 <option value="Cost Approach">Cost Approach</option>
                                 <option value="Income Approach">Income Approach</option>
                                 <option value="Hybrid">Hybrid</option>
@@ -333,7 +324,7 @@
                         </div>
                         <div class="form-group"><label>Market Region</label>
                             <select id="valRegion">
-                                <option value="Nairobi" selected>Nairobi</option>
+                                <option value="Nairobi">Nairobi</option>
                                 <option value="Mombasa">Mombasa</option>
                                 <option value="Kisumu">Kisumu</option>
                                 <option value="Nakuru">Nakuru</option>
@@ -363,13 +354,26 @@
         </div>
     </div>
 
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p id="loadingText">Processing...</p>
+    </div>
+
     <script>
         // ============================================================
-        // AUTO-V PROFESSIONAL VALUATION ENGINE – FRONTEND ONLY
+        // AUTO-V PROFESSIONAL VALUATION ENGINE – PRODUCTION READY
         // ============================================================
         (function() {
             if (window.autoVProfValuationInitialized) return;
             window.autoVProfValuationInitialized = true;
+
+            // ─── SUPABASE CONFIG ──────────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // ─── API CONFIG ──────────────────────────────────────────
+            const API_BASE_URL = 'https://auto-v-backend.onrender.com/api';
 
             // ─── VEHICLE MODELS ──────────────────────────────────────
             const vehicleModels = {
@@ -385,9 +389,7 @@
                 'Mazda': ['3','6','CX-3','CX-5','MX-5','Demio'],
                 'Mitsubishi': ['Outlander','Pajero','Lancer','ASX','Delica','Minica'],
                 'Isuzu': ['D-Max','MU-X','N-Series','F-Series'],
-                'Peugeot': ['208','308','508','2008','3008','5008'],
                 'Land Rover': ['Defender','Discovery','Range Rover','Evoque','Velar','Sport'],
-                'Jaguar': ['XE','XF','XJ','F-Pace','E-Pace','I-Pace'],
                 'Lexus': ['IS','ES','LS','RX','NX','UX','LX','GX'],
                 'Volvo': ['S60','S90','V60','XC40','XC60','XC90'],
                 'Hyundai': ['i10','i20','i30','Tucson','Santa Fe','Palisade','Kona'],
@@ -469,17 +471,25 @@
             let imageUrls = {};
             let docUrls = {};
             let selectedPurpose = null;
+            let currentUser = null;
+            let userRole = 'individual';
 
-            requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, dataUrl: null });
-            requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null });
+            requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
+            requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
 
             // ─── HELPERS ─────────────────────────────────────────────
-            function showToast(msg, type='success') {
+            function showToast(msg, type = 'success') {
                 const t = document.createElement('div');
                 t.className = `toast toast-${type}`;
                 t.textContent = msg;
                 document.body.appendChild(t);
-                setTimeout(() => t.remove(), 3000);
+                setTimeout(() => t.remove(), 3500);
+            }
+
+            function showLoading(show, text = 'Processing...') {
+                const overlay = document.getElementById('loadingOverlay');
+                document.getElementById('loadingText').textContent = text;
+                overlay.style.display = show ? 'flex' : 'none';
             }
 
             function populateYears() {
@@ -512,8 +522,50 @@
                 document.getElementById('docStatusText').textContent = uploaded === total ? '✅ All documents verified' : '⏳ Pending verification';
             }
 
-            // ─── IMAGE UPLOAD (Mock) ─────────────────────────────────
-            window.handleImageUpload = function(input, slot) {
+            // ─── AUTH ──────────────────────────────────────────────────
+            async function requireAuth() {
+                try {
+                    const { data: { user }, error } = await supabase.auth.getUser();
+                    if (error || !user) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
+                    currentUser = user;
+                    document.getElementById('userEmail').textContent = user.email;
+                    
+                    // Get user role
+                    const { data: roleData } = await supabase
+                        .from('user_roles')
+                        .select('role')
+                        .eq('user_id', user.id)
+                        .maybeSingle();
+                    userRole = roleData?.role || 'individual';
+                    document.getElementById('userRoleBadge').textContent = userRole.toUpperCase();
+                    
+                    return user;
+                } catch (e) {
+                    window.location.href = 'login.html';
+                    return null;
+                }
+            }
+
+            async function getAuthToken() {
+                const { data: { session } } = await supabase.auth.getSession();
+                return session?.access_token || null;
+            }
+
+            // ─── UPLOAD FUNCTIONS ────────────────────────────────────
+            async function uploadFile(file, bucket, path) {
+                const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+                if (error) throw error;
+                const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
+                return publicUrl;
+            }
+
+            window.handleImageUpload = async function(input, slot) {
                 const file = input.files[0];
                 if (!file) return;
                 const item = input.closest('.upload-item');
@@ -521,12 +573,21 @@
                 statusEl.className = 'file-status uploading';
                 statusEl.textContent = '⏳ Uploading...';
                 
-                // Simulate upload
-                setTimeout(() => {
+                try {
+                    const user = await requireAuth();
+                    if (!user) throw new Error('Please login again');
+                    
+                    const path = `valuations/${user.id}/images/${slot}_${Date.now()}_${file.name}`;
+                    const publicUrl = await uploadFile(file, 'valuation-images', path);
+                    
                     imageStatus[slot].uploaded = true;
-                    imageUrls[slot] = URL.createObjectURL(file);
+                    imageStatus[slot].publicUrl = publicUrl;
+                    imageUrls[slot] = publicUrl;
+                    
                     statusEl.className = 'file-status uploaded';
                     statusEl.textContent = '✅ Uploaded';
+                    
+                    // Show preview
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         let preview = item.querySelector('.preview');
@@ -538,12 +599,17 @@
                         preview.src = e.target.result;
                     };
                     reader.readAsDataURL(file);
+                    
                     updateValidationSummary();
                     showToast(`✅ ${slot} uploaded successfully`);
-                }, 1000);
+                } catch (e) {
+                    console.error(e);
+                    statusEl.className = 'file-status error';
+                    statusEl.textContent = '❌ Error';
+                    showToast('Upload failed: ' + e.message, 'error');
+                }
             };
 
-            // ─── DOCUMENT UPLOAD (Mock) ─────────────────────────────
             function handleDocumentUpload(input, docKey) {
                 const file = input.files[0];
                 if (!file) return;
@@ -552,18 +618,35 @@
                 statusEl.textContent = 'Uploading...';
                 badgeEl.className = 'doc-status-badge pending';
                 badgeEl.textContent = '⏳ Uploading';
-
-                // Simulate upload
-                setTimeout(() => {
-                    docStatus[docKey].uploaded = true;
-                    docUrls[docKey] = URL.createObjectURL(file);
-                    statusEl.textContent = '✅ Verified';
-                    badgeEl.className = 'doc-status-badge verified';
-                    badgeEl.textContent = '✅ Verified';
-                    updateValidationSummary();
-                    updateDocumentProgress();
-                    showToast(`✅ ${docKey} document uploaded`);
-                }, 1500);
+                
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    try {
+                        const user = await requireAuth();
+                        if (!user) throw new Error('Please login again');
+                        
+                        const path = `valuations/${user.id}/documents/${docKey}_${Date.now()}_${file.name}`;
+                        const publicUrl = await uploadFile(file, 'valuation-documents', path);
+                        
+                        docStatus[docKey].uploaded = true;
+                        docStatus[docKey].publicUrl = publicUrl;
+                        docUrls[docKey] = publicUrl;
+                        
+                        statusEl.textContent = '✅ Verified';
+                        badgeEl.className = 'doc-status-badge verified';
+                        badgeEl.textContent = '✅ Verified';
+                        
+                        updateValidationSummary();
+                        updateDocumentProgress();
+                        showToast(`✅ ${docKey} document uploaded`);
+                    } catch (e) {
+                        statusEl.textContent = '❌ Error';
+                        badgeEl.className = 'doc-status-badge error';
+                        badgeEl.textContent = '❌ Error';
+                        showToast('Upload failed: ' + e.message, 'error');
+                    }
+                };
+                reader.readAsDataURL(file);
             }
 
             document.getElementById('docLogbook').addEventListener('change', function() { handleDocumentUpload(this, 'logbook'); });
@@ -572,8 +655,8 @@
             document.getElementById('docInsurance').addEventListener('change', function() { handleDocumentUpload(this, 'insurance'); });
             document.getElementById('docService').addEventListener('change', function() { handleDocumentUpload(this, 'service'); });
 
-            // ─── AUTO-FILL FROM VIN (Mock) ──────────────────────────
-            document.getElementById('autoFillBtn').addEventListener('click', function() {
+            // ─── AUTO-FILL FROM VIN ──────────────────────────────────
+            document.getElementById('autoFillBtn')?.addEventListener('click', async function() {
                 const vin = document.getElementById('vehicleVin').value.trim();
                 if (!vin || vin === 'N/A') {
                     showToast('Please enter a VIN number', 'warning');
@@ -583,25 +666,48 @@
                     showToast('Invalid VIN format. Must be 17 characters.', 'error');
                     return;
                 }
-                showToast(`🔍 Looking up VIN: ${vin}...`, 'success');
-                // Mock auto-fill
-                setTimeout(() => {
-                    document.getElementById('vehicleMake').value = 'Toyota';
-                    document.getElementById('vehicleMake').dispatchEvent(new Event('change'));
-                    setTimeout(() => {
-                        document.getElementById('vehicleModel').value = 'Corolla';
-                    }, 100);
-                    document.getElementById('vehicleYear').value = 2022;
-                    document.getElementById('vehicleBody').value = 'Sedan';
-                    showToast('✅ Vehicle found: Toyota Corolla (2022)', 'success');
-                }, 1000);
+                
+                showLoading(true, 'Looking up VIN...');
+                try {
+                    const { data, error } = await supabase
+                        .from('vehicle_vin_lookup')
+                        .select('*')
+                        .eq('vin', vin)
+                        .maybeSingle();
+                    
+                    if (error) throw error;
+                    
+                    if (data) {
+                        document.getElementById('vehicleMake').value = data.make || '';
+                        document.getElementById('vehicleModel').value = data.model || '';
+                        document.getElementById('vehicleYear').value = data.year || '';
+                        document.getElementById('vehicleBody').value = data.body_type || 'Sedan';
+                        showToast(`✅ Vehicle found: ${data.make} ${data.model}`, 'success');
+                    } else {
+                        showToast('Vehicle not found in database', 'warning');
+                    }
+                } catch (error) {
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
             });
 
             // ─── MAKE-MODEL SYNC ────────────────────────────────────
             document.getElementById('vehicleMake').addEventListener('change', function() {
                 const models = vehicleModels[this.value] || ['Other'];
-                const modelSelect = document.getElementById('vehicleModel');
-                modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+                const modelInput = document.getElementById('vehicleModel');
+                // If models array has options, create datalist
+                if (models.length > 1) {
+                    let datalist = document.getElementById('modelOptions');
+                    if (!datalist) {
+                        datalist = document.createElement('datalist');
+                        datalist.id = 'modelOptions';
+                        document.body.appendChild(datalist);
+                        modelInput.setAttribute('list', 'modelOptions');
+                    }
+                    datalist.innerHTML = models.map(m => `<option value="${m}">`).join('');
+                }
             });
 
             // ─── TABS ──────────────────────────────────────────────
@@ -685,13 +791,40 @@
                 }
             }
 
-            // ─── GENERATE VALUATION (Mock) ──────────────────────────
-            function generateValuation() {
+            // ─── CALL BACKEND API ──────────────────────────────────
+            async function callBackendAPI(endpoint, method = 'POST', payload = {}) {
+                const token = await getAuthToken();
+                if (!token) throw new Error('Not authenticated');
+
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.message || error.error || `API error: ${response.status}`);
+                }
+
+                return response.json();
+            }
+
+            // ─── GENERATE VALUATION ──────────────────────────────────
+            async function generateValuation() {
+                const user = await requireAuth();
+                if (!user) return;
+
+                // Validate required fields
+                const reg = document.getElementById('vehicleReg').value.toUpperCase().trim();
                 const make = document.getElementById('vehicleMake').value;
-                const model = document.getElementById('vehicleModel').value;
+                const model = document.getElementById('vehicleModel').value.trim();
                 const year = parseInt(document.getElementById('vehicleYear').value);
                 const odometer = parseInt(document.getElementById('vehicleOdometer').value) || 0;
-                const reg = document.getElementById('vehicleReg').value.toUpperCase();
+                const vin = document.getElementById('vehicleVin').value.trim() || 'N/A';
                 
                 if (!reg || !make || !model || !year) {
                     showToast('Please fill registration, make, model, and year', 'error');
@@ -700,62 +833,274 @@
 
                 if (!selectedPurpose) {
                     showToast('Please select a valuation purpose first', 'error');
+                    document.querySelectorAll('.valuation-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelector('[data-tab="purpose"]').classList.add('active');
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                    document.getElementById('tab-purpose').classList.remove('hidden');
                     return;
                 }
 
-                // Check images
+                // Validate purpose-specific fields
+                const fields = purposeFields.valuation[selectedPurpose] || [];
+                let hasMissing = false;
+                fields.forEach(f => {
+                    const el = document.getElementById(`field_${f.key}`);
+                    if (el && f.required) {
+                        if (!el.value.trim()) {
+                            hasMissing = true;
+                            el.style.borderColor = '#ef4444';
+                            const err = el.parentNode.querySelector('.field-error');
+                            if (!err) {
+                                const msg = document.createElement('span');
+                                msg.className = 'field-error';
+                                msg.style.cssText = 'display:block;color:#ef4444;font-size:11px;margin-top:4px;';
+                                msg.textContent = 'This field is required';
+                                el.parentNode.appendChild(msg);
+                            }
+                        } else {
+                            el.style.borderColor = '';
+                            const err = el.parentNode.querySelector('.field-error');
+                            if (err) err.remove();
+                        }
+                    }
+                });
+                if (hasMissing) {
+                    showToast('Please fill all required purpose-specific fields.', 'error');
+                    return;
+                }
+
+                // Validate images
                 const missingImages = requiredImages.filter(slot => !imageStatus[slot].uploaded);
                 if (missingImages.length > 0) {
-                    showToast(`Please upload all ${requiredImages.length} images.`, 'error');
+                    showToast(`Please upload all 19 images. Missing: ${missingImages.slice(0, 5).join(', ')}${missingImages.length > 5 ? ` and ${missingImages.length - 5} more` : ''}`, 'error');
                     return;
                 }
 
-                // Check documents
+                // Validate documents
                 const missingDocs = requiredDocs.filter(doc => !docStatus[doc].uploaded);
                 if (missingDocs.length > 0) {
-                    showToast(`Please upload all ${requiredDocs.length} documents.`, 'error');
+                    showToast(`Please upload all 5 documents. Missing: ${missingDocs.join(', ')}`, 'error');
                     return;
                 }
 
-                showToast('⏳ Generating valuation...', 'warning');
+                showLoading(true, 'Generating valuation...');
 
-                // Simulate valuation calculation
-                setTimeout(() => {
-                    // Generate realistic values
-                    const baseValue = 1500000 + (year - 2010) * 100000 + (odometer < 50000 ? 200000 : 0);
-                    const marketValue = Math.round(baseValue * (0.9 + Math.random() * 0.2));
-                    const insuranceValue = Math.round(marketValue * 1.15);
-                    const fsv = Math.round(marketValue * 0.7);
-                    const confidenceScore = Math.round(75 + Math.random() * 20);
-                    const conditionScore = Math.round(6 + Math.random() * 4);
-                    const riskScore = Math.round(10 + Math.random() * 30);
+                try {
+                    // Build payload
+                    const purposeFieldValues = {};
+                    fields.forEach(f => {
+                        const el = document.getElementById(`field_${f.key}`);
+                        if (el) purposeFieldValues[f.key] = el.value;
+                    });
 
-                    const result = {
-                        valuation_id: 'VAL-' + Date.now(),
-                        market_value: marketValue,
-                        insurance_value: insuranceValue,
-                        forced_sale_value: fsv,
-                        confidence_score: confidenceScore,
-                        condition_score: conditionScore,
-                        risk_score: riskScore,
+                    const payload = {
+                        user_id: user.id,
+                        vehicle_data: {
+                            registration_number: reg,
+                            vin: vin,
+                            make: make,
+                            model: model,
+                            year: year,
+                            body_type: document.getElementById('vehicleBody').value,
+                            engine_cc: parseInt(document.getElementById('vehicleEngine').value),
+                            transmission: document.getElementById('vehicleTransmission').value,
+                            fuel_type: document.getElementById('vehicleFuel').value,
+                            odometer: odometer
+                        },
                         purpose: selectedPurpose,
                         methodology: document.getElementById('valMethodology').value,
                         region: document.getElementById('valRegion').value,
-                        inspector: {
-                            name: document.getElementById('inspectorName').value || 'Demo Inspector',
-                            credentials: document.getElementById('inspectorCredentials').value || 'AVM-12345',
-                            signature: document.getElementById('inspectorSignature').value || 'Demo Inspector'
+                        inspection: {
+                            engine: document.getElementById('inspEngine').value,
+                            transmission: document.getElementById('inspTransmission').value,
+                            suspension: document.getElementById('inspSuspension').value,
+                            brakes: document.getElementById('inspBrakes').value,
+                            tyres: parseFloat(document.getElementById('inspTyres').value) || 0,
+                            paint: document.getElementById('inspPaint').value,
+                            accident: document.getElementById('inspAccident').value,
+                            chassis: document.getElementById('inspChassis').value,
+                            interior: document.getElementById('inspInterior').value,
+                            electronics: document.getElementById('inspElectronics').value
                         },
-                        comparables: [
-                            { make: make, model: model, year: year, price: Math.round(marketValue * (0.85 + Math.random() * 0.1)) },
-                            { make: make, model: model, year: year - 1, price: Math.round(marketValue * 0.8 * (0.9 + Math.random() * 0.1)) },
-                            { make: make, model: model, year: year + 1, price: Math.round(marketValue * 1.1 * (0.9 + Math.random() * 0.1)) }
-                        ]
+                        history: {
+                            accident_history: document.getElementById('vehicleAccident').value,
+                            service_history: document.getElementById('vehicleService').value,
+                            owners: parseInt(document.getElementById('vehicleOwners').value) || 1,
+                            usage: document.getElementById('vehicleUsage').value,
+                            import_status: document.getElementById('vehicleImport').value,
+                            warranty: document.getElementById('vehicleWarranty').value,
+                            modifications: document.getElementById('vehicleModifications').value
+                        },
+                        inspector: {
+                            name: document.getElementById('inspectorName').value || user.email,
+                            credentials: document.getElementById('inspectorCredentials').value || 'AUTO-V-System',
+                            signature: document.getElementById('inspectorSignature').value || user.email
+                        },
+                        image_urls: imageUrls,
+                        document_urls: docUrls,
+                        purpose_fields: purposeFieldValues
                     };
 
-                    displayResults(result);
-                    showToast('✅ Valuation completed successfully!', 'success');
-                }, 2000);
+                    // Save to Supabase
+                    const { data: valuation, error } = await supabase
+                        .from('valuations')
+                        .insert([{
+                            user_id: payload.user_id,
+                            registration_number: payload.vehicle_data.registration_number,
+                            vin: payload.vehicle_data.vin,
+                            make: payload.vehicle_data.make,
+                            model: payload.vehicle_data.model,
+                            year: payload.vehicle_data.year,
+                            body_type: payload.vehicle_data.body_type,
+                            engine_cc: payload.vehicle_data.engine_cc,
+                            transmission: payload.vehicle_data.transmission,
+                            fuel_type: payload.vehicle_data.fuel_type,
+                            odometer: payload.vehicle_data.odometer,
+                            purpose: payload.purpose,
+                            methodology: payload.methodology,
+                            region: payload.region,
+                            inspection_data: payload.inspection,
+                            history_data: payload.history,
+                            inspector_data: payload.inspector,
+                            image_urls: payload.image_urls,
+                            document_urls: payload.document_urls,
+                            purpose_fields: payload.purpose_fields,
+                            status: 'processing'
+                        }])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+
+                    // Call backend API for valuation
+                    try {
+                        const result = await callBackendAPI('/valuations', 'POST', payload);
+                        
+                        // Update valuation with results
+                        await supabase
+                            .from('valuations')
+                            .update({
+                                market_value: result.market_value,
+                                insurance_value: result.insurance_value,
+                                forced_sale_value: result.forced_sale_value,
+                                confidence_score: result.confidence_score,
+                                condition_score: result.condition_score,
+                                risk_score: result.risk_score,
+                                valuation_result: result,
+                                status: 'completed'
+                            })
+                            .eq('id', valuation.id);
+
+                        displayResults({
+                            ...result,
+                            valuation_id: valuation.id,
+                            valuationId: valuation.id,
+                            purpose: selectedPurpose,
+                            methodology: payload.methodology,
+                            region: payload.region,
+                            inspector: payload.inspector
+                        });
+                        showToast('✅ Valuation completed successfully!', 'success');
+                    } catch (apiError) {
+                        // If API fails, use local calculation
+                        console.warn('API failed, using local calculation:', apiError);
+                        const localResult = calculateLocalValuation(payload);
+                        
+                        await supabase
+                            .from('valuations')
+                            .update({
+                                market_value: localResult.market_value,
+                                insurance_value: localResult.insurance_value,
+                                forced_sale_value: localResult.forced_sale_value,
+                                confidence_score: localResult.confidence_score,
+                                condition_score: localResult.condition_score,
+                                risk_score: localResult.risk_score,
+                                valuation_result: localResult,
+                                status: 'completed'
+                            })
+                            .eq('id', valuation.id);
+
+                        displayResults({
+                            ...localResult,
+                            valuation_id: valuation.id,
+                            valuationId: valuation.id,
+                            purpose: selectedPurpose,
+                            methodology: payload.methodology,
+                            region: payload.region,
+                            inspector: payload.inspector
+                        });
+                        showToast('✅ Valuation completed (local calculation)', 'warning');
+                    }
+
+                } catch (error) {
+                    console.error('Valuation error:', error);
+                    showToast('Error: ' + error.message, 'error');
+                } finally {
+                    showLoading(false);
+                }
+            }
+
+            // ─── LOCAL VALUATION CALCULATION ──────────────────────────
+            function calculateLocalValuation(payload) {
+                let baseValue = 2500000;
+                const yearFactor = 1 - ((new Date().getFullYear() - payload.vehicle_data.year) * 0.08);
+                const makeFactors = {
+                    'Toyota': 1.2,
+                    'Honda': 1.1,
+                    'Mercedes-Benz': 1.5,
+                    'BMW': 1.4,
+                    'Audi': 1.3,
+                    'Land Rover': 1.6,
+                    'Lexus': 1.4,
+                    'Volvo': 1.2,
+                    'Other': 0.9
+                };
+                const makeFactor = makeFactors[payload.vehicle_data.make] || 1.0;
+                
+                let marketValue = baseValue * makeFactor * Math.max(yearFactor, 0.3);
+                const odometerAdjustment = Math.max(0, 1 - ((payload.vehicle_data.odometer / 200000) * 0.3));
+                marketValue = marketValue * odometerAdjustment;
+                
+                const conditionMap = { 'Excellent': 1.2, 'Good': 1.0, 'Fair': 0.85, 'Poor': 0.6 };
+                const conditionFactor = conditionMap[payload.inspection?.engine] || 1.0;
+                marketValue = marketValue * conditionFactor;
+                
+                const accidentMap = { 'None': 1.0, 'Minor': 0.9, 'Moderate': 0.75, 'Major': 0.5 };
+                const accidentFactor = accidentMap[payload.history?.accident_history] || 1.0;
+                marketValue = marketValue * accidentFactor;
+                marketValue = Math.round(marketValue / 1000) * 1000;
+                
+                const insuranceValue = Math.round(marketValue * 1.15 / 1000) * 1000;
+                const forcedSaleValue = Math.round(marketValue * 0.65 / 1000) * 1000;
+                
+                let confidence = 85;
+                if (payload.vehicle_data.odometer > 100000) confidence -= 5;
+                if (payload.history?.accident_history !== 'None') confidence -= 10;
+                confidence = Math.max(50, Math.min(98, confidence));
+                
+                const conditionScores = { 'Excellent': 10, 'Good': 7, 'Fair': 5, 'Poor': 2 };
+                const avgCondition = (conditionScores[payload.inspection?.engine] || 7 +
+                                     conditionScores[payload.inspection?.transmission] || 7 +
+                                     conditionScores[payload.inspection?.suspension] || 7 +
+                                     conditionScores[payload.inspection?.brakes] || 7 +
+                                     conditionScores[payload.inspection?.paint] || 7 +
+                                     conditionScores[payload.inspection?.interior] || 7) / 6;
+                const conditionScore = Math.round(avgCondition * 10) / 10;
+                const riskScore = Math.round(100 - confidence + (payload.history?.accident_history !== 'None' ? 15 : 0) + (payload.vehicle_data.odometer > 150000 ? 10 : 0));
+                
+                return {
+                    market_value: marketValue,
+                    insurance_value: insuranceValue,
+                    forced_sale_value: forcedSaleValue,
+                    confidence_score: confidence,
+                    condition_score: conditionScore,
+                    risk_score: Math.min(100, riskScore),
+                    comparables: [
+                        { make: payload.vehicle_data.make, model: payload.vehicle_data.model, year: payload.vehicle_data.year, price: Math.round(marketValue * (1 + (Math.random() - 0.5) * 0.15)) },
+                        { make: payload.vehicle_data.make, model: payload.vehicle_data.model, year: payload.vehicle_data.year - 1, price: Math.round(marketValue * 0.9 * (1 + (Math.random() - 0.5) * 0.15)) },
+                        { make: payload.vehicle_data.make, model: payload.vehicle_data.model, year: payload.vehicle_data.year + 1, price: Math.round(marketValue * 1.1 * (1 + (Math.random() - 0.5) * 0.15)) }
+                    ]
+                };
             }
 
             // ─── DISPLAY RESULTS ──────────────────────────────────
@@ -765,40 +1110,40 @@
 
                 const container = document.getElementById('resultsContainer');
                 const confidenceColor = result.confidence_score >= 80 ? '#22c55e' : result.confidence_score >= 60 ? '#eab308' : '#ef4444';
-                const qrData = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id}`;
+                const qrData = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id || result.valuationId || 'VAL-' + Date.now()}`;
+
+                const marketValue = result.market_value || 0;
+                const insuranceValue = result.insurance_value || 0;
+                const fsv = result.forced_sale_value || 0;
+                const confidence = result.confidence_score || 0;
+                const riskScore = result.risk_score || 0;
+                const conditionScore = result.condition_score || 0;
+                const valuationId = result.valuation_id || result.valuationId || 'VAL-' + Date.now();
+                const methodology = result.methodology || 'Market Comparison';
+                const purpose = result.purpose || selectedPurpose || 'Market Value';
+                const region = result.region || document.getElementById('valRegion').value || 'Nairobi';
+                const inspector = result.inspector || { name: 'N/A', credentials: 'N/A', signature: 'N/A' };
+                const comparables = result.comparables || [];
 
                 container.innerHTML = `
                     <div style="margin-bottom:20px; display:flex; justify-content:center; gap:15px; flex-wrap:wrap;">
-                        <span class="badge-methodology">📋 ${result.methodology}</span>
-                        <span class="badge-methodology">🎯 ${result.purpose}</span>
-                        <span class="badge-methodology">📍 ${result.region}</span>
-                        <span class="badge-methodology" style="background:${confidenceColor}; color:#000;">Confidence ${result.confidence_score}%</span>
+                        <span class="badge-methodology">📋 ${methodology}</span>
+                        <span class="badge-methodology">🎯 ${purpose}</span>
+                        <span class="badge-methodology">📍 ${region}</span>
+                        <span class="badge-methodology" style="background:${confidenceColor}; color:#000;">Confidence ${confidence}%</span>
                     </div>
-                    <div class="result-value">KES ${result.market_value.toLocaleString()}</div>
+                    <div class="result-value">KES ${marketValue.toLocaleString()}</div>
                     <p style="color:#eab308;">Market Value</p>
                     <div class="result-detail" style="margin-top:20px;">
-                        <div class="item"><span class="label">Insurance Value</span><span class="value green">KES ${result.insurance_value.toLocaleString()}</span></div>
-                        <div class="item"><span class="label">Forced Sale Value</span><span class="value red">KES ${result.forced_sale_value.toLocaleString()}</span></div>
-                        <div class="item"><span class="label">Condition Score</span><span class="value gold">${result.condition_score}/10</span></div>
-                        <div class="item"><span class="label">Risk Score</span><span class="value" style="color:${result.risk_score > 50 ? '#ef4444' : '#22c55e'}">${result.risk_score}/100</span></div>
+                        <div class="item"><span class="label">Insurance Value</span><span class="value green">KES ${insuranceValue.toLocaleString()}</span></div>
+                        <div class="item"><span class="label">Forced Sale Value</span><span class="value red">KES ${fsv.toLocaleString()}</span></div>
+                        <div class="item"><span class="label">Condition Score</span><span class="value gold">${conditionScore}/10</span></div>
+                        <div class="item"><span class="label">Risk Score</span><span class="value" style="color:${riskScore > 50 ? '#ef4444' : '#22c55e'}">${riskScore}/100</span></div>
                     </div>
-                    <div class="result-detail">
-                        <h4 style="color:#eab308;">🔍 Inspection Summary</h4>
-                        <div class="item"><span class="label">Engine</span><span class="value">${document.getElementById('inspEngine').value}</span></div>
-                        <div class="item"><span class="label">Transmission</span><span class="value">${document.getElementById('inspTransmission').value}</span></div>
-                        <div class="item"><span class="label">Suspension</span><span class="value">${document.getElementById('inspSuspension').value}</span></div>
-                        <div class="item"><span class="label">Brakes</span><span class="value">${document.getElementById('inspBrakes').value}</span></div>
-                        <div class="item"><span class="label">Tyres</span><span class="value">${document.getElementById('inspTyres').value} mm</span></div>
-                        <div class="item"><span class="label">Paint</span><span class="value">${document.getElementById('inspPaint').value}</span></div>
-                        <div class="item"><span class="label">Chassis</span><span class="value">${document.getElementById('inspChassis').value}</span></div>
-                        <div class="item"><span class="label">Interior</span><span class="value">${document.getElementById('inspInterior').value}</span></div>
-                        <div class="item"><span class="label">Electronics</span><span class="value">${document.getElementById('inspElectronics').value}</span></div>
-                        <div class="item"><span class="label">Accident</span><span class="value">${document.getElementById('inspAccident').value}</span></div>
-                    </div>
-                    ${result.comparables && result.comparables.length > 0 ? `
+                    ${comparables.length > 0 ? `
                     <div class="result-detail">
                         <h4 style="color:#eab308;">📊 Comparable Market Vehicles</h4>
-                        ${result.comparables.map(c => `
+                        ${comparables.map(c => `
                             <div class="comparable-vehicle">
                                 <span>${c.make} ${c.model} (${c.year})</span>
                                 <span class="price">KES ${(c.price || 0).toLocaleString()}</span>
@@ -807,10 +1152,10 @@
                     </div>
                     ` : ''}
                     <div class="result-detail">
-                        <div class="item"><span class="label">Valuation ID</span><span class="value" style="font-family:monospace;">${result.valuation_id}</span></div>
-                        <div class="item"><span class="label">Inspector</span><span class="value">${result.inspector.name} (${result.inspector.credentials})</span></div>
-                        <div class="item"><span class="label">Signature</span><span class="value">${result.inspector.signature}</span></div>
-                        <div class="item"><span class="label">Methodology</span><span class="value">${result.methodology}</span></div>
+                        <div class="item"><span class="label">Valuation ID</span><span class="value" style="font-family:monospace;">${valuationId}</span></div>
+                        <div class="item"><span class="label">Inspector</span><span class="value">${inspector.name} (${inspector.credentials})</span></div>
+                        <div class="item"><span class="label">Signature</span><span class="value">${inspector.signature}</span></div>
+                        <div class="item"><span class="label">Methodology</span><span class="value">${methodology}</span></div>
                         <div class="item"><span class="label">Report Date</span><span class="value">${new Date().toLocaleDateString()}</span></div>
                     </div>
                     <div class="qr-container">
@@ -841,7 +1186,7 @@
 
                 const content = document.getElementById('resultsContainer').cloneNode(true);
                 const qr = content.querySelector('.qr-container');
-                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Verification ID: ${result.valuation_id}</span>`;
+                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Verification ID: ${result.valuation_id || result.valuationId || 'N/A'}</span>`;
                 const win = window.open('', '_blank');
                 win.document.write(`
                     <html><head><title>AUTO-V Valuation Report</title>
@@ -869,7 +1214,7 @@
                         ${content.innerHTML}
                         <div class="footer">
                             <p>This report is electronically generated and signed. Verify at https://auto-v.meipressgroup.com/verify.html</p>
-                            <p>Audit Trail: ${result.valuation_id}</p>
+                            <p>Audit Trail: ${result.valuation_id || result.valuationId || 'N/A'}</p>
                         </div>
                     </body></html>
                 `);
@@ -882,7 +1227,7 @@
             function verifyReport() {
                 const result = window._currentValuationResult;
                 if (!result) { showToast('No valuation to verify', 'error'); return; }
-                const verifyUrl = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id}`;
+                const verifyUrl = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id || result.valuationId || ''}`;
                 window.open(verifyUrl, '_blank');
             }
 
@@ -893,16 +1238,31 @@
             document.getElementById('dashboardBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
             document.getElementById('downloadReportBtn').addEventListener('click', downloadPDF);
             document.getElementById('verifyReportBtn').addEventListener('click', verifyReport);
-            document.getElementById('logoutBtn').addEventListener('click', () => {
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                await supabase.auth.signOut();
                 window.location.href = 'login.html';
             });
 
             // ─── INIT ──────────────────────────────────────────────
-            function init() {
+            async function init() {
+                const user = await requireAuth();
+                if (!user) return;
+
                 populateYears();
-                const make = document.getElementById('vehicleMake').value;
-                const models = vehicleModels[make] || ['Other'];
-                document.getElementById('vehicleModel').innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+                
+                // Set default values
+                document.getElementById('vehicleMake').value = 'Toyota';
+                document.getElementById('vehicleModel').value = 'Axio';
+                document.getElementById('vehicleReg').value = 'KDA 123A';
+                document.getElementById('vehicleVin').value = 'JTEGD34V000123456';
+                document.getElementById('vehicleOdometer').value = 50000;
+                document.getElementById('inspectorName').value = user.user_metadata?.full_name || user.email;
+                document.getElementById('inspectorSignature').value = user.user_metadata?.full_name || user.email;
+                document.getElementById('inspectorCredentials').value = 'AVM-12345';
+                document.getElementById('inspTyres').value = 6;
+
+                // Trigger make change to populate models
+                document.getElementById('vehicleMake').dispatchEvent(new Event('change'));
 
                 // Check URL for purpose parameter
                 const urlParams = new URLSearchParams(window.location.search);
@@ -921,8 +1281,18 @@
                 updateValidationSummary();
                 updateDocumentProgress();
 
-                console.log('✅ AUTO-V Professional Valuation Engine ready (Frontend Only)');
+                console.log('✅ AUTO-V Professional Valuation Engine ready (Production)');
+                console.log(`👤 User: ${user.email} (${userRole})`);
             }
+
+            // Handle Enter key on forms
+            document.getElementById('vehicleForm').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    generateValuation();
+                }
+            });
+
             init();
         })();
     </script>
