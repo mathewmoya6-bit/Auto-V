@@ -1,7 +1,6 @@
-// services/mpesa-callback/index.ts - M-Pesa Callback Handler (Production Ready)
+// services/mpesa-callback/index.ts - M-Pesa Callback Handler (FastAPI Backend)
 
-import { supabase } from '../supabase-client';
-import { createClient } from '@supabase/supabase-js';
+import { Request, Response } from 'express';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -33,6 +32,8 @@ interface PaymentRecord {
   amount: number;
   status: string;
   checkout_request_id?: string;
+  mpesa_code?: string;
+  transaction_id?: string;
   metadata?: Record<string, any>;
   [key: string]: any;
 }
@@ -44,9 +45,11 @@ interface CallbackResponse {
 
 // ─── Configuration ────────────────────────────────────────────
 
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:8000/api';
 const MPESA_SHORTCODE = process.env.MPESA_SHORTCODE || '4095377';
 const MPESA_CALLBACK_URL = process.env.MPESA_CALLBACK_URL || '';
 const MPESA_ENV = process.env.MPESA_ENV || 'production';
+const API_TOKEN = process.env.API_INTERNAL_TOKEN || ''; // Internal token for service-to-service auth
 
 // ─── Logger ──────────────────────────────────────────────────
 
@@ -90,6 +93,50 @@ const logger = {
     }
   }
 };
+
+// ─── API Client ──────────────────────────────────────────────────
+
+async function apiRequest(
+  endpoint: string,
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'GET',
+  body?: any
+): Promise<any> {
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  };
+
+  // Use internal token for service-to-service auth
+  if (API_TOKEN) {
+    headers['Authorization'] = `Bearer ${API_TOKEN}`;
+    headers['X-Internal-Request'] = 'true';
+  }
+
+  const options: RequestInit = {
+    method,
+    headers,
+    ...(body && { body: JSON.stringify(body) })
+  };
+
+  try {
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    logger.error('API request failed', {
+      endpoint,
+      method,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
+}
 
 // ─── Main Callback Handler ──────────────────────────────────
 
@@ -173,26 +220,22 @@ export async function handleMpesaCallback(
       logger.warn('⚠️ No CallbackMetadata found');
     }
 
-    // ─── Find Payment in Database ─────────────────────────────
+    // ─── Find Payment via API ──────────────────────────────────
 
     try {
       logger.info('🔍 Looking up payment by CheckoutRequestID', { CheckoutRequestID });
 
-      const { data: payment, error: findError } = await supabase
-        .from('payments')
-        .select('*')
-        .eq('checkout_request_id', CheckoutRequestID)
-        .single();
+      const payment = await apiRequest(
+        `/payments/checkout/${CheckoutRequestID}`,
+        'GET'
+      );
 
-      if (findError || !payment) {
-        logger.error('❌ Payment not found', {
-          CheckoutRequestID,
-          error: findError?.message
-        });
+      if (!payment) {
+        logger.error('❌ Payment not found', { CheckoutRequestID });
         return { ResultCode: 1, ResultDesc: 'Payment not found' };
       }
 
-      const paymentId = payment.payment_id;
+      const paymentId = payment.payment_id || payment.id;
       const paymentUuid = payment.id;
       const currentStatus = payment.status;
 
@@ -222,8 +265,7 @@ export async function handleMpesaCallback(
           transaction_id: transactionId,
           mpesa_result_code: resultCodeStr,
           mpesa_result_desc: ResultDesc || 'Transaction completed',
-          paid_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          paid_at: new Date().toISOString()
         };
 
         if (amount) {
@@ -233,18 +275,12 @@ export async function handleMpesaCallback(
           updateData.mpesa_phone = phone;
         }
 
-        const { error: updateError } = await supabase
-          .from('payments')
-          .update(updateData)
-          .eq('id', paymentUuid);
-
-        if (updateError) {
-          logger.error('❌ Database update failed', {
-            paymentId,
-            error: updateError.message
-          });
-          return { ResultCode: 1, ResultDesc: 'Update failed' };
-        }
+        // Update via API
+        await apiRequest(
+          `/payments/${paymentUuid}`,
+          'PATCH',
+          updateData
+        );
 
         logger.info(`✅ Payment ${paymentId} completed successfully`, {
           receipt: transactionId,
@@ -261,23 +297,15 @@ export async function handleMpesaCallback(
       else if (['1037', '1032'].includes(resultCodeStr)) {
         logger.warn(`⚠️ Payment cancelled: ${ResultDesc}`);
 
-        const { error: updateError } = await supabase
-          .from('payments')
-          .update({
+        await apiRequest(
+          `/payments/${paymentUuid}`,
+          'PATCH',
+          {
             status: 'cancelled',
             mpesa_result_code: resultCodeStr,
-            mpesa_result_desc: ResultDesc || 'Transaction cancelled',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', paymentUuid);
-
-        if (updateError) {
-          logger.error('❌ Database update failed', {
-            paymentId,
-            error: updateError.message
-          });
-          return { ResultCode: 1, ResultDesc: 'Update failed' };
-        }
+            mpesa_result_desc: ResultDesc || 'Transaction cancelled'
+          }
+        );
 
         return { ResultCode: 0, ResultDesc: 'Success' };
       }
@@ -286,32 +314,24 @@ export async function handleMpesaCallback(
       else {
         logger.error(`❌ Payment failed: ${ResultDesc}`);
 
-        const { error: updateError } = await supabase
-          .from('payments')
-          .update({
+        await apiRequest(
+          `/payments/${paymentUuid}`,
+          'PATCH',
+          {
             status: 'failed',
             mpesa_result_code: resultCodeStr,
-            mpesa_result_desc: ResultDesc || 'Transaction failed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', paymentUuid);
-
-        if (updateError) {
-          logger.error('❌ Database update failed', {
-            paymentId,
-            error: updateError.message
-          });
-          return { ResultCode: 1, ResultDesc: 'Update failed' };
-        }
+            mpesa_result_desc: ResultDesc || 'Transaction failed'
+          }
+        );
 
         return { ResultCode: 0, ResultDesc: 'Success' };
       }
 
     } catch (dbError) {
-      logger.error('❌ Database error', {
+      logger.error('❌ API error', {
         error: dbError instanceof Error ? dbError.message : String(dbError)
       });
-      return { ResultCode: 1, ResultDesc: 'Database error' };
+      return { ResultCode: 1, ResultDesc: 'API error' };
     }
 
   } catch (error) {
@@ -335,13 +355,9 @@ async function triggerPostPaymentActions(
     logger.info(`🎉 Post-payment actions triggered for ${paymentId}`);
 
     // Get full payment details
-    const { data: payment, error } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('id', paymentUuid)
-      .single();
+    const payment = await apiRequest(`/payments/${paymentUuid}`, 'GET');
 
-    if (error || !payment) {
+    if (!payment) {
       logger.warn(`⚠️ Payment ${paymentId} not found for post-actions`);
       return;
     }
@@ -377,16 +393,17 @@ async function triggerPostPaymentActions(
     }
 
     // ─── 4. Update Payment Metadata ──────────────────────────
-    await supabase
-      .from('payments')
-      .update({
+    await apiRequest(
+      `/payments/${paymentUuid}`,
+      'PATCH',
+      {
         metadata: {
           ...payment.metadata,
           post_payment_processed: true,
           post_payment_at: new Date().toISOString()
         }
-      })
-      .eq('id', paymentUuid);
+      }
+    );
 
     logger.info(`✅ Post-payment actions completed for ${paymentId}`);
 
@@ -403,23 +420,26 @@ async function triggerPostPaymentActions(
 async function sendPaymentConfirmation(payment: PaymentRecord): Promise<void> {
   logger.info(`📧 Sending confirmation for payment ${payment.payment_id}`);
 
-  // TODO: Implement email/SMS sending
-  // Example with SendGrid, Twilio, etc.
-
-  const email = payment.metadata?.email || payment.user_id;
-  const serviceName = payment.metadata?.service || 'AUTO-V Service';
-
-  // Simulate sending
-  logger.debug('📧 Confirmation details', {
-    to: email,
-    subject: `Payment Confirmation - ${payment.payment_id}`,
-    amount: payment.amount,
-    receipt: payment.mpesa_code,
-    service: serviceName
-  });
-
-  // Return early - implement your actual notification logic
-  return;
+  // Call backend notification service
+  try {
+    await apiRequest(
+      '/notifications/payment-confirmation',
+      'POST',
+      {
+        payment_id: payment.payment_id,
+        user_id: payment.user_id,
+        email: payment.metadata?.email,
+        amount: payment.amount,
+        receipt: payment.mpesa_code,
+        service: payment.metadata?.service || 'AUTO-V Service'
+      }
+    );
+    logger.info('✅ Confirmation notification sent');
+  } catch (error) {
+    logger.error('❌ Failed to send confirmation', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
 
 // ─── Create Service Request ──────────────────────────────────
@@ -435,26 +455,25 @@ async function createServiceRequestFromPayment(
     purpose: payment.metadata?.purpose,
     status: 'paid',
     payment_id: payment.payment_id,
+    payment_reference: payment.payment_id,
     reference: payment.metadata?.reference,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+    amount: payment.amount
   };
 
-  const { data, error } = await supabase
-    .from('service_requests')
-    .insert(serviceData)
-    .select()
-    .single();
-
-  if (error) {
+  try {
+    const result = await apiRequest(
+      '/service-requests',
+      'POST',
+      serviceData
+    );
+    logger.info(`✅ Service request created: ${result.id}`);
+  } catch (error) {
     logger.error('❌ Failed to create service request', {
       paymentId: payment.payment_id,
-      error: error.message
+      error: error instanceof Error ? error.message : String(error)
     });
-    throw new Error(`Failed to create service request: ${error.message}`);
+    throw error;
   }
-
-  logger.info(`✅ Service request created: ${data.id}`);
 }
 
 // ─── Trigger Webhook ──────────────────────────────────────────
@@ -510,30 +529,25 @@ export async function handleMpesaTimeout(
   checkoutId: string
 ): Promise<{ success: boolean; status?: string; error?: string }> {
   try {
-    const { data: payment, error } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('checkout_request_id', checkoutId)
-      .single();
+    const payment = await apiRequest(
+      `/payments/checkout/${checkoutId}`,
+      'GET'
+    );
 
-    if (error || !payment) {
+    if (!payment) {
       return { success: false, error: 'Payment not found' };
     }
 
     if (payment.status === 'pending') {
-      const { error: updateError } = await supabase
-        .from('payments')
-        .update({
+      await apiRequest(
+        `/payments/${payment.id}`,
+        'PATCH',
+        {
           status: 'timeout',
           mpesa_result_code: '1037',
-          mpesa_result_desc: 'Transaction timed out',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', payment.id);
-
-      if (updateError) {
-        return { success: false, error: updateError.message };
-      }
+          mpesa_result_desc: 'Transaction timed out'
+        }
+      );
 
       logger.info(`⏰ Payment ${payment.payment_id} marked as timeout`);
       return { success: true, status: 'timeout' };
@@ -558,13 +572,12 @@ export async function verifyMpesaTransaction(
   error?: string;
 }> {
   try {
-    const { data: payment, error } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('checkout_request_id', checkoutId)
-      .single();
+    const payment = await apiRequest(
+      `/payments/checkout/${checkoutId}`,
+      'GET'
+    );
 
-    if (error || !payment) {
+    if (!payment) {
       return { verified: false, error: 'Payment not found' };
     }
 
@@ -583,8 +596,6 @@ export async function verifyMpesaTransaction(
 }
 
 // ─── Express Route Handler (for API route) ──────────────────
-
-import { Request, Response } from 'express';
 
 export async function mpesaCallbackHandler(
   req: Request,
@@ -611,6 +622,25 @@ export async function mpesaCallbackHandler(
     res.status(200).json({ ResultCode: 1, ResultDesc: 'System error' });
   }
 }
+
+// ─── FastAPI Route Handler (Alternative) ──────────────────
+
+// If you're using FastAPI directly instead of Express:
+/*
+from fastapi import FastAPI, Request, Response
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class MpesaCallbackBody(BaseModel):
+    Body: dict
+
+@app.post("/api/mpesa/callback")
+async def handle_mpesa_callback(request: Request, body: MpesaCallbackBody):
+    # Convert to JSON and call handleMpesaCallback
+    result = await handleMpesaCallback(body.dict())
+    return result
+*/
 
 // ─── Exports ──────────────────────────────────────────────────
 
