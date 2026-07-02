@@ -5,12 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="supabase.js"></script>
-
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
         
         /* ─── Header ────────────────────────────────────────────────── */
         header {
@@ -50,6 +53,7 @@
             cursor: pointer;
             font-size: 13px;
             font-weight: bold;
+            transition: 0.3s;
         }
         .logout-btn:hover { background: #b91c1c; }
 
@@ -122,6 +126,7 @@
             display: flex;
             gap: 10px;
             justify-content: center;
+            flex-wrap: wrap;
         }
         .service-actions .btn {
             background: #eab308;
@@ -134,6 +139,7 @@
             font-size: 13px;
             transition: 0.3s;
             text-decoration: none;
+            display: inline-block;
         }
         .service-actions .btn:hover { background: #facc15; transform: scale(1.02); }
         .service-actions .btn-outline {
@@ -164,6 +170,7 @@
             padding: 12px 0;
             border-bottom: 1px solid #1f2937;
             flex-wrap: wrap;
+            gap: 10px;
         }
         .list-item:last-child { border-bottom: none; }
         .list-item .info h4 { color: white; font-size: 15px; }
@@ -188,10 +195,31 @@
             font-size: 11px;
             font-weight: bold;
         }
+        .list-item .status-badge.pending { background: #f59e0b; }
+        .list-item .status-badge.failed { background: #ef4444; }
 
         /* ─── Loading / Empty States ────────────────────────────────── */
         .loading-spinner { color: #94a3b8; text-align: center; padding: 20px; }
         .empty-state { color: #64748b; text-align: center; padding: 20px; font-size: 14px; }
+        
+        /* ─── Toast Override ────────────────────────────────────────── */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -200,8 +228,8 @@
         <div class="logo">🚗 AUTO-V</div>
         <div class="header-right">
             <span id="memberId" class="member-id">Member ID: ---</span>
-            <button class="icon-btn">🔔</button>
-            <button class="icon-btn">👤</button>
+            <button class="icon-btn" onclick="showNotifications()">🔔</button>
+            <button class="icon-btn" onclick="goToProfile()">👤</button>
             <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
     </header>
@@ -273,15 +301,10 @@
     </div>
 
     <script>
-        // ─── Source of Truth ──────────────────────────────────────────
-        if (!window.autoV || !window.autoV.supabase) {
-            document.getElementById('serviceGrid').innerHTML = `<div style="text-align:center;color:#ef4444;padding:40px;">❌ Supabase failed to load.</div>`;
-            throw new Error('Supabase client not found.');
-        }
-
-        const client = window.autoV.supabase;
-        const API_BASE = ''; // Leave blank if backend is on same domain (e.g. auto-v.onrender.com)
-
+        // ─── Configuration ──────────────────────────────────────────────
+        const API_BASE = 'http://localhost:8000/api'; // Change to your backend URL
+        
+        // ─── Services Configuration ────────────────────────────────────
         const ALL_SERVICES = [
             { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', desc: 'Quick AI market estimate', page: 'customer-portal.html?service=instant-value-check' },
             { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per kilometre analysis', page: 'customer-portal.html?service=mileage-rate' },
@@ -291,20 +314,69 @@
             { id: 'fleet', icon: '🚛', name: 'Fleet Services', desc: 'Full fleet management', page: 'customer-portal.html?service=fleet' }
         ];
 
+        // ─── State ──────────────────────────────────────────────────────
+        let currentUser = null;
+        let userProfile = null;
+
+        // ─── Initialize ─────────────────────────────────────────────────
         async function init() {
-            const user = await window.autoV.requireAuth();
-            if (!user) return;
+            try {
+                // Get user from token (stored in localStorage by login)
+                const token = localStorage.getItem('access_token');
+                if (!token) {
+                    window.location.href = '/login.html';
+                    return;
+                }
 
-            const role = await window.autoV.getUserRole(user.id);
-            const { data: profile } = await client.from('user_profiles').select('*').eq('id', user.id).single();
-            
-            // ─── Update Header & Profile ──────────────────────────────
-            document.getElementById('userName').textContent = profile?.full_name || user.email.split('@')[0];
-            document.getElementById('userEmail').textContent = user.email;
-            document.getElementById('userRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
-            document.getElementById('memberId').textContent = `Member ID: AUTOV-${String(Math.floor(Math.random()*100000)).padStart(6,'0')}`;
+                // Get user info from backend
+                const user = await api.get('/auth/me');
+                currentUser = user;
+                
+                // Update profile
+                await loadUserProfile(user);
+                
+                // Load all dashboard data
+                await Promise.all([
+                    loadServices(),
+                    loadVehicles(),
+                    loadReports(),
+                    loadCertificates(),
+                    loadSummaryStats()
+                ]);
+                
+                // Setup logout
+                document.getElementById('logoutBtn').onclick = handleLogout;
+                
+            } catch (error) {
+                ErrorHandler.handle(error, 'Dashboard Initialization');
+                if (error.message.includes('401') || error.message.includes('Session expired')) {
+                    window.location.href = '/login.html';
+                }
+            }
+        }
 
-            // ─── Render Services ──────────────────────────────────────
+        // ─── Load User Profile ──────────────────────────────────────────
+        async function loadUserProfile(user) {
+            try {
+                // Fetch profile from backend
+                const profile = await api.get(`/users/${user.id}/profile`);
+                userProfile = profile;
+                
+                document.getElementById('userName').textContent = profile.full_name || user.email.split('@')[0];
+                document.getElementById('userEmail').textContent = user.email;
+                document.getElementById('userRole').textContent = profile.role || 'Individual';
+                document.getElementById('memberId').textContent = `Member ID: ${profile.member_id || 'AUTOV-' + String(Math.floor(Math.random()*100000)).padStart(6,'0')}`;
+                
+            } catch (error) {
+                ErrorHandler.handle(error, 'Loading Profile');
+                // Fallback: use email
+                document.getElementById('userName').textContent = user.email.split('@')[0];
+                document.getElementById('userEmail').textContent = user.email;
+            }
+        }
+
+        // ─── Load Services ─────────────────────────────────────────────
+        function loadServices() {
             const serviceGrid = document.getElementById('serviceGrid');
             serviceGrid.innerHTML = ALL_SERVICES.map(s => `
                 <div class="service-card">
@@ -313,147 +385,219 @@
                     <p>${s.desc}</p>
                     <div class="service-actions">
                         <a href="${s.page}" class="btn">Start Service</a>
-                        <a href="#" class="btn btn-outline">Learn More</a>
+                        <a href="#" class="btn btn-outline" onclick="event.preventDefault(); showServiceInfo('${s.id}')">Learn More</a>
                     </div>
                 </div>
             `).join('');
+        }
 
-            // ─── Fetch Real Vehicles ──────────────────────────────────
-            const { data: vehicles } = await client.from('vehicles').select('*').eq('user_id', user.id);
+        // ─── Load Vehicles ─────────────────────────────────────────────
+        async function loadVehicles() {
             const vehicleList = document.getElementById('vehicleList');
             
-            if (!vehicles || vehicles.length === 0) {
-                vehicleList.innerHTML = `<div class="empty-state">You haven't registered any vehicles yet.</div>`;
-            } else {
+            try {
+                const vehicles = await api.get('/vehicles', { user_id: currentUser.id });
+                
+                if (!vehicles || vehicles.length === 0) {
+                    vehicleList.innerHTML = `<div class="empty-state">🚗 You haven't registered any vehicles yet. <a href="/add-vehicle.html" style="color:#eab308;">Add your first vehicle</a></div>`;
+                    return;
+                }
+                
                 vehicleList.innerHTML = vehicles.map(v => `
                     <div class="list-item">
                         <div class="info">
-                            <h4>${v.make} ${v.model}</h4>
-                            <p>${v.registration_number} · ${v.year} · ${v.body_type || 'N/A'}</p>
+                            <h4>${v.make || 'Unknown'} ${v.model || ''}</h4>
+                            <p>${v.license_plate || v.registration_number || 'No plate'} · ${v.year || 'N/A'} · ${v.body_type || 'N/A'}</p>
                         </div>
                         <div class="actions">
-                            <button class="btn-sm">View History</button>
-                            <button class="btn-sm" onclick="window.location.href='customer-portal.html?service=valuation'">Request Valuation</button>
-                            <button class="btn-sm" onclick="window.location.href='customer-portal.html?service=inspection'">Request Inspection</button>
+                            <button class="btn-sm" onclick="viewVehicleHistory('${v.id}')">View History</button>
+                            <button class="btn-sm" onclick="window.location.href='customer-portal.html?service=valuation&vehicle=${v.id}'">Request Valuation</button>
+                            <button class="btn-sm" onclick="window.location.href='customer-portal.html?service=inspection&vehicle=${v.id}'">Request Inspection</button>
                         </div>
                     </div>
                 `).join('');
+                
+            } catch (error) {
+                ErrorHandler.handle(error, 'Loading Vehicles');
+                vehicleList.innerHTML = `<div class="empty-state">❌ Failed to load vehicles. Please refresh.</div>`;
             }
+        }
 
-            // ─── Fetch Real Reports ──────────────────────────────────
-            const { data: reports } = await client
-                .from('service_requests')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(5);
-
+        // ─── Load Reports ──────────────────────────────────────────────
+        async function loadReports() {
             const reportsList = document.getElementById('recentReports');
             
-            if (!reports || reports.length === 0) {
-                reportsList.innerHTML = `<div class="empty-state">No reports generated yet.</div>`;
-            } else {
+            try {
+                const reports = await api.get('/service-requests', { 
+                    user_id: currentUser.id,
+                    limit: 5,
+                    sort: 'created_at:desc'
+                });
+                
+                if (!reports || reports.length === 0) {
+                    reportsList.innerHTML = `<div class="empty-state">No reports generated yet. Start a service to generate your first report.</div>`;
+                    return;
+                }
+                
                 reportsList.innerHTML = reports.map(r => `
                     <div class="list-item">
                         <div class="info">
-                            <h4>${r.vehicle_make || 'N/A'} ${r.vehicle_model || ''} · ${formatName(r.service_type)}</h4>
-                            <p>${new Date(r.created_at).toLocaleDateString('en-KE')}</p>
+                            <h4>${r.vehicle_make || 'N/A'} ${r.vehicle_model || ''} · ${formatServiceType(r.service_type)}</h4>
+                            <p>${new Date(r.created_at).toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
                         </div>
                         <div class="actions">
-                            <span class="status-badge">${r.status || 'pending'}</span>
+                            <span class="status-badge ${r.status || 'pending'}">${r.status || 'pending'}</span>
                             <button class="btn-sm" onclick="viewReport('${r.id}')">View</button>
-                            <button class="btn-sm" onclick="downloadReport('${r.id}')">Download PDF</button>
+                            ${r.status === 'completed' ? `<button class="btn-sm" onclick="downloadReport('${r.id}')">📥 PDF</button>` : ''}
                         </div>
                     </div>
                 `).join('');
+                
+            } catch (error) {
+                ErrorHandler.handle(error, 'Loading Reports');
+                reportsList.innerHTML = `<div class="empty-state">❌ Failed to load reports.</div>`;
             }
+        }
 
-            // ─── Fetch Real Certificates ─────────────────────────────
-            const { data: certificates } = await client
-                .from('certificates')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('issued_at', { ascending: false })
-                .limit(5);
-
+        // ─── Load Certificates ──────────────────────────────────────────
+        async function loadCertificates() {
             const certList = document.getElementById('certificateList');
             
-            if (!certificates || certificates.length === 0) {
-                certList.innerHTML = `<div class="empty-state">No certificates issued yet.</div>`;
-            } else {
+            try {
+                const certificates = await api.get('/certificates', {
+                    user_id: currentUser.id,
+                    limit: 5,
+                    sort: 'issued_at:desc'
+                });
+                
+                if (!certificates || certificates.length === 0) {
+                    certList.innerHTML = `<div class="empty-state">No certificates issued yet. Complete a valuation to receive a certificate.</div>`;
+                    return;
+                }
+                
                 certList.innerHTML = certificates.map(c => `
                     <div class="list-item">
                         <div class="info">
-                            <h4>${c.certificate_number}</h4>
+                            <h4>${c.certificate_number || c.id}</h4>
                             <p>${c.vehicle_make || 'N/A'} ${c.vehicle_model || ''} · ${c.status === 'active' ? '✅ Verified' : '⏳ Pending'}</p>
                         </div>
                         <div class="actions">
-                            <button class="btn-sm" onclick="downloadReport('${c.service_request_id}')">📥 Download</button>
-                            <button class="btn-sm" onclick="viewReport('${c.service_request_id}')">🖨 Print</button>
+                            <button class="btn-sm" onclick="downloadCertificate('${c.id}')">📥 Download</button>
+                            <button class="btn-sm" onclick="viewCertificate('${c.id}')">🖨 Print</button>
                         </div>
                     </div>
                 `).join('');
+                
+            } catch (error) {
+                ErrorHandler.handle(error, 'Loading Certificates');
+                certList.innerHTML = `<div class="empty-state">❌ Failed to load certificates.</div>`;
             }
-
-            // ─── Fetch Summary Statistics ────────────────────────────
-            const { count: vehicleCount } = await client
-                .from('vehicles')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', user.id);
-
-            const { count: reportCount } = await client
-                .from('service_requests')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', user.id);
-
-            const { count: certCount } = await client
-                .from('certificates')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', user.id);
-
-            // Calculate total portfolio value (sum of valuations)
-            const { data: valuations } = await client
-                .from('service_requests')
-                .select('result')
-                .eq('user_id', user.id)
-                .eq('service_type', 'valuation')
-                .eq('status', 'completed');
-
-            let totalValue = 0;
-            if (valuations && valuations.length > 0) {
-                valuations.forEach(v => {
-                    if (v.result && v.result.value) {
-                        totalValue += v.result.value;
-                    }
-                });
-            }
-
-            document.getElementById('sumVehicles').textContent = vehicleCount || 0;
-            document.getElementById('sumReports').textContent = reportCount || 0;
-            document.getElementById('sumCertificates').textContent = certCount || 0;
-            document.getElementById('sumValue').textContent = `KES ${totalValue.toLocaleString()}`;
-
-            // ─── Logout ────────────────────────────────────────────────
-            document.getElementById('logoutBtn').onclick = async function() {
-                await window.autoV.logout();
-            };
         }
 
-        // ─── PDF Download/View Functions ──────────────────────────────
+        // ─── Load Summary Statistics ────────────────────────────────────
+        async function loadSummaryStats() {
+            try {
+                // Get counts from API
+                const [vehicles, reports, certificates, valuations] = await Promise.all([
+                    api.get('/vehicles/count', { user_id: currentUser.id }),
+                    api.get('/service-requests/count', { user_id: currentUser.id, status: 'completed' }),
+                    api.get('/certificates/count', { user_id: currentUser.id }),
+                    api.get('/valuations/total', { user_id: currentUser.id })
+                ]);
+                
+                document.getElementById('sumVehicles').textContent = vehicles.count || 0;
+                document.getElementById('sumReports').textContent = reports.count || 0;
+                document.getElementById('sumCertificates').textContent = certificates.count || 0;
+                document.getElementById('sumValue').textContent = `KES ${(valuations.total || 0).toLocaleString()}`;
+                
+            } catch (error) {
+                ErrorHandler.handle(error, 'Loading Statistics');
+                // Don't fail the whole page for stats
+                document.getElementById('sumVehicles').textContent = '0';
+                document.getElementById('sumReports').textContent = '0';
+                document.getElementById('sumCertificates').textContent = '0';
+                document.getElementById('sumValue').textContent = 'KES 0';
+            }
+        }
+
+        // ─── Action Handlers ────────────────────────────────────────────
+        async function handleLogout() {
+            try {
+                await api.post('/auth/logout');
+                api.clearToken();
+                window.location.href = '/login.html';
+            } catch (error) {
+                ErrorHandler.handle(error, 'Logout');
+                // Force logout even if API fails
+                api.clearToken();
+                window.location.href = '/login.html';
+            }
+        }
+
         function viewReport(requestId) {
-            window.open(`${API_BASE}/api/reports/generate/${requestId}`, '_blank');
+            window.open(`${API_BASE}/reports/generate/${requestId}`, '_blank');
         }
 
         function downloadReport(requestId) {
-            window.location.href = `${API_BASE}/api/reports/generate/${requestId}`;
+            window.location.href = `${API_BASE}/reports/download/${requestId}`;
+        }
+
+        function viewCertificate(certId) {
+            window.open(`${API_BASE}/certificates/view/${certId}`, '_blank');
+        }
+
+        function downloadCertificate(certId) {
+            window.location.href = `${API_BASE}/certificates/download/${certId}`;
+        }
+
+        function viewVehicleHistory(vehicleId) {
+            window.location.href = `/vehicle-history.html?id=${vehicleId}`;
+        }
+
+        function showServiceInfo(serviceId) {
+            const service = ALL_SERVICES.find(s => s.id === serviceId);
+            if (service) {
+                ErrorHandler.showToast(
+                    `${service.name}: ${service.desc}. Click "Start Service" to begin.`,
+                    'info'
+                );
+            }
+        }
+
+        function showNotifications() {
+            ErrorHandler.showToast('🔔 You have no new notifications.', 'info');
+        }
+
+        function goToProfile() {
+            window.location.href = '/profile.html';
         }
 
         // ─── Helpers ──────────────────────────────────────────────────
-        function formatName(key) {
-            return key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        function formatServiceType(key) {
+            if (!key) return 'N/A';
+            return key
+                .replace(/-/g, ' ')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, l => l.toUpperCase());
         }
 
-        init();
+        // ─── Start App ─────────────────────────────────────────────────
+        // Check if API client is loaded
+        if (typeof api === 'undefined') {
+            document.getElementById('serviceGrid').innerHTML = `
+                <div style="text-align:center;color:#ef4444;padding:40px;">
+                    ❌ API Client failed to load. Please check your internet connection and refresh.
+                </div>
+            `;
+            throw new Error('API client not found. Please ensure js/api-client.js is loaded.');
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
 </body>
 </html>
