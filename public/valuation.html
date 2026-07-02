@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
     <title>AUTO-V | Professional Valuation Engine</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
         /* ... (styles remain the same as previous) ... */
@@ -370,13 +375,14 @@
             if (window.autoVProfValuationInitialized) return;
             window.autoVProfValuationInitialized = true;
 
-            // ─── SUPABASE CONFIG ──────────────────────────────────────
-            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
-            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
             // ─── API CONFIG ──────────────────────────────────────────
-            const API_BASE_URL = 'https://auto-v-backend.onrender.com/api';
+            const API_BASE = 'http://localhost:8000/api';
+
+            // ─── STATE ──────────────────────────────────────────────
+            let currentUser = null;
+            let userRole = 'individual';
+            let selectedPurpose = null;
+            let currentValuationResult = null;
 
             // ─── VEHICLE MODELS ──────────────────────────────────────
             const vehicleModels = {
@@ -463,25 +469,10 @@
                 }
             };
 
-            // ─── STATE ──────────────────────────────────────────────
-            const requiredImages = [
-                'front','rear','left','right','front-left','front-right','rear-left','rear-right',
-                'dashboard','odometer','engine','vin','front-seats','rear-seats','boot','tyres','spare','roof','underbody'
-            ];
-            const requiredDocs = ['logbook','id','kra','insurance','service'];
-            const imageStatus = {};
-            const docStatus = {};
-            let imageUrls = {};
-            let docUrls = {};
-            let selectedPurpose = null;
-            let currentUser = null;
-            let userRole = 'individual';
-
-            requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
-            requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
-
-            // ─── HELPERS ─────────────────────────────────────────────
+            // ─── TOAST HELPERS ──────────────────────────────────────
             function showToast(msg, type = 'success') {
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
                 const t = document.createElement('div');
                 t.className = `toast toast-${type}`;
                 t.textContent = msg;
@@ -495,6 +486,50 @@
                 overlay.style.display = show ? 'flex' : 'none';
             }
 
+            // ─── TOKEN HELPERS ──────────────────────────────────────
+            function getAuthToken() {
+                return localStorage.getItem('access_token');
+            }
+
+            function getAuthHeaders() {
+                const token = getAuthToken();
+                return {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...(token && { 'Authorization': `Bearer ${token}` })
+                };
+            }
+
+            // ─── AUTH ──────────────────────────────────────────────────
+            async function requireAuth() {
+                const token = getAuthToken();
+                if (!token) {
+                    window.location.href = 'login.html';
+                    return null;
+                }
+
+                try {
+                    const response = await fetch(`${API_BASE}/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    if (!response.ok) {
+                        localStorage.removeItem('access_token');
+                        window.location.href = 'login.html';
+                        return null;
+                    }
+
+                    currentUser = await response.json();
+                    document.getElementById('userEmail').textContent = currentUser.email;
+                    document.getElementById('userRoleBadge').textContent = (currentUser.role || 'individual').toUpperCase();
+                    return currentUser;
+                } catch (e) {
+                    window.location.href = 'login.html';
+                    return null;
+                }
+            }
+
+            // ─── HELPERS ─────────────────────────────────────────────
             function populateYears() {
                 const yearSelect = document.getElementById('vehicleYear');
                 const currentYear = new Date().getFullYear();
@@ -504,6 +539,20 @@
                 }
                 yearSelect.value = 2022;
             }
+
+            // ─── UPLOAD FUNCTIONS ────────────────────────────────────
+            const requiredImages = [
+                'front','rear','left','right','front-left','front-right','rear-left','rear-right',
+                'dashboard','odometer','engine','vin','front-seats','rear-seats','boot','tyres','spare','roof','underbody'
+            ];
+            const requiredDocs = ['logbook','id','kra','insurance','service'];
+            const imageStatus = {};
+            const docStatus = {};
+            let imageUrls = {};
+            let docUrls = {};
+
+            requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
+            requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
 
             function updateValidationSummary() {
                 let imageCount = requiredImages.filter(slot => imageStatus[slot].uploaded).length;
@@ -525,55 +574,28 @@
                 document.getElementById('docStatusText').textContent = uploaded === total ? '✅ All documents verified' : '⏳ Pending verification';
             }
 
-            // ─── AUTH ──────────────────────────────────────────────────
-            async function requireAuth() {
-                try {
-                    const { data: { user }, error } = await supabase.auth.getUser();
-                    if (error || !user) {
-                        window.location.href = 'login.html';
-                        return null;
-                    }
-                    currentUser = user;
-                    document.getElementById('userEmail').textContent = user.email;
-                    
-                    try {
-                        const { data: roleData } = await supabase
-                            .from('user_roles')
-                            .select('role')
-                            .eq('user_id', user.id)
-                            .maybeSingle();
-                        userRole = roleData?.role || 'individual';
-                    } catch (e) {
-                        userRole = 'individual';
-                    }
-                    document.getElementById('userRoleBadge').textContent = userRole.toUpperCase();
-                    
-                    return user;
-                } catch (e) {
-                    window.location.href = 'login.html';
-                    return null;
-                }
-            }
+            async function uploadFile(file, type, slot) {
+                const token = getAuthToken();
+                if (!token) throw new Error('Not authenticated');
 
-            async function getAuthToken() {
-                const { data: { session } } = await supabase.auth.getSession();
-                return session?.access_token || null;
-            }
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('type', type);
+                formData.append('slot', slot);
 
-            // ─── UPLOAD FUNCTIONS ────────────────────────────────────
-            async function uploadFile(file, bucket, path) {
-                try {
-                    const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
-                        cacheControl: '3600',
-                        upsert: false
-                    });
-                    if (error) throw error;
-                    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
-                    return publicUrl;
-                } catch (e) {
-                    console.warn('Upload failed:', e.message);
-                    return null;
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Upload failed');
                 }
+
+                const data = await response.json();
+                return data.url;
             }
 
             window.handleImageUpload = async function(input, slot) {
@@ -588,8 +610,7 @@
                     const user = await requireAuth();
                     if (!user) throw new Error('Please login again');
                     
-                    const path = `valuations/${user.id}/images/${slot}_${Date.now()}_${file.name}`;
-                    const publicUrl = await uploadFile(file, 'valuation-images', path);
+                    const publicUrl = await uploadFile(file, 'image', slot);
                     
                     if (publicUrl) {
                         imageStatus[slot].uploaded = true;
@@ -624,24 +645,15 @@
                 }
             };
 
-            function handleDocumentUpload(input, docKey) {
-                const file = input.files[0];
-                if (!file) return;
+            function handleDocumentUpload(file, docKey) {
                 const statusEl = document.getElementById(`doc-${docKey}-status`);
                 const badgeEl = document.getElementById(`doc-${docKey}-badge`);
                 statusEl.textContent = 'Uploading...';
                 badgeEl.className = 'doc-status-badge pending';
                 badgeEl.textContent = '⏳ Uploading';
                 
-                const reader = new FileReader();
-                reader.onload = async function(e) {
-                    try {
-                        const user = await requireAuth();
-                        if (!user) throw new Error('Please login again');
-                        
-                        const path = `valuations/${user.id}/documents/${docKey}_${Date.now()}_${file.name}`;
-                        const publicUrl = await uploadFile(file, 'valuation-documents', path);
-                        
+                uploadFile(file, 'document', docKey)
+                    .then(publicUrl => {
                         if (publicUrl) {
                             docStatus[docKey].uploaded = true;
                             docStatus[docKey].publicUrl = publicUrl;
@@ -657,21 +669,30 @@
                         } else {
                             throw new Error('Upload returned no URL');
                         }
-                    } catch (e) {
+                    })
+                    .catch(e => {
                         statusEl.textContent = '❌ Error';
                         badgeEl.className = 'doc-status-badge error';
                         badgeEl.textContent = '❌ Error';
                         showToast('Upload failed: ' + e.message, 'error');
-                    }
-                };
-                reader.readAsDataURL(file);
+                    });
             }
 
-            document.getElementById('docLogbook').addEventListener('change', function() { handleDocumentUpload(this, 'logbook'); });
-            document.getElementById('docId').addEventListener('change', function() { handleDocumentUpload(this, 'id'); });
-            document.getElementById('docKra').addEventListener('change', function() { handleDocumentUpload(this, 'kra'); });
-            document.getElementById('docInsurance').addEventListener('change', function() { handleDocumentUpload(this, 'insurance'); });
-            document.getElementById('docService').addEventListener('change', function() { handleDocumentUpload(this, 'service'); });
+            document.getElementById('docLogbook').addEventListener('change', function() { 
+                if (this.files[0]) handleDocumentUpload(this.files[0], 'logbook'); 
+            });
+            document.getElementById('docId').addEventListener('change', function() { 
+                if (this.files[0]) handleDocumentUpload(this.files[0], 'id'); 
+            });
+            document.getElementById('docKra').addEventListener('change', function() { 
+                if (this.files[0]) handleDocumentUpload(this.files[0], 'kra'); 
+            });
+            document.getElementById('docInsurance').addEventListener('change', function() { 
+                if (this.files[0]) handleDocumentUpload(this.files[0], 'insurance'); 
+            });
+            document.getElementById('docService').addEventListener('change', function() { 
+                if (this.files[0]) handleDocumentUpload(this.files[0], 'service'); 
+            });
 
             // ─── MAKE-MODEL SYNC ────────────────────────────────────
             document.getElementById('vehicleMake').addEventListener('change', function() {
@@ -722,12 +743,14 @@
                         case 'select':
                             input = document.createElement('select');
                             input.id = `field_${field.key}`;
-                            field.options.forEach(opt => {
-                                const option = document.createElement('option');
-                                option.value = opt;
-                                option.textContent = opt;
-                                input.appendChild(option);
-                            });
+                            if (field.options) {
+                                field.options.forEach(opt => {
+                                    const option = document.createElement('option');
+                                    option.value = opt;
+                                    option.textContent = opt;
+                                    input.appendChild(option);
+                                });
+                            }
                             break;
                         case 'textarea':
                             input = document.createElement('textarea');
@@ -767,35 +790,6 @@
                 if (selectedPurpose) {
                     const selectedEl = container.querySelector(`[data-purpose="${selectedPurpose}"]`);
                     if (selectedEl) selectedEl.classList.add('selected');
-                }
-            }
-
-            // ─── CALL BACKEND API ──────────────────────────────────
-            async function callBackendAPI(endpoint, method = 'POST', payload = {}) {
-                const token = await getAuthToken();
-                if (!token) throw new Error('Not authenticated');
-
-                // Try backend API
-                try {
-                    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                        method: method,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json().catch(() => ({}));
-                        throw new Error(error.message || error.error || `API error: ${response.status}`);
-                    }
-
-                    return response.json();
-                } catch (e) {
-                    // Fallback to local calculation if API is unreachable
-                    console.warn('⚠️ Backend API unavailable, using local calculation:', e.message);
-                    return null;
                 }
             }
 
@@ -923,77 +917,22 @@
                         purpose_fields: purposeFieldValues
                     };
 
-                    // Try backend API first
-                    let result = await callBackendAPI('/valuations', 'POST', payload);
+                    // Call backend API
+                    const response = await fetch(`${API_BASE}/valuations`, {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify(payload)
+                    });
 
-                    // If API failed, use local calculation
-                    if (!result) {
-                        console.log('Using local calculation as fallback');
-                        result = calculateLocalValuation(payload);
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || 'Valuation failed');
                     }
 
-                    // Try to save to Supabase
-                    try {
-                        const { data: valuation, error } = await supabase
-                            .from('valuations')
-                            .insert([{
-                                user_id: payload.user_id,
-                                registration_number: payload.vehicle_data.registration_number,
-                                vin: payload.vehicle_data.vin,
-                                make: payload.vehicle_data.make,
-                                model: payload.vehicle_data.model,
-                                year: payload.vehicle_data.year,
-                                body_type: payload.vehicle_data.body_type,
-                                engine_cc: payload.vehicle_data.engine_cc,
-                                transmission: payload.vehicle_data.transmission,
-                                fuel_type: payload.vehicle_data.fuel_type,
-                                odometer: payload.vehicle_data.odometer,
-                                purpose: payload.purpose,
-                                methodology: payload.methodology,
-                                region: payload.region,
-                                inspection_data: payload.inspection,
-                                history_data: payload.history,
-                                inspector_data: payload.inspector,
-                                image_urls: payload.image_urls,
-                                document_urls: payload.document_urls,
-                                purpose_fields: payload.purpose_fields,
-                                market_value: result.market_value || result.marketValue || 0,
-                                insurance_value: result.insurance_value || result.insuranceValue || 0,
-                                forced_sale_value: result.forced_sale_value || result.fsv || 0,
-                                confidence_score: result.confidence_score || result.confidenceScore || 0,
-                                condition_score: result.condition_score || result.conditionScore || 0,
-                                risk_score: result.risk_score || result.riskScore || 0,
-                                valuation_result: result,
-                                status: 'completed'
-                            }])
-                            .select()
-                            .single();
-
-                        if (!error && valuation) {
-                            result.valuation_id = valuation.id;
-                            result.valuationId = valuation.id;
-                        }
-                    } catch (e) {
-                        console.warn('Could not save to Supabase:', e.message);
-                        result.valuation_id = 'VAL-' + Date.now();
-                        result.valuationId = result.valuation_id;
-                    }
+                    const result = await response.json();
 
                     // Display results
-                    displayResults({
-                        ...result,
-                        valuation_id: result.valuation_id || 'VAL-' + Date.now(),
-                        valuationId: result.valuation_id || 'VAL-' + Date.now(),
-                        purpose: selectedPurpose,
-                        methodology: payload.methodology,
-                        region: payload.region,
-                        inspector: payload.inspector,
-                        comparables: result.comparables || [
-                            { make: make, model: model, year: year, price: Math.round((result.market_value || 2000000) * (1 + (Math.random() - 0.5) * 0.15)) },
-                            { make: make, model: model, year: year - 1, price: Math.round((result.market_value || 2000000) * 0.9 * (1 + (Math.random() - 0.5) * 0.15)) },
-                            { make: make, model: model, year: year + 1, price: Math.round((result.market_value || 2000000) * 1.1 * (1 + (Math.random() - 0.5) * 0.15)) }
-                        ]
-                    });
+                    displayResults(result);
                     showToast('✅ Valuation completed successfully!', 'success');
 
                 } catch (error) {
@@ -1004,65 +943,6 @@
                 }
             }
 
-            // ─── LOCAL VALUATION CALCULATION (Fallback) ──────────────
-            function calculateLocalValuation(payload) {
-                const vehicle = payload.vehicle_data || payload;
-                let baseValue = 2500000;
-                const yearFactor = 1 - ((new Date().getFullYear() - vehicle.year) * 0.08);
-                const makeFactors = {
-                    'Toyota': 1.2,
-                    'Honda': 1.1,
-                    'Mercedes-Benz': 1.5,
-                    'BMW': 1.4,
-                    'Audi': 1.3,
-                    'Land Rover': 1.6,
-                    'Lexus': 1.4,
-                    'Volvo': 1.2,
-                    'Other': 0.9
-                };
-                const makeFactor = makeFactors[vehicle.make] || 1.0;
-                
-                let marketValue = baseValue * makeFactor * Math.max(yearFactor, 0.3);
-                const odometerAdjustment = Math.max(0, 1 - ((vehicle.odometer / 200000) * 0.3));
-                marketValue = marketValue * odometerAdjustment;
-                
-                const conditionMap = { 'Excellent': 1.2, 'Good': 1.0, 'Fair': 0.85, 'Poor': 0.6 };
-                const conditionFactor = conditionMap[payload.inspection?.engine] || 1.0;
-                marketValue = marketValue * conditionFactor;
-                
-                const accidentMap = { 'None': 1.0, 'Minor': 0.9, 'Moderate': 0.75, 'Major': 0.5 };
-                const accidentFactor = accidentMap[payload.history?.accident_history] || 1.0;
-                marketValue = marketValue * accidentFactor;
-                marketValue = Math.round(marketValue / 1000) * 1000;
-                
-                const insuranceValue = Math.round(marketValue * 1.15 / 1000) * 1000;
-                const forcedSaleValue = Math.round(marketValue * 0.65 / 1000) * 1000;
-                
-                let confidence = 85;
-                if (vehicle.odometer > 100000) confidence -= 5;
-                if (payload.history?.accident_history !== 'None') confidence -= 10;
-                confidence = Math.max(50, Math.min(98, confidence));
-                
-                const conditionScores = { 'Excellent': 10, 'Good': 7, 'Fair': 5, 'Poor': 2 };
-                const avgCondition = (conditionScores[payload.inspection?.engine] || 7 +
-                                     conditionScores[payload.inspection?.transmission] || 7 +
-                                     conditionScores[payload.inspection?.suspension] || 7 +
-                                     conditionScores[payload.inspection?.brakes] || 7 +
-                                     conditionScores[payload.inspection?.paint] || 7 +
-                                     conditionScores[payload.inspection?.interior] || 7) / 6;
-                const conditionScore = Math.round(avgCondition * 10) / 10;
-                const riskScore = Math.round(100 - confidence + (payload.history?.accident_history !== 'None' ? 15 : 0) + (vehicle.odometer > 150000 ? 10 : 0));
-                
-                return {
-                    market_value: marketValue,
-                    insurance_value: insuranceValue,
-                    forced_sale_value: forcedSaleValue,
-                    confidence_score: confidence,
-                    condition_score: conditionScore,
-                    risk_score: Math.min(100, riskScore)
-                };
-            }
-
             // ─── DISPLAY RESULTS ──────────────────────────────────
             function displayResults(result) {
                 document.getElementById('dataEntryCard').classList.add('hidden');
@@ -1070,15 +950,15 @@
 
                 const container = document.getElementById('resultsContainer');
                 const confidenceColor = result.confidence_score >= 80 ? '#22c55e' : result.confidence_score >= 60 ? '#eab308' : '#ef4444';
-                const qrData = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id || result.valuationId || 'VAL-' + Date.now()}`;
+                const qrData = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id || 'VAL-' + Date.now()}`;
 
-                const marketValue = result.market_value || result.marketValue || 0;
-                const insuranceValue = result.insurance_value || result.insuranceValue || 0;
-                const fsv = result.forced_sale_value || result.fsv || 0;
-                const confidence = result.confidence_score || result.confidenceScore || 0;
-                const riskScore = result.risk_score || result.riskScore || 0;
-                const conditionScore = result.condition_score || result.conditionScore || 0;
-                const valuationId = result.valuation_id || result.valuationId || 'VAL-' + Date.now();
+                const marketValue = result.market_value || 0;
+                const insuranceValue = result.insurance_value || 0;
+                const fsv = result.forced_sale_value || 0;
+                const confidence = result.confidence_score || 0;
+                const riskScore = result.risk_score || 0;
+                const conditionScore = result.condition_score || 0;
+                const valuationId = result.valuation_id || 'VAL-' + Date.now();
                 const methodology = result.methodology || 'Market Comparison';
                 const purpose = result.purpose || selectedPurpose || 'Market Value';
                 const region = result.region || document.getElementById('valRegion').value || 'Nairobi';
@@ -1136,17 +1016,16 @@
                 qrImg.style.height = '120px';
                 document.getElementById('qrCode').appendChild(qrImg);
 
-                window._currentValuationResult = result;
+                currentValuationResult = result;
             }
 
             // ─── DOWNLOAD PDF REPORT ──────────────────────────────
             function downloadPDF() {
-                const result = window._currentValuationResult;
-                if (!result) { showToast('No valuation to download', 'error'); return; }
+                if (!currentValuationResult) { showToast('No valuation to download', 'error'); return; }
 
                 const content = document.getElementById('resultsContainer').cloneNode(true);
                 const qr = content.querySelector('.qr-container');
-                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Verification ID: ${result.valuation_id || result.valuationId || 'N/A'}</span>`;
+                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Verification ID: ${currentValuationResult.valuation_id || 'N/A'}</span>`;
                 const win = window.open('', '_blank');
                 win.document.write(`
                     <html><head><title>AUTO-V Valuation Report</title>
@@ -1174,7 +1053,7 @@
                         ${content.innerHTML}
                         <div class="footer">
                             <p>This report is electronically generated and signed. Verify at https://auto-v.meipressgroup.com/verify.html</p>
-                            <p>Audit Trail: ${result.valuation_id || result.valuationId || 'N/A'}</p>
+                            <p>Audit Trail: ${currentValuationResult.valuation_id || 'N/A'}</p>
                         </div>
                     </body></html>
                 `);
@@ -1185,9 +1064,8 @@
 
             // ─── VERIFY REPORT ─────────────────────────────────────
             function verifyReport() {
-                const result = window._currentValuationResult;
-                if (!result) { showToast('No valuation to verify', 'error'); return; }
-                const verifyUrl = `https://auto-v.meipressgroup.com/verify.html?id=${result.valuation_id || result.valuationId || ''}`;
+                if (!currentValuationResult) { showToast('No valuation to verify', 'error'); return; }
+                const verifyUrl = `https://auto-v.meipressgroup.com/verify.html?id=${currentValuationResult.valuation_id || ''}`;
                 window.open(verifyUrl, '_blank');
             }
 
@@ -1199,7 +1077,7 @@
             document.getElementById('downloadReportBtn').addEventListener('click', downloadPDF);
             document.getElementById('verifyReportBtn').addEventListener('click', verifyReport);
             document.getElementById('logoutBtn').addEventListener('click', async () => {
-                await supabase.auth.signOut();
+                localStorage.removeItem('access_token');
                 window.location.href = 'login.html';
             });
 
@@ -1215,8 +1093,8 @@
                 document.getElementById('vehicleReg').value = 'KDA 123A';
                 document.getElementById('vehicleVin').value = 'JTEGD34V000123456';
                 document.getElementById('vehicleOdometer').value = 50000;
-                document.getElementById('inspectorName').value = user.user_metadata?.full_name || user.email;
-                document.getElementById('inspectorSignature').value = user.user_metadata?.full_name || user.email;
+                document.getElementById('inspectorName').value = user.full_name || user.email;
+                document.getElementById('inspectorSignature').value = user.full_name || user.email;
                 document.getElementById('inspectorCredentials').value = 'AVM-12345';
                 document.getElementById('inspTyres').value = 6;
 
@@ -1240,7 +1118,7 @@
 
                 console.log('✅ AUTO-V Professional Valuation Engine ready');
                 console.log(`👤 User: ${user.email}`);
-                console.log(`🔗 Backend API: ${API_BASE_URL}`);
+                console.log(`🔗 Backend API: ${API_BASE}`);
             }
 
             document.getElementById('vehicleForm').addEventListener('keypress', function(e) {
