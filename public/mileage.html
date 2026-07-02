@@ -7,6 +7,12 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E%F0%9F%93%8A%3C/text%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Import API Client -->
+    <script src="js/api-client.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script src="js/loading.js"></script>
+    
     <style>
         :root {
             --asphalt: #0a0c15;
@@ -535,7 +541,6 @@
         .fuel-filter-btn .fuel-dot.lpg { background: #3b82f6; }
         .fuel-filter-btn .fuel-dot.electric { background: #8b5cf6; }
 
-        /* Show All Classes Toggle */
         .all-classes-toggle {
             display: flex;
             align-items: center;
@@ -607,6 +612,36 @@
             border: 0;
         }
 
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #1e293b;
+            border-top-color: #eab308;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to{transform:rotate(360deg);} }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn .3s ease;
+            max-width: 380px;
+            font-size: 14px;
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        @keyframes slideIn { from{opacity:0; transform:translateX(80px);} to{opacity:1; transform:translateX(0);} }
+
         @media (max-width: 768px) {
             .wrap { padding: 16px 12px 40px; }
             .report-header { padding: 20px 18px; }
@@ -669,7 +704,7 @@
             <h1>AUTO-V <span>Professional</span><br />Vehicle Running Costs</h1>
             <p class="subtitle">
                 Kenya Mileage Rate Schedule — <strong>July 2026</strong><br />
-                <span style="font-size:12px;color:var(--ink-soft);">Single Source of Truth · Powered by Supabase</span>
+                <span style="font-size:12px;color:var(--ink-soft);">Single Source of Truth · Powered by FastAPI Backend</span>
             </p>
         </div>
         <div class="header-right">
@@ -834,30 +869,15 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <script>
 (function () {
     'use strict';
 
-    // ---------------------------------------------------------------
-    // Config
-    // ---------------------------------------------------------------
-    const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+    // ─── CONFIG ──────────────────────────────────────────────────
+    const API_BASE = 'http://localhost:8000/api';
     const MAX_DISTANCE = 100000;
-    const FETCH_TIMEOUT_MS = 12000;
 
-    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-        // The Supabase SDK failed to load (CDN blocked / offline).
-        document.addEventListener('DOMContentLoaded', () => showFatalError('Could not load the Supabase client library. Check your connection and reload.'));
-        return;
-    }
-    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // ---------------------------------------------------------------
-    // DOM helpers
-    // ---------------------------------------------------------------
+    // ─── DOM helpers ──────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
     const categorySelect = $('categorySelect');
     const variantSelect = $('variantSelect');
@@ -879,9 +899,6 @@
             .replace(/'/g, '&#39;');
     }
 
-    // Numbers coming back from Postgres numeric columns are often
-    // serialized as strings by the client. Coerce everything so
-    // arithmetic and comparisons behave correctly.
     function num(v, fallback = 0) {
         const n = typeof v === 'string' ? parseFloat(v) : v;
         return Number.isFinite(n) ? n : fallback;
@@ -906,125 +923,111 @@
     const fmtKShs = (n) => kesFormatter.format(num(n));
     const fmtKShsInt = (n) => kesFormatterInt.format(num(n));
 
-    // ---------------------------------------------------------------
-    // State
-    // ---------------------------------------------------------------
+    // ─── State ──────────────────────────────────────────────────
     let categories = [];
     let routes = [];
     let selectedFuel = 'all';
     let allVariants = [];
     let dataLoaded = false;
 
-    function withTimeout(promise, ms) {
-        return Promise.race([
-            promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), ms))
-        ]);
+    // ─── Toast / Error handling ──────────────────────────────
+    function showToast(message, type = 'info') {
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.className = `toast toast-${type}`;
+        div.textContent = message;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 5000);
     }
 
-    // ---------------------------------------------------------------
-    // Data fetching
-    // ---------------------------------------------------------------
+    function showFatalError(message) {
+        dbStatus.textContent = '● Error';
+        dbStatus.style.color = 'var(--rust)';
+        categorySelect.innerHTML = '';
+        categorySelect.disabled = true;
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Unable to load data';
+        categorySelect.appendChild(opt);
+        variantSelect.innerHTML = '<option value="">Unable to load data</option>';
+        variantSelect.disabled = true;
+        resetResults(escapeHtml(message));
+        showToast('❌ ' + message, 'error');
+    }
+
+    // ─── Data fetching from FastAPI ──────────────────────────
     async function fetchData() {
         dbStatus.textContent = '● Fetching...';
         dbStatus.style.color = 'var(--amber)';
 
-        const { data: columnsData, error: columnsError } = await withTimeout(
-            _supabase.from('vehicle_categories').select('*').limit(1),
-            FETCH_TIMEOUT_MS
-        );
-        if (columnsError) throw columnsError;
+        try {
+            // Fetch categories with their variants from backend
+            const categoriesData = await api.get('/mileage/categories');
+            
+            if (!categoriesData || !categoriesData.length) {
+                throw new Error('No categories found in backend');
+            }
 
-        const sample = columnsData && columnsData[0] ? columnsData[0] : {};
-        const categoryNameCol = ['name', 'label', 'category_name'].find(c => Object.prototype.hasOwnProperty.call(sample, c)) || 'name';
-        const fuelCol = ['fuel_type', 'fuel'].find(c => Object.prototype.hasOwnProperty.call(sample, c)) || null;
+            // Fetch routes
+            const routesData = await api.get('/mileage/routes');
+            routes = routesData || [];
 
-        const [categoriesRes, routesRes, variantsRes, componentsRes] = await withTimeout(
-            Promise.all([
-                _supabase.from('vehicle_categories').select('*').order(categoryNameCol),
-                _supabase.from('routes').select('*').order('km'),
-                _supabase.from('vehicle_variants').select('*'),
-                _supabase.from('running_cost_components').select('*')
-            ]),
-            FETCH_TIMEOUT_MS
-        );
+            // Transform backend data to match frontend format
+            categories = categoriesData.map(cat => ({
+                id: cat.id,
+                label: cat.name || 'Unnamed category',
+                fuel_type: cat.fuel_type || '—',
+                variants: (cat.variants || []).map(v => ({
+                    id: v.id,
+                    label: v.engine_class || v.name || 'Unnamed variant',
+                    category_id: cat.id,
+                    category_name: cat.name || 'Unknown',
+                    fixed_per_km: num(v.fixed_per_km),
+                    operating_per_km: num(v.operating_per_km),
+                    total_per_km: num(v.total_per_km),
+                    initial_cost: num(v.initial_cost),
+                    year1: num(v.year1 || v.total_per_km),
+                    year2: num(v.year2 || v.total_per_km),
+                    year3: num(v.year3 || v.total_per_km),
+                    year4: num(v.year4 || v.total_per_km),
+                    year5: num(v.year5 || v.total_per_km),
+                    components: {
+                        insurance: num(v.insurance),
+                        depreciation: num(v.depreciation),
+                        interest: num(v.interest),
+                        fuel: num(v.fuel_per_km || v.fuel),
+                        servicing: num(v.servicing),
+                        repairs: num(v.repairs),
+                        tyres: num(v.tyres),
+                        licences: num(v.licences)
+                    }
+                }))
+            }));
 
-        if (categoriesRes.error) throw categoriesRes.error;
-        if (routesRes.error) throw routesRes.error;
-        if (variantsRes.error) throw variantsRes.error;
-        if (componentsRes.error) throw componentsRes.error;
+            // Build flat list of all variants for "Show All" mode
+            allVariants = [];
+            categories.forEach(cat => {
+                cat.variants.forEach(v => {
+                    allVariants.push({
+                        ...v,
+                        fuel_type: cat.fuel_type
+                    });
+                });
+            });
 
-        const rawCategories = categoriesRes.data || [];
-        routes = (routesRes.data || []).filter(r => r && num(r.km) > 0);
-        const variants = variantsRes.data || [];
-        const components = componentsRes.data || [];
+            dataLoaded = true;
+            dbStatus.textContent = '● Connected';
+            dbStatus.style.color = 'var(--green)';
+            showToast('✅ Data loaded from backend', 'success');
 
-        const variantSample = variants[0] || {};
-        const variantNameCol = ['name', 'label', 'variant_name'].find(c => Object.prototype.hasOwnProperty.call(variantSample, c)) || 'name';
-
-        function buildComponents(variantId) {
-            const comp = components.find(c => c.variant_id === variantId) || {};
-            return {
-                insurance: num(comp.insurance),
-                depreciation: num(comp.depreciation),
-                interest: num(comp.interest),
-                fuel: num(comp.fuel),
-                servicing: num(comp.servicing),
-                repairs: num(comp.repairs),
-                tyres: num(comp.tyres),
-                licences: num(comp.licences)
-            };
+        } catch (error) {
+            console.error('Failed to fetch data:', error);
+            throw new Error(error.message || 'Failed to load vehicle data from backend');
         }
-
-        function buildVariant(v, categoryLabel) {
-            const totalPerKm = num(v.total_per_km ?? v.total_rate);
-            return {
-                id: v.id,
-                label: v[variantNameCol] || 'Unnamed variant',
-                category_id: v.category_id,
-                category_name: categoryLabel,
-                fixed_per_km: num(v.fixed_per_km ?? v.fixed_cost),
-                operating_per_km: num(v.operating_per_km ?? v.operating_cost),
-                total_per_km: totalPerKm,
-                initial_cost: num(v.initial_cost),
-                year1: num(v.year1 ?? totalPerKm),
-                year2: num(v.year2 ?? totalPerKm),
-                year3: num(v.year3 ?? totalPerKm),
-                year4: num(v.year4 ?? totalPerKm),
-                year5: num(v.year5 ?? totalPerKm),
-                components: buildComponents(v.id)
-            };
-        }
-
-        categories = rawCategories.map(cat => ({
-            ...cat,
-            label: cat[categoryNameCol] || 'Unnamed category',
-            fuel_type: fuelCol ? (cat[fuelCol] || '—') : '—',
-        }));
-
-        const categoryById = new Map(categories.map(c => [c.id, c]));
-
-        allVariants = variants.map(v => {
-            const cat = categoryById.get(v.category_id);
-            const built = buildVariant(v, cat ? cat.label : 'Unknown');
-            built.fuel_type = cat ? cat.fuel_type : '—';
-            return built;
-        });
-
-        categories.forEach(cat => {
-            cat.variants = allVariants
-                .filter(v => v.category_id === cat.id)
-                .map(v => ({ ...v })); // shallow copy, category_id/fuel_type retained but unused here
-        });
-
-        dataLoaded = true;
-        dbStatus.textContent = '● Connected';
-        dbStatus.style.color = 'var(--green)';
     }
 
-    // ---------------------------------------------------------------
-    // Rendering: selects & routes
-    // ---------------------------------------------------------------
+    // ─── Rendering ──────────────────────────────────────────────
     function populateCategories() {
         categorySelect.innerHTML = '';
         const defaultOpt = document.createElement('option');
@@ -1140,9 +1143,7 @@
         });
     }
 
-    // ---------------------------------------------------------------
-    // Vehicle lookup
-    // ---------------------------------------------------------------
+    // ─── Vehicle lookup ──────────────────────────────────────────
     function getSelectedVehicle() {
         const variantId = variantSelect.value;
         if (!variantId) return null;
@@ -1156,9 +1157,7 @@
         return { category, variant };
     }
 
-    // ---------------------------------------------------------------
-    // Validation
-    // ---------------------------------------------------------------
+    // ─── Validation ──────────────────────────────────────────────
     function validateDistance() {
         const raw = distanceInput.value;
         const val = parseFloat(raw);
@@ -1178,9 +1177,7 @@
         return true;
     }
 
-    // ---------------------------------------------------------------
-    // Calculation / rendering results
-    // ---------------------------------------------------------------
+    // ─── Calculation / rendering results ──────────────────────
     function resetResults(message) {
         $('vehicleLabel').textContent = '—';
         $('fuelPill').textContent = '—';
@@ -1275,9 +1272,7 @@
         shareBtn.disabled = false;
     }
 
-    // ---------------------------------------------------------------
-    // Share / print
-    // ---------------------------------------------------------------
+    // ─── Share / print ──────────────────────────────────────────
     function shareReport() {
         const vehicle = $('vehicleLabel').textContent;
         if (vehicle === '—') return;
@@ -1292,7 +1287,7 @@
         }
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(shareText)
-                .then(() => alert('✅ Report copied to clipboard!'))
+                .then(() => showToast('✅ Report copied to clipboard!', 'success'))
                 .catch(() => openShareFallbackWindow(shareText));
             return;
         }
@@ -1313,36 +1308,7 @@
         win.document.body.appendChild(btn);
     }
 
-    // ---------------------------------------------------------------
-    // Error / loading UI
-    // ---------------------------------------------------------------
-    function showFatalError(message) {
-        dbStatus.textContent = '● Error';
-        dbStatus.style.color = 'var(--rust)';
-        categorySelect.innerHTML = '';
-        categorySelect.disabled = true;
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'Unable to load data';
-        categorySelect.appendChild(opt);
-        variantSelect.innerHTML = '<option value="">Unable to load data</option>';
-        variantSelect.disabled = true;
-        resetResults(escapeHtml(message));
-
-        if (!$('retryBtn')) {
-            const retry = document.createElement('button');
-            retry.id = 'retryBtn';
-            retry.type = 'button';
-            retry.className = 'action-btn retry';
-            retry.textContent = '🔄 Retry';
-            retry.addEventListener('click', () => location.reload());
-            document.querySelector('.calculator-panel').appendChild(retry);
-        }
-    }
-
-    // ---------------------------------------------------------------
-    // Event wiring
-    // ---------------------------------------------------------------
+    // ─── Event wiring ──────────────────────────────────────────
     document.querySelectorAll('.fuel-filter-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             document.querySelectorAll('.fuel-filter-btn').forEach(b => {
@@ -1381,9 +1347,7 @@
     printBtn.addEventListener('click', () => window.print());
     shareBtn.addEventListener('click', shareReport);
 
-    // ---------------------------------------------------------------
-    // Init
-    // ---------------------------------------------------------------
+    // ─── Init ────────────────────────────────────────────────────
     (async function init() {
         try {
             await fetchData();
