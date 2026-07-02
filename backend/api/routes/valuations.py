@@ -1,99 +1,41 @@
 """
-Valuation Routes - FastAPI Version
+Valuation Routes - FastAPI Backend
 Vehicle valuation creation, retrieval, quick estimates, and statistics
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
 import logging
+import re
 
-from app.core.database import supabase
-from app.core.dependencies import get_current_user, get_current_user_optional
+from app.core.database import execute_query, get_db
+from app.core.dependencies import get_current_user, get_current_active_user, require_role
 from app.services.valuation import calculate_value, get_valuation_price, validate_valuation_data
 from app.services.carapi_service import get_carapi_service
 from app.services.vin_validator import vin_validator
 from app.utils.decorators import rate_limit, require_auth, require_role, log_request, handle_errors
+from app.models.valuation import (
+    ValuationVehicleData,
+    ValuationRequest,
+    ValuationUpdate,
+    ValuationResponse,
+    ValuationListResponse,
+    QuickEstimateRequest,
+    ValuationStatsResponse,
+    ValuationPriceResponse
+)
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/valuations", tags=["Valuations"])
+router = APIRouter(prefix="/api/v1/valuations", tags=["Valuations"])
 
+# ─── Constants ──────────────────────────────────────────────────
 
-# ─── Pydantic Models ──────────────────────────────────────────
-
-class ValuationVehicleData(BaseModel):
-    """Valuation vehicle data model"""
-    make: str = Field(..., description="Vehicle make")
-    model: str = Field(..., description="Vehicle model")
-    year: int = Field(..., description="Vehicle year")
-    vin: Optional[str] = Field(None, description="Vehicle VIN")
-    registration_number: Optional[str] = Field(None, description="Vehicle registration")
-    odometer: Optional[int] = Field(0, description="Vehicle odometer")
-    condition: Optional[str] = Field("Good", description="Vehicle condition")
-    accident_history: Optional[str] = Field("None", description="Accident history")
-    service_history: Optional[str] = Field("Full", description="Service history")
-    owners: Optional[int] = Field(1, description="Number of owners")
-    usage: Optional[str] = Field("Personal", description="Usage type")
-    import_status: Optional[str] = Field("Local", description="Import status")
-    warranty: Optional[str] = Field("Expired", description="Warranty status")
-    modifications: Optional[str] = Field("None", description="Modifications")
-    region: Optional[str] = Field("Nairobi", description="Region")
-    engine_cc: Optional[int] = Field(None, description="Engine capacity")
-    fuel_type: Optional[str] = Field(None, description="Fuel type")
-    transmission: Optional[str] = Field(None, description="Transmission type")
-    color: Optional[str] = Field(None, description="Vehicle color")
-    
-    @validator('vin')
-    def validate_vin(cls, v):
-        if v and len(v) != 17:
-            raise ValueError('VIN must be 17 characters')
-        return v.upper() if v else v
-    
-    @validator('year')
-    def validate_year(cls, v):
-        if v < 1900 or v > datetime.now().year + 1:
-            raise ValueError(f'Year must be between 1900 and {datetime.now().year + 1}')
-        return v
-
-
-class ValuationRequest(BaseModel):
-    """Valuation request model"""
-    vehicle_data: ValuationVehicleData = Field(..., description="Vehicle data")
-    purpose: Optional[str] = Field("market_value", description="Valuation purpose")
-    methodology: Optional[str] = Field("market_comparison", description="Valuation methodology")
-    inspector: Optional[Dict[str, Any]] = Field(None, description="Inspector data")
-    notes: Optional[str] = Field(None, description="Additional notes")
-
-
-class ValuationUpdate(BaseModel):
-    """Valuation update model"""
-    status: Optional[str] = None
-    notes: Optional[str] = None
-    result: Optional[Dict[str, Any]] = None
-
-
-class ValuationResponse(BaseModel):
-    """Valuation response model"""
-    success: bool
-    data: Optional[Dict[str, Any]] = None
-    valuation: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    count: Optional[int] = None
-    timestamp: Optional[str] = None
-
-
-class QuickEstimateRequest(BaseModel):
-    """Quick estimate request model"""
-    make: str = Field(..., description="Vehicle make")
-    model: str = Field(..., description="Vehicle model")
-    year: int = Field(..., description="Vehicle year")
-    odometer: Optional[int] = Field(0, description="Vehicle odometer")
-    condition: Optional[str] = Field("good", description="Vehicle condition")
-    region: Optional[str] = Field("nairobi", description="Region")
-
+VALUATION_PURPOSES = ["market_value", "insurance", "forced_sale", "trade_in", "private_sale", "finance", "lease", "export"]
+VALUATION_METHODOLOGIES = ["market_comparison", "cost_approach", "income_approach", "hybrid", "quick_estimate"]
 
 # ─── Helper Functions ──────────────────────────────────────────
 
@@ -101,11 +43,9 @@ def format_timestamp() -> str:
     """Get formatted timestamp."""
     return datetime.now().isoformat()
 
-
 def generate_certificate_number() -> str:
     """Generate a unique certificate number."""
     return f"VAL-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
-
 
 def get_default_inspector(user: dict) -> Dict[str, Any]:
     """Get default inspector data from user."""
@@ -116,6 +56,59 @@ def get_default_inspector(user: dict) -> Dict[str, Any]:
         "license_number": user.get("license_number", "N/A")
     }
 
+def build_valuation_query(user_id: str, filters: Dict[str, Any] = None):
+    """Build valuation query with filters."""
+    query = """
+        SELECT * FROM service_requests 
+        WHERE user_id = $1 AND service_type = 'valuation'
+    """
+    params = [user_id]
+    param_count = 1
+    
+    if filters:
+        if filters.get('status'):
+            param_count += 1
+            query += f" AND status = ${param_count}"
+            params.append(filters['status'])
+        
+        if filters.get('purpose'):
+            param_count += 1
+            query += f" AND valuation_purpose = ${param_count}"
+            params.append(filters['purpose'])
+        
+        if filters.get('make'):
+            param_count += 1
+            query += f" AND make ILIKE $${param_count}"
+            params.append(f"%{filters['make']}%")
+        
+        if filters.get('model'):
+            param_count += 1
+            query += f" AND model ILIKE $${param_count}"
+            params.append(f"%{filters['model']}%")
+        
+        if filters.get('registration_number'):
+            param_count += 1
+            query += f" AND registration_number ILIKE $${param_count}"
+            params.append(f"%{filters['registration_number']}%")
+        
+        if filters.get('vin'):
+            param_count += 1
+            query += f" AND vin ILIKE $${param_count}"
+            params.append(f"%{filters['vin']}%")
+        
+        if filters.get('date_from'):
+            param_count += 1
+            query += f" AND created_at >= $${param_count}"
+            params.append(filters['date_from'])
+        
+        if filters.get('date_to'):
+            param_count += 1
+            query += f" AND created_at <= $${param_count}"
+            params.append(filters['date_to'])
+    
+    query += " ORDER BY created_at DESC"
+    
+    return query, params
 
 # ─── Routes ──────────────────────────────────────────────────
 
@@ -126,7 +119,7 @@ def get_default_inspector(user: dict) -> Dict[str, Any]:
 @handle_errors
 async def create_valuation(
     request: ValuationRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Create a new vehicle valuation.
@@ -142,11 +135,17 @@ async def create_valuation(
     - `success`: Boolean indicating success
     - `data`: Valuation record
     - `valuation`: Valuation results
-    - `error`: Error message if unsuccessful
     """
     try:
         vehicle_data = request.vehicle_data.dict()
         purpose = request.purpose or "market_value"
+        
+        # Validate purpose
+        if purpose not in VALUATION_PURPOSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid purpose. Must be one of: {', '.join(VALUATION_PURPOSES)}"
+            )
         
         # If VIN provided, try to auto-fill
         vin = vehicle_data.get('vin')
@@ -170,17 +169,17 @@ async def create_valuation(
         required = ['make', 'model', 'year']
         for field in required:
             if not vehicle_data.get(field):
-                return ValuationResponse(
-                    success=False,
-                    error=f"Missing field: {field}"
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Missing field: {field}"
                 )
         
         # Validate data
         is_valid, error = validate_valuation_data(vehicle_data)
         if not is_valid:
-            return ValuationResponse(
-                success=False,
-                error=error
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error
             )
         
         # Get inspector from data or use default
@@ -210,25 +209,25 @@ async def create_valuation(
                 current_year=datetime.now().year
             )
         except ValueError as e:
-            return ValuationResponse(
-                success=False,
-                error=f"Invalid numeric value: {str(e)}"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid numeric value: {str(e)}"
             )
         except Exception as e:
             logger.error(f"Valuation calculation error: {e}")
-            return ValuationResponse(
-                success=False,
-                error="Valuation calculation failed"
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Valuation calculation failed"
             )
         
         # Generate certificate number
         certificate_number = generate_certificate_number()
         result['certificate_number'] = certificate_number
-        result['user_id'] = current_user.get('id')
+        result['user_id'] = current_user['id']
         
         # Prepare request data
         request_data = {
-            'user_id': current_user.get('id'),
+            'user_id': current_user['id'],
             'service_type': 'valuation',
             'registration_number': vehicle_data.get('registration_number'),
             'vin': vehicle_data.get('vin'),
@@ -251,29 +250,44 @@ async def create_valuation(
             'completed_at': format_timestamp()
         }
         
-        # Save to Supabase
-        response = supabase.table('service_requests').insert(request_data).execute()
+        # Insert into database
+        columns = ', '.join(request_data.keys())
+        placeholders = ', '.join([f'${i+1}' for i in range(len(request_data))])
+        values = list(request_data.values())
         
-        if not response.data:
-            logger.error(f"Failed to save valuation for user {current_user.get('id')}")
-            return ValuationResponse(
-                success=False,
-                error="Failed to save valuation"
+        query = f"""
+            INSERT INTO service_requests ({columns}) 
+            VALUES ({placeholders}) 
+            RETURNING id, created_at
+        """
+        
+        db_result = await execute_query(query, values)
+        
+        if not db_result or len(db_result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save valuation"
             )
+        
+        valuation_record = db_result[0]
+        request_data['id'] = valuation_record['id']
+        request_data['created_at'] = valuation_record['created_at']
         
         return ValuationResponse(
             success=True,
-            data=response.data[0],
+            data=request_data,
             valuation=result,
             message="Valuation created successfully",
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Create valuation error: {str(e)}", exc_info=True)
-        return ValuationResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create valuation: {str(e)}"
         )
 
 
@@ -284,7 +298,7 @@ async def create_valuation(
 @handle_errors
 async def get_valuation(
     valuation_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get valuation by ID.
@@ -295,28 +309,29 @@ async def get_valuation(
     **Response:**
     - `success`: Boolean indicating success
     - `data`: Valuation data
-    - `error`: Error message if unsuccessful
     """
     try:
-        # Get valuation from database
-        response = supabase.table('service_requests') \
-            .select('*') \
-            .eq('id', valuation_id) \
-            .execute()
+        # Query valuation from database
+        query = """
+            SELECT * FROM service_requests 
+            WHERE id = $1 AND service_type = 'valuation'
+        """
         
-        if not response.data:
-            return ValuationResponse(
-                success=False,
-                error="Valuation not found"
+        result = await execute_query(query, [valuation_id])
+        
+        if not result or len(result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Valuation not found"
             )
         
-        valuation = response.data[0]
+        valuation = result[0]
         
         # Check permissions
-        if valuation.get('user_id') != current_user.get('id') and current_user.get('role') not in ["admin", "super_admin"]:
-            return ValuationResponse(
-                success=False,
-                error="Access denied"
+        if valuation['user_id'] != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
             )
         
         return ValuationResponse(
@@ -325,15 +340,17 @@ async def get_valuation(
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get valuation error: {str(e)}", exc_info=True)
-        return ValuationResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve valuation: {str(e)}"
         )
 
 
-@router.get("/user/{user_id}", response_model=ValuationResponse)
+@router.get("/user/{user_id}", response_model=ValuationListResponse)
 @rate_limit(limit=30, per=60)
 @require_auth
 @log_request
@@ -342,7 +359,13 @@ async def get_user_valuations(
     user_id: str,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(get_current_user)
+    status: Optional[str] = Query(None),
+    purpose: Optional[str] = Query(None),
+    make: Optional[str] = Query(None),
+    model: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get all valuations for a user.
@@ -351,48 +374,83 @@ async def get_user_valuations(
     - `user_id`: User ID
     
     **Query Parameters:**
-    - `limit`: Number of results to return (default: 50)
+    - `limit`: Number of results to return (default: 50, max: 100)
     - `offset`: Number of results to skip (default: 0)
+    - `status`: Filter by status
+    - `purpose`: Filter by purpose
+    - `make`: Filter by vehicle make
+    - `model`: Filter by vehicle model
+    - `date_from`: Filter from date
+    - `date_to`: Filter to date
     
     **Response:**
     - `success`: Boolean indicating success
     - `data`: List of valuations
-    - `count`: Total count
-    - `error`: Error message if unsuccessful
+    - `total`: Total count
     """
     try:
         # Check permissions
-        if user_id != current_user.get('id') and current_user.get('role') not in ["admin", "super_admin"]:
-            return ValuationResponse(
-                success=False,
-                error="Access denied"
+        if user_id != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
             )
         
-        # Get valuations from database
-        response = supabase.table('service_requests') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .eq('service_type', 'valuation') \
-            .order('created_at', desc=True) \
-            .range(offset, offset + limit - 1) \
-            .execute()
+        # Build filters
+        filters = {
+            'status': status,
+            'purpose': purpose,
+            'make': make,
+            'model': model,
+            'date_from': date_from,
+            'date_to': date_to
+        }
+        filters = {k: v for k, v in filters.items() if v is not None}
         
-        return ValuationResponse(
+        # Get total count
+        count_query = """
+            SELECT COUNT(*) as total FROM service_requests 
+            WHERE user_id = $1 AND service_type = 'valuation'
+        """
+        count_params = [user_id]
+        
+        if status:
+            count_query += " AND status = $2"
+            count_params.append(status)
+        if purpose:
+            count_query += " AND valuation_purpose = $3"
+            count_params.append(purpose)
+        
+        count_result = await execute_query(count_query, count_params)
+        total = count_result[0]['total'] if count_result else 0
+        
+        # Get valuations with pagination
+        query, params = build_valuation_query(user_id, filters)
+        query += f" LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}"
+        params.extend([limit, offset])
+        
+        result = await execute_query(query, params)
+        
+        return ValuationListResponse(
             success=True,
-            data=response.data,
-            count=len(response.data),
+            data=result or [],
+            total=total,
+            limit=limit,
+            offset=offset,
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get user valuations error: {str(e)}", exc_info=True)
-        return ValuationResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve valuations: {str(e)}"
         )
 
 
-@router.get("/vehicle/{vin}", response_model=ValuationResponse)
+@router.get("/vehicle/{vin}", response_model=ValuationListResponse)
 @rate_limit(limit=30, per=60)
 @require_auth
 @log_request
@@ -400,7 +458,7 @@ async def get_user_valuations(
 async def get_valuations_by_vin(
     vin: str,
     limit: int = Query(10, ge=1, le=50),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get valuations for a vehicle by VIN.
@@ -411,33 +469,44 @@ async def get_valuations_by_vin(
     **Response:**
     - `success`: Boolean indicating success
     - `data`: List of valuations
-    - `count`: Total count
-    - `error`: Error message if unsuccessful
+    - `total`: Total count
     """
     try:
         vin = vin.upper().strip()
         
-        # Get valuations from database
-        response = supabase.table('service_requests') \
-            .select('*') \
-            .eq('vin', vin) \
-            .eq('service_type', 'valuation') \
-            .order('created_at', desc=True) \
-            .limit(limit) \
-            .execute()
+        # Validate VIN
+        if not vin_validator.is_valid(vin):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid VIN format"
+            )
         
-        return ValuationResponse(
+        # Get valuations from database
+        query = """
+            SELECT * FROM service_requests 
+            WHERE vin = $1 AND service_type = 'valuation'
+            ORDER BY created_at DESC
+            LIMIT $2
+        """
+        
+        result = await execute_query(query, [vin, limit])
+        
+        return ValuationListResponse(
             success=True,
-            data=response.data,
-            count=len(response.data),
+            data=result or [],
+            total=len(result) if result else 0,
+            limit=limit,
+            offset=0,
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Get valuations by VIN error: {str(e)}", exc_info=True)
-        return ValuationResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve valuations: {str(e)}"
         )
 
 
@@ -448,7 +517,7 @@ async def get_valuations_by_vin(
 @handle_errors
 async def quick_estimate(
     request: QuickEstimateRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Quick valuation estimate (for instant check).
@@ -464,14 +533,13 @@ async def quick_estimate(
     **Response:**
     - `success`: Boolean indicating success
     - `data`: Quick estimate results
-    - `error`: Error message if unsuccessful
     """
     try:
         # Validate required fields
         if not request.make or not request.model or not request.year:
-            return ValuationResponse(
-                success=False,
-                error="Make, model, and year are required"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Make, model, and year are required"
             )
         
         # Calculate quick estimate
@@ -501,85 +569,113 @@ async def quick_estimate(
                 "market_value": result.get("market_value", 0),
                 "insurance_value": result.get("insurance_value", 0),
                 "forced_sale_value": result.get("forced_sale_value", 0),
-                "confidence_score": result.get("confidence_score", 0)
+                "trade_in_value": result.get("trade_in_value", 0),
+                "confidence_score": result.get("confidence_score", 0),
+                "estimated_range": {
+                    "low": result.get("market_value", 0) * 0.9,
+                    "high": result.get("market_value", 0) * 1.1
+                }
             },
+            message="Quick estimate completed",
             timestamp=format_timestamp()
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Quick estimate error: {str(e)}", exc_info=True)
-        return ValuationResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate quick estimate: {str(e)}"
         )
 
 
-@router.get("/stats", response_model=ValuationResponse)
+@router.get("/stats", response_model=ValuationStatsResponse)
 @rate_limit(limit=20, per=60)
 @require_auth
 @log_request
 @handle_errors
 async def get_valuation_stats(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get valuation statistics.
     
     **Response:**
     - `success`: Boolean indicating success
-    - `data`: Statistics (total, completed, pending, etc.)
-    - `error`: Error message if unsuccessful
+    - `data`: Statistics (total, completed, pending, avg_value, by_purpose, by_year)
     """
     try:
-        # Get valuations from database
-        response = supabase.table('service_requests') \
-            .select('*') \
-            .eq('user_id', current_user.get('id')) \
-            .eq('service_type', 'valuation') \
-            .execute()
+        # Get all valuations for user
+        query = """
+            SELECT * FROM service_requests 
+            WHERE user_id = $1 AND service_type = 'valuation'
+        """
         
-        total = len(response.data)
-        completed = len([r for r in response.data if r.get('status') == 'completed'])
-        pending = total - completed
+        result = await execute_query(query, [current_user['id']])
+        valuations = result or []
+        
+        total = len(valuations)
+        completed = len([r for r in valuations if r.get('status') == 'completed'])
+        pending = len([r for r in valuations if r.get('status') == 'pending'])
+        processing = len([r for r in valuations if r.get('status') == 'processing'])
+        failed = len([r for r in valuations if r.get('status') == 'failed'])
         
         # Calculate average values
         total_value = 0
         value_count = 0
-        for r in response.data:
-            result = r.get('result', {})
-            if result.get('market_value'):
-                total_value += result.get('market_value', 0)
+        by_purpose = {}
+        by_year = {}
+        
+        for r in valuations:
+            # By purpose
+            purpose = r.get('valuation_purpose', 'Unknown')
+            by_purpose[purpose] = by_purpose.get(purpose, 0) + 1
+            
+            # By year
+            year = r.get('year', 0)
+            if year:
+                by_year[str(year)] = by_year.get(str(year), 0) + 1
+            
+            # Values
+            result_data = r.get('result', {})
+            if result_data.get('market_value'):
+                total_value += result_data.get('market_value', 0)
                 value_count += 1
         
         avg_value = total_value / value_count if value_count > 0 else 0
         
-        return ValuationResponse(
+        return ValuationStatsResponse(
             success=True,
             data={
-                "total": total,
-                "completed": completed,
-                "pending": pending,
-                "avg_value": avg_value,
-                "total_value": total_value
+                'total': total,
+                'completed': completed,
+                'pending': pending,
+                'processing': processing,
+                'failed': failed,
+                'avg_value': avg_value,
+                'total_value': total_value,
+                'by_purpose': by_purpose,
+                'by_year': by_year
             },
             timestamp=format_timestamp()
         )
         
     except Exception as e:
         logger.error(f"Valuation stats error: {str(e)}", exc_info=True)
-        return ValuationResponse(
-            success=False,
-            error=str(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get valuation stats: {str(e)}"
         )
 
 
-@router.get("/prices", response_model=ValuationResponse)
+@router.get("/prices", response_model=ValuationPriceResponse)
 @rate_limit(limit=20, per=60)
 @require_auth
 @log_request
 @handle_errors
 async def get_valuation_prices(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Get valuation prices by purpose.
@@ -600,7 +696,7 @@ async def get_valuation_prices(
             "export": get_valuation_price("export")
         }
         
-        return ValuationResponse(
+        return ValuationPriceResponse(
             success=True,
             data=prices,
             timestamp=format_timestamp()
@@ -608,9 +704,75 @@ async def get_valuation_prices(
         
     except Exception as e:
         logger.error(f"Get valuation prices error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get valuation prices: {str(e)}"
+        )
+
+
+@router.delete("/{valuation_id}", response_model=ValuationResponse)
+@rate_limit(limit=5, per=60)
+@require_auth
+@log_request
+@handle_errors
+async def delete_valuation(
+    valuation_id: str,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """
+    Delete valuation.
+    
+    **Path Parameter:**
+    - `valuation_id`: Valuation ID to delete
+    
+    **Response:**
+    - `success`: Boolean indicating success
+    - `message`: Status message
+    """
+    try:
+        # Check if valuation exists
+        check_query = """
+            SELECT * FROM service_requests 
+            WHERE id = $1 AND service_type = 'valuation'
+        """
+        check_result = await execute_query(check_query, [valuation_id])
+        
+        if not check_result or len(check_result) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Valuation not found"
+            )
+        
+        valuation = check_result[0]
+        
+        # Check permissions
+        if valuation['user_id'] != current_user['id'] and current_user['role'] not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Delete valuation
+        delete_query = """
+            DELETE FROM service_requests 
+            WHERE id = $1 AND service_type = 'valuation'
+        """
+        
+        await execute_query(delete_query, [valuation_id])
+        
         return ValuationResponse(
-            success=False,
-            error=str(e)
+            success=True,
+            message="Valuation deleted successfully",
+            timestamp=format_timestamp()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete valuation error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete valuation: {str(e)}"
         )
 
 
