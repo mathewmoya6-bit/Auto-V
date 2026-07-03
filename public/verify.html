@@ -5,11 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Certificate Verification</title>
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    <script src="js/loading.js"></script>
-    
     <style>
         * {
             margin: 0;
@@ -311,10 +306,10 @@
 (function() {
     'use strict';
 
-    // ─── CONFIG ──────────────────────────────────────────────────
-    const API_BASE = 'http://localhost:8000/api';
+    // ─── PRODUCTION CONFIG ──────────────────────────────────────────
+    const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
 
-    // ─── Toast helper ──────────────────────────────────────────
+    // ─── Toast helper ──────────────────────────────────────────────
     function showToast(message, type = 'success') {
         const existing = document.querySelector('.toast');
         if (existing) existing.remove();
@@ -325,21 +320,59 @@
         setTimeout(() => div.remove(), 3500);
     }
 
-    // ─── Token helpers ──────────────────────────────────────────
+    // ─── Token helpers ──────────────────────────────────────────────
     function getAuthToken() {
         return localStorage.getItem('access_token');
     }
 
     function getAuthHeaders() {
         const token = getAuthToken();
-        return {
+        const headers = {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` })
         };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
     }
 
-    // ─── VERIFY CERTIFICATE ──────────────────────────────────
+    // ─── API Client ──────────────────────────────────────────────────
+    async function apiRequest(endpoint, options = {}) {
+        const url = `${API_BASE}${endpoint}`;
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            ...options.headers,
+        };
+
+        const token = getAuthToken();
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include',
+            mode: 'cors',
+        });
+
+        if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.detail || errorData.message || errorMessage;
+            } catch (e) {
+                errorMessage = await response.text() || errorMessage;
+            }
+            throw new Error(errorMessage);
+        }
+
+        return response.json();
+    }
+
+    // ─── VERIFY CERTIFICATE ──────────────────────────────────────────
     async function verifyCertificate() {
         const codeInput = document.getElementById('verificationCode');
         const code = codeInput.value.trim();
@@ -354,6 +387,7 @@
         
         if (!code) {
             codeError.style.display = 'block';
+            codeInput.focus();
             return;
         }
         
@@ -361,23 +395,10 @@
         verifyBtn.innerHTML = '<span class="spinner"></span> Verifying...';
         
         try {
-            // Call backend to verify certificate
-            const response = await fetch(`${API_BASE}/certificates/verify/${encodeURIComponent(code)}`, {
-                method: 'GET',
-                headers: getAuthHeaders()
+            const certificate = await apiRequest(`/certificates/verify/${encodeURIComponent(code)}`, {
+                method: 'GET'
             });
 
-            if (!response.ok) {
-                if (response.status === 404) {
-                    showInvalidResult('Certificate not found', 'The verification code you entered is invalid. Please check and try again.');
-                    return;
-                }
-                const err = await response.json();
-                throw new Error(err.detail || 'Verification failed');
-            }
-
-            const certificate = await response.json();
-            
             // Check validity
             const now = new Date();
             const validUntil = new Date(certificate.valid_until);
@@ -386,20 +407,29 @@
             // Show result
             if (isValid) {
                 showValidResult(certificate);
+                showToast('✅ Certificate verified successfully!', 'success');
             } else {
                 showExpiredResult(certificate);
+                showToast('⚠️ Certificate has expired', 'warning');
             }
             
         } catch (error) {
             console.error('Verification error:', error);
-            showInvalidResult('Verification Error', error.message || 'An error occurred while verifying. Please try again.');
+            
+            if (error.message.includes('404')) {
+                showInvalidResult('Certificate Not Found', 'The verification code you entered is invalid. Please check and try again.');
+            } else if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+                showInvalidResult('Network Error', 'Unable to connect to the verification server. Please check your connection.');
+            } else {
+                showInvalidResult('Verification Error', error.message || 'An error occurred while verifying. Please try again.');
+            }
         } finally {
             verifyBtn.disabled = false;
             verifyBtn.innerHTML = 'Verify Certificate';
         }
     }
 
-    // ─── SHOW VALID RESULT ──────────────────────────────────
+    // ─── SHOW VALID RESULT ──────────────────────────────────────────
     function showValidResult(certificate) {
         const resultDiv = document.getElementById('result');
         const resultHeader = document.getElementById('resultHeader');
@@ -458,7 +488,7 @@
         resultDiv.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // ─── SHOW EXPIRED RESULT ──────────────────────────────────
+    // ─── SHOW EXPIRED RESULT ──────────────────────────────────────────
     function showExpiredResult(certificate) {
         const resultDiv = document.getElementById('result');
         const resultHeader = document.getElementById('resultHeader');
@@ -500,7 +530,7 @@
         resultDiv.style.display = 'block';
     }
 
-    // ─── SHOW INVALID RESULT ──────────────────────────────────
+    // ─── SHOW INVALID RESULT ──────────────────────────────────────────
     function showInvalidResult(title, message) {
         const resultDiv = document.getElementById('result');
         const resultHeader = document.getElementById('resultHeader');
@@ -510,15 +540,14 @@
         resultHeader.innerHTML = `❌ ${title}`;
         resultDetails.innerHTML = `<p style="text-align: center;">${message}</p>`;
         resultDiv.style.display = 'block';
-        showToast(message, 'error');
     }
 
-    // ─── SCAN QR CODE FROM FILE ──────────────────────────────────
+    // ─── SCAN QR CODE FROM FILE ──────────────────────────────────────
     function scanQRFromFile() {
         document.getElementById('qrImage').click();
     }
 
-    // ─── DECODE QR CODE ──────────────────────────────────────────
+    // ─── DECODE QR CODE ──────────────────────────────────────────────
     async function decodeQRCode(input) {
         const file = input.files[0];
         if (!file) return;
@@ -541,7 +570,7 @@
             });
             
             if (!response.ok) {
-                const err = await response.json();
+                const err = await response.json().catch(() => ({}));
                 throw new Error(err.detail || 'Failed to scan QR code');
             }
             
@@ -551,13 +580,13 @@
                 document.getElementById('verificationCode').value = data.code;
                 verifyCertificate();
             } else if (data.error) {
-                alert('Could not read QR code: ' + data.error);
+                showToast('Could not read QR code: ' + data.error, 'error');
                 document.getElementById('verificationCode').focus();
             }
             
         } catch (error) {
             console.error('QR scan error:', error);
-            alert('Could not read QR code. Please enter the code manually.');
+            showToast('Could not read QR code. Please enter the code manually.', 'error');
             document.getElementById('verificationCode').focus();
         } finally {
             verifyBtn.disabled = false;
@@ -567,7 +596,7 @@
         }
     }
 
-    // ─── CHECK URL PARAMS FOR AUTO-VERIFICATION ──────────────────
+    // ─── CHECK URL PARAMS FOR AUTO-VERIFICATION ──────────────────────
     function checkUrlParams() {
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
@@ -594,7 +623,7 @@
             }
         });
         
-        console.log('AUTO-V Verification page initialized');
+        console.log('🚀 AUTO-V Verification page initialized');
         console.log(`🔗 Backend API: ${API_BASE}`);
     }
 
