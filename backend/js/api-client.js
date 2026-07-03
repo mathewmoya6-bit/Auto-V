@@ -86,6 +86,6 @@ class APIClient {
 }
 
 // Create global instance
-const api = new APIClient('https://auto-v-backend.onrender.com/api/v1');
+const api = new APIClient('https://auto-v.onrender.com/api/v1');
 
 console.log('✅ API Client initialized');
