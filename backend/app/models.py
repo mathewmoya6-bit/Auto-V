@@ -985,7 +985,14 @@ class Certificate(Base, TimestampMixin):
     
     # Certificate Data
     result = Column(JSON)
-    metadata = Column(JSON)
+    # FIX: was named `metadata`, which collides with SQLAlchemy's
+    # reserved Base.metadata attribute and crashes at import time
+    # with "Attribute name 'metadata' is reserved when using the
+    # Declarative API." Python attribute renamed to
+    # `certificate_metadata`; DB column name kept as "metadata" via
+    # the explicit Column("metadata", ...) argument, so no migration
+    # is needed if a `metadata` column already exists in the DB.
+    certificate_metadata = Column("metadata", JSON)
     pdf_url = Column(String(500))
     qr_code = Column(String(500))
     
@@ -1007,6 +1014,26 @@ class Certificate(Base, TimestampMixin):
         Index("idx_certificates_metadata", "metadata", postgresql_using="gin"),
         UniqueConstraint("certificate_number", name="uq_certificates_number"),
     )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id) if self.user_id else None,
+            "service_request_id": str(self.service_request_id) if self.service_request_id else None,
+            "certificate_number": self.certificate_number,
+            "certificate_type": self.certificate_type,
+            "vehicle_make": self.vehicle_make,
+            "vehicle_model": self.vehicle_model,
+            "vehicle_reg": self.vehicle_reg,
+            "vin": self.vin,
+            "result": self.result,
+            "metadata": self.certificate_metadata,
+            "pdf_url": self.pdf_url,
+            "qr_code": self.qr_code,
+            "status": self.status,
+            "issued_at": self.issued_at.isoformat() if self.issued_at else None,
+            "expiry_date": self.expiry_date.isoformat() if self.expiry_date else None,
+        }
 
 
 # ─── SYSTEM SETTING ────────────────────────────────────────────
