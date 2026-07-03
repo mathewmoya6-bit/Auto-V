@@ -1,4 +1,15 @@
-# app/api/v1/routes/__init__.py
-# Intentionally empty — main.py imports submodules directly
-# (`from app.api.v1.routes import auth, vehicles, ...`), so nothing
-# needs to be re-exported here.
+# =============================================================================
+# ROUTES - Export all route modules
+# =============================================================================
+
+from . import auth
+from . import vehicles
+from . import payments
+from . import valuations
+from . import webhooks
+from . import users
+from . import reports
+from . import certificates
+from . import mileage
+from . import fleet
+from . import admin
