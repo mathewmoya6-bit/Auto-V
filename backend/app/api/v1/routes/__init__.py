@@ -1,17 +1,4 @@
-from . import auth
-from . import users
-from . import vehicles
-from . import valuations
-from . import payments
-from . import reports
-from . import webhooks
-
-__all__ = [
-    "auth",
-    "users",
-    "vehicles",
-    "valuations",
-    "payments",
-    "reports",
-    "webhooks",
-]
+# app/api/v1/routes/__init__.py
+# Intentionally empty — main.py imports submodules directly
+# (`from app.api.v1.routes import auth, vehicles, ...`), so nothing
+# needs to be re-exported here.
