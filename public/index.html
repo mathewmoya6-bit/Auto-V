@@ -17,6 +17,13 @@
         (function() {
             'use strict';
 
+            // ✅ Prevent duplicate initialization
+            if (window.autoVInitialized) {
+                console.log('✅ AUTO-V API already initialized, skipping...');
+                return;
+            }
+            window.autoVInitialized = true;
+
             const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
 
             class APIClient {
@@ -102,56 +109,57 @@
             }
 
             // ─── Error Handler ──────────────────────────────────────────
-            class ErrorHandler {
-                static showToast(message, type = 'info', duration = 5000) {
-                    // Remove existing toast
-                    const existing = document.querySelector('.toast-container');
-                    if (existing) existing.remove();
+            // ✅ Check if already exists before declaring
+            if (typeof window.ErrorHandler === 'undefined') {
+                window.ErrorHandler = {
+                    showToast: function(message, type = 'info', duration = 5000) {
+                        // Remove existing toast
+                        const existing = document.querySelector('.toast-container');
+                        if (existing) existing.remove();
 
-                    // Create toast
-                    const div = document.createElement('div');
-                    div.className = 'toast-container';
-                    div.style.cssText = `
-                        position: fixed;
-                        bottom: 24px;
-                        right: 24px;
-                        padding: 14px 24px;
-                        border-radius: 12px;
-                        z-index: 9999;
-                        font-weight: 500;
-                        animation: slideIn 0.3s ease;
-                        max-width: 420px;
-                        font-size: 14px;
-                        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-                        font-family: 'Inter', system-ui, sans-serif;
-                        background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
-                        color: ${type === 'error' ? '#fff' : '#000'};
-                        border-left: 4px solid ${type === 'error' ? '#dc2626' : type === 'success' ? '#16a34a' : type === 'warning' ? '#d97706' : '#2563eb'};
-                    `;
-                    div.textContent = message;
-                    document.body.appendChild(div);
+                        // Create toast
+                        const div = document.createElement('div');
+                        div.className = 'toast-container';
+                        div.style.cssText = `
+                            position: fixed;
+                            bottom: 24px;
+                            right: 24px;
+                            padding: 14px 24px;
+                            border-radius: 12px;
+                            z-index: 9999;
+                            font-weight: 500;
+                            animation: slideIn 0.3s ease;
+                            max-width: 420px;
+                            font-size: 14px;
+                            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+                            font-family: 'Inter', system-ui, sans-serif;
+                            background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+                            color: ${type === 'error' ? '#fff' : '#000'};
+                            border-left: 4px solid ${type === 'error' ? '#dc2626' : type === 'success' ? '#16a34a' : type === 'warning' ? '#d97706' : '#2563eb'};
+                        `;
+                        div.textContent = message;
+                        document.body.appendChild(div);
 
-                    // Auto-remove after duration
-                    setTimeout(() => {
-                        if (div.parentNode) div.remove();
-                    }, duration);
-                }
+                        // Auto-remove after duration
+                        setTimeout(() => {
+                            if (div.parentNode) div.remove();
+                        }, duration);
+                    },
 
-                static handle(error, context = 'Unknown') {
-                    console.error(`❌ Error in ${context}:`, error);
-                    let message = error.message || 'An unexpected error occurred';
-                    this.showToast(message, 'error');
-                    return message;
-                }
+                    handle: function(error, context = 'Unknown') {
+                        console.error(`❌ Error in ${context}:`, error);
+                        let message = error.message || 'An unexpected error occurred';
+                        this.showToast(message, 'error');
+                        return message;
+                    }
+                };
             }
 
-            // ─── Create global instances ──────────────────────────────
-            const api = new APIClient(API_BASE);
-            const ErrorHandler = window.ErrorHandler || ErrorHandler;
-
-            // ─── Expose globally ──────────────────────────────────────
-            window.api = api;
-            window.ErrorHandler = ErrorHandler;
+            // ─── Create global API instance ──────────────────────────────
+            // ✅ Check if already exists before declaring
+            if (typeof window.api === 'undefined') {
+                window.api = new APIClient(API_BASE);
+            }
 
             // ─── Toast styles ──────────────────────────────────────────
             if (!document.querySelector('#toast-styles')) {
@@ -170,6 +178,7 @@
             }
 
             console.log('✅ API Client initialized (built-in)');
+            console.log(`🔗 Backend API: ${API_BASE}`);
         })();
     </script>
 
@@ -1954,11 +1963,14 @@
                     getToken: () => null,
                     clearToken: () => {}
                 };
-                window.ErrorHandler = {
-                    showToast: function(msg, type) {
-                        alert(msg);
-                    }
-                };
+                // ✅ Use existing ErrorHandler if available, else create fallback
+                if (typeof ErrorHandler === 'undefined') {
+                    window.ErrorHandler = {
+                        showToast: function(msg, type) {
+                            alert(msg);
+                        }
+                    };
+                }
             }
 
             // ─── Auth-aware Navigation ────────────────────────────────
