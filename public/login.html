@@ -6,11 +6,8 @@
     <title>AUTO-V | Login</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
         /* ─── RESET & BASE ─── */
         * {
@@ -425,15 +422,16 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V USER LOGIN — FastAPI Backend Integration
+        // AUTO-V USER LOGIN — Production Ready with CORS Support
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
-            // ─── CONFIG ──────────────────────────────────────────────────
-            const DASHBOARD_URL = 'dashboard.html';
-            const ADMIN_DASHBOARD = 'admin-dashboard.html';
+            // ─── PRODUCTION CONFIG ──────────────────────────────────────
+            const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
+            const DASHBOARD_URL = '/dashboard';
+            const ADMIN_DASHBOARD = '/admin/dashboard';
 
             // ─── DOM REFS ───────────────────────────────────────────────
             const emailInput = document.getElementById('email');
@@ -442,22 +440,75 @@
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
 
-            // ─── API CLIENT CHECK ──────────────────────────────────────
-            if (typeof api === 'undefined') {
-                showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
-                loginBtn.disabled = true;
-                console.error('API client not found. Ensure js/api-client.js is loaded.');
-            }
+            // ─── API CLIENT WITH CORS SUPPORT ──────────────────────────
+            const api = {
+                baseURL: API_BASE,
+                token: null,
+
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('access_token', token);
+                },
+
+                getToken() {
+                    return this.token || localStorage.getItem('access_token');
+                },
+
+                async request(endpoint, options = {}) {
+                    const url = `${this.baseURL}${endpoint}`;
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...options.headers,
+                    };
+
+                    const token = this.getToken();
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+
+                    const response = await fetch(url, {
+                        ...options,
+                        headers,
+                        credentials: 'include',
+                        mode: 'cors',
+                    });
+
+                    if (!response.ok) {
+                        let errorMessage = `HTTP ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorMessage = errorData.detail || errorData.message || errorMessage;
+                        } catch (e) {
+                            errorMessage = await response.text() || errorMessage;
+                        }
+                        throw new Error(errorMessage);
+                    }
+
+                    return response.json();
+                },
+
+                post(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                    });
+                },
+
+                get(endpoint) {
+                    return this.request(endpoint, { method: 'GET' });
+                },
+            };
 
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
-                messageBox.className = 'message ' + type + '-message';
+                messageBox.className = `message ${type}-message`;
                 messageBox.style.display = 'block';
                 clearTimeout(window._msgTimer);
                 window._msgTimer = setTimeout(() => {
                     messageBox.style.display = 'none';
-                }, 5000);
+                }, 8000);
             }
 
             function clearMessage() {
@@ -483,10 +534,9 @@
                     const token = localStorage.getItem('access_token');
                     if (!token) return;
 
-                    // Verify token is still valid
+                    api.setToken(token);
                     const user = await api.get('/auth/me');
-                    
-                    // Check if user is admin
+
                     if (user.role === 'admin' || user.role === 'super_admin') {
                         console.log('✅ Admin session valid — redirecting to admin');
                         window.location.href = ADMIN_DASHBOARD;
@@ -495,7 +545,6 @@
                         window.location.href = DASHBOARD_URL;
                     }
                 } catch (error) {
-                    // Token expired or invalid
                     console.log('Session expired or invalid');
                     localStorage.removeItem('access_token');
                 }
@@ -505,11 +554,6 @@
             async function handleLogin(e) {
                 e.preventDefault();
                 clearMessage();
-
-                if (typeof api === 'undefined') {
-                    showMessage('⚠️ API service unavailable. Please refresh the page.', 'error');
-                    return;
-                }
 
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
@@ -537,14 +581,19 @@
                         password: password
                     });
 
+                    console.log('✅ Login response:', response);
+
                     // ─── Store Token ─────────────────────────────────────
                     if (response.access_token) {
                         api.setToken(response.access_token);
-                        localStorage.setItem('access_token', response.access_token);
+                        console.log('✅ Token stored successfully');
+                    } else {
+                        throw new Error('No access token received');
                     }
 
                     // ─── Get User Info ──────────────────────────────────
                     const user = await api.get('/auth/me');
+                    console.log('✅ User info:', user);
 
                     // Store user info
                     localStorage.setItem('autoV_user', JSON.stringify({
@@ -557,9 +606,9 @@
 
                     // ─── Redirect based on role ─────────────────────────
                     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
-                    
+
                     showMessage('✅ Login successful! Redirecting...', 'success');
-                    
+
                     setTimeout(() => {
                         if (isAdmin) {
                             window.location.href = ADMIN_DASHBOARD;
@@ -570,28 +619,26 @@
 
                 } catch (error) {
                     console.error('Login error:', error);
-                    
+
                     // ─── Handle specific error cases ─────────────────────
-                    if (error.message.includes('401') || error.message.includes('Invalid credentials')) {
+                    const errorMsg = error.message || 'Unknown error';
+
+                    if (errorMsg.includes('401') || errorMsg.toLowerCase().includes('invalid credentials')) {
                         showMessage('❌ Invalid email or password. Please try again.', 'error');
-                    } else if (error.message.includes('403')) {
-                        showMessage('⛔ Account suspended. Please contact support.', 'error');
-                    } else if (error.message.includes('429')) {
+                    } else if (errorMsg.includes('403') || errorMsg.toLowerCase().includes('access denied')) {
+                        showMessage('⛔ Access denied. Contact support if this is an error.', 'error');
+                    } else if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('too many')) {
                         showMessage('⏳ Too many login attempts. Please wait a moment.', 'error');
-                    } else if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
-                        showMessage('🌐 Network error. Please check your connection.', 'error');
-                    } else if (error.message.includes('not confirmed') || error.message.includes('verify')) {
+                    } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch') || errorMsg.includes('CORS')) {
+                        showMessage('🌐 Network/CORS error. Please check your connection.', 'error');
+                        console.error('CORS Error: The backend may not be configured to accept requests from this domain.');
+                    } else if (errorMsg.toLowerCase().includes('not confirmed') || errorMsg.toLowerCase().includes('verify')) {
                         showMessage('📧 Please verify your email before logging in.', 'info');
                     } else {
-                        showMessage('❌ Login failed: ' + error.message, 'error');
+                        showMessage(`❌ Login failed: ${errorMsg}`, 'error');
                     }
-                    
+
                     setLoading(false);
-                } finally {
-                    // Only reset if not redirecting
-                    if (!loginBtn.textContent.includes('Redirecting')) {
-                        setLoading(false);
-                    }
                 }
             }
 
@@ -599,12 +646,10 @@
             async function handleSocialLogin(provider) {
                 try {
                     showMessage(`🔑 Redirecting to ${provider}...`, 'info');
-                    
-                    // Get social login URL from backend
+
                     const response = await api.get(`/auth/${provider}/url`);
-                    
+
                     if (response.url) {
-                        // Redirect to OAuth provider
                         window.location.href = response.url;
                     } else {
                         throw new Error('No redirect URL received');
@@ -638,9 +683,10 @@
             // ─── FOCUS EMAIL ────────────────────────────────────────────
             setTimeout(() => emailInput.focus(), 150);
 
-            console.log('🚀 AUTO-V User Login (FastAPI Backend)');
-            console.log('📌 Dashboard:', DASHBOARD_URL);
-            console.log('📌 Admin Dashboard:', ADMIN_DASHBOARD);
+            console.log('🚀 AUTO-V User Login (Production)');
+            console.log(`📌 API Base: ${API_BASE}`);
+            console.log(`📌 Dashboard: ${DASHBOARD_URL}`);
+            console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
 
         })();
     </script>
