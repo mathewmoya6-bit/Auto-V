@@ -2,28 +2,6 @@
 # =============================================================================
 # AUTO-V API - Database Configuration
 # =============================================================================
-# Inferred from init_db()/close_db() usage in main.py's lifespan.
-# Uses SQLAlchemy's async engine (requires the `asyncpg` driver —
-# DATABASE_URL must use `postgresql+asyncpg://`).
-#
-# ⚠️ IMPORTANT — read before relying on init_db() in production:
-# init_db() below calls Base.metadata.create_all(), which will
-# CREATE any table defined in app/models.py that doesn't already
-# exist in the database. Your Supabase project already has these
-# tables created via hand-written SQL (with RLS policies) run
-# directly in the Supabase SQL editor. If this backend's
-# create_all() runs against THAT SAME database, it will try to
-# create tables that already exist — SQLAlchemy's create_all() is
-# safe here (it checks existence first and won't clobber existing
-# tables/data), but it also won't apply this app's differing column
-# definitions (e.g. Certificate.metadata vs the Supabase version's
-# columns) to already-existing tables, and it does NOT create RLS
-# policies at all — those only exist because you ran the SQL editor
-# scripts separately. In short: two schema sources of truth right
-# now. Worth deciding which one (hand-written Supabase SQL, or this
-# SQLAlchemy models.py) actually owns table creation going forward,
-# rather than running both.
-# =============================================================================
 
 import logging
 from typing import AsyncGenerator, Optional
@@ -38,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
-from app.models import Base  # adjust if models becomes a package
+from app.models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +76,8 @@ def create_database_engine() -> Optional[AsyncEngine]:
             database_url,
             echo=settings.DEBUG,
             pool_pre_ping=True,
-            pool_size=settings.DB_POOL_SIZE if hasattr(settings, 'DB_POOL_SIZE') else 5,
-            max_overflow=settings.DB_MAX_OVERFLOW if hasattr(settings, 'DB_MAX_OVERFLOW') else 10,
+            pool_size=getattr(settings, 'DB_POOL_SIZE', 5),
+            max_overflow=getattr(settings, 'DB_MAX_OVERFLOW', 10),
             pool_recycle=3600,
             pool_timeout=30,
         )
@@ -139,10 +117,7 @@ else:
 async def init_db() -> None:
     """
     Create any tables defined in models.py that don't already exist.
-    See the module-level note above about this potentially overlapping
-    with tables already created via the Supabase SQL editor.
-    
-    This function is safe to call even if tables already exist.
+    This is safe to call even if tables already exist.
     """
     if engine is None:
         logger.error("❌ Cannot initialize database: Engine is None")
@@ -176,16 +151,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency — yields an AsyncSession per request.
     
-    Usage in a route:
+    Usage:
         from app.core.database import get_db
         from fastapi import Depends
         
-        @router.get("/vehicles")
-        async def list_vehicles(db: AsyncSession = Depends(get_db)):
+        @router.get("/items")
+        async def get_items(db: AsyncSession = Depends(get_db)):
             ...
-    
-    This will raise an exception if the database is not configured,
-    ensuring that routes that require database access fail gracefully.
     """
     if AsyncSessionLocal is None:
         logger.error("❌ Database not configured. Cannot provide session.")
@@ -226,13 +198,9 @@ def get_db_status() -> dict:
         "url_configured": settings.DATABASE_URL is not None and settings.DATABASE_URL != "",
         "engine_created": engine is not None,
         "session_factory_created": AsyncSessionLocal is not None,
-        "environment": settings.ENV if hasattr(settings, 'ENV') else "unknown",
+        "environment": getattr(settings, 'ENV', 'unknown'),
     }
 
-
-# =============================================================================
-# DATABASE HEALTH CHECK
-# =============================================================================
 
 async def check_db_health() -> bool:
     """
