@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # =========================================================================
     API_V1_PREFIX: str = Field(default="/api/v1", description="API version 1 prefix")
     API_URL: str = Field(
-        default="https://auto-v-backend.onrender.com",
+        default="https://auto-v.onrender.com",
         description="Public URL of the API"
     )
     
