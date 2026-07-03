@@ -1,38 +1,28 @@
 # app/api/v1/routes/mileage.py
 # =============================================================================
-# AUTO-V API - Mileage Routes
+# AUTO-V API - Mileage Routes (Public)
 # =============================================================================
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from pydantic import BaseModel, Field
-
-from app.core.database import get_db
-from app.core.deps import get_current_user
-from app.models import UserProfile
 
 router = APIRouter(prefix="/mileage", tags=["Mileage"])
 
 
-# =============================================================================
-# RESPONSE MODELS
-# =============================================================================
-
+# ─── Response Models ──────────────────────────────────────────────
 class ComponentCost(BaseModel):
-    """Component cost breakdown."""
-    insurance: float = Field(0, description="Insurance cost per km")
-    depreciation: float = Field(0, description="Depreciation cost per km")
-    interest: float = Field(0, description="Interest cost per km")
-    fuel: float = Field(0, description="Fuel cost per km")
-    servicing: float = Field(0, description="Servicing cost per km")
-    repairs: float = Field(0, description="Repairs cost per km")
-    tyres: float = Field(0, description="Tyres cost per km")
-    licences: float = Field(0, description="Licences cost per km")
+    insurance: float = 0
+    depreciation: float = 0
+    interest: float = 0
+    fuel: float = 0
+    servicing: float = 0
+    repairs: float = 0
+    tyres: float = 0
+    licences: float = 0
 
 
 class VariantResponse(BaseModel):
-    """Vehicle variant response model."""
     id: str
     label: str
     category_id: str
@@ -50,7 +40,6 @@ class VariantResponse(BaseModel):
 
 
 class CategoryResponse(BaseModel):
-    """Vehicle category response model."""
     id: str
     label: str
     fuel_type: str = "—"
@@ -58,16 +47,12 @@ class CategoryResponse(BaseModel):
 
 
 class RouteResponse(BaseModel):
-    """Route response model."""
     from_city: str
     to_city: str
     km: float
 
 
-# =============================================================================
-# MOCK DATA (Replace with database queries)
-# =============================================================================
-
+# ─── MOCK DATA ──────────────────────────────────────────────────────
 MOCK_CATEGORIES = [
     {
         "id": "cat-1",
@@ -288,41 +273,28 @@ MOCK_ROUTES = [
 ]
 
 
-# =============================================================================
-# API ENDPOINTS - EXACTLY WHAT YOUR FRONTEND EXPECTS
-# =============================================================================
+# ─── PUBLIC API ENDPOINTS (No Authentication Required) ────────────
 
 @router.get("/categories", response_model=List[CategoryResponse])
-async def get_categories(
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[UserProfile] = Depends(get_current_user)
-):
+async def get_categories():
     """
     Get all vehicle categories with their variants.
-    This endpoint is called by the frontend at /mileage/categories.
+    This endpoint is PUBLIC - no authentication required.
     """
     return MOCK_CATEGORIES
 
 
 @router.get("/routes", response_model=List[RouteResponse])
-async def get_routes(
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[UserProfile] = Depends(get_current_user)
-):
+async def get_routes():
     """
     Get all quick routes with distances.
-    This endpoint is called by the frontend at /mileage/routes.
+    This endpoint is PUBLIC - no authentication required.
     """
     return MOCK_ROUTES
 
 
-# ─── Additional endpoints for future use ────────────────────────────
-
 @router.get("/rates")
-async def get_mileage_rates(
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[UserProfile] = Depends(get_current_user)
-):
+async def get_mileage_rates():
     """Get all mileage rates (flattened view)."""
     rates = []
     for cat in MOCK_CATEGORIES:
@@ -343,8 +315,6 @@ async def calculate_mileage(
     category_id: str,
     variant_id: str,
     distance_km: float,
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[UserProfile] = Depends(get_current_user)
 ):
     """Calculate mileage cost for a specific vehicle and distance."""
     variant = None
