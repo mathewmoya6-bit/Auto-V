@@ -9,7 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
-        /* ─── RESET & BASE ─── */
         * {
             margin: 0;
             padding: 0;
@@ -28,7 +27,6 @@
             overflow-x: hidden;
         }
 
-        /* ─── AMBIENT BACKGROUND ─── */
         body::before {
             content: '';
             position: fixed;
@@ -299,6 +297,21 @@
 
         .security-badge svg { width: 14px; height: 14px; fill: #22c55e; }
 
+        .debug-info {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #64748b;
+            display: none;
+            word-break: break-all;
+            line-height: 1.6;
+        }
+
+        .debug-info.show { display: block; }
+
         @media (max-width: 480px) {
             .login-container { padding: 32px 20px 28px; border-radius: 24px; margin: 12px; }
             .logo h1 { font-size: 26px; }
@@ -353,6 +366,11 @@
         <div class="footer-links">
             <a href="login.html">← User Login</a>
             <a href="#" onclick="event.preventDefault(); showMessage('Contact support@autov.co.ke for access.', 'info');">Need Help?</a>
+            <a href="#" id="debugToggle" style="font-size:11px;color:#475569;">🔍 Debug</a>
+        </div>
+
+        <div id="debugInfo" class="debug-info">
+            <div id="debugContent">Loading debug info...</div>
         </div>
 
         <div class="mpesa-info">
@@ -368,14 +386,13 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V ADMIN LOGIN — Production Ready
+        // AUTO-V ADMIN LOGIN — Production Ready with CORS Fix
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
             // ─── PRODUCTION CONFIG ──────────────────────────────────────
-            // 🔄 Change this to your production backend URL
             const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
             const ADMIN_DASHBOARD = '/admin/dashboard';
             const USER_DASHBOARD = '/dashboard';
@@ -386,8 +403,11 @@
             const loginBtn = document.getElementById('loginBtn');
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
+            const debugInfo = document.getElementById('debugInfo');
+            const debugContent = document.getElementById('debugContent');
+            const debugToggle = document.getElementById('debugToggle');
 
-            // ─── API CLIENT ─────────────────────────────────────────────
+            // ─── API CLIENT WITH CORS SUPPORT ──────────────────────────
             const api = {
                 baseURL: API_BASE,
                 token: null,
@@ -405,6 +425,7 @@
                     const url = `${this.baseURL}${endpoint}`;
                     const headers = {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json',
                         ...options.headers,
                     };
 
@@ -413,18 +434,33 @@
                         headers['Authorization'] = `Bearer ${token}`;
                     }
 
-                    const response = await fetch(url, {
-                        ...options,
-                        headers,
-                        credentials: 'include',
-                    });
+                    try {
+                        const response = await fetch(url, {
+                            ...options,
+                            headers,
+                            credentials: 'include',
+                            mode: 'cors',
+                        });
 
-                    if (!response.ok) {
-                        const error = await response.json().catch(() => ({}));
-                        throw new Error(error.detail || error.message || `HTTP ${response.status}`);
+                        if (!response.ok) {
+                            let errorMessage = `HTTP ${response.status}`;
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorData.message || errorMessage;
+                            } catch (e) {
+                                errorMessage = await response.text() || errorMessage;
+                            }
+                            throw new Error(errorMessage);
+                        }
+
+                        return response.json();
+                    } catch (error) {
+                        // Enhanced error for debugging
+                        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                            throw new Error('Network error - Cannot reach server. Check your connection and CORS settings.');
+                        }
+                        throw error;
                     }
-
-                    return response.json();
                 },
 
                 post(endpoint, data) {
@@ -439,6 +475,28 @@
                 },
             };
 
+            // ─── DEBUG FUNCTIONS ─────────────────────────────────────────
+            function updateDebugInfo() {
+                const info = {
+                    apiBase: API_BASE,
+                    token: localStorage.getItem('access_token') ? 'Present' : 'None',
+                    user: localStorage.getItem('autoV_user') ? JSON.parse(localStorage.getItem('autoV_user')) : null,
+                    origin: window.location.origin,
+                    url: window.location.href,
+                    userAgent: navigator.userAgent,
+                    timestamp: new Date().toISOString()
+                };
+                debugContent.textContent = JSON.stringify(info, null, 2);
+            }
+
+            debugToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                debugInfo.classList.toggle('show');
+                if (debugInfo.classList.contains('show')) {
+                    updateDebugInfo();
+                }
+            });
+
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
@@ -447,7 +505,7 @@
                 clearTimeout(window._msgTimer);
                 window._msgTimer = setTimeout(() => {
                     messageBox.style.display = 'none';
-                }, 5000);
+                }, 8000);
             }
 
             function clearMessage() {
@@ -520,13 +578,19 @@
                         password: password
                     });
 
+                    console.log('✅ Login response:', response);
+
                     // ─── Store Token ─────────────────────────────────────
                     if (response.access_token) {
                         api.setToken(response.access_token);
+                        console.log('✅ Token stored successfully');
+                    } else {
+                        throw new Error('No access token received');
                     }
 
                     // ─── Get User Info ──────────────────────────────────
                     const user = await api.get('/auth/me');
+                    console.log('✅ User info:', user);
 
                     // ─── Check Admin Role ───────────────────────────────
                     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
@@ -564,8 +628,15 @@
                         showMessage('⛔ Access denied. Admin privileges required.', 'error');
                     } else if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('too many')) {
                         showMessage('⏳ Too many login attempts. Please wait a moment.', 'error');
-                    } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch')) {
-                        showMessage('🌐 Network error. Please check your connection.', 'error');
+                    } else if (errorMsg.includes('Network error') || errorMsg.includes('Failed to fetch') || errorMsg.includes('CORS')) {
+                        showMessage('🌐 Network/CORS error. Cannot reach the server. Please check your connection.', 'error');
+                        // Show debug info automatically on network errors
+                        debugInfo.classList.add('show');
+                        updateDebugInfo();
+                    } else if (errorMsg.includes('404')) {
+                        showMessage('🔍 API endpoint not found. Please check the backend URL.', 'error');
+                    } else if (errorMsg.includes('500')) {
+                        showMessage('⚠️ Server error. Please try again later.', 'error');
                     } else {
                         showMessage(`❌ Login failed: ${errorMsg}`, 'error');
                     }
@@ -579,6 +650,14 @@
             emailInput.addEventListener('focus', clearMessage);
             passwordInput.addEventListener('focus', clearMessage);
 
+            // Enter key on password field
+            passwordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loginForm.dispatchEvent(new Event('submit'));
+                }
+            });
+
             // ─── CHECK FOR EXISTING SESSION ON LOAD ────────────────────
             checkExistingSession();
 
@@ -589,6 +668,10 @@
             console.log(`📌 API Base: ${API_BASE}`);
             console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
             console.log(`📌 User Dashboard: ${USER_DASHBOARD}`);
+            console.log(`📌 Origin: ${window.location.origin}`);
+
+            // ─── INITIAL DEBUG INFO ─────────────────────────────────────
+            updateDebugInfo();
 
         })();
     </script>
