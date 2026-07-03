@@ -6,11 +6,8 @@
     <title>AUTO-V | Admin Login</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
         /* ─── RESET & BASE ─── */
         * {
@@ -371,16 +368,17 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V ADMIN LOGIN — FastAPI Backend Integration
+        // AUTO-V ADMIN LOGIN — Production Ready
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
-            // ─── CONFIG ──────────────────────────────────────────────────
-            const API_BASE = 'http://localhost:8000/api'; // Change to your backend URL
-            const ADMIN_DASHBOARD = 'admin-dashboard.html';
-            const USER_DASHBOARD = 'dashboard.html';
+            // ─── PRODUCTION CONFIG ──────────────────────────────────────
+            // 🔄 Change this to your production backend URL
+            const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
+            const ADMIN_DASHBOARD = '/admin/dashboard';
+            const USER_DASHBOARD = '/dashboard';
 
             // ─── DOM REFS ───────────────────────────────────────────────
             const emailInput = document.getElementById('email');
@@ -389,17 +387,62 @@
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
 
-            // ─── API CLIENT CHECK ──────────────────────────────────────
-            if (typeof api === 'undefined') {
-                showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
-                loginBtn.disabled = true;
-                console.error('API client not found. Ensure js/api-client.js is loaded.');
-            }
+            // ─── API CLIENT ─────────────────────────────────────────────
+            const api = {
+                baseURL: API_BASE,
+                token: null,
+
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('access_token', token);
+                },
+
+                getToken() {
+                    return this.token || localStorage.getItem('access_token');
+                },
+
+                async request(endpoint, options = {}) {
+                    const url = `${this.baseURL}${endpoint}`;
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        ...options.headers,
+                    };
+
+                    const token = this.getToken();
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+
+                    const response = await fetch(url, {
+                        ...options,
+                        headers,
+                        credentials: 'include',
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json().catch(() => ({}));
+                        throw new Error(error.detail || error.message || `HTTP ${response.status}`);
+                    }
+
+                    return response.json();
+                },
+
+                post(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                    });
+                },
+
+                get(endpoint) {
+                    return this.request(endpoint, { method: 'GET' });
+                },
+            };
 
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
-                messageBox.className = 'message ' + type + '-message';
+                messageBox.className = `message ${type}-message`;
                 messageBox.style.display = 'block';
                 clearTimeout(window._msgTimer);
                 window._msgTimer = setTimeout(() => {
@@ -430,20 +473,17 @@
                     const token = localStorage.getItem('access_token');
                     if (!token) return;
 
-                    // Verify token is still valid
+                    api.setToken(token);
                     const user = await api.get('/auth/me');
-                    
-                    // Check if user is admin
+
                     if (user.role === 'admin' || user.role === 'super_admin') {
                         console.log('✅ Admin session valid — redirecting');
                         window.location.href = ADMIN_DASHBOARD;
                     } else {
-                        // User is logged in but not admin
                         console.log('👤 User is not admin — redirecting to user dashboard');
                         window.location.href = USER_DASHBOARD;
                     }
                 } catch (error) {
-                    // Token expired or invalid
                     console.log('Session expired or invalid');
                     localStorage.removeItem('access_token');
                 }
@@ -453,11 +493,6 @@
             async function handleLogin(e) {
                 e.preventDefault();
                 clearMessage();
-
-                if (typeof api === 'undefined') {
-                    showMessage('⚠️ API service unavailable. Please refresh the page.', 'error');
-                    return;
-                }
 
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
@@ -488,7 +523,6 @@
                     // ─── Store Token ─────────────────────────────────────
                     if (response.access_token) {
                         api.setToken(response.access_token);
-                        localStorage.setItem('access_token', response.access_token);
                     }
 
                     // ─── Get User Info ──────────────────────────────────
@@ -496,7 +530,7 @@
 
                     // ─── Check Admin Role ───────────────────────────────
                     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
-                    
+
                     // Store user info
                     localStorage.setItem('autoV_user', JSON.stringify({
                         id: user.id,
@@ -520,42 +554,24 @@
 
                 } catch (error) {
                     console.error('Login error:', error);
-                    
+
                     // ─── Handle specific error cases ─────────────────────
-                    if (error.message.includes('401') || error.message.includes('Invalid credentials')) {
+                    const errorMsg = error.message || 'Unknown error';
+
+                    if (errorMsg.includes('401') || errorMsg.toLowerCase().includes('invalid credentials')) {
                         showMessage('❌ Invalid email or password. Please try again.', 'error');
-                    } else if (error.message.includes('403')) {
+                    } else if (errorMsg.includes('403') || errorMsg.toLowerCase().includes('access denied')) {
                         showMessage('⛔ Access denied. Admin privileges required.', 'error');
-                    } else if (error.message.includes('429')) {
+                    } else if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('too many')) {
                         showMessage('⏳ Too many login attempts. Please wait a moment.', 'error');
-                    } else if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+                    } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch')) {
                         showMessage('🌐 Network error. Please check your connection.', 'error');
                     } else {
-                        showMessage('❌ Login failed: ' + error.message, 'error');
+                        showMessage(`❌ Login failed: ${errorMsg}`, 'error');
                     }
-                    
-                    setLoading(false);
-                } finally {
-                    // Only reset if not redirecting
-                    if (!loginBtn.textContent.includes('Redirecting')) {
-                        setLoading(false);
-                    }
-                }
-            }
 
-            // ─── DEMO MODE (for testing without backend) ───────────────
-            // Remove this function in production
-            async function demoLogin() {
-                console.warn('⚠️ DEMO MODE: Bypassing backend login');
-                localStorage.setItem('access_token', 'demo_token');
-                localStorage.setItem('autoV_user', JSON.stringify({
-                    id: 'demo_user',
-                    email: 'admin@autov.co.ke',
-                    role: 'admin',
-                    isAdmin: true,
-                    verifiedAt: new Date().toISOString()
-                }));
-                window.location.href = ADMIN_DASHBOARD;
+                    setLoading(false);
+                }
             }
 
             // ─── EVENT LISTENERS ──────────────────────────────────────
@@ -569,19 +585,10 @@
             // ─── FOCUS EMAIL ────────────────────────────────────────────
             setTimeout(() => emailInput.focus(), 150);
 
-            console.log('🚀 AUTO-V Admin Login (FastAPI Backend)');
-            console.log('📌 Admin Dashboard:', ADMIN_DASHBOARD);
-            console.log('📌 User Dashboard:', USER_DASHBOARD);
-            
-            // ─── DEMO MODE SHORTCUT (remove in production) ──────────────
-            // Uncomment the line below to enable demo mode
-            // console.log('💡 Press Ctrl+Shift+D for demo login');
-            // document.addEventListener('keydown', (e) => {
-            //     if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-            //         e.preventDefault();
-            //         demoLogin();
-            //     }
-            // });
+            console.log('🚀 AUTO-V Admin Login (Production)');
+            console.log(`📌 API Base: ${API_BASE}`);
+            console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
+            console.log(`📌 User Dashboard: ${USER_DASHBOARD}`);
 
         })();
     </script>
