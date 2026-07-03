@@ -43,10 +43,15 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     # --- STARTUP ---
+    logger.info("=" * 60)
     logger.info(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"📌 Environment: {settings.ENV}")
     logger.info(f"🔧 Debug mode: {settings.DEBUG}")
     logger.info(f"🗄️  Database configured: {is_database_configured()}")
+    
+    # Log CORS settings for debugging
+    logger.info(f"🌐 CORS_ORIGINS: {settings.CORS_ORIGINS}")
+    logger.info(f"🔒 ALLOWED_HOSTS: {settings.ALLOWED_HOSTS}")
     
     if settings.DATABASE_URL:
         # Mask password for security
@@ -59,6 +64,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Failed to initialize database: {str(e)}")
         # Continue startup even if DB fails - will retry on requests
+    
+    logger.info("=" * 60)
     
     yield
     
@@ -79,9 +86,9 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Professional Vehicle Valuation Engine API - Single Source of Truth",
-    docs_url="/docs" if settings.ENABLE_SWAGGER else None,           # ✅ FIXED: /docs instead of /api/docs
-    redoc_url="/redoc" if settings.ENABLE_SWAGGER else None,         # ✅ FIXED: /redoc instead of /api/redoc
-    openapi_url="/openapi.json" if settings.ENABLE_SWAGGER else None, # ✅ FIXED: /openapi.json instead of /api/openapi.json
+    docs_url="/docs" if settings.ENABLE_SWAGGER else None,
+    redoc_url="/redoc" if settings.ENABLE_SWAGGER else None,
+    openapi_url="/openapi.json" if settings.ENABLE_SWAGGER else None,
     lifespan=lifespan,
     servers=[
         {"url": settings.API_URL, "description": "Production API"},
@@ -118,6 +125,7 @@ app.add_middleware(
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
         "X-RateLimit-Reset",
+        "X-Response-Time",
     ],
 )
 logger.info(f"✅ CORS enabled with origins: {cors_origins}")
@@ -228,16 +236,52 @@ logger.info("📦 Registering API routes...")
 # Import all routers with graceful fallback
 try:
     from app.api.v1.routes.auth import router as auth_router
-    from app.api.v1.routes.users import router as users_router
-    from app.api.v1.routes.vehicles import router as vehicles_router
-    from app.api.v1.routes.valuations import router as valuations_router
-    from app.api.v1.routes.payments import router as payments_router
-    from app.api.v1.routes.reports import router as reports_router
-    from app.api.v1.routes.webhooks import router as webhooks_router
-    logger.info("✅ Core routes imported successfully")
+    logger.info("✅ Auth routes imported successfully")
 except ImportError as e:
-    logger.error(f"❌ Failed to import core routes: {e}")
-    auth_router = users_router = vehicles_router = valuations_router = payments_router = reports_router = webhooks_router = None
+    logger.error(f"❌ Failed to import auth routes: {e}")
+    auth_router = None
+
+try:
+    from app.api.v1.routes.users import router as users_router
+    logger.info("✅ Users routes imported successfully")
+except ImportError:
+    users_router = None
+    logger.warning("⚠️  Users routes not found")
+
+try:
+    from app.api.v1.routes.vehicles import router as vehicles_router
+    logger.info("✅ Vehicles routes imported successfully")
+except ImportError:
+    vehicles_router = None
+    logger.warning("⚠️  Vehicles routes not found")
+
+try:
+    from app.api.v1.routes.valuations import router as valuations_router
+    logger.info("✅ Valuations routes imported successfully")
+except ImportError:
+    valuations_router = None
+    logger.warning("⚠️  Valuations routes not found")
+
+try:
+    from app.api.v1.routes.payments import router as payments_router
+    logger.info("✅ Payments routes imported successfully")
+except ImportError:
+    payments_router = None
+    logger.warning("⚠️  Payments routes not found")
+
+try:
+    from app.api.v1.routes.reports import router as reports_router
+    logger.info("✅ Reports routes imported successfully")
+except ImportError:
+    reports_router = None
+    logger.warning("⚠️  Reports routes not found")
+
+try:
+    from app.api.v1.routes.webhooks import router as webhooks_router
+    logger.info("✅ Webhooks routes imported successfully")
+except ImportError:
+    webhooks_router = None
+    logger.warning("⚠️  Webhooks routes not found")
 
 # Try to import optional modules
 try:
@@ -327,8 +371,8 @@ async def root():
         "message": f"Welcome to {settings.APP_NAME}",
         "version": settings.APP_VERSION,
         "environment": settings.ENV,
-        "docs": "/docs" if settings.ENABLE_SWAGGER else None,        # ✅ FIXED
-        "redoc": "/redoc" if settings.ENABLE_SWAGGER else None,      # ✅ FIXED
+        "docs": "/docs" if settings.ENABLE_SWAGGER else None,
+        "redoc": "/redoc" if settings.ENABLE_SWAGGER else None,
         "health": "/health",
         "api_prefix": settings.API_V1_PREFIX,
     }
