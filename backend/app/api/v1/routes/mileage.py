@@ -3,9 +3,12 @@
 # AUTO-V API - Mileage Routes (Public)
 # =============================================================================
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi import APIRouter, HTTPException, status
 from typing import List, Optional
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mileage", tags=["Mileage"])
 
@@ -273,7 +276,7 @@ MOCK_ROUTES = [
 ]
 
 
-# ─── PUBLIC API ENDPOINTS (No Authentication Required) ────────────
+# ─── PUBLIC API ENDPOINTS ────────────────────────────────────────────
 
 @router.get("/categories", response_model=List[CategoryResponse])
 async def get_categories():
@@ -281,7 +284,15 @@ async def get_categories():
     Get all vehicle categories with their variants.
     This endpoint is PUBLIC - no authentication required.
     """
-    return MOCK_CATEGORIES
+    try:
+        logger.info("📊 Fetching mileage categories...")
+        return MOCK_CATEGORIES
+    except Exception as e:
+        logger.error(f"❌ Error fetching categories: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch categories: {str(e)}"
+        )
 
 
 @router.get("/routes", response_model=List[RouteResponse])
@@ -290,24 +301,39 @@ async def get_routes():
     Get all quick routes with distances.
     This endpoint is PUBLIC - no authentication required.
     """
-    return MOCK_ROUTES
+    try:
+        logger.info("📍 Fetching mileage routes...")
+        return MOCK_ROUTES
+    except Exception as e:
+        logger.error(f"❌ Error fetching routes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch routes: {str(e)}"
+        )
 
 
 @router.get("/rates")
 async def get_mileage_rates():
     """Get all mileage rates (flattened view)."""
-    rates = []
-    for cat in MOCK_CATEGORIES:
-        for variant in cat["variants"]:
-            rates.append({
-                "category": cat["label"],
-                "variant": variant["label"],
-                "rate_per_km": variant["total_per_km"],
-                "fixed_per_km": variant["fixed_per_km"],
-                "operating_per_km": variant["operating_per_km"],
-                "fuel_type": cat["fuel_type"],
-            })
-    return rates
+    try:
+        rates = []
+        for cat in MOCK_CATEGORIES:
+            for variant in cat["variants"]:
+                rates.append({
+                    "category": cat["label"],
+                    "variant": variant["label"],
+                    "rate_per_km": variant["total_per_km"],
+                    "fixed_per_km": variant["fixed_per_km"],
+                    "operating_per_km": variant["operating_per_km"],
+                    "fuel_type": cat["fuel_type"],
+                })
+        return rates
+    except Exception as e:
+        logger.error(f"❌ Error fetching rates: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch rates: {str(e)}"
+        )
 
 
 @router.get("/calculate")
@@ -317,51 +343,60 @@ async def calculate_mileage(
     distance_km: float,
 ):
     """Calculate mileage cost for a specific vehicle and distance."""
-    variant = None
-    category = None
-    
-    for cat in MOCK_CATEGORIES:
-        if cat["id"] == category_id:
-            category = cat
-            for v in cat["variants"]:
-                if v["id"] == variant_id:
-                    variant = v
-                    break
-            break
-    
-    if not variant or not category:
+    try:
+        variant = None
+        category = None
+        
+        for cat in MOCK_CATEGORIES:
+            if cat["id"] == category_id:
+                category = cat
+                for v in cat["variants"]:
+                    if v["id"] == variant_id:
+                        variant = v
+                        break
+                break
+        
+        if not variant or not category:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Vehicle variant not found"
+            )
+        
+        if distance_km <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Distance must be greater than 0"
+            )
+        
+        fixed_cost = variant["fixed_per_km"] * distance_km
+        operating_cost = variant["operating_per_km"] * distance_km
+        total_cost = variant["total_per_km"] * distance_km
+        
+        return {
+            "category": category["label"],
+            "variant": variant["label"],
+            "distance_km": distance_km,
+            "fixed_per_km": variant["fixed_per_km"],
+            "operating_per_km": variant["operating_per_km"],
+            "total_per_km": variant["total_per_km"],
+            "fixed_cost": round(fixed_cost, 2),
+            "operating_cost": round(operating_cost, 2),
+            "total_cost": round(total_cost, 2),
+            "components": variant["components"],
+            "years": {
+                "year1": variant["year1"],
+                "year2": variant["year2"],
+                "year3": variant["year3"],
+                "year4": variant["year4"],
+                "year5": variant["year5"],
+            },
+            "initial_cost": variant["initial_cost"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error calculating mileage: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Vehicle variant not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate mileage: {str(e)}"
         )
-    
-    if distance_km <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Distance must be greater than 0"
-        )
-    
-    fixed_cost = variant["fixed_per_km"] * distance_km
-    operating_cost = variant["operating_per_km"] * distance_km
-    total_cost = variant["total_per_km"] * distance_km
-    
-    return {
-        "category": category["label"],
-        "variant": variant["label"],
-        "distance_km": distance_km,
-        "fixed_per_km": variant["fixed_per_km"],
-        "operating_per_km": variant["operating_per_km"],
-        "total_per_km": variant["total_per_km"],
-        "fixed_cost": round(fixed_cost, 2),
-        "operating_cost": round(operating_cost, 2),
-        "total_cost": round(total_cost, 2),
-        "components": variant["components"],
-        "years": {
-            "year1": variant["year1"],
-            "year2": variant["year2"],
-            "year3": variant["year3"],
-            "year4": variant["year4"],
-            "year5": variant["year5"],
-        },
-        "initial_cost": variant["initial_cost"],
-    }
