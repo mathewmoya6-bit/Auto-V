@@ -10,9 +10,9 @@ if (window.autoV && window.autoV._initialized) {
     (function() {
         'use strict';
 
-        // ─── Configuration ──────────────────────────────────────────────
-        const API_BASE = 'http://localhost:8000/api';
-        const WS_BASE = 'ws://localhost:8000/ws';
+        // ─── PRODUCTION CONFIG ──────────────────────────────────────────
+        const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
+        const WS_BASE = 'wss://auto-v-backend.onrender.com/ws';
 
         // ─── State ──────────────────────────────────────────────────────
         const state = {
@@ -83,7 +83,8 @@ if (window.autoV && window.autoV._initialized) {
                 if (response.status === 401) {
                     clearAuthToken();
                     // Redirect to login if not already there
-                    if (!window.location.pathname.includes('login.html')) {
+                    if (!window.location.pathname.includes('login.html') && 
+                        !window.location.pathname.includes('admin-login.html')) {
                         window.location.href = 'login.html';
                     }
                     throw new Error('Session expired. Please login again.');
@@ -764,5 +765,6 @@ if (window.autoV && window.autoV._initialized) {
         }, 100);
 
         console.log('✅ AUTO-V API client initialized (Single Source of Truth + WebSocket + Auth)');
+        console.log(`🔗 Backend API: ${API_BASE}`);
     })(); // End of IIFE
 }
