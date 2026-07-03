@@ -5,7 +5,7 @@
 
 import logging
 from fastapi import APIRouter, HTTPException, status
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class RouteResponse(BaseModel):
 
 
 # ─── MOCK DATA ──────────────────────────────────────────────────────
-MOCK_CATEGORIES = [
+MOCK_CATEGORIES: List[Dict[str, Any]] = [
     {
         "id": "cat-1",
         "label": "Toyota Axio (1500cc)",
@@ -262,7 +262,7 @@ MOCK_CATEGORIES = [
     }
 ]
 
-MOCK_ROUTES = [
+MOCK_ROUTES: List[Dict[str, Any]] = [
     {"from_city": "Nairobi", "to_city": "Mombasa", "km": 485},
     {"from_city": "Nairobi", "to_city": "Kisumu", "km": 355},
     {"from_city": "Nairobi", "to_city": "Nakuru", "km": 155},
@@ -278,7 +278,7 @@ MOCK_ROUTES = [
 
 # ─── PUBLIC API ENDPOINTS ────────────────────────────────────────────
 
-@router.get("/categories", response_model=List[CategoryResponse])
+@router.get("/categories")
 async def get_categories():
     """
     Get all vehicle categories with their variants.
@@ -286,16 +286,17 @@ async def get_categories():
     """
     try:
         logger.info("📊 Fetching mileage categories...")
+        # Return as plain dict to avoid Pydantic validation issues
         return MOCK_CATEGORIES
     except Exception as e:
-        logger.error(f"❌ Error fetching categories: {str(e)}")
+        logger.error(f"❌ Error fetching categories: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch categories: {str(e)}"
         )
 
 
-@router.get("/routes", response_model=List[RouteResponse])
+@router.get("/routes")
 async def get_routes():
     """
     Get all quick routes with distances.
@@ -305,7 +306,7 @@ async def get_routes():
         logger.info("📍 Fetching mileage routes...")
         return MOCK_ROUTES
     except Exception as e:
-        logger.error(f"❌ Error fetching routes: {str(e)}")
+        logger.error(f"❌ Error fetching routes: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch routes: {str(e)}"
@@ -329,7 +330,7 @@ async def get_mileage_rates():
                 })
         return rates
     except Exception as e:
-        logger.error(f"❌ Error fetching rates: {str(e)}")
+        logger.error(f"❌ Error fetching rates: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch rates: {str(e)}"
@@ -395,7 +396,7 @@ async def calculate_mileage(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error calculating mileage: {str(e)}")
+        logger.error(f"❌ Error calculating mileage: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to calculate mileage: {str(e)}"
