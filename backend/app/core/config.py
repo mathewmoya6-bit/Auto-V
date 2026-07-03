@@ -8,6 +8,8 @@
 # =============================================================================
 
 import os
+import json
+import ast
 from typing import List, Optional, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator, ValidationInfo, Field
@@ -50,15 +52,14 @@ class Settings(BaseSettings):
     # =========================================================================
     # CORS / SECURITY
     # =========================================================================
-    # Comma-separated list in environment variable, e.g.:
-    # CORS_ORIGINS=https://auto-v.meipressgroup.com,http://localhost:3000,https://auto-v-frontend.onrender.com
+    # Accepts: JSON array ["a","b"] OR comma-separated "a,b" OR single "*"
     CORS_ORIGINS: List[str] = Field(
         default=["*"],
-        description="Allowed CORS origins (comma-separated in env)"
+        description="Allowed CORS origins (JSON array or comma-separated)"
     )
     ALLOWED_HOSTS: List[str] = Field(
         default=["*"],
-        description="Allowed hosts for the application"
+        description="Allowed hosts for the application (JSON array or comma-separated)"
     )
     
     # Security headers
@@ -66,36 +67,124 @@ class Settings(BaseSettings):
     SESSION_COOKIE_SECURE: bool = Field(default=True, description="Secure session cookies")
     CSRF_ENABLED: bool = Field(default=True, description="Enable CSRF protection")
     
+    # ─── CORS_ORIGINS Validator ──────────────────────────────────────────
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        """Parse comma-separated string into a list of origins."""
+        """
+        Parse CORS origins from various formats:
+        - JSON array: ["a", "b", "c"]
+        - Python list: ['a', 'b', 'c']
+        - Comma-separated: "a,b,c"
+        - Single value: "*"
+        - Empty: returns ["*"]
+        """
+        if v is None or v == "":
+            return ["*"]
+        
+        if isinstance(v, list):
+            # Filter out empty strings and None
+            return [item.strip() for item in v if item and str(item).strip()]
+        
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+            v = v.strip()
+            if not v:
+                return ["*"]
+            
+            # Try JSON parsing
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if item]
+                return [str(parsed).strip()]
+            except json.JSONDecodeError:
+                pass
+            
+            # Try Python literal (ast.literal_eval)
+            try:
+                parsed = ast.literal_eval(v)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if item]
+                return [str(parsed).strip()]
+            except (ValueError, SyntaxError):
+                pass
+            
+            # Fallback: comma-separated string
+            if "," in v:
+                return [item.strip() for item in v.split(",") if item.strip()]
+            
+            # Single value
+            return [v]
+        
+        # Fallback for any other type
+        return ["*"]
+    
+    # ─── ALLOWED_HOSTS Validator ──────────────────────────────────────────
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def parse_allowed_hosts(cls, v: Union[str, List[str]]) -> List[str]:
+        """
+        Parse allowed hosts from various formats:
+        - JSON array: ["a", "b", "c"]
+        - Python list: ['a', 'b', 'c']
+        - Comma-separated: "a,b,c"
+        - Single value: "*"
+        - Empty: returns ["*"]
+        """
+        if v is None or v == "":
+            return ["*"]
+        
+        if isinstance(v, list):
+            return [item.strip() for item in v if item and str(item).strip()]
+        
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return ["*"]
+            
+            # Try JSON parsing
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if item]
+                return [str(parsed).strip()]
+            except json.JSONDecodeError:
+                pass
+            
+            # Try Python literal
+            try:
+                parsed = ast.literal_eval(v)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if item]
+                return [str(parsed).strip()]
+            except (ValueError, SyntaxError):
+                pass
+            
+            # Fallback: comma-separated string
+            if "," in v:
+                return [item.strip() for item in v.split(",") if item.strip()]
+            
+            # Single value
+            return [v]
+        
+        return ["*"]
     
     # =========================================================================
     # DATABASE
     # =========================================================================
-    # IMPORTANT: For async PostgreSQL, use: postgresql+asyncpg://user:pass@host:5432/db
-    # For SQLite (development only): sqlite+aiosqlite:///./app.db
-    # This field is REQUIRED in production. Set DATABASE_URL in Render environment.
     DATABASE_URL: Optional[str] = Field(
         default=None,
         description="Database connection URL (async driver required)"
     )
     
-    # Database connection pool settings
     DB_POOL_SIZE: int = Field(default=10, description="Database connection pool size")
     DB_MAX_OVERFLOW: int = Field(default=20, description="Database connection pool overflow")
     DB_POOL_TIMEOUT: int = Field(default=30, description="Database connection pool timeout in seconds")
     DB_ECHO: bool = Field(default=False, description="Echo SQL queries for debugging")
     
     # =========================================================================
-    # SUPABASE (Authentication & Authorization)
+    # SUPABASE
     # =========================================================================
-    # These are REQUIRED if you're using Supabase for authentication.
-    # All three must be set in the Render environment.
     SUPABASE_URL: Optional[str] = Field(
         default=None,
         description="Supabase project URL (e.g., https://xxxxx.supabase.co)"
@@ -116,8 +205,6 @@ class Settings(BaseSettings):
     # =========================================================================
     # JWT AUTHENTICATION
     # =========================================================================
-    # If not using Supabase, you can use local JWT authentication.
-    # Set JWT_SECRET_KEY in Render environment.
     JWT_SECRET_KEY: Optional[str] = Field(
         default=None,
         description="JWT secret key for local authentication"
@@ -129,7 +216,6 @@ class Settings(BaseSettings):
     # =========================================================================
     # REDIS / CACHING
     # =========================================================================
-    # Set REDIS_URL in Render environment if using Redis for caching/rate limiting.
     REDIS_URL: Optional[str] = Field(
         default=None,
         description="Redis connection URL (e.g., redis://localhost:6379)"
@@ -177,8 +263,6 @@ class Settings(BaseSettings):
     # EXTERNAL SERVICES
     # =========================================================================
     # Add any external service API keys here
-    # Example: OPENAI_API_KEY: Optional[str] = Field(default=None)
-    # Example: STRIPE_SECRET_KEY: Optional[str] = Field(default=None)
     
     # =========================================================================
     # FEATURE FLAGS
@@ -257,6 +341,8 @@ def validate_settings():
         # JWT secret should be set
         if not settings.JWT_SECRET_KEY:
             print("⚠️  WARNING: JWT_SECRET_KEY is not set! Using default (INSECURE)")
+            print("   - Set JWT_SECRET_KEY in your Render environment variables")
+            print("   - Use a strong secret key (32+ characters)")
 
 
 # Run validation on import
@@ -297,9 +383,13 @@ def get_cors_origins() -> List[str]:
     """
     origins = settings.CORS_ORIGINS
     
-    # In development, allow localhost
+    # Ensure we have valid origins
+    if not origins or origins == []:
+        return ["*"]
+    
+    # In development, allow all
     if settings.is_development():
-        origins = ["*"]
+        return ["*"]
     
     return origins
 
@@ -311,8 +401,30 @@ def get_allowed_hosts() -> List[str]:
     """
     Get allowed hosts with environment-specific fallbacks.
     """
-    if settings.ALLOWED_HOSTS == ["*"] and settings.is_production():
-        # In production, we should be stricter
-        return ["auto-v-backend.onrender.com", "auto-v.meipressgroup.com"]
+    hosts = settings.ALLOWED_HOSTS
     
-    return settings.ALLOWED_HOSTS
+    # Ensure we have valid hosts
+    if not hosts or hosts == []:
+        return ["*"]
+    
+    # In production with wildcard, use specific hosts
+    if hosts == ["*"] and settings.is_production():
+        return [
+            "auto-v-backend.onrender.com",
+            "auto-v.meipressgroup.com",
+            "www.auto-v.meipressgroup.com",
+        ]
+    
+    return hosts
+
+
+# =============================================================================
+# HELPER: Get log level for different environments
+# =============================================================================
+def get_log_level() -> str:
+    """
+    Get the appropriate log level based on environment.
+    """
+    if settings.is_development():
+        return "debug"
+    return settings.LOG_LEVEL
