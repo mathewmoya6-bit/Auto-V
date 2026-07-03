@@ -219,62 +219,78 @@ logger.info("📦 Registering API routes...")
 
 # Import all routers with graceful fallback
 try:
-    from app.api.v1.routes import auth, vehicles, payments, valuations, webhooks, users, reports
+    from app.api.v1.routes.auth import router as auth_router
+    from app.api.v1.routes.users import router as users_router
+    from app.api.v1.routes.vehicles import router as vehicles_router
+    from app.api.v1.routes.valuations import router as valuations_router
+    from app.api.v1.routes.payments import router as payments_router
+    from app.api.v1.routes.reports import router as reports_router
+    from app.api.v1.routes.webhooks import router as webhooks_router
     logger.info("✅ Core routes imported successfully")
 except ImportError as e:
     logger.error(f"❌ Failed to import core routes: {e}")
-    auth = vehicles = payments = valuations = webhooks = users = reports = None
+    auth_router = users_router = vehicles_router = valuations_router = payments_router = reports_router = webhooks_router = None
 
 # Try to import optional modules
-optional_modules = {
-    "certificates": "Certificates",
-    "mileage": "Mileage",
-    "fleet": "Fleet",
-    "admin": "Admin",
-}
+try:
+    from app.api.v1.routes.certificates import router as certificates_router
+    logger.info("✅ Certificates routes imported successfully")
+except ImportError:
+    certificates_router = None
+    logger.warning("⚠️  Certificates routes not found")
 
-for module_name, display_name in optional_modules.items():
-    try:
-        globals()[module_name] = __import__(
-            f"app.api.v1.routes.{module_name}",
-            fromlist=["router"]
-        ).router
-        logger.info(f"✅ {display_name} routes imported successfully")
-    except (ImportError, AttributeError) as e:
-        logger.warning(f"⚠️  {display_name} routes not found: {e}")
-        globals()[module_name] = None
+try:
+    from app.api.v1.routes.mileage import router as mileage_router
+    logger.info("✅ Mileage routes imported successfully")
+except ImportError:
+    mileage_router = None
+    logger.warning("⚠️  Mileage routes not found")
+
+try:
+    from app.api.v1.routes.fleet import router as fleet_router
+    logger.info("✅ Fleet routes imported successfully")
+except ImportError:
+    fleet_router = None
+    logger.warning("⚠️  Fleet routes not found")
+
+try:
+    from app.api.v1.routes.admin import router as admin_router
+    logger.info("✅ Admin routes imported successfully")
+except ImportError:
+    admin_router = None
+    logger.warning("⚠️  Admin routes not found")
 
 # =============================================================================
 # REGISTER ROUTES
 # =============================================================================
 
 # Core routes
-if auth:
-    app.include_router(auth, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
-if users:
-    app.include_router(users, prefix=settings.API_V1_PREFIX, tags=["Users"])
-if vehicles:
-    app.include_router(vehicles, prefix=settings.API_V1_PREFIX, tags=["Vehicles"])
-if valuations:
-    app.include_router(valuations, prefix=settings.API_V1_PREFIX, tags=["Valuations"])
-if payments:
-    app.include_router(payments, prefix=settings.API_V1_PREFIX, tags=["Payments"])
-if reports:
-    app.include_router(reports, prefix=settings.API_V1_PREFIX, tags=["Reports"])
+if auth_router:
+    app.include_router(auth_router, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
+if users_router:
+    app.include_router(users_router, prefix=settings.API_V1_PREFIX, tags=["Users"])
+if vehicles_router:
+    app.include_router(vehicles_router, prefix=settings.API_V1_PREFIX, tags=["Vehicles"])
+if valuations_router:
+    app.include_router(valuations_router, prefix=settings.API_V1_PREFIX, tags=["Valuations"])
+if payments_router:
+    app.include_router(payments_router, prefix=settings.API_V1_PREFIX, tags=["Payments"])
+if reports_router:
+    app.include_router(reports_router, prefix=settings.API_V1_PREFIX, tags=["Reports"])
 
 # Webhooks (external)
-if webhooks:
-    app.include_router(webhooks, prefix="/api/webhooks", tags=["Webhooks"])
+if webhooks_router:
+    app.include_router(webhooks_router, prefix="/api/webhooks", tags=["Webhooks"])
 
 # Optional routes
-if certificates:
-    app.include_router(certificates, prefix=settings.API_V1_PREFIX, tags=["Certificates"])
-if mileage:
-    app.include_router(mileage, prefix=settings.API_V1_PREFIX, tags=["Mileage"])
-if fleet:
-    app.include_router(fleet, prefix=settings.API_V1_PREFIX, tags=["Fleet"])
-if admin:
-    app.include_router(admin, prefix=settings.API_V1_PREFIX, tags=["Admin"])
+if certificates_router:
+    app.include_router(certificates_router, prefix=settings.API_V1_PREFIX, tags=["Certificates"])
+if mileage_router:
+    app.include_router(mileage_router, prefix=settings.API_V1_PREFIX, tags=["Mileage"])
+if fleet_router:
+    app.include_router(fleet_router, prefix=settings.API_V1_PREFIX, tags=["Fleet"])
+if admin_router:
+    app.include_router(admin_router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
 
 logger.info("✅ All routes registered successfully")
 
