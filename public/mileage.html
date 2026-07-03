@@ -868,7 +868,6 @@
     'use strict';
 
     // ─── PRODUCTION CONFIG ──────────────────────────────────────────
-    // ✅ Updated to your production backend URL
     const API_BASE = 'https://auto-v.onrender.com/api/v1';
     const MAX_DISTANCE = 100000;
 
@@ -912,25 +911,30 @@
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch(url, {
-                ...options,
-                headers,
-                credentials: 'include',
-                mode: 'cors',
-            });
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers,
+                    credentials: 'include',
+                    mode: 'cors',
+                });
 
-            if (!response.ok) {
-                let errorMessage = `HTTP ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.detail || errorData.message || errorMessage;
-                } catch (e) {
-                    errorMessage = await response.text() || errorMessage;
+                if (!response.ok) {
+                    let errorMessage = `HTTP ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.detail || errorData.message || errorMessage;
+                    } catch (e) {
+                        errorMessage = await response.text() || errorMessage;
+                    }
+                    throw new Error(errorMessage);
                 }
-                throw new Error(errorMessage);
-            }
 
-            return response.json();
+                return response.json();
+            } catch (error) {
+                console.error('API request failed:', error);
+                throw error;
+            }
         },
 
         get(endpoint) {
