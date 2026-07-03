@@ -1,11 +1,19 @@
 # app/main.py - FastAPI Application Entry Point
+# =============================================================================
+# AUTO-V API - Main Application
+# =============================================================================
+
+import logging
+import os
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Optional
+
 from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
-import logging
-import os
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -13,208 +21,171 @@ from slowapi.util import get_remote_address
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.core.database import init_db, close_db
-from app.api.v1.routes import auth, vehicles, payments, valuations, webhooks, users, reports, certificates, mileage, fleet, admin
-from app.middleware.rate_limit import RateLimitMiddleware
+from app.core.database import init_db, close_db, is_database_configured
 
-# Setup logging
+# =============================================================================
+# SETUP LOGGING
+# =============================================================================
+
 logger = setup_logging()
 
-# Initialize rate limiter
+# =============================================================================
+# RATE LIMITER
+# =============================================================================
+
 limiter = Limiter(key_func=get_remote_address)
+
+# =============================================================================
+# LIFESPAN MANAGER
+# =============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Handle startup and shutdown events"""
-    # Startup
-    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    logger.info(f"Environment: {settings.ENV}")
-    logger.info(f"Debug mode: {settings.DEBUG}")
-    logger.info(f"Database: {settings.DATABASE_URL[:50]}..." if settings.DATABASE_URL else "Database: Not configured")
+    """Handle startup and shutdown events."""
+    # --- STARTUP ---
+    logger.info(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info(f"📌 Environment: {settings.ENV}")
+    logger.info(f"🔧 Debug mode: {settings.DEBUG}")
+    logger.info(f"🗄️  Database configured: {is_database_configured()}")
+    
+    if settings.DATABASE_URL:
+        # Mask password for security
+        masked_url = settings.DATABASE_URL[:30] + "..." if len(settings.DATABASE_URL) > 30 else settings.DATABASE_URL
+        logger.info(f"📊 Database: {masked_url}")
     
     try:
         await init_db()
-        logger.info("Database initialized successfully")
+        logger.info("✅ Database initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {str(e)}")
+        logger.error(f"❌ Failed to initialize database: {str(e)}")
         # Continue startup even if DB fails - will retry on requests
     
     yield
     
-    # Shutdown
+    # --- SHUTDOWN ---
     try:
         await close_db()
-        logger.info("Database connection closed")
+        logger.info("✅ Database connection closed")
     except Exception as e:
-        logger.error(f"Error closing database: {str(e)}")
+        logger.error(f"❌ Error closing database: {str(e)}")
     
-    logger.info("Application shutdown complete")
+    logger.info("👋 Application shutdown complete")
 
-# Initialize FastAPI app
+# =============================================================================
+# CREATE FASTAPI APP
+# =============================================================================
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Professional Vehicle Valuation Engine API - Single Source of Truth",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    docs_url="/api/docs" if settings.ENABLE_SWAGGER else None,
+    redoc_url="/api/redoc" if settings.ENABLE_SWAGGER else None,
+    openapi_url="/api/openapi.json" if settings.ENABLE_SWAGGER else None,
     lifespan=lifespan,
     servers=[
         {"url": settings.API_URL, "description": "Production API"},
         {"url": "http://localhost:8000", "description": "Development API"},
-    ]
+    ],
 )
 
-# Initialize rate limiter
+# =============================================================================
+# RATE LIMITING MIDDLEWARE
+# =============================================================================
+
 app.state.limiter = limiter
+if settings.ENABLE_RATE_LIMITING:
+    app.add_middleware(SlowAPIMiddleware)
+    logger.info("✅ Rate limiting enabled")
 
-# Add rate limiting middleware
-app.add_middleware(SlowAPIMiddleware)
+# =============================================================================
+# CORS MIDDLEWARE
+# =============================================================================
 
-# CORS Configuration - Allow frontend domains
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+    expose_headers=[
+        "X-Request-ID",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+    ],
 )
+logger.info(f"✅ CORS enabled with origins: {settings.CORS_ORIGINS}")
 
-# Trusted Hosts - Security
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=settings.ALLOWED_HOSTS,
-)
+# =============================================================================
+# TRUSTED HOST MIDDLEWARE
+# =============================================================================
 
-# Rate Limiting exception handler
+if settings.is_production():
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.ALLOWED_HOSTS,
+    )
+    logger.info(f"✅ Trusted hosts: {settings.ALLOWED_HOSTS}")
+
+# =============================================================================
+# EXCEPTION HANDLERS
+# =============================================================================
+
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    logger.warning(f"Rate limit exceeded for {request.client.host} on {request.url.path}")
+    """Handle rate limit exceeded errors."""
+    logger.warning(f"🚫 Rate limit exceeded for {request.client.host} on {request.url.path}")
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         headers={
             "X-RateLimit-Limit": "100",
             "X-RateLimit-Reset": "60",
-            "Retry-After": "60"
+            "Retry-After": "60",
         },
         content={
             "detail": "Too many requests. Please try again later.",
             "retry_after": 60,
-            "status_code": status.HTTP_429_TOO_MANY_REQUESTS
-        }
+            "status_code": status.HTTP_429_TOO_MANY_REQUESTS,
+        },
     )
 
-# ─── API Routers ──────────────────────────────────────────────
-
-logger.info("Registering API routes...")
-
-# Core routes
-app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
-app.include_router(users.router, prefix=settings.API_V1_PREFIX, tags=["Users"])
-
-# Vehicle services
-app.include_router(vehicles.router, prefix=settings.API_V1_PREFIX, tags=["Vehicles"])
-app.include_router(valuations.router, prefix=settings.API_V1_PREFIX, tags=["Valuations"])
-app.include_router(certificates.router, prefix=settings.API_V1_PREFIX, tags=["Certificates"])
-
-# Payments
-app.include_router(payments.router, prefix=settings.API_V1_PREFIX, tags=["Payments"])
-
-# Fleet & Mileage
-app.include_router(fleet.router, prefix=settings.API_V1_PREFIX, tags=["Fleet"])
-app.include_router(mileage.router, prefix=settings.API_V1_PREFIX, tags=["Mileage"])
-
-# Admin & Reports
-app.include_router(admin.router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
-app.include_router(reports.router, prefix=settings.API_V1_PREFIX, tags=["Reports"])
-
-# Webhooks (external)
-app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
-
-logger.info("All routes registered successfully")
-
-# ─── Health & Root Endpoints ──────────────────────────────────
-
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """Health check endpoint for monitoring"""
-    return {
-        "status": "healthy",
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "environment": settings.ENV,
-        "debug": settings.DEBUG,
-        "timestamp": import_datetime_now().isoformat()
-    }
-
-@app.get("/", tags=["Root"])
-async def root():
-    """Root endpoint with API information"""
-    return {
-        "message": f"Welcome to {settings.APP_NAME}",
-        "version": settings.APP_VERSION,
-        "environment": settings.ENV,
-        "docs": "/api/docs",
-        "redoc": "/api/redoc",
-        "health": "/health",
-        "api_prefix": settings.API_V1_PREFIX
-    }
-
-@app.get("/api/version", tags=["Root"])
-async def api_version():
-    """Get API version information"""
-    return {
-        "version": settings.APP_VERSION,
-        "environment": settings.ENV,
-        "api_version": "v1",
-        "features": [
-            "authentication",
-            "vehicle_valuation",
-            "certificate_generation",
-            "mpesa_payments",
-            "fleet_management",
-            "mileage_calculation",
-            "document_upload",
-            "qr_verification"
-        ]
-    }
-
-# ─── Global Exception Handlers ──────────────────────────────────
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handle HTTP exceptions with consistent format"""
-    logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail} on {request.url.path}")
+    """Handle HTTP exceptions with consistent format."""
+    logger.warning(f"⚠️  HTTP exception: {exc.status_code} - {exc.detail} on {request.url.path}")
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "detail": exc.detail,
             "status_code": exc.status_code,
             "path": request.url.path,
-            "method": request.method
-        }
+            "method": request.method,
+        },
     )
+
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    """Handle unhandled exceptions"""
-    logger.error(f"Unhandled exception on {request.url.path}: {str(exc)}", exc_info=True)
+    """Handle unhandled exceptions."""
+    logger.error(f"💥 Unhandled exception on {request.url.path}: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "detail": "An internal server error occurred",
             "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "path": request.url.path
-        }
+            "path": request.url.path,
+        },
     )
 
-# ─── Middleware for Request Logging ──────────────────────────────
+# =============================================================================
+# REQUEST LOGGING MIDDLEWARE
+# =============================================================================
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming requests"""
-    import time
+    """Log all incoming requests with timing."""
     start_time = time.time()
     
     # Process request
@@ -231,8 +202,8 @@ async def log_requests(request: Request, call_next):
             "path": request.url.path,
             "status_code": response.status_code,
             "duration_ms": round(duration * 1000, 2),
-            "client_ip": request.client.host if request.client else "unknown"
-        }
+            "client_ip": request.client.host if request.client else "unknown",
+        },
     )
     
     # Add timing header
@@ -240,14 +211,127 @@ async def log_requests(request: Request, call_next):
     
     return response
 
-# ─── Helper ─────────────────────────────────────────────────────
+# =============================================================================
+# IMPORT ROUTERS - GRACEFUL HANDLING
+# =============================================================================
 
-def import_datetime_now():
-    """Import datetime.now for health check"""
-    from datetime import datetime
-    return datetime
+logger.info("📦 Registering API routes...")
 
-# ─── Main Entry Point ─────────────────────────────────────────────
+# Import all routers with graceful fallback
+try:
+    from app.api.v1.routes import auth, vehicles, payments, valuations, webhooks, users, reports
+    logger.info("✅ Core routes imported successfully")
+except ImportError as e:
+    logger.error(f"❌ Failed to import core routes: {e}")
+    auth = vehicles = payments = valuations = webhooks = users = reports = None
+
+# Try to import optional modules
+optional_modules = {
+    "certificates": "Certificates",
+    "mileage": "Mileage",
+    "fleet": "Fleet",
+    "admin": "Admin",
+}
+
+for module_name, display_name in optional_modules.items():
+    try:
+        globals()[module_name] = __import__(
+            f"app.api.v1.routes.{module_name}",
+            fromlist=["router"]
+        ).router
+        logger.info(f"✅ {display_name} routes imported successfully")
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"⚠️  {display_name} routes not found: {e}")
+        globals()[module_name] = None
+
+# =============================================================================
+# REGISTER ROUTES
+# =============================================================================
+
+# Core routes
+if auth:
+    app.include_router(auth, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
+if users:
+    app.include_router(users, prefix=settings.API_V1_PREFIX, tags=["Users"])
+if vehicles:
+    app.include_router(vehicles, prefix=settings.API_V1_PREFIX, tags=["Vehicles"])
+if valuations:
+    app.include_router(valuations, prefix=settings.API_V1_PREFIX, tags=["Valuations"])
+if payments:
+    app.include_router(payments, prefix=settings.API_V1_PREFIX, tags=["Payments"])
+if reports:
+    app.include_router(reports, prefix=settings.API_V1_PREFIX, tags=["Reports"])
+
+# Webhooks (external)
+if webhooks:
+    app.include_router(webhooks, prefix="/api/webhooks", tags=["Webhooks"])
+
+# Optional routes
+if certificates:
+    app.include_router(certificates, prefix=settings.API_V1_PREFIX, tags=["Certificates"])
+if mileage:
+    app.include_router(mileage, prefix=settings.API_V1_PREFIX, tags=["Mileage"])
+if fleet:
+    app.include_router(fleet, prefix=settings.API_V1_PREFIX, tags=["Fleet"])
+if admin:
+    app.include_router(admin, prefix=settings.API_V1_PREFIX, tags=["Admin"])
+
+logger.info("✅ All routes registered successfully")
+
+# =============================================================================
+# HEALTH & ROOT ENDPOINTS
+# =============================================================================
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return {
+        "status": "healthy",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENV,
+        "debug": settings.DEBUG,
+        "database_configured": is_database_configured(),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.get("/", tags=["Root"])
+async def root():
+    """Root endpoint with API information."""
+    return {
+        "message": f"Welcome to {settings.APP_NAME}",
+        "version": settings.APP_VERSION,
+        "environment": settings.ENV,
+        "docs": "/api/docs" if settings.ENABLE_SWAGGER else None,
+        "redoc": "/api/redoc" if settings.ENABLE_SWAGGER else None,
+        "health": "/health",
+        "api_prefix": settings.API_V1_PREFIX,
+    }
+
+
+@app.get("/api/version", tags=["Root"])
+async def api_version():
+    """Get API version information."""
+    return {
+        "version": settings.APP_VERSION,
+        "environment": settings.ENV,
+        "api_version": "v1",
+        "features": [
+            "authentication",
+            "vehicle_valuation",
+            "certificate_generation",
+            "mpesa_payments",
+            "fleet_management",
+            "mileage_calculation",
+            "document_upload",
+            "qr_verification",
+        ],
+    }
+
+# =============================================================================
+# MAIN ENTRY POINT
+# =============================================================================
 
 if __name__ == "__main__":
     import uvicorn
@@ -257,7 +341,7 @@ if __name__ == "__main__":
     host = os.getenv("HOST", settings.HOST)
     debug = settings.DEBUG
     
-    logger.info(f"Starting server on {host}:{port} (debug={debug})")
+    logger.info(f"🚀 Starting server on {host}:{port} (debug={debug})")
     
     uvicorn.run(
         "app.main:app",
@@ -270,5 +354,5 @@ if __name__ == "__main__":
         use_colors=debug,
         timeout_keep_alive=30,
         loop="uvloop",
-        http="httptools"
+        http="httptools",
     )
