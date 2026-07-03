@@ -304,24 +304,6 @@
         }
         .forgot-password a:hover { color: #eab308; }
 
-        /* ─── DIVIDER ─── */
-        .divider {
-            display: flex;
-            align-items: center;
-            margin: 20px 0 16px;
-            color: #475569;
-            font-size: 12px;
-            gap: 16px;
-        }
-
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: #1e293b;
-        }
-
         @media (max-width: 480px) {
             .login-container { padding: 32px 20px 28px; border-radius: 24px; margin: 12px; }
             .logo h1 { font-size: 26px; }
@@ -394,7 +376,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V USER LOGIN — Production Ready with CORS Support
+        // AUTO-V USER LOGIN — Production Ready
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -439,25 +421,30 @@
                         headers['Authorization'] = `Bearer ${token}`;
                     }
 
-                    const response = await fetch(url, {
-                        ...options,
-                        headers,
-                        credentials: 'include',
-                        mode: 'cors',
-                    });
+                    try {
+                        const response = await fetch(url, {
+                            ...options,
+                            headers,
+                            credentials: 'include',
+                            mode: 'cors',
+                        });
 
-                    if (!response.ok) {
-                        let errorMessage = `HTTP ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            errorMessage = errorData.detail || errorData.message || errorMessage;
-                        } catch (e) {
-                            errorMessage = await response.text() || errorMessage;
+                        if (!response.ok) {
+                            let errorMessage = `HTTP ${response.status}`;
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorData.message || errorMessage;
+                            } catch (e) {
+                                errorMessage = await response.text() || errorMessage;
+                            }
+                            throw new Error(errorMessage);
                         }
-                        throw new Error(errorMessage);
-                    }
 
-                    return response.json();
+                        return response.json();
+                    } catch (error) {
+                        console.error('API request failed:', error);
+                        throw error;
+                    }
                 },
 
                 post(endpoint, data) {
@@ -547,23 +534,24 @@
                 setLoading(true);
 
                 try {
-                    // ─── Call FastAPI Login Endpoint ────────────────────
-                    const response = await api.post('/auth/login', {
+                    // ─── Step 1: Call Login Endpoint ────────────────────
+                    console.log('🔐 Attempting login for:', email);
+                    const loginResponse = await api.post('/auth/login', {
                         email: email,
                         password: password
                     });
 
-                    console.log('✅ Login response:', response);
+                    console.log('✅ Login response:', loginResponse);
 
-                    // ─── Store Token ─────────────────────────────────────
-                    if (response.access_token) {
-                        api.setToken(response.access_token);
+                    // ─── Step 2: Store Token ─────────────────────────────
+                    if (loginResponse.access_token) {
+                        api.setToken(loginResponse.access_token);
                         console.log('✅ Token stored successfully');
                     } else {
                         throw new Error('No access token received');
                     }
 
-                    // ─── Get User Info ──────────────────────────────────
+                    // ─── Step 3: Get User Info ──────────────────────────
                     const user = await api.get('/auth/me');
                     console.log('✅ User info:', user);
 
@@ -576,7 +564,7 @@
                         verifiedAt: new Date().toISOString()
                     }));
 
-                    // ─── Redirect based on role ─────────────────────────
+                    // ─── Step 4: Redirect based on role ─────────────────
                     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
 
                     showMessage('✅ Login successful! Redirecting...', 'success');
@@ -606,6 +594,10 @@
                         console.error('CORS Error: The backend may not be configured to accept requests from this domain.');
                     } else if (errorMsg.toLowerCase().includes('not confirmed') || errorMsg.toLowerCase().includes('verify')) {
                         showMessage('📧 Please verify your email before logging in.', 'info');
+                    } else if (errorMsg.includes('404')) {
+                        showMessage('🔍 API endpoint not found. Please check the backend URL.', 'error');
+                    } else if (errorMsg.includes('500')) {
+                        showMessage('⚠️ Server error. Please try again later.', 'error');
                     } else {
                         showMessage(`❌ Login failed: ${errorMsg}`, 'error');
                     }
