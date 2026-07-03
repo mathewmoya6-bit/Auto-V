@@ -79,9 +79,9 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Professional Vehicle Valuation Engine API - Single Source of Truth",
-    docs_url="/api/docs" if settings.ENABLE_SWAGGER else None,
-    redoc_url="/api/redoc" if settings.ENABLE_SWAGGER else None,
-    openapi_url="/api/openapi.json" if settings.ENABLE_SWAGGER else None,
+    docs_url="/docs" if settings.ENABLE_SWAGGER else None,           # ✅ FIXED: /docs instead of /api/docs
+    redoc_url="/redoc" if settings.ENABLE_SWAGGER else None,         # ✅ FIXED: /redoc instead of /api/redoc
+    openapi_url="/openapi.json" if settings.ENABLE_SWAGGER else None, # ✅ FIXED: /openapi.json instead of /api/openapi.json
     lifespan=lifespan,
     servers=[
         {"url": settings.API_URL, "description": "Production API"},
@@ -99,12 +99,17 @@ if settings.ENABLE_RATE_LIMITING:
     logger.info("✅ Rate limiting enabled")
 
 # =============================================================================
-# CORS MIDDLEWARE
+# CORS MIDDLEWARE - WITH FALLBACK
 # =============================================================================
+
+# Get CORS origins with fallback
+cors_origins = getattr(settings, 'CORS_ORIGINS', ["*"])
+if not cors_origins or cors_origins == []:
+    cors_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -115,18 +120,21 @@ app.add_middleware(
         "X-RateLimit-Reset",
     ],
 )
-logger.info(f"✅ CORS enabled with origins: {settings.CORS_ORIGINS}")
+logger.info(f"✅ CORS enabled with origins: {cors_origins}")
 
 # =============================================================================
-# TRUSTED HOST MIDDLEWARE
+# TRUSTED HOST MIDDLEWARE - WITH FALLBACK
 # =============================================================================
 
 if settings.is_production():
+    allowed_hosts = getattr(settings, 'ALLOWED_HOSTS', ["*"])
+    if not allowed_hosts or allowed_hosts == []:
+        allowed_hosts = ["*"]
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=settings.ALLOWED_HOSTS,
+        allowed_hosts=allowed_hosts,
     )
-    logger.info(f"✅ Trusted hosts: {settings.ALLOWED_HOSTS}")
+    logger.info(f"✅ Trusted hosts: {allowed_hosts}")
 
 # =============================================================================
 # EXCEPTION HANDLERS
@@ -319,8 +327,8 @@ async def root():
         "message": f"Welcome to {settings.APP_NAME}",
         "version": settings.APP_VERSION,
         "environment": settings.ENV,
-        "docs": "/api/docs" if settings.ENABLE_SWAGGER else None,
-        "redoc": "/api/redoc" if settings.ENABLE_SWAGGER else None,
+        "docs": "/docs" if settings.ENABLE_SWAGGER else None,        # ✅ FIXED
+        "redoc": "/redoc" if settings.ENABLE_SWAGGER else None,      # ✅ FIXED
         "health": "/health",
         "api_prefix": settings.API_V1_PREFIX,
     }
