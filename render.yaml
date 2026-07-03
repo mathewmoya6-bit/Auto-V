@@ -1,4 +1,8 @@
-# render.yaml (if using Render Blueprint)
+# render.yaml - AUTO-V Backend Deployment Configuration
+# =============================================================================
+# Deploy on Render.com with FastAPI + Supabase + Redis
+# =============================================================================
+
 services:
   - type: web
     name: auto-v-backend
@@ -8,7 +12,9 @@ services:
     region: frankfurt
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
+      # ─── Application Settings ──────────────────────────────────
       - key: APP_NAME
         value: AUTO-V Professional Valuation Engine
       - key: APP_VERSION
@@ -25,34 +31,33 @@ services:
         value: /api/v1
       - key: PROJECT_NAME
         value: AUTO-V API
+      - key: LOG_LEVEL
+        value: INFO
+
+      # ─── Supabase (Required) ──────────────────────────────────
       - key: SUPABASE_URL
-        value: https://tsvejnzxrxrrecgquxbq.supabase.co
+        value: https://tsvejznzxrrregquxbq.supabase.co
       - key: SUPABASE_ANON_KEY
-        sync: false
+        sync: false  # Set in Render Dashboard
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
+        sync: false  # Set in Render Dashboard
       - key: SUPABASE_JWT_SECRET
-        sync: false
-      - key: SECRET_KEY
-        sync: false
-      - key: MPESA_CONSUMER_KEY
-        sync: false
-      - key: MPESA_CONSUMER_SECRET
-        sync: false
-      - key: MPESA_SHORTCODE
-        value: 4095377
-      - key: MPESA_PASSKEY
-        sync: false
-      - key: MPESA_ENVIRONMENT
-        value: production
-      - key: BASE_URL
-        value: https://auto-v.meipressgroup.com
-      - key: MPESA_CALLBACK_URL
-        value: https://auto-v.meipressgroup.com/api/webhooks/mpesa
+        sync: false  # Set in Render Dashboard
+
+      # ─── Database ──────────────────────────────────────────────
+      - key: DATABASE_URL
+        sync: false  # Set in Render Dashboard
+        # Example: postgresql+asyncpg://postgres:password@db.xxxxx.supabase.co:5432/postgres
+
+      # ─── CORS & Security ──────────────────────────────────────
       - key: CORS_ORIGINS
         value: '["https://auto-v.meipressgroup.com","https://www.auto-v.meipressgroup.com","https://auto-v.onrender.com","http://localhost:3000","http://localhost:5173","http://localhost:5500"]'
       - key: ALLOWED_HOSTS
         value: '["auto-v.meipressgroup.com","www.auto-v.meipressgroup.com","auto-v.onrender.com","localhost","127.0.0.1"]'
+      - key: SECRET_KEY
+        sync: false  # Generate a strong secret key
+
+      # ─── Redis (Optional but recommended) ──────────────────────
       - key: REDIS_ENABLED
         value: true
       - key: REDIS_URL
@@ -61,6 +66,8 @@ services:
         value: 10
       - key: REDIS_TTL
         value: 3600
+
+      # ─── Rate Limiting ──────────────────────────────────────────
       - key: RATELIMIT_ENABLED
         value: true
       - key: RATELIMIT_DEFAULT
@@ -71,10 +78,24 @@ services:
         value: 5
       - key: IP_RATE_LIMIT
         value: 100
-      - key: LOG_LEVEL
-        value: INFO
-      - key: LOG_FORMAT
-        value: json
+
+      # ─── M-Pesa Integration ──────────────────────────────────────
+      - key: MPESA_CONSUMER_KEY
+        sync: false
+      - key: MPESA_CONSUMER_SECRET
+        sync: false
+      - key: MPESA_SHORTCODE
+        value: 4095377
+      - key: MPESA_PASSKEY
+        sync: false
+      - key: MPESA_ENVIRONMENT
+        value: production
+      - key: MPESA_CALLBACK_URL
+        value: https://auto-v.meipressgroup.com/api/webhooks/mpesa
+      - key: BASE_URL
+        value: https://auto-v.meipressgroup.com
+
+      # ─── AI / ML Settings ──────────────────────────────────────
       - key: AI_WEIGHT
         value: 0.4
       - key: AI_MIN_CONFIDENCE
@@ -87,6 +108,8 @@ services:
         value: true
       - key: AI_CACHE_TTL
         value: 3600
+
+      # ─── Feature Flags ──────────────────────────────────────────
       - key: FEATURE_MPESA
         value: true
       - key: FEATURE_VIN_AUTOFILL
@@ -111,6 +134,8 @@ services:
         value: true
       - key: REALTIME_ENABLED
         value: true
+
+      # ─── Storage ──────────────────────────────────────────────────
       - key: STORAGE_TYPE
         value: supabase
       - key: STORAGE_BUCKET
@@ -119,12 +144,16 @@ services:
         value: 10485760
       - key: MAX_DOCUMENT_SIZE
         value: 20971520
+
+      # ─── API Keys (Set in Dashboard) ──────────────────────────
       - key: CARAPI_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: GOOGLE_VISION_API_KEY
         sync: false
+
+      # ─── Email (SMTP) ──────────────────────────────────────────
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -137,7 +166,11 @@ services:
         value: noreply@autov.africa
       - key: SMTP_TLS
         value: true
+
+      # ─── Miscellaneous ──────────────────────────────────────────
       - key: SSL_ENABLED
         value: false
       - key: MAINTENANCE_MODE
         value: false
+      - key: LOG_FORMAT
+        value: json
