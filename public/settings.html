@@ -5,11 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Settings</title>
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    <script src="js/loading.js"></script>
-    
     <style>
         * {
             margin: 0;
@@ -557,13 +552,13 @@
 (function() {
     'use strict';
 
-    // ─── CONFIG ──────────────────────────────────────────────────
-    const API_BASE = 'http://localhost:8000/api';
+    // ─── PRODUCTION CONFIG ────────────────────────────────────────────
+    const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
 
-    // ─── STATE ──────────────────────────────────────────────────
+    // ─── STATE ──────────────────────────────────────────────────────────
     let currentUser = null;
 
-    // ─── Toast / Error handling ──────────────────────────────
+    // ─── Toast / Error handling ────────────────────────────────────────
     function showToast(message, type = 'info') {
         const existing = document.querySelector('.toast');
         if (existing) existing.remove();
@@ -594,20 +589,64 @@
         showToast(message, 'success');
     }
 
-    // ─── Token helpers ──────────────────────────────────────────
+    // ─── Token helpers ──────────────────────────────────────────────────
     function getAuthToken() {
         return localStorage.getItem('access_token');
     }
 
     function getAuthHeaders() {
         const token = getAuthToken();
-        return {
+        const headers = {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Accept': 'application/json',
         };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`
+        };
+        return headers;
     }
 
-    // ─── Check Authentication ──────────────────────────────────
+    async function apiRequest(endpoint, options = {}) {
+        const url = `${API_BASE}${endpoint}`;
+        const config = {
+            ...options,
+            headers: {
+                ...getAuthHeaders(),
+                ...(options.headers || {})
+            }
+        };
+
+        try {
+            const response = await fetch(url, config);
+            
+            if (response.status === 401) {
+                localStorage.removeItem('access_token');
+                window.location.href = 'login.html';
+                throw new Error('Session expired. Please login again.');
+            }
+
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+                }
+                return data;
+            } else {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response;
+            }
+        } catch (error) {
+            if (error.message.includes('fetch')) {
+                throw new Error('Network error. Please check your connection.');
+            }
+            throw error;
+        }
+    }
+
+    // ─── Check Authentication ──────────────────────────────────────────
     async function checkAuth() {
         const token = getAuthToken();
         if (!token) {
@@ -616,26 +655,17 @@
         }
 
         try {
-            const response = await fetch(`${API_BASE}/auth/me`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                localStorage.removeItem('access_token');
-                window.location.href = "login.html";
-                return false;
-            }
-
-            currentUser = await response.json();
+            currentUser = await apiRequest('/auth/me');
             return true;
         } catch (error) {
             console.error('Auth check failed:', error);
+            localStorage.removeItem('access_token');
             window.location.href = "login.html";
             return false;
         }
     }
 
-    // ─── Load Settings ──────────────────────────────────────────
+    // ─── Load Settings ──────────────────────────────────────────────────
     function loadSettings() {
         const saved = localStorage.getItem('autov_settings');
         if (saved) {
@@ -679,7 +709,7 @@
         }
     }
 
-    // ─── Save helpers ──────────────────────────────────────────
+    // ─── Save helpers ──────────────────────────────────────────────────
     function getCurrentSettings() {
         const saved = localStorage.getItem('autov_settings');
         return saved ? JSON.parse(saved) : {};
@@ -696,9 +726,8 @@
             const token = getAuthToken();
             if (!token) return;
 
-            await fetch(`${API_BASE}/users/settings`, {
+            await apiRequest('/users/settings', {
                 method: 'PUT',
-                headers: getAuthHeaders(),
                 body: JSON.stringify(settings)
             });
         } catch (error) {
@@ -706,7 +735,7 @@
         }
     }
 
-    // ─── Save Functions ──────────────────────────────────────────
+    // ─── Save Functions ──────────────────────────────────────────────────
     window.saveGeneralSettings = function() {
         const settings = getCurrentSettings();
         settings.currency = document.getElementById('currency').value;
@@ -770,23 +799,14 @@
         showSuccess('Security settings saved successfully!');
     };
 
-    // ─── Export All Data ──────────────────────────────────────────
+    // ─── Export All Data ──────────────────────────────────────────────────
     window.exportAllData = async function() {
         try {
             const token = getAuthToken();
             if (!token) throw new Error('Not authenticated');
 
-            const response = await fetch(`${API_BASE}/users/export-data`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const data = await apiRequest('/users/export-data');
 
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || 'Failed to export data');
-            }
-
-            const data = await response.json();
-            
             const dataStr = JSON.stringify(data, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -803,7 +823,7 @@
         }
     };
 
-    // ─── Clear Cache ──────────────────────────────────────────────
+    // ─── Clear Cache ──────────────────────────────────────────────────────
     window.clearCache = function() {
         if (confirm('Clear local cache? You will need to login again.')) {
             localStorage.clear();
@@ -812,25 +832,19 @@
         }
     };
 
-    // ─── Change Email ──────────────────────────────────────────────
+    // ─── Change Email ────────────────────────────────────────────────────
     window.changeEmail = function() {
         const newEmail = prompt('Enter your new email address:');
         if (newEmail && newEmail.includes('@')) {
-            // Send request to backend
             const token = getAuthToken();
             if (token) {
-                fetch(`${API_BASE}/auth/change-email`, {
+                apiRequest('/auth/change-email', {
                     method: 'POST',
-                    headers: getAuthHeaders(),
                     body: JSON.stringify({ new_email: newEmail })
-                }).then(response => {
-                    if (response.ok) {
-                        showSuccess('Email change request submitted. Please check your email for verification.');
-                    } else {
-                        showError('Failed to change email. Please try again.');
-                    }
-                }).catch(() => {
-                    showError('Network error. Please try again.');
+                }).then(() => {
+                    showSuccess('Email change request submitted. Please check your email for verification.');
+                }).catch((error) => {
+                    showError('Failed to change email: ' + error.message);
                 });
             }
         } else {
@@ -838,45 +852,35 @@
         }
     };
 
-    // ─── Reset Password ────────────────────────────────────────────
+    // ─── Reset Password ────────────────────────────────────────────────────
     window.resetPassword = async function() {
         const confirmed = confirm('Reset your password? You will receive an email with reset instructions.');
         if (confirmed) {
             try {
-                const response = await fetch(`${API_BASE}/auth/reset-password`, {
+                await apiRequest('/auth/reset-password', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: currentUser.email })
                 });
-
-                if (response.ok) {
-                    showSuccess('Password reset email sent! Check your inbox.');
-                } else {
-                    const err = await response.json();
-                    showError('Error: ' + (err.detail || 'Failed to send reset email'));
-                }
+                showSuccess('Password reset email sent! Check your inbox.');
             } catch (error) {
-                showError('Network error. Please try again.');
+                showError('Error: ' + error.message);
             }
         }
     };
 
-    // ─── Logout ────────────────────────────────────────────────────
+    // ─── Logout ────────────────────────────────────────────────────────────
     window.logout = async function() {
         try {
             const token = getAuthToken();
             if (token) {
-                await fetch(`${API_BASE}/auth/logout`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                await apiRequest('/auth/logout', { method: 'POST' });
             }
         } catch (e) {}
         localStorage.removeItem('access_token');
         window.location.href = 'login.html';
     };
 
-    // ─── Delete Account ────────────────────────────────────────────
+    // ─── Delete Account ────────────────────────────────────────────────────
     window.deleteAccount = async function() {
         const confirmed = confirm(
             '⚠️ WARNING: This action is irreversible!\n\n' +
@@ -900,15 +904,7 @@
             const token = getAuthToken();
             if (!token) throw new Error('Not authenticated');
 
-            const response = await fetch(`${API_BASE}/users/delete`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || 'Failed to delete account');
-            }
+            await apiRequest('/users/delete', { method: 'DELETE' });
 
             showSuccess('Account deleted successfully. Redirecting...');
             localStorage.removeItem('access_token');
@@ -922,14 +918,16 @@
         }
     };
 
-    // ─── Init ──────────────────────────────────────────────────
+    // ─── Init ──────────────────────────────────────────────────────────────
     async function init() {
         try {
             const isAuth = await checkAuth();
             if (!isAuth) return;
             
             loadSettings();
-            console.log('AUTO-V Settings initialized successfully');
+            console.log('✅ AUTO-V Settings initialized successfully');
+            console.log(`🔗 Backend API: ${API_BASE}`);
+            console.log(`👤 User: ${currentUser?.email}`);
             
         } catch (err) {
             console.error('Initialization Error:', err);
