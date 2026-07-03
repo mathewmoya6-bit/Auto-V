@@ -15,14 +15,14 @@ from app.core.database import (
     check_db_health,
 )
 
-# If you want to keep 'db' as an alias for the session factory:
+# Alias for backward compatibility if needed
 db = AsyncSessionLocal
 
 __all__ = [
     "settings",
     "engine",
     "AsyncSessionLocal",
-    "db",  # Alias for AsyncSessionLocal
+    "db",
     "get_db",
     "init_db",
     "close_db",
