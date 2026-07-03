@@ -6,11 +6,6 @@
     <title>AUTO-V | Customer Portal</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    <script src="js/loading.js"></script>
-    
     <style>
         * {
             margin: 0;
@@ -532,7 +527,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V CUSTOMER PORTAL — FastAPI Backend Integration
+        // AUTO-V CUSTOMER PORTAL — Production Ready
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -541,8 +536,84 @@
             if (window.autoVPortalInitialized) return;
             window.autoVPortalInitialized = true;
 
-            // ─── CONFIG ──────────────────────────────────────────────────
-            const API_BASE = 'http://localhost:8000/api';
+            // ─── PRODUCTION CONFIG ──────────────────────────────────────────
+            const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
+
+            // ─── API Client (built-in) ──────────────────────────────────────
+            const api = {
+                baseURL: API_BASE,
+                token: null,
+
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('access_token', token);
+                },
+
+                getToken() {
+                    return this.token || localStorage.getItem('access_token');
+                },
+
+                clearToken() {
+                    this.token = null;
+                    localStorage.removeItem('access_token');
+                },
+
+                async request(endpoint, options = {}) {
+                    const url = endpoint.startsWith('http') ? endpoint : `${this.baseURL}${endpoint}`;
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...options.headers,
+                    };
+
+                    const token = this.getToken();
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+
+                    const response = await fetch(url, {
+                        ...options,
+                        headers,
+                        credentials: 'include',
+                        mode: 'cors',
+                    });
+
+                    if (!response.ok) {
+                        let errorMessage = `HTTP ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorMessage = errorData.detail || errorData.message || errorMessage;
+                        } catch (e) {
+                            errorMessage = await response.text() || errorMessage;
+                        }
+                        throw new Error(errorMessage);
+                    }
+
+                    return response.json();
+                },
+
+                get(endpoint) {
+                    return this.request(endpoint, { method: 'GET' });
+                },
+
+                post(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                    });
+                },
+
+                put(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'PUT',
+                        body: JSON.stringify(data),
+                    });
+                },
+
+                delete(endpoint) {
+                    return this.request(endpoint, { method: 'DELETE' });
+                },
+            };
 
             // ─── SERVICE CONFIGURATION ──────────────────────────────────
             const SERVICE_MAP = {
@@ -588,6 +659,8 @@
 
             // ─── HELPERS ────────────────────────────────────────────────
             function showToast(msg, type = 'success') {
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
                 const t = document.createElement('div');
                 t.className = `toast toast-${type}`;
                 t.textContent = msg;
@@ -632,12 +705,6 @@
 
             function getPage(key) {
                 return getServiceDisplay(key).page;
-            }
-
-            // ─── API CHECK ──────────────────────────────────────────────
-            if (typeof api === 'undefined') {
-                showToast('⚠️ API client not loaded. Please refresh the page.', 'error');
-                console.error('API client not found. Ensure js/api-client.js is loaded.');
             }
 
             // ─── LOAD FEES FROM API ─────────────────────────────────────
@@ -798,6 +865,8 @@
                         return null;
                     }
 
+                    api.setToken(token);
+
                     const user = await api.get('/auth/me');
                     currentUser = user;
                     $('userEmail').textContent = user.email;
@@ -831,12 +900,10 @@
             window.logout = async function() {
                 try {
                     await api.post('/auth/logout');
-                    api.clearToken();
-                    localStorage.removeItem('access_token');
-                    window.location.href = 'login.html';
-                } catch (error) {
-                    showToast('Logout failed: ' + error.message, 'error');
-                }
+                } catch (e) {}
+                api.clearToken();
+                localStorage.removeItem('access_token');
+                window.location.href = 'login.html';
             };
 
             // ─── DETAILS FORM SUBMIT ────────────────────────────────────
@@ -915,7 +982,7 @@
                     statusBox.textContent = '⏳ Processing payment... Please wait.';
                     statusBox.style.display = 'block';
 
-                    // Simulate payment processing (or call actual payment API)
+                    // Simulate payment processing
                     await new Promise(resolve => setTimeout(resolve, 3000));
 
                     // Update payment status
@@ -947,14 +1014,13 @@
                     btn.innerHTML = '💳 Retry Payment';
                     btn.disabled = false;
                     showToast('Payment failed: ' + error.message, 'error');
-                    
-                    ErrorHandler.handle(error, 'Payment Processing');
                 }
             };
 
             // ─── INIT ────────────────────────────────────────────────────
             async function init() {
                 console.log('🚗 AUTO-V Customer Portal - Initializing...');
+                console.log(`🔗 Backend API: ${API_BASE}`);
 
                 try {
                     const user = await checkAuth();
@@ -983,7 +1049,12 @@
             window.getIcon = getIcon;
 
             // ─── START ──────────────────────────────────────────────────
-            document.addEventListener('DOMContentLoaded', init);
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+
         })();
     </script>
 </body>
