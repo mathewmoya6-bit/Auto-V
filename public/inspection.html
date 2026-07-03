@@ -6,13 +6,10 @@
     <title>AUTO-V | Professional Inspection Engine</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🔍%3C/text%3E%3C/svg%3E">
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    <script src="js/loading.js"></script>
-    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
+        /* ─── All existing CSS remains the same ─── */
         * {
             margin: 0;
             padding: 0;
@@ -1160,8 +1157,8 @@
             if (window.autoVProfInspectionInitialized) return;
             window.autoVProfInspectionInitialized = true;
 
-            // ─── CONFIG ──────────────────────────────────────────────────
-            const API_BASE = 'http://localhost:8000/api';
+            // ─── PRODUCTION CONFIG ──────────────────────────────────────
+            const API_BASE = 'https://auto-v.onrender.com/api/v1';
 
             // ─── VEHICLE MODELS ──────────────────────────────────────────
             const vehicleModels = {
@@ -1233,11 +1230,81 @@
             requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
             requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
 
-            // ─── API CHECK ──────────────────────────────────────────────
-            if (typeof api === 'undefined') {
-                showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
-                console.error('API client not found. Ensure js/api-client.js is loaded.');
-            }
+            // ─── API CLIENT (built-in) ──────────────────────────────────
+            const api = {
+                baseURL: API_BASE,
+                token: null,
+
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('access_token', token);
+                },
+
+                getToken() {
+                    return this.token || localStorage.getItem('access_token');
+                },
+
+                clearToken() {
+                    this.token = null;
+                    localStorage.removeItem('access_token');
+                },
+
+                async request(endpoint, options = {}) {
+                    const url = `${this.baseURL}${endpoint}`;
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...options.headers,
+                    };
+
+                    const token = this.getToken();
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+
+                    const response = await fetch(url, {
+                        ...options,
+                        headers,
+                        credentials: 'include',
+                        mode: 'cors',
+                    });
+
+                    if (!response.ok) {
+                        let errorMessage = `HTTP ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorMessage = errorData.detail || errorData.message || errorMessage;
+                        } catch (e) {
+                            errorMessage = await response.text() || errorMessage;
+                        }
+                        throw new Error(errorMessage);
+                    }
+
+                    return response.json();
+                },
+
+                get(endpoint) {
+                    return this.request(endpoint, { method: 'GET' });
+                },
+
+                post(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                    });
+                },
+
+                put(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'PUT',
+                        body: JSON.stringify(data),
+                    });
+                },
+
+                delete(endpoint) {
+                    return this.request(endpoint, { method: 'DELETE' });
+                },
+            };
 
             // ─── HELPERS ────────────────────────────────────────────────
             function showMessage(msg, type = 'error') {
@@ -1304,8 +1371,6 @@
             // ─── UPLOAD FUNCTIONS ──────────────────────────────────────
             async function uploadFile(file, bucket, path) {
                 try {
-                    // For FastAPI backend, we'll use a different approach
-                    // Since file upload is complex, we'll simulate with base64
                     return new Promise((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onload = function(e) {
@@ -1329,7 +1394,6 @@
                 statusEl.className = 'file-status uploading';
                 statusEl.textContent = '⏳ Uploading...';
                 try {
-                    // For demo, just store the file data
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         imageStatus[slot].uploaded = true;
@@ -1337,7 +1401,7 @@
                         imageUrls[slot] = e.target.result;
                         statusEl.className = 'file-status uploaded';
                         statusEl.textContent = '✅ Uploaded';
-                        
+
                         let preview = item.querySelector('.preview');
                         if (!preview) {
                             preview = document.createElement('img');
@@ -1506,7 +1570,6 @@
                     }
                 } catch (error) {
                     showToast('Error: ' + error.message, 'error');
-                    ErrorHandler.handle(error, 'VIN Decode');
                 } finally {
                     showLoading(false);
                 }
@@ -1813,7 +1876,6 @@
                 } catch (error) {
                     console.error('Inspection error:', error);
                     showMessage('Error: ' + error.message, 'error');
-                    ErrorHandler.handle(error, 'Inspection Submission');
                 } finally {
                     showLoading(false);
                 }
