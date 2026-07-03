@@ -9,10 +9,170 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Import API Client (for auth detection) -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    
+    <!-- ─── Built-in API Client (no external dependency) ─── -->
+    <script>
+        // =============================================================================
+        // AUTO-V API Client - Built-in (no external file needed)
+        // =============================================================================
+        (function() {
+            'use strict';
+
+            const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
+
+            class APIClient {
+                constructor(baseURL) {
+                    this.baseURL = baseURL;
+                    this.token = null;
+                }
+
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('access_token', token);
+                }
+
+                getToken() {
+                    return this.token || localStorage.getItem('access_token');
+                }
+
+                clearToken() {
+                    this.token = null;
+                    localStorage.removeItem('access_token');
+                }
+
+                async request(endpoint, options = {}) {
+                    const url = `${this.baseURL}${endpoint}`;
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...options.headers,
+                    };
+
+                    const token = this.getToken();
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+
+                    try {
+                        const response = await fetch(url, {
+                            ...options,
+                            headers,
+                            credentials: 'include',
+                            mode: 'cors',
+                        });
+
+                        if (!response.ok) {
+                            let errorMessage = `HTTP ${response.status}`;
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorData.message || errorMessage;
+                            } catch (e) {
+                                errorMessage = await response.text() || errorMessage;
+                            }
+                            throw new Error(errorMessage);
+                        }
+
+                        return response.json();
+                    } catch (error) {
+                        console.error('API request failed:', error);
+                        throw error;
+                    }
+                }
+
+                get(endpoint) {
+                    return this.request(endpoint, { method: 'GET' });
+                }
+
+                post(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                    });
+                }
+
+                put(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'PUT',
+                        body: JSON.stringify(data),
+                    });
+                }
+
+                delete(endpoint) {
+                    return this.request(endpoint, { method: 'DELETE' });
+                }
+            }
+
+            // ─── Error Handler ──────────────────────────────────────────
+            class ErrorHandler {
+                static showToast(message, type = 'info', duration = 5000) {
+                    // Remove existing toast
+                    const existing = document.querySelector('.toast-container');
+                    if (existing) existing.remove();
+
+                    // Create toast
+                    const div = document.createElement('div');
+                    div.className = 'toast-container';
+                    div.style.cssText = `
+                        position: fixed;
+                        bottom: 24px;
+                        right: 24px;
+                        padding: 14px 24px;
+                        border-radius: 12px;
+                        z-index: 9999;
+                        font-weight: 500;
+                        animation: slideIn 0.3s ease;
+                        max-width: 420px;
+                        font-size: 14px;
+                        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+                        font-family: 'Inter', system-ui, sans-serif;
+                        background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+                        color: ${type === 'error' ? '#fff' : '#000'};
+                        border-left: 4px solid ${type === 'error' ? '#dc2626' : type === 'success' ? '#16a34a' : type === 'warning' ? '#d97706' : '#2563eb'};
+                    `;
+                    div.textContent = message;
+                    document.body.appendChild(div);
+
+                    // Auto-remove after duration
+                    setTimeout(() => {
+                        if (div.parentNode) div.remove();
+                    }, duration);
+                }
+
+                static handle(error, context = 'Unknown') {
+                    console.error(`❌ Error in ${context}:`, error);
+                    let message = error.message || 'An unexpected error occurred';
+                    this.showToast(message, 'error');
+                    return message;
+                }
+            }
+
+            // ─── Create global instances ──────────────────────────────
+            const api = new APIClient(API_BASE);
+            const ErrorHandler = window.ErrorHandler || ErrorHandler;
+
+            // ─── Expose globally ──────────────────────────────────────
+            window.api = api;
+            window.ErrorHandler = ErrorHandler;
+
+            // ─── Toast styles ──────────────────────────────────────────
+            if (!document.querySelector('#toast-styles')) {
+                const style = document.createElement('style');
+                style.id = 'toast-styles';
+                style.textContent = `
+                    @keyframes slideIn {
+                        from { opacity: 0; transform: translateX(80px); }
+                        to { opacity: 1; transform: translateX(0); }
+                    }
+                    .toast-container {
+                        animation: slideIn 0.3s ease-out;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            console.log('✅ API Client initialized (built-in)');
+        })();
+    </script>
+
     <style>
         /* ─── RESET & ROOT ─── */
         *,
@@ -1126,25 +1286,6 @@
             font-size: 14px;
         }
 
-        /* ─── TOAST OVERRIDE ─── */
-        .toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            max-width: 400px;
-            padding: 16px 24px;
-            border-radius: 8px;
-            color: white;
-            font-family: 'Inter', system-ui, sans-serif;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            animation: slideIn 0.3s ease-out;
-        }
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
         /* ─── RESPONSIVE ─── */
         @media (max-width: 1024px) {
             .hero-split {
@@ -1805,6 +1946,19 @@
             // ─── Check if API client exists ──────────────────────────
             if (typeof api === 'undefined') {
                 console.warn('API client not loaded - using fallback mode');
+                // Create fallback
+                window.api = {
+                    get: () => Promise.reject(new Error('API not available')),
+                    post: () => Promise.reject(new Error('API not available')),
+                    setToken: () => {},
+                    getToken: () => null,
+                    clearToken: () => {}
+                };
+                window.ErrorHandler = {
+                    showToast: function(msg, type) {
+                        alert(msg);
+                    }
+                };
             }
 
             // ─── Auth-aware Navigation ────────────────────────────────
@@ -1918,7 +2072,11 @@
                 if (query) {
                     window.location.href = `/search-results.html?q=${encodeURIComponent(query)}`;
                 } else {
-                    ErrorHandler.showToast('Please enter a registration, VIN, or QR code', 'warning');
+                    if (window.ErrorHandler) {
+                        window.ErrorHandler.showToast('Please enter a registration, VIN, or QR code', 'warning');
+                    } else {
+                        alert('Please enter a registration, VIN, or QR code');
+                    }
                 }
             };
 
@@ -1934,7 +2092,9 @@
                 if (isLoggedIn()) {
                     window.location.href = '/dashboard.html?action=download-report';
                 } else {
-                    ErrorHandler.showToast('Please login to download reports', 'warning');
+                    if (window.ErrorHandler) {
+                        window.ErrorHandler.showToast('Please login to download reports', 'warning');
+                    }
                     window.location.href = '/login.html?redirect=/dashboard.html';
                 }
             };
@@ -1949,16 +2109,24 @@
                 } else {
                     // Fallback: copy link
                     navigator.clipboard.writeText(window.location.href).then(() => {
-                        ErrorHandler.showToast('Link copied to clipboard!', 'success');
+                        if (window.ErrorHandler) {
+                            window.ErrorHandler.showToast('Link copied to clipboard!', 'success');
+                        }
                     }).catch(() => {
-                        ErrorHandler.showToast('Share: ' + window.location.href, 'info');
+                        if (window.ErrorHandler) {
+                            window.ErrorHandler.showToast('Share: ' + window.location.href, 'info');
+                        }
                     });
                 }
             };
 
             // ─── Demo Video ──────────────────────────────────────────
             window.showDemo = function() {
-                ErrorHandler.showToast('🎬 Demo video coming soon!', 'info');
+                if (window.ErrorHandler) {
+                    window.ErrorHandler.showToast('🎬 Demo video coming soon!', 'info');
+                } else {
+                    alert('🎬 Demo video coming soon!');
+                }
             };
         });
 
@@ -1983,6 +2151,7 @@
 
         async function updateNavigation() {
             const navRight = document.getElementById('navRight');
+            if (!navRight) return;
             
             if (isLoggedIn()) {
                 // User is logged in - show dashboard link and avatar
