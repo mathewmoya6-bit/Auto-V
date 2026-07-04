@@ -1,6 +1,6 @@
 # app/models/vehicle.py
 # =============================================================================
-# AUTO-V API - Vehicle, VehicleImage, VINScan Models
+# AUTO-V API - Vehicle Models
 # =============================================================================
 
 import uuid
@@ -43,24 +43,10 @@ class Vehicle(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    # Relationships with explicit foreign_keys
-    owner = relationship(
-        "UserProfile",
-        foreign_keys=[user_id],
-        back_populates="vehicles"
-    )
-    
+    # Relationships
+    owner = relationship("UserProfile", foreign_keys=[user_id], back_populates="vehicles")
     images = relationship("VehicleImage", back_populates="vehicle", cascade="all, delete-orphan")
-    valuations = relationship("Valuation", back_populates="vehicle", cascade="all, delete-orphan")
-    inspections = relationship("Inspection", back_populates="vehicle", cascade="all, delete-orphan")
-    
-    mileage_claims = relationship(
-        "MileageClaim",
-        foreign_keys="MileageClaim.vehicle_id",
-        back_populates="vehicle"
-    )
-    
-    fleet_vehicles = relationship("FleetVehicle", back_populates="vehicle", cascade="all, delete-orphan")
+    mileage_claims = relationship("MileageClaim", foreign_keys="MileageClaim.vehicle_id", back_populates="vehicle")
     vin_scans = relationship("VINScan", foreign_keys="VINScan.vehicle_id", back_populates="vehicle")
 
     __table_args__ = (
@@ -94,7 +80,7 @@ class VehicleImage(Base):
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
 
-    slot = Column(String(50), nullable=False)  # front, rear, left, right, interior, engine, vin
+    slot = Column(String(50), nullable=False)
     image_url = Column(String(500), nullable=False)
     is_primary = Column(Boolean, default=False)
     ai_analyzed = Column(Boolean, default=False)
@@ -123,14 +109,11 @@ class VINScan(Base):
     confidence = Column(Float)
     validation_result = Column(JSON)
     vehicle_data = Column(JSON)
-    status = Column(String(20), default="pending")  # pending, verified, failed
+    status = Column(String(20), default="pending")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    vehicle = relationship(
-        "Vehicle",
-        foreign_keys=[vehicle_id],
-        back_populates="vin_scans"
-    )
+    user = relationship("UserProfile", foreign_keys=[user_id], back_populates="vin_scans")
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id], back_populates="vin_scans")
 
     __table_args__ = (
         Index("idx_vin_scans_vin", "vin"),
