@@ -5,6 +5,7 @@
 
 import logging
 import re
+from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -25,17 +26,13 @@ if not DATABASE_URL:
     logger.error("❌ DATABASE_URL is not configured!")
     raise RuntimeError("DATABASE_URL is not configured")
 
-# ✅ FIX: Remove sslmode from URL for asyncpg
-# asyncpg does NOT accept sslmode as a parameter
+# ✅ Remove any sslmode from URL
 if DATABASE_URL:
-    # Remove sslmode=require from URL
     if "sslmode=require" in DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace("sslmode=require", "ssl=require")
         logger.info("✅ Fixed sslmode=require -> ssl=require")
     
-    # Remove any remaining sslmode parameters
     if "sslmode" in DATABASE_URL:
-        # Remove sslmode=xxx from the URL
         DATABASE_URL = re.sub(r'\?sslmode=[^&]*', '', DATABASE_URL)
         DATABASE_URL = re.sub(r'&sslmode=[^&]*', '', DATABASE_URL)
         logger.info("✅ Removed sslmode from DATABASE_URL")
@@ -44,7 +41,6 @@ logger.info(f"📊 Database URL configured (password hidden)")
 
 # ─── CREATE ENGINE ──────────────────────────────────────────────────
 
-# ✅ CORRECT: No connect_args with sslmode
 engine = create_async_engine(
     DATABASE_URL,
     echo=settings.DEBUG,
@@ -77,6 +73,31 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         try:
             yield session
+        finally:
+            await session.close()
+
+
+# ─── CONTEXT MANAGER ──────────────────────────────────────────────
+
+@asynccontextmanager
+async def get_db_context():
+    """
+    Context manager for database sessions.
+    
+    Usage:
+        async with get_db_context() as session:
+            result = await session.execute(...)
+    """
+    if AsyncSessionLocal is None:
+        raise RuntimeError("Database not configured")
+    
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
 
