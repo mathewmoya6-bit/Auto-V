@@ -8,6 +8,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     
+    <!-- Supabase JS Client - Single Source of Truth -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         /* ─── Same CSS as before ─── */
         :root {
@@ -698,7 +701,7 @@
             <h1>AUTO-V <span>Professional</span><br />Vehicle Running Costs</h1>
             <p class="subtitle">
                 Kenya Mileage Rate Schedule — <strong>July 2026</strong><br />
-                <span style="font-size:12px;color:var(--ink-soft);">⚡ Hybrid Architecture · Supabase REST + FastAPI</span>
+                <span style="font-size:12px;color:var(--ink-soft);">⚡ Supabase JS · Single Source of Truth</span>
             </p>
         </div>
         <div class="header-right">
@@ -858,7 +861,7 @@
         <div class="meta">
             <strong>Professional Vehicle Running Cost Database</strong><br />
             © 2026 AUTO-V · All Rights Reserved<br />
-            <span style="font-size:10px;opacity:0.6;">⚡ Hybrid Architecture · Data served via Supabase REST</span>
+            <span style="font-size:10px;opacity:0.6;">⚡ Supabase JS · Single Source of Truth</span>
         </div>
     </div>
 </div>
@@ -867,14 +870,16 @@
 (function () {
     'use strict';
 
-    // ─── HYBRID CONFIG ──────────────────────────────────────────────
-    // Supabase REST API for read-only data
+    // ─── SUPABASE CONFIG (Single Source of Truth) ────────────────
     const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
-    
-    // FastAPI for calculations and business logic
+
+    // ─── Initialize Supabase Client ──────────────────────────────
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log('🔗 Supabase JS Client initialized');
+
+    // ─── FastAPI for Calculations ──────────────────────────────────
     const API_BASE = 'https://auto-v.onrender.com/api/v1';
-    console.log('🔗 Hybrid Architecture: Supabase REST + FastAPI');
     console.log('📡 FastAPI Base URL:', API_BASE);
 
     const MAX_DISTANCE = 100000;
@@ -891,60 +896,6 @@
     const calculateBtn = $('calculateBtn');
     const printBtn = $('printBtn');
     const shareBtn = $('shareBtn');
-
-    // ─── Supabase REST API Client ──────────────────────────────
-    const supabaseApi = {
-        baseURL: `${SUPABASE_URL}/rest/v1`,
-        headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-        },
-
-        async request(endpoint, options = {}) {
-            const url = `${this.baseURL}${endpoint}`;
-            console.log('🌐 Supabase REST Request:', url);
-
-            try {
-                const response = await fetch(url, {
-                    ...options,
-                    headers: {
-                        ...this.headers,
-                        ...(options.headers || {})
-                    }
-                });
-
-                if (!response.ok) {
-                    let message = `HTTP ${response.status}`;
-                    try {
-                        const error = await response.json();
-                        message = error.message || message;
-                    } catch {
-                        message = response.statusText || message;
-                    }
-                    throw new Error(message);
-                }
-
-                return response.json();
-            } catch (error) {
-                console.error('❌ Supabase REST Error:', error);
-                throw error;
-            }
-        },
-
-        // ─── Read-only endpoints ──────────────────────────────────────
-        async getCategories() {
-            // Get categories with nested variants using Supabase REST
-            return this.request(
-                '/vehicle_categories?select=id,name,fuel_type,is_active,vehicle_variants(id,label,fixed_per_km,operating_per_km,total_per_km,initial_cost,year1,year2,year3,year4,year5,components,is_active)&is_active=eq.true&order=name.asc'
-            );
-        },
-
-        async getRoutes() {
-            return this.request('/routes?is_active=eq.true&order=from_city.asc,to_city.asc');
-        }
-    };
 
     // ─── FastAPI Client ──────────────────────────────────────────
     const fastApi = {
@@ -984,13 +935,6 @@
 
         get(endpoint) {
             return this.request(endpoint, { method: 'GET' });
-        },
-
-        post(endpoint, data) {
-            return this.request(endpoint, {
-                method: 'POST',
-                body: JSON.stringify(data),
-            });
         }
     };
 
@@ -1047,67 +991,94 @@
         showToast('❌ ' + message, 'error');
     }
 
-    // ─── Data fetching using Hybrid Architecture ──────────────────────
+    // ─── Data fetching using Supabase JS ──────────────────────────────
     async function fetchData() {
         dbStatus.textContent = '● Fetching...';
         dbStatus.style.color = 'var(--amber)';
 
         try {
-            // ─── 1. Fetch categories from Supabase REST ──────────────
-            let categoriesData;
-            try {
-                categoriesData = await supabaseApi.getCategories();
-                console.log('📦 Categories from Supabase REST:', categoriesData);
-            } catch (error) {
-                console.warn('Supabase REST failed, falling back to FastAPI:', error);
-                // Fallback to FastAPI if Supabase REST fails
-                categoriesData = await fastApi.get('/mileage/categories');
+            // ─── 1. Fetch categories with variants from Supabase ──────
+            console.log('📦 Fetching categories from Supabase...');
+            const { data: categoriesData, error: categoriesError } = await supabase
+                .from('vehicle_categories')
+                .select(`
+                    id,
+                    name,
+                    fuel_type,
+                    is_active,
+                    vehicle_variants (
+                        id,
+                        label,
+                        fixed_per_km,
+                        operating_per_km,
+                        total_per_km,
+                        initial_cost,
+                        year1,
+                        year2,
+                        year3,
+                        year4,
+                        year5,
+                        components,
+                        is_active
+                    )
+                `)
+                .eq('is_active', true)
+                .order('name', { ascending: true });
+
+            if (categoriesError) {
+                console.error('Supabase categories error:', categoriesError);
+                throw new Error(categoriesError.message);
             }
 
-            if (!categoriesData || !Array.isArray(categoriesData)) {
-                throw new Error('Invalid categories response');
+            console.log('📦 Categories from Supabase:', categoriesData);
+
+            // ─── 2. Fetch routes from Supabase ──────────────────────────
+            console.log('📦 Fetching routes from Supabase...');
+            const { data: routesData, error: routesError } = await supabase
+                .from('routes')
+                .select('*')
+                .eq('is_active', true)
+                .order('from_city', { ascending: true });
+
+            if (routesError) {
+                console.warn('Supabase routes error:', routesError);
+                routes = [];
+            } else {
+                routes = routesData || [];
             }
 
-            // ─── 2. Fetch routes from Supabase REST ───────────────────
-            try {
-                const routesData = await supabaseApi.getRoutes();
-                routes = Array.isArray(routesData) ? routesData : [];
-                console.log('📦 Routes from Supabase REST:', routes);
-            } catch (error) {
-                console.warn('Supabase REST routes failed, falling back to FastAPI:', error);
-                try {
-                    const routesData = await fastApi.get('/mileage/routes');
-                    routes = Array.isArray(routesData) ? routesData : [];
-                } catch (e) {
-                    routes = [];
-                }
-            }
+            console.log('📦 Routes from Supabase:', routes);
 
             // ─── 3. Transform data for the calculator ──────────────────
+            if (!categoriesData || !Array.isArray(categoriesData) || categoriesData.length === 0) {
+                throw new Error('No categories found in Supabase. Please check your data.');
+            }
+
             categories = categoriesData.map(cat => ({
                 id: cat.id,
-                name: cat.name || cat.label || 'Unnamed category',
-                label: cat.name || cat.label || 'Unnamed category',
+                name: cat.name || 'Unnamed category',
+                label: cat.name || 'Unnamed category',
                 fuel_type: cat.fuel_type || '—',
                 is_active: cat.is_active,
-                // Handle nested variants from Supabase REST
-                variants: (cat.vehicle_variants || []).map(v => ({
-                    id: v.id,
-                    label: v.label || 'Unnamed variant',
-                    category_id: cat.id,
-                    category_name: cat.name || cat.label || 'Unknown',
-                    fixed_per_km: num(v.fixed_per_km || 0),
-                    operating_per_km: num(v.operating_per_km || 0),
-                    total_per_km: num(v.total_per_km || 0),
-                    initial_cost: num(v.initial_cost || 0),
-                    year1: num(v.year1 || 0),
-                    year2: num(v.year2 || 0),
-                    year3: num(v.year3 || 0),
-                    year4: num(v.year4 || 0),
-                    year5: num(v.year5 || 0),
-                    is_active: v.is_active !== false,
-                    components: v.components || {}
-                }))
+                variants: (cat.vehicle_variants || [])
+                    .filter(v => v.is_active !== false)
+                    .map(v => ({
+                        id: v.id,
+                        label: v.label || 'Unnamed variant',
+                        category_id: cat.id,
+                        category_name: cat.name || 'Unknown',
+                        fixed_per_km: num(v.fixed_per_km || 0),
+                        operating_per_km: num(v.operating_per_km || 0),
+                        total_per_km: num(v.total_per_km || 0),
+                        initial_cost: num(v.initial_cost || 0),
+                        year1: num(v.year1 || 0),
+                        year2: num(v.year2 || 0),
+                        year3: num(v.year3 || 0),
+                        year4: num(v.year4 || 0),
+                        year5: num(v.year5 || 0),
+                        is_active: v.is_active !== false,
+                        components: v.components || {}
+                    }))
             }));
 
             // ─── 4. Build flat list of all variants ────────────────────
@@ -1122,13 +1093,13 @@
             });
 
             dataLoaded = true;
-            dbStatus.textContent = '● Connected (Hybrid)';
+            dbStatus.textContent = '● Connected (Supabase)';
             dbStatus.style.color = 'var(--green)';
-            showToast('✅ Data loaded via hybrid architecture (Supabase REST + FastAPI)', 'success');
+            showToast('✅ Data loaded from Supabase (Single Source of Truth)', 'success');
 
         } catch (error) {
             console.error('Failed to fetch data:', error);
-            throw new Error(error.message || 'Failed to load vehicle data');
+            throw new Error(error.message || 'Failed to load vehicle data from Supabase');
         }
     }
 
@@ -1397,7 +1368,7 @@
         const rate = $('totalPerKm').textContent;
         const total = $('totalTrip').textContent;
         const y1 = $('year1').textContent, y2 = $('year2').textContent, y3 = $('year3').textContent, y4 = $('year4').textContent, y5 = $('year5').textContent;
-        const shareText = `🚗 AUTO-V Mileage Rate Report\n\nVehicle: ${vehicle}\nRate: ${rate}\nTrip Total: ${total}\n\n📈 5-Year Running Costs:\nNew: ${y1}\n2nd Year: ${y2}\n3rd Year: ${y3}\n4th Year: ${y4}\n5+ Years: ${y5}\n\nPowered by AUTO-V Hybrid Architecture`;
+        const shareText = `🚗 AUTO-V Mileage Rate Report\n\nVehicle: ${vehicle}\nRate: ${rate}\nTrip Total: ${total}\n\n📈 5-Year Running Costs:\nNew: ${y1}\n2nd Year: ${y2}\n3rd Year: ${y3}\n4th Year: ${y4}\n5+ Years: ${y5}\n\nPowered by AUTO-V · Supabase JS`;
 
         if (navigator.share) {
             navigator.share({ title: 'AUTO-V Mileage Rate Report', text: shareText }).catch(() => {});
