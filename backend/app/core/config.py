@@ -82,12 +82,12 @@ class Settings(BaseSettings):
     # as an env var on Render. If unset, the app fails loudly at startup
     # (see the RuntimeError check in app/core/database.py) instead of
     # silently falling back to a real, potentially leaked credential.
+    #
+    # NOTE: no DB_POOL_SIZE / DB_MAX_OVERFLOW / DB_POOL_PRE_PING / etc
+    # here on purpose. database.py uses NullPool (required behind
+    # Supabase's pgbouncer transaction pooler) which doesn't take pool
+    # sizing options -- pgbouncer itself owns connection pooling.
     DATABASE_URL: Optional[str] = Field(default=None)
-    DB_POOL_SIZE: int = Field(default=10)
-    DB_MAX_OVERFLOW: int = Field(default=20)
-    DB_POOL_TIMEOUT: int = Field(default=30)
-    DB_POOL_PRE_PING: bool = Field(default=True)
-    DB_POOL_RECYCLE: int = Field(default=300)
 
     # ─── Security Configuration ──────────────────────────────────────
     # IMPORTANT: set a real JWT_SECRET_KEY as a Render env var.
