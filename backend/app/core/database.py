@@ -41,12 +41,15 @@ def _build_database_url(raw_url: str) -> tuple[str, dict]:
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
 
-    # If using the Transaction pooler (port 6543), asyncpg's prepared
-    # statement caching isn't supported -> disable it. Session pooler
-    # (5432) and direct connections are unaffected by this.
-    connect_args = {"ssl": ssl_context}
-    if ":6543" in url:
-        connect_args["statement_cache_size"] = 0
+    # Disable asyncpg's server-side prepared statement cache. Supabase's
+    # connection pooler (pgbouncer, port 6543, transaction mode) routes
+    # each query to a potentially different underlying Postgres
+    # connection, so a statement cached under one connection can collide
+    # or go missing on another -> asyncpg.exceptions.DuplicatePreparedStatementError.
+    # Disabling the cache is a no-op cost-wise on direct connections /
+    # session pooler, so it's safe to always set this rather than trying
+    # to detect the pooler mode from the URL.
+    connect_args = {"ssl": ssl_context, "statement_cache_size": 0}
 
     return url, connect_args
 
