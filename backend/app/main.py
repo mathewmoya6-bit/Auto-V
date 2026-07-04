@@ -51,21 +51,17 @@ async def lifespan(app: FastAPI):
             await init_db()
             logger.info("✅ Database initialized successfully")
             
-            # ─── CREATE TABLES IF THEY DON'T EXIST ────────────────────
-            # CRITICAL: This creates ALL tables defined in your models
-            # Only use in development or if you're sure about the schema
-            if settings.ENV in ["development", "test"]:
-                logger.info("📋 Creating database tables if they don't exist...")
-                async with engine.begin() as conn:
-                    # This creates all tables defined in your models
-                    await conn.run_sync(Base.metadata.create_all)
-                logger.info("✅ Database tables verified/created successfully")
-            else:
-                logger.info("ℹ️  Skipping table creation in production mode")
-                logger.info("   Tables should be managed via migrations or SQL scripts")
+            # ─── TABLE CREATION DISABLED ──────────────────────────────
+            # ⚠️  Automatic table creation is DISABLED for all environments
+            # Tables must be created manually using SQL scripts or migrations
+            logger.info("ℹ️  Automatic table creation is DISABLED")
+            logger.info("   Tables should be managed via SQL scripts or Alembic migrations")
+            logger.info("   Please ensure all required tables exist in the database")
             
-            # Verify tables exist
+            # ─── VERIFY TABLES EXIST ──────────────────────────────────
+            # Check if critical tables exist and log warnings if missing
             async with engine.connect() as conn:
+                # Check for users table
                 result = await conn.execute(
                     "SELECT COUNT(*) FROM information_schema.tables "
                     "WHERE table_schema = 'public' AND table_name = 'users'"
@@ -74,13 +70,45 @@ async def lifespan(app: FastAPI):
                 if user_table_count > 0:
                     logger.info("✅ Verified: 'users' table exists")
                 else:
-                    logger.warning("⚠️  'users' table not found - some features may not work")
+                    logger.warning("⚠️  'users' table not found - authentication will fail")
+                
+                # Check for vehicle_categories table
+                result = await conn.execute(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = 'vehicle_categories'"
+                )
+                cat_table_count = result.scalar()
+                if cat_table_count > 0:
+                    logger.info("✅ Verified: 'vehicle_categories' table exists")
+                else:
+                    logger.warning("⚠️  'vehicle_categories' table not found - mileage features will fail")
+                
+                # Check for vehicle_variants table
+                result = await conn.execute(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = 'vehicle_variants'"
+                )
+                var_table_count = result.scalar()
+                if var_table_count > 0:
+                    logger.info("✅ Verified: 'vehicle_variants' table exists")
+                else:
+                    logger.warning("⚠️  'vehicle_variants' table not found - mileage features will fail")
+                
+                # Check for routes table
+                result = await conn.execute(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = 'routes'"
+                )
+                route_table_count = result.scalar()
+                if route_table_count > 0:
+                    logger.info("✅ Verified: 'routes' table exists")
+                else:
+                    logger.warning("⚠️  'routes' table not found - quick routes feature will fail")
             
         except Exception as e:
             logger.error(f"❌ Failed to initialize database: {str(e)}")
-            # In production, we might want to continue but log the error
-            if settings.ENV in ["development", "test"]:
-                raise
+            # Don't raise - let the app continue but log the error
+            logger.warning("⚠️  Continuing with degraded functionality")
     
     yield
     
@@ -134,20 +162,29 @@ logger.info("✅ All routes registered successfully")
 @app.get("/health")
 async def health_check():
     db_status = "unknown"
+    tables_ok = False
     try:
         async with engine.connect() as conn:
             await conn.execute("SELECT 1")
             db_status = "connected"
+            
+            # Check if critical tables exist
+            result = await conn.execute(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_schema = 'public' AND table_name = 'users'"
+            )
+            tables_ok = result.scalar() > 0
     except Exception as e:
         db_status = f"error: {str(e)}"
     
     return {
-        "status": "healthy" if db_status == "connected" else "degraded",
+        "status": "healthy" if (db_status == "connected" and tables_ok) else "degraded",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "environment": settings.ENV,
         "debug": settings.DEBUG,
         "database": db_status,
+        "tables_exist": tables_ok,
         "database_configured": is_database_configured(),
         "timestamp": datetime.now().isoformat(),
     }
