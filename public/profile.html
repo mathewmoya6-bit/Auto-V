@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V User Profile</title>
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    <script src="js/loading.js"></script>
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
     
     <style>
         * {
@@ -510,15 +508,16 @@
 (function() {
     'use strict';
 
-    // ─── CONFIG ──────────────────────────────────────────────────
-    const API_BASE = 'http://localhost:8000/api';
-
     // ─── STATE ──────────────────────────────────────────────────
     let currentUser = null;
     let userProfile = null;
 
     // ─── Toast / Error handling ──────────────────────────────
     function showToast(message, type = 'info') {
+        if (window.autoV && window.autoV.showToast) {
+            window.autoV.showToast(message, type);
+            return;
+        }
         const existing = document.querySelector('.toast');
         if (existing) existing.remove();
         const div = document.createElement('div');
@@ -548,39 +547,14 @@
         showToast(message, 'success');
     }
 
-    // ─── Token helpers ──────────────────────────────────────────
-    function getAuthToken() {
-        return localStorage.getItem('access_token');
-    }
-
-    function getAuthHeaders() {
-        const token = getAuthToken();
-        return {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        };
-    }
-
     // ─── Check Authentication ──────────────────────────────────
     async function checkAuth() {
-        const token = getAuthToken();
-        if (!token) {
-            window.location.href = "login.html";
-            return false;
-        }
-
         try {
-            const response = await fetch(`${API_BASE}/auth/me`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                localStorage.removeItem('access_token');
+            currentUser = await window.autoV.getCurrentUser();
+            if (!currentUser) {
                 window.location.href = "login.html";
                 return false;
             }
-
-            currentUser = await response.json();
             return true;
         } catch (error) {
             console.error('Auth check failed:', error);
@@ -592,19 +566,13 @@
     // ─── Load User Profile ──────────────────────────────────────
     async function loadProfile() {
         try {
-            const token = getAuthToken();
-            if (!token) throw new Error('Not authenticated');
-
-            // Get user profile
-            const response = await fetch(`${API_BASE}/users/profile`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to load profile');
+            if (!currentUser) {
+                await checkAuth();
+                if (!currentUser) return;
             }
 
-            userProfile = await response.json();
+            // Get user profile via autoV
+            userProfile = await window.autoV.apiRequest('/users/profile');
 
             // Populate form fields
             document.getElementById('email').value = currentUser.email || '';
@@ -640,16 +608,7 @@
     // ─── Load User Statistics ──────────────────────────────────
     async function loadStatistics() {
         try {
-            const token = getAuthToken();
-            if (!token) return;
-
-            const response = await fetch(`${API_BASE}/users/stats`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) return;
-
-            const stats = await response.json();
+            const stats = await window.autoV.apiRequest('/users/stats');
 
             document.getElementById('totalVehicles').innerText = stats.total_vehicles || 0;
             document.getElementById('totalValuations').innerText = stats.total_valuations || 0;
@@ -668,27 +627,18 @@
         updateBtn.innerHTML = '<span class="spinner"></span> Saving...';
 
         try {
-            const token = getAuthToken();
-            if (!token) throw new Error('Not authenticated');
-
             const fullName = document.getElementById('fullName').value;
             const phone = document.getElementById('phone').value;
             const company = document.getElementById('company').value;
 
-            const response = await fetch(`${API_BASE}/users/profile`, {
+            await window.autoV.apiRequest('/users/profile', {
                 method: 'PUT',
-                headers: getAuthHeaders(),
                 body: JSON.stringify({
                     full_name: fullName,
                     phone: phone,
                     company: company
                 })
             });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || 'Failed to update profile');
-            }
 
             // Update avatar
             const avatarInitial = (fullName || currentUser.email || 'U').charAt(0).toUpperCase();
@@ -730,22 +680,13 @@
         updateBtn.innerHTML = '<span class="spinner"></span> Updating...';
 
         try {
-            const token = getAuthToken();
-            if (!token) throw new Error('Not authenticated');
-
-            const response = await fetch(`${API_BASE}/auth/change-password`, {
+            await window.autoV.apiRequest('/auth/change-password', {
                 method: 'POST',
-                headers: getAuthHeaders(),
                 body: JSON.stringify({
                     current_password: currentPassword,
                     new_password: newPassword
                 })
             });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || 'Failed to update password');
-            }
 
             // Clear password fields
             document.getElementById('currentPassword').value = '';
@@ -755,7 +696,7 @@
             showSuccess('Password updated successfully! Please login again.');
 
             setTimeout(() => {
-                localStorage.removeItem('access_token');
+                window.autoV.clearAuthToken();
                 window.location.href = 'login.html';
             }, 2000);
 
@@ -838,21 +779,12 @@
         deleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
 
         try {
-            const token = getAuthToken();
-            if (!token) throw new Error('Not authenticated');
-
-            const response = await fetch(`${API_BASE}/users/delete`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            await window.autoV.apiRequest('/users/delete', {
+                method: 'DELETE'
             });
 
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || 'Failed to delete account');
-            }
-
             showSuccess('Account deleted successfully. Redirecting...');
-            localStorage.removeItem('access_token');
+            window.autoV.clearAuthToken();
 
             setTimeout(() => {
                 window.location.href = 'login.html';
@@ -867,6 +799,21 @@
 
     // ─── Init ──────────────────────────────────────────────────
     async function init() {
+        // Wait for autoV to be ready
+        if (!window.autoV || !window.autoV._initialized) {
+            console.log('⏳ Waiting for autoV to initialize...');
+            await new Promise(resolve => {
+                const check = () => {
+                    if (window.autoV && window.autoV._initialized) {
+                        resolve();
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                };
+                check();
+            });
+        }
+
         try {
             const isAuth = await checkAuth();
             if (!isAuth) return;
