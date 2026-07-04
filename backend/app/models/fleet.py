@@ -18,7 +18,7 @@ class Fleet(Base):
     __tablename__ = "fleets"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    owner_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    owner_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
 
     name = Column(String(255), nullable=False)
     description = Column(Text)
@@ -41,6 +41,7 @@ class Fleet(Base):
     __table_args__ = (
         Index("idx_fleets_owner_id", "owner_id"),
         Index("idx_fleets_is_active", "is_active"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
@@ -63,8 +64,8 @@ class FleetVehicle(Base):
     __tablename__ = "fleet_vehicles"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    fleet_id = Column(PGUUID(as_uuid=True), ForeignKey("fleets.id", ondelete="CASCADE"), nullable=False)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    fleet_id = Column(PGUUID(as_uuid=True), ForeignKey("public.fleets.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="CASCADE"), nullable=False)
 
     assignment_status = Column(String(20), default="active")
     fleet_number = Column(String(50))
@@ -79,6 +80,7 @@ class FleetVehicle(Base):
     __table_args__ = (
         Index("idx_fleet_vehicles_fleet_id", "fleet_id"),
         UniqueConstraint("fleet_id", "vehicle_id", name="uq_fleet_vehicles"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
 
@@ -86,8 +88,8 @@ class FleetDriver(Base):
     __tablename__ = "fleet_drivers"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    fleet_id = Column(PGUUID(as_uuid=True), ForeignKey("fleets.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    fleet_id = Column(PGUUID(as_uuid=True), ForeignKey("public.fleets.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=True)
 
     driver_code = Column(String(50), unique=True, index=True)
     license_number = Column(String(50))
@@ -100,6 +102,9 @@ class FleetDriver(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     fleet = relationship("Fleet", back_populates="fleet_drivers")
-    user = relationship("UserProfile")
+    user = relationship("UserProfile", foreign_keys=[user_id])  # ← FIXED: Added foreign_keys
 
-    __table_args__ = (Index("idx_fleet_drivers_fleet_id", "fleet_id"),)
+    __table_args__ = (
+        Index("idx_fleet_drivers_fleet_id", "fleet_id"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
+    )
