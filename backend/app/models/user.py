@@ -19,7 +19,7 @@ class UserProfile(Base):
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
-    role = Column(String(50), default="user", nullable=False)  # user, admin, super_admin, inspector, valuer, fleet_manager, assessor
+    role = Column(String(50), default="user", nullable=False)
     company_name = Column(String(255), nullable=True)
 
     is_active = Column(Boolean, default=True, nullable=False)
@@ -29,20 +29,47 @@ class UserProfile(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
 
-    # Relationships
-    vehicles = relationship("Vehicle", back_populates="owner", cascade="all, delete-orphan")
-    valuations = relationship("Valuation", back_populates="user", cascade="all, delete-orphan")
-    inspections = relationship("Inspection", back_populates="inspector")
+    # ─── Relationships ──────────────────────────────────────────────────
     
-    # FIXED: Added foreign_keys to specify which FK to use
-    mileage_claims = relationship(
-        "MileageClaim",
-        back_populates="user",
-        foreign_keys="MileageClaim.user_id",  # Explicitly tell SQLAlchemy which FK
+    # Vehicle ownership
+    vehicles = relationship(
+        "Vehicle",
+        back_populates="owner",
         cascade="all, delete-orphan"
     )
     
-    # Added: Relationship for claims this user approved
+    # Valuations (user who requested/owns the valuation)
+    valuations = relationship(
+        "Valuation",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    
+    # Inspections (user who performed the inspection)
+    inspections = relationship(
+        "Inspection",
+        back_populates="inspector",
+        foreign_keys="Inspection.inspector_id",  # CRITICAL
+        cascade="all, delete-orphan"
+    )
+    
+    # If Inspection has an approved_by field, add this:
+    # approved_inspections = relationship(
+    #     "Inspection",
+    #     back_populates="approver",
+    #     foreign_keys="Inspection.approved_by",
+    #     cascade="all, delete-orphan"
+    # )
+    
+    # Mileage claims (user who submitted the claim)
+    mileage_claims = relationship(
+        "MileageClaim",
+        back_populates="user",
+        foreign_keys="MileageClaim.user_id",
+        cascade="all, delete-orphan"
+    )
+    
+    # Mileage claims (user who approved the claim)
     approved_mileage_claims = relationship(
         "MileageClaim",
         back_populates="approver",
@@ -50,9 +77,34 @@ class UserProfile(Base):
         cascade="all, delete-orphan"
     )
     
-    fleets = relationship("Fleet", back_populates="owner", cascade="all, delete-orphan")
-    certificates = relationship("Certificate", back_populates="user", cascade="all, delete-orphan")
-    payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
+    # Fleets (user who owns the fleet)
+    fleets = relationship(
+        "Fleet",
+        back_populates="owner",
+        cascade="all, delete-orphan"
+    )
+    
+    # Certificates (user who owns the certificate)
+    certificates = relationship(
+        "Certificate",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    
+    # Payments (user who made the payment)
+    payments = relationship(
+        "Payment",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    
+    # If Payment has a processed_by field, add this:
+    # processed_payments = relationship(
+    #     "Payment",
+    #     back_populates="processor",
+    #     foreign_keys="Payment.processed_by",
+    #     cascade="all, delete-orphan"
+    # )
 
     __table_args__ = (
         Index("idx_users_email", "email"),
