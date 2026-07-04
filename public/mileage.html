@@ -867,8 +867,15 @@
 (function () {
     'use strict';
 
-    // ─── PRODUCTION CONFIG ──────────────────────────────────────────
-    const API_BASE = 'https://auto-v.onrender.com/api/v1';
+    // ─── CONFIG ──────────────────────────────────────────────────────
+    // Use HTTPS explicitly - do NOT change to HTTP
+    const API_BASE = new URL('/api/v1', 'https://auto-v.onrender.com').href;
+    // Remove trailing slash if present
+    const API_BASE_CLEAN = API_BASE.replace(/\/$/, '');
+    
+    // Log the API base URL for debugging
+    console.log('🔗 API Base URL:', API_BASE_CLEAN);
+
     const MAX_DISTANCE = 100000;
 
     // ─── DOM helpers ──────────────────────────────────────────────
@@ -884,9 +891,9 @@
     const printBtn = $('printBtn');
     const shareBtn = $('shareBtn');
 
-    // ─── API Client with SSL bypass ──────────────────────────────
+    // ─── API Client ──────────────────────────────────────────────
     const api = {
-        baseURL: API_BASE,
+        baseURL: API_BASE_CLEAN,
         token: null,
 
         getToken() {
@@ -900,10 +907,12 @@
 
         async request(endpoint, options = {}) {
             const url = `${this.baseURL}${endpoint}`;
+            console.log('🌐 API Request URL:', url);
+
             const headers = {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                ...options.headers,
+                ...(options.headers || {})
             };
 
             const token = this.getToken();
@@ -912,65 +921,38 @@
             }
 
             try {
-                // Add SSL bypass options for fetch
-                const fetchOptions = {
+                const response = await fetch(url, {
                     ...options,
                     headers,
-                    credentials: 'include',
-                    mode: 'cors',
-                };
-
-                // Try with standard fetch first
-                let response = await fetch(url, fetchOptions);
-
-                // If SSL error, try with additional options
-                if (!response.ok && response.status === 0) {
-                    // Some browsers allow bypass with these options
-                    fetchOptions.mode = 'no-cors';
-                    response = await fetch(url, fetchOptions);
-                }
+                    credentials: 'include'
+                });
 
                 if (!response.ok) {
-                    let errorMessage = `HTTP ${response.status}`;
+                    let message = `HTTP ${response.status}`;
                     try {
                         const errorData = await response.json();
-                        errorMessage = errorData.detail || errorData.message || errorMessage;
-                    } catch (e) {
-                        errorMessage = await response.text() || errorMessage;
+                        message = errorData.detail || errorData.message || message;
+                    } catch {
+                        // If response is not JSON, use status text
+                        message = response.statusText || message;
                     }
-                    throw new Error(errorMessage);
+                    throw new Error(message);
                 }
 
                 return response.json();
             } catch (error) {
-                console.error('API request failed:', error);
+                console.error('❌ API request failed:', error);
                 
-                // Check for SSL certificate errors
+                // Provide clearer error messages for SSL issues
                 if (error.message && (
                     error.message.includes('CERTIFICATE_VERIFY_FAILED') ||
                     error.message.includes('self-signed') ||
-                    error.message.includes('SSL')
+                    error.message.includes('SSL') ||
+                    error.message.includes('certificate')
                 )) {
-                    // Try using HTTP instead (if available)
-                    try {
-                        const httpUrl = url.replace('https://', 'http://');
-                        const response = await fetch(httpUrl, {
-                            ...options,
-                            headers,
-                            credentials: 'include',
-                            mode: 'cors',
-                        });
-                        if (response.ok) {
-                            return response.json();
-                        }
-                    } catch (httpError) {
-                        // Fall through to the SSL error
-                    }
-                    
-                    // Show a helpful message about the SSL issue
                     throw new Error(
-                        'SSL Certificate verification failed. Please ensure the server has a valid SSL certificate. ' +
-                        'If you are testing locally, try using a different browser or disabling SSL verification.'
+                        'SSL Certificate verification failed. The backend SSL certificate is invalid or self-signed. ' +
+                        'Please check the server SSL configuration.'
                     );
                 }
                 
@@ -1120,13 +1102,6 @@
 
         } catch (error) {
             console.error('Failed to fetch data:', error);
-            // Handle SSL errors specifically
-            if (error.message && error.message.includes('SSL')) {
-                throw new Error(
-                    'SSL Certificate verification failed. ' +
-                    'Please check the server SSL configuration or try accessing the page via HTTP.'
-                );
-            }
             throw new Error(error.message || 'Failed to load vehicle data from backend');
         }
     }
