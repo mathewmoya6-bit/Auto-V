@@ -5,6 +5,7 @@
 
 import logging
 from datetime import date as date_type
+from datetime import datetime
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -61,24 +62,9 @@ def variant_to_dict(variant: VehicleVariant, category_name: str) -> Dict[str, An
 async def get_categories(db: AsyncSession = Depends(get_db)):
     """Get all vehicle categories with their variants"""
     try:
-        # Use a simpler query first to debug
         logger.info("Fetching categories from database...")
         
-        # First, check if we can even access the table
-        try:
-            # Simple count query to verify connection
-            count_result = await db.execute(select(VehicleCategory))
-            count = len(count_result.scalars().all())
-            logger.info(f"Found {count} categories in database")
-        except Exception as e:
-            logger.error(f"Failed to query VehicleCategory table: {e}")
-            # Check if table exists
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Database table 'vehicle_categories' may not exist or is inaccessible"
-            )
-        
-        # Now fetch with relationships
+        # Fetch categories with their variants
         result = await db.execute(
             select(VehicleCategory)
             .where(VehicleCategory.is_active == True)
@@ -107,13 +93,11 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
         logger.info(f"Returning {len(response)} categories with variants")
         return response
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error fetching categories: {e}", exc_info=True)
+        logger.exception("Failed to fetch categories")  # This logs the full traceback
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch categories: {str(e)}"
+            detail=str(e)  # Expose the real error
         )
 
 
@@ -142,10 +126,10 @@ async def get_routes(db: AsyncSession = Depends(get_db)):
         return response
         
     except Exception as e:
-        logger.error(f"Error fetching routes: {e}", exc_info=True)
+        logger.exception("Failed to fetch routes")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch routes: {str(e)}"
+            detail=str(e)
         )
 
 
@@ -210,10 +194,10 @@ async def create_claim(
         
     except Exception as e:
         await db.rollback()
-        logger.error(f"Failed to create claim: {e}", exc_info=True)
+        logger.exception("Failed to create claim")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create claim: {str(e)}"
+            detail=str(e)
         )
 
 
@@ -235,10 +219,10 @@ async def list_my_claims(
         return [ClaimResponse(**c.to_dict()) for c in claims]
         
     except Exception as e:
-        logger.error(f"Failed to fetch claims: {e}", exc_info=True)
+        logger.exception("Failed to fetch claims")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch claims: {str(e)}"
+            detail=str(e)
         )
 
 
@@ -274,10 +258,10 @@ async def get_claim(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to fetch claim {claim_id}: {e}", exc_info=True)
+        logger.exception(f"Failed to fetch claim {claim_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch claim: {str(e)}"
+            detail=str(e)
         )
 
 
@@ -319,7 +303,6 @@ async def update_claim_status(
         claim.status = new_status
         if new_status in ["approved", "rejected"]:
             claim.approved_by = current_user.id
-            from datetime import datetime
             claim.approved_at = datetime.utcnow()
         
         await db.commit()
@@ -332,8 +315,8 @@ async def update_claim_status(
         raise
     except Exception as e:
         await db.rollback()
-        logger.error(f"Failed to update claim {claim_id}: {e}", exc_info=True)
+        logger.exception(f"Failed to update claim {claim_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update claim: {str(e)}"
+            detail=str(e)
         )
