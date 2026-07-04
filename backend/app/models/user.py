@@ -34,21 +34,21 @@ class UserProfile(Base):
     valuations = relationship("Valuation", back_populates="user", cascade="all, delete-orphan")
     inspections = relationship("Inspection", back_populates="inspector")
     
-    # Fix: Specify foreign_keys for mileage_claims since MileageClaim has multiple FKs to users
+    # FIXED: Added foreign_keys to specify which FK to use
     mileage_claims = relationship(
-        "MileageClaim", 
-        back_populates="user", 
-        foreign_keys="MileageClaim.user_id",  # Explicitly tell SQLAlchemy which FK to use
+        "MileageClaim",
+        back_populates="user",
+        foreign_keys="MileageClaim.user_id",  # Explicitly tell SQLAlchemy which FK
         cascade="all, delete-orphan"
     )
     
-    # Add relationship for claims approved by this user (if needed)
-    # approved_mileage_claims = relationship(
-    #     "MileageClaim",
-    #     back_populates="approver",
-    #     foreign_keys="MileageClaim.approved_by",
-    #     cascade="all, delete-orphan"
-    # )
+    # Added: Relationship for claims this user approved
+    approved_mileage_claims = relationship(
+        "MileageClaim",
+        back_populates="approver",
+        foreign_keys="MileageClaim.approved_by",
+        cascade="all, delete-orphan"
+    )
     
     fleets = relationship("Fleet", back_populates="owner", cascade="all, delete-orphan")
     certificates = relationship("Certificate", back_populates="user", cascade="all, delete-orphan")
