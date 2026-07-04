@@ -1,108 +1,101 @@
 # app/core/database.py
 # =============================================================================
-# Database Connection & Session Management
+# AUTO-V API - Database Configuration (Supabase Postgres, async via asyncpg)
 # =============================================================================
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import MetaData, event, text
+import re
+import ssl
 import logging
-import os
+from uuid import uuid4
+from contextlib import asynccontextmanager
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Create Base with naming convention for constraints
-convention = {
-    "ix": "ix_%(column_0_label)s",
-    "uq": "uq_%(table_name)s_%(column_0_name)s",
-    "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s"
-}
+Base = declarative_base()
 
-metadata = MetaData(naming_convention=convention)
-Base = declarative_base(metadata=metadata)
 
-# Database engine
-if settings.DATABASE_URL:
-    # Convert asyncpg URL to asyncpg format if needed
-    database_url = settings.DATABASE_URL
-    if database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    
-    # 🔧 FIX: Remove duplicate pool_pre_ping
-    engine = create_async_engine(
-        database_url,
-        echo=settings.DEBUG,
-        pool_size=5,  # Reduced for PgBouncer
-        max_overflow=10,
-        pool_pre_ping=True,  # ⚠️ Only ONCE!
-        pool_recycle=300,  # Recycle connections every 5 minutes
-        pool_timeout=30,
-        # ⚡ Critical fix: Disable statement caching
-        connect_args={
-            "statement_cache_size": 0,  # This disables prepared statements
-            "command_timeout": 60,
-            "server_settings": {
-                "application_name": "auto-v-api",
-                "statement_timeout": "60000",  # 60 seconds
-                "idle_in_transaction_session_timeout": "60000"
-            }
-        }
+def _build_database_url(raw_url: str) -> tuple[str, dict]:
+    """Normalize a Postgres URL for async SQLAlchemy + asyncpg (Render/Supabase-safe)."""
+    url = raw_url.strip()
+
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    if "sslmode" in url or "ssl=" in url:
+        url = re.sub(r"[?&]sslmode=[^&]*", "", url)
+        url = re.sub(r"[?&]ssl=[^&]*", "", url)
+        url = url.rstrip("?&")
+
+    # Encrypt without verifying the cert chain (Supabase's chain isn't
+    # always in the system trust store) -- equivalent to sslmode=require.
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    # ── pgbouncer (transaction mode) + asyncpg prepared statements ──
+    # Disabling the cache alone isn't enough: asyncpg names prepared
+    # statements with a simple incrementing counter per connection
+    # object. Since pgbouncer can route different logical connections
+    # to the same physical backend, two connections can independently
+    # generate the same statement name (e.g. "__asyncpg_stmt_5__") and
+    # collide -> DuplicatePreparedStatementError, even on SQLAlchemy's
+    # own internal setup queries like `select pg_catalog.version()`.
+    # Fix: force globally-unique statement names via uuid4.
+    connect_args = {
+        "ssl": ssl_context,
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+    }
+
+    return url, connect_args
+
+
+if not settings.database_configured():
+    logger.error("DATABASE_URL is not configured!")
+    raise RuntimeError(
+        "DATABASE_URL is not configured. Set it to your Supabase Postgres "
+        "connection string, e.g. postgresql://postgres:<password>@<host>:5432/postgres"
     )
-    
-    # Alternative: Listen for connection events to reset cache
-    @event.listens_for(engine.sync_engine, "connect")
-    def connect(dbapi_connection, connection_record):
-        # Disable prepared statements at the connection level
-        cursor = dbapi_connection.cursor()
-        cursor.execute("SET statement_timeout = '60s'")
-        cursor.close()
-        
-else:
-    engine = None
-    logger.warning("⚠️ DATABASE_URL not set - running in demo mode")
 
-# Async session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
+DATABASE_URL, CONNECT_ARGS = _build_database_url(settings.DATABASE_URL)
+logger.info("Database URL configured (driver=asyncpg, password hidden)")
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=settings.DEBUG,
+    # NullPool: pgbouncer already pools connections. Letting SQLAlchemy
+    # ALSO hold a pool on top creates double-pooling -- SQLAlchemy keeps
+    # connections open/idle that pgbouncer then can't reassign to other
+    # requests. NullPool opens a fresh connection per operation and lets
+    # pgbouncer own the connection lifecycle, which is what SQLAlchemy's
+    # own docs recommend behind a pooler like this.
+    poolclass=NullPool,
+    connect_args=CONNECT_ARGS,
 )
 
-def is_database_configured() -> bool:
-    """Check if database is configured."""
-    return engine is not None
+AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False)
 
-async def init_db():
-    """Initialize database connection."""
-    if not is_database_configured():
-        logger.warning("⚠️ Database not configured - skipping initialization")
-        return
-    try:
-        # Test connection
-        async with engine.connect() as conn:
-            result = await conn.execute(text("SELECT 1 as test, version() as version"))
-            row = result.fetchone()
-            logger.info(f"✅ Database connection established")
-            logger.info(f"📊 PostgreSQL version: {row[1][:50]}...")
-        logger.info("✅ Database connection established")
-    except Exception as e:
-        logger.error(f"❌ Database connection failed: {str(e)}")
-        raise
 
-async def close_db():
-    """Close database connection."""
-    if engine:
-        await engine.dispose()
-        logger.info("✅ Database connection closed")
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
-async def get_db() -> AsyncSession:
-    """Dependency for getting database session."""
+
+@asynccontextmanager
+async def get_db_context():
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -112,3 +105,28 @@ async def get_db() -> AsyncSession:
             raise
         finally:
             await session.close()
+
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables created/verified")
+
+
+async def close_db():
+    await engine.dispose()
+    logger.info("Database connections closed")
+
+
+async def check_db_health() -> bool:
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return False
+
+
+def is_database_configured() -> bool:
+    return settings.database_configured() and engine is not None
