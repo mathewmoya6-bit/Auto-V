@@ -5,7 +5,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -20,7 +20,8 @@ router = APIRouter()
 class CategoryResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
+    fuel_type: Optional[str] = None
+    is_active: bool = True
 
     class Config:
         from_attributes = True
@@ -28,7 +29,7 @@ class CategoryResponse(BaseModel):
 class VehicleVariantResponse(BaseModel):
     id: str
     category_id: str
-    name: Optional[str] = None
+    label: str
     make: Optional[str] = None
     model: Optional[str] = None
     engine_size: Optional[str] = None
@@ -43,6 +44,10 @@ class VehicleVariantResponse(BaseModel):
     tyres_rate: Optional[float] = None
     licences_rate: Optional[float] = None
     is_primary: Optional[bool] = False
+    fixed_per_km: Optional[float] = None
+    operating_per_km: Optional[float] = None
+    total_per_km: Optional[float] = None
+    is_active: bool = True
 
     class Config:
         from_attributes = True
@@ -82,7 +87,9 @@ async def get_categories(
     """
     try:
         result = await db.execute(
-            select(VehicleCategory).order_by(VehicleCategory.name)
+            select(VehicleCategory)
+            .where(VehicleCategory.is_active == True)
+            .order_by(VehicleCategory.name)
         )
         categories = result.scalars().all()
         return categories
@@ -93,20 +100,31 @@ async def get_categories(
 async def get_vehicles(
     category_id: Optional[str] = Query(None, description="Filter by category ID"),
     fuel_type: Optional[str] = Query(None, description="Filter by fuel type"),
+    search: Optional[str] = Query(None, description="Search by make or model"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get all vehicle variants with optional filters
     """
     try:
-        query = select(VehicleVariant)
+        query = select(VehicleVariant).where(VehicleVariant.is_active == True)
         
         if category_id:
             query = query.where(VehicleVariant.category_id == category_id)
+        
         if fuel_type:
             query = query.where(VehicleVariant.fuel_type == fuel_type)
+        
+        if search:
+            query = query.where(
+                or_(
+                    VehicleVariant.make.ilike(f"%{search}%"),
+                    VehicleVariant.model.ilike(f"%{search}%"),
+                    VehicleVariant.label.ilike(f"%{search}%")
+                )
+            )
             
-        query = query.order_by(VehicleVariant.make, VehicleVariant.model)
+        query = query.order_by(VehicleVariant.make, VehicleVariant.model, VehicleVariant.label)
         
         result = await db.execute(query)
         vehicles = result.scalars().all()
@@ -154,14 +172,14 @@ async def calculate_cost(
             raise HTTPException(status_code=404, detail=f"Vehicle with ID {request.vehicle_id} not found")
         
         # Extract rates (default to 0 if not present)
-        insurance = vehicle.insurance_rate or 0.0
-        depreciation = vehicle.depreciation_rate or 0.0
-        interest = vehicle.interest_rate or 0.0
-        fuel = vehicle.fuel_rate or 0.0
-        servicing = vehicle.servicing_rate or 0.0
-        repairs = vehicle.repairs_rate or 0.0
-        tyres = vehicle.tyres_rate or 0.0
-        licences = vehicle.licences_rate or 0.0
+        insurance = float(vehicle.insurance_rate or 0.0)
+        depreciation = float(vehicle.depreciation_rate or 0.0)
+        interest = float(vehicle.interest_rate or 0.0)
+        fuel = float(vehicle.fuel_rate or 0.0)
+        servicing = float(vehicle.servicing_rate or 0.0)
+        repairs = float(vehicle.repairs_rate or 0.0)
+        tyres = float(vehicle.tyres_rate or 0.0)
+        licences = float(vehicle.licences_rate or 0.0)
 
         # Calculate per-km costs
         fixed_per_km = insurance + depreciation + interest + licences
