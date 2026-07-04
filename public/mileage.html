@@ -8,11 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     
-    <!-- Supabase JS Client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <style>
-        /* ─── Same CSS as before ─── */
+        /* ─── CSS (same as before) ─── */
         :root {
             --asphalt: #0a0c15;
             --asphalt-2: #111827;
@@ -701,7 +698,7 @@
             <h1>AUTO-V <span>Professional</span><br />Vehicle Running Costs</h1>
             <p class="subtitle">
                 Kenya Mileage Rate Schedule — <strong>July 2026</strong><br />
-                <span style="font-size:12px;color:var(--ink-soft);">⚡ Hybrid Architecture · Supabase + FastAPI</span>
+                <span style="font-size:12px;color:var(--ink-soft);">⚡ Clean Architecture · FastAPI Backend · Supabase Read-Only</span>
             </p>
         </div>
         <div class="header-right">
@@ -854,8 +851,8 @@
     <div class="report-footer">
         <div class="brand">🚗 AUTO-V <span>Professional</span></div>
         <div class="meta">
-            <strong>Data Source:</strong> Supabase · <strong>Rates:</strong> Kenya Gazette 2026<br />
-            For official use only · v2.1.0
+            <strong>Architecture:</strong> React/Next.js → FastAPI → Supabase (Read-Only) → PostgreSQL<br />
+            For official use only · v3.0.0
         </div>
     </div>
 </div>
@@ -864,12 +861,11 @@
     (function(){
         "use strict";
 
-        // ── Supabase Config ──
-        const SUPABASE_URL = 'https://hweibcqjzpddktjnmzpw.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3ZWliY3FqenBkZGt0am5tenB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5NzE2MTEsImV4cCI6MjA2NTU0NzYxMX0._P-Z8JZe9P9L6R46SW9fYcIRGsrAKbgLqcJ8CCLMMBg';
+        // ── Configuration ──
+        // ⚠️ UPDATE THIS URL with your actual FastAPI backend URL
+        const API_BASE_URL = 'http://localhost:8000/api/v1';  // Local dev
+        // For production: 'https://your-fastapi-app.onrender.com/api/v1';
         
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         // ── DOM refs ──
         const categorySelect = document.getElementById('categorySelect');
         const variantSelect = document.getElementById('variantSelect');
@@ -913,7 +909,6 @@
         let filteredVehicles = [];
         let currentVehicle = null;
         let currentFuelFilter = 'all';
-        let isLoading = false;
 
         // ── Helpers ──
         function formatCurrency(val) {
@@ -935,22 +930,99 @@
             dbStatus.style.color = isGood ? 'var(--green)' : 'var(--rust)';
         }
 
-        // ── Fetch categories ──
+        // ── API Calls to FastAPI Backend ──
+        // Note: NO direct Supabase calls - everything goes through FastAPI
+        
+        // 1. Fetch categories
         async function fetchCategories() {
             try {
-                const { data, error } = await supabase
-                    .from('categories')
-                    .select('*')
-                    .order('name');
-                if (error) throw error;
-                categories = data || [];
+                const response = await fetch(`${API_BASE_URL}/categories`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                // Handle both array and object responses
+                categories = Array.isArray(data) ? data : (data.categories || data.data || []);
+                console.log('📦 Categories loaded:', categories.length);
                 populateCategories();
+                return categories;
             } catch (err) {
-                console.error('fetchCategories error:', err);
-                setStatus('⚠️ Failed to load categories', false);
-                showToast('Error loading categories', 'error');
+                console.error('❌ fetchCategories error:', err);
+                setStatus('⚠️ Failed to connect to backend', false);
+                showToast(`Error: ${err.message} - Is your FastAPI backend running?`, 'error');
+                // Show fallback categories for testing
+                categories = [
+                    { id: '1', name: 'Saloon Cars' },
+                    { id: '2', name: 'SUVs & Crossovers' },
+                    { id: '3', name: 'Pickups & Vans' },
+                    { id: '4', name: 'Commercial Trucks' }
+                ];
+                populateCategories();
+                return categories;
             }
         }
+
+        // 2. Fetch vehicles (with optional filters)
+        async function fetchVehicles(categoryId = null, fuelType = null) {
+            try {
+                let url = `${API_BASE_URL}/vehicles?`;
+                const params = new URLSearchParams();
+                if (categoryId) params.append('category_id', categoryId);
+                if (fuelType && fuelType !== 'all') params.append('fuel_type', fuelType);
+                
+                const response = await fetch(url + params.toString());
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                // Handle both array and object responses
+                allVehicles = Array.isArray(data) ? data : (data.vehicles || data.data || []);
+                console.log('🚗 Vehicles loaded:', allVehicles.length);
+                applyFilters();
+                return allVehicles;
+            } catch (err) {
+                console.error('❌ fetchVehicles error:', err);
+                showToast(`Error loading vehicles: ${err.message}`, 'error');
+                allVehicles = [];
+                applyFilters();
+                return [];
+            }
+        }
+
+        // 3. Fetch vehicle details (single vehicle)
+        async function fetchVehicleDetails(vehicleId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/vehicles/${vehicleId}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                return data.vehicle || data.data || data;
+            } catch (err) {
+                console.error('❌ fetchVehicleDetails error:', err);
+                showToast(`Error loading vehicle details: ${err.message}`, 'error');
+                return null;
+            }
+        }
+
+        // 4. Calculate costs (business logic on backend)
+        async function calculateCosts(vehicleId, distance) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/calculate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        vehicle_id: vehicleId,
+                        distance_km: parseFloat(distance)
+                    })
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                return data;
+            } catch (err) {
+                console.error('❌ calculateCosts error:', err);
+                showToast(`Error calculating costs: ${err.message}`, 'error');
+                return null;
+            }
+        }
+
+        // ── UI Population Functions ──
 
         function populateCategories() {
             categorySelect.innerHTML = '<option value="">Select category</option>';
@@ -961,33 +1033,12 @@
                 categorySelect.appendChild(opt);
             });
             categorySelect.disabled = false;
-            // If there's a default selection
+            // Auto-select first if available
             if (categories.length > 0) {
                 categorySelect.value = categories[0].id;
                 categorySelect.dispatchEvent(new Event('change'));
             }
-        }
-
-        // ── Fetch vehicles ──
-        async function fetchVehicles(categoryId = null, fuelType = null) {
-            try {
-                let query = supabase.from('vehicles').select('*');
-                if (categoryId) {
-                    query = query.eq('category_id', categoryId);
-                }
-                if (fuelType && fuelType !== 'all') {
-                    query = query.eq('fuel_type', fuelType);
-                }
-                const { data, error } = await query;
-                if (error) throw error;
-                allVehicles = data || [];
-                applyFilters();
-            } catch (err) {
-                console.error('fetchVehicles error:', err);
-                showToast('Error loading vehicles', 'error');
-                allVehicles = [];
-                applyFilters();
-            }
+            setStatus('● Online', true);
         }
 
         function applyFilters() {
@@ -1003,9 +1054,8 @@
                 filtered = filtered.filter(v => v.fuel_type === currentFuelFilter);
             }
 
-            if (!showAll) {
-                // show only "recommended" or "primary" class – we'll use a flag is_primary if exists, else first per category
-                // fallback: show all if no flag
+            if (!showAll && filtered.length > 0) {
+                // Show only primary/recommended vehicles
                 const primaryMap = {};
                 filtered.forEach(v => {
                     const key = v.category_id;
@@ -1031,6 +1081,7 @@
                 variantSelect.innerHTML = '<option value="">No vehicles match</option>';
                 variantSelect.disabled = true;
                 calculateBtn.disabled = true;
+                clearResults();
                 return;
             }
             filteredVehicles.forEach(v => {
@@ -1042,33 +1093,134 @@
             });
             variantSelect.disabled = false;
             calculateBtn.disabled = false;
-            // auto-select first
+            // Auto-select first
             variantSelect.value = filteredVehicles[0].id;
             variantSelect.dispatchEvent(new Event('change'));
         }
 
-        // ── Load vehicle details ──
-        async function loadVehicleDetails(vehicleId) {
+        // ── Load vehicle details and calculate ──
+        async function loadVehicleAndCalculate(vehicleId, distance) {
             if (!vehicleId) {
                 currentVehicle = null;
                 clearResults();
                 return;
             }
+
             try {
-                const { data, error } = await supabase
-                    .from('vehicles')
-                    .select('*')
-                    .eq('id', vehicleId)
-                    .single();
-                if (error) throw error;
-                currentVehicle = data;
-                updateResults();
+                // Get vehicle details from backend
+                const vehicle = await fetchVehicleDetails(vehicleId);
+                if (!vehicle) {
+                    currentVehicle = null;
+                    clearResults();
+                    showToast('Vehicle not found', 'error');
+                    return;
+                }
+                currentVehicle = vehicle;
+
+                // If distance is provided, calculate costs
+                const dist = distance || parseFloat(distanceInput.value) || 0;
+                if (dist > 0) {
+                    const result = await calculateCosts(vehicleId, dist);
+                    if (result) {
+                        updateResultsWithCalculatedData(result, vehicle, dist);
+                        return;
+                    }
+                }
+                
+                // Fallback: show vehicle without calculation
+                updateResultsWithVehicleOnly(vehicle);
+
             } catch (err) {
-                console.error('loadVehicleDetails error:', err);
-                showToast('Error loading vehicle details', 'error');
+                console.error('❌ loadVehicleAndCalculate error:', err);
                 currentVehicle = null;
                 clearResults();
             }
+        }
+
+        // ── Update results with calculated data ──
+        function updateResultsWithCalculatedData(result, vehicle, distance) {
+            // Vehicle info
+            vehicleLabel.textContent = `${vehicle.make || ''} ${vehicle.model || ''} ${vehicle.engine_size || ''}cc`.trim() || vehicle.name || 'Unnamed';
+            fuelPill.textContent = vehicle.fuel_type || '—';
+
+            // Cost data from backend calculation
+            const totalCost = result.total_cost || 0;
+            const perKm = result.per_km || 0;
+            const fixedPerKmRate = result.fixed_per_km || 0;
+            const operatingPerKmRate = result.operating_per_km || 0;
+            const fixedTotal = result.fixed_total || 0;
+            const operatingTotal = result.operating_total || 0;
+
+            totalTrip.textContent = formatCurrency(totalCost);
+            totalTripSub.textContent = `at ${formatCurrency(perKm)} KES/km over ${distance} km`;
+
+            fixedPerKm.textContent = formatCurrency(fixedPerKmRate);
+            operatingPerKm.textContent = formatCurrency(operatingPerKmRate);
+            fixedTrip.textContent = formatCurrency(fixedTotal);
+            operatingTrip.textContent = formatCurrency(operatingTotal);
+            totalPerKm.textContent = formatCurrency(perKm);
+
+            initialCost.textContent = vehicle.initial_cost ? `KES ${formatCurrency(vehicle.initial_cost)}` : '—';
+
+            // Detailed breakdown
+            const breakdown = result.breakdown || {};
+            detailIds.forEach(key => {
+                const el = document.getElementById(detailMap[key]);
+                if (el) {
+                    const val = breakdown[key] || 0;
+                    el.textContent = formatCurrency(val);
+                    el.className = 'value';
+                    if (['Fuel', 'Servicing', 'Repairs', 'Tyres'].includes(key)) {
+                        el.classList.add('red');
+                    } else if (['Insurance', 'Licences'].includes(key)) {
+                        el.classList.add('green');
+                    } else {
+                        el.classList.add('gold');
+                    }
+                }
+            });
+
+            // Year progression
+            const yearData = result.yearly_projection || [];
+            yearIds.forEach((id, idx) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    const val = yearData[idx] || 0;
+                    el.textContent = `KES ${formatCurrency(val)}`;
+                    el.className = 'year-value';
+                    if (idx === 0) el.classList.add('gold');
+                    else if (idx <= 2) el.classList.add('green');
+                    else el.classList.add('red');
+                }
+            });
+
+            showToast('✅ Calculation complete!', 'success');
+        }
+
+        // ── Fallback: show vehicle without calculation ──
+        function updateResultsWithVehicleOnly(vehicle) {
+            vehicleLabel.textContent = `${vehicle.make || ''} ${vehicle.model || ''} ${vehicle.engine_size || ''}cc`.trim() || vehicle.name || 'Unnamed';
+            fuelPill.textContent = vehicle.fuel_type || '—';
+            
+            // Clear calculated fields
+            totalTrip.textContent = '0.00';
+            totalTripSub.textContent = '—';
+            fixedPerKm.textContent = '—';
+            operatingPerKm.textContent = '—';
+            fixedTrip.textContent = '—';
+            operatingTrip.textContent = '—';
+            totalPerKm.textContent = '—';
+            
+            detailIds.forEach(key => {
+                const el = document.getElementById(detailMap[key]);
+                if (el) el.textContent = '—';
+            });
+            yearIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.textContent = '—'; el.className = 'year-value'; }
+            });
+            
+            initialCost.textContent = vehicle.initial_cost ? `KES ${formatCurrency(vehicle.initial_cost)}` : '—';
         }
 
         // ── Clear results ──
@@ -1093,100 +1245,7 @@
             });
         }
 
-        // ── Update results ──
-        function updateResults() {
-            if (!currentVehicle) {
-                clearResults();
-                return;
-            }
-
-            const dist = parseFloat(distanceInput.value) || 0;
-            if (dist < 0) {
-                distanceError.textContent = 'Distance cannot be negative';
-                return;
-            } else {
-                distanceError.textContent = '';
-            }
-
-            // Rates (per km)
-            const insurance = currentVehicle.insurance_rate || 0;
-            const depreciation = currentVehicle.depreciation_rate || 0;
-            const interest = currentVehicle.interest_rate || 0;
-            const fuel = currentVehicle.fuel_rate || 0;
-            const servicing = currentVehicle.servicing_rate || 0;
-            const repairs = currentVehicle.repairs_rate || 0;
-            const tyres = currentVehicle.tyres_rate || 0;
-            const licences = currentVehicle.licences_rate || 0;
-
-            const fixed = insurance + depreciation + interest + licences;
-            const operating = fuel + servicing + repairs + tyres;
-            const totalPerKmRate = fixed + operating;
-
-            const fixedTripCost = fixed * dist;
-            const operatingTripCost = operating * dist;
-            const totalTripCost = totalPerKmRate * dist;
-
-            // Update UI
-            vehicleLabel.textContent = `${currentVehicle.make || ''} ${currentVehicle.model || ''} ${currentVehicle.engine_size || ''}cc`.trim() || currentVehicle.name || 'Unnamed';
-            fuelPill.textContent = currentVehicle.fuel_type || '—';
-
-            totalTrip.textContent = formatCurrency(totalTripCost);
-            totalTripSub.textContent = `at ${formatCurrency(totalPerKmRate)} KES/km over ${dist} km`;
-
-            fixedPerKm.textContent = formatCurrency(fixed);
-            operatingPerKm.textContent = formatCurrency(operating);
-            fixedTrip.textContent = formatCurrency(fixedTripCost);
-            operatingTrip.textContent = formatCurrency(operatingTripCost);
-            totalPerKm.textContent = formatCurrency(totalPerKmRate);
-
-            initialCost.textContent = currentVehicle.initial_cost ? `KES ${formatCurrency(currentVehicle.initial_cost)}` : '—';
-
-            // Detail breakdown
-            const detailValues = {
-                Insurance: insurance,
-                Depreciation: depreciation,
-                Interest: interest,
-                Fuel: fuel,
-                Servicing: servicing,
-                Repairs: repairs,
-                Tyres: tyres,
-                Licences: licences
-            };
-            detailIds.forEach(key => {
-                const el = document.getElementById(detailMap[key]);
-                if (el) {
-                    const val = detailValues[key] || 0;
-                    el.textContent = formatCurrency(val);
-                    // color coding
-                    el.className = 'value';
-                    if (key === 'Fuel' || key === 'Servicing' || key === 'Repairs' || key === 'Tyres') {
-                        el.classList.add('red');
-                    } else if (key === 'Insurance' || key === 'Licences') {
-                        el.classList.add('green');
-                    } else {
-                        el.classList.add('gold');
-                    }
-                }
-            });
-
-            // Year progression
-            const baseCost = totalPerKmRate;
-            const yearMultipliers = [1.0, 1.08, 1.18, 1.30, 1.45];
-            const yearLabels = ['New','2nd Year','3rd Year','4th Year','5th Year'];
-            yearIds.forEach((id, idx) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    const yearCost = baseCost * yearMultipliers[idx] * 15000; // assume 15k km/year
-                    el.textContent = `KES ${formatCurrency(yearCost)}`;
-                    el.className = 'year-value';
-                    if (idx === 0) el.classList.add('gold');
-                    else if (idx <= 2) el.classList.add('green');
-                    else el.classList.add('red');
-                }
-            });
-        }
-
-        // ── Event listeners ──
+        // ── Event Listeners ──
         function init() {
             // Categories
             categorySelect.addEventListener('change', function() {
@@ -1204,7 +1263,7 @@
                 const btn = e.target.closest('.fuel-filter-btn');
                 if (!btn) return;
                 const fuel = btn.dataset.fuel;
-                // update active
+                // Update active state
                 document.querySelectorAll('.fuel-filter-btn').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-pressed', 'false');
@@ -1212,7 +1271,7 @@
                 btn.classList.add('active');
                 btn.setAttribute('aria-pressed', 'true');
                 currentFuelFilter = fuel;
-                // re-fetch vehicles for current category
+                // Re-fetch vehicles for current category
                 const catId = categorySelect.value;
                 if (catId) {
                     fetchVehicles(catId, currentFuelFilter);
@@ -1230,21 +1289,30 @@
             variantSelect.addEventListener('change', function() {
                 const vid = this.value;
                 if (vid) {
-                    loadVehicleDetails(vid);
+                    const distance = parseFloat(distanceInput.value) || 0;
+                    loadVehicleAndCalculate(vid, distance);
                 } else {
                     currentVehicle = null;
                     clearResults();
                 }
             });
 
-            // Distance input
+            // Distance input - recalculate when changed
             distanceInput.addEventListener('input', function() {
                 const val = parseFloat(this.value);
                 if (val < 0) {
                     distanceError.textContent = 'Distance cannot be negative';
+                    return;
                 } else {
                     distanceError.textContent = '';
-                    if (currentVehicle) updateResults();
+                }
+                
+                // Recalculate if vehicle is selected
+                const vid = variantSelect.value;
+                if (vid && val > 0) {
+                    loadVehicleAndCalculate(vid, val);
+                } else if (vid) {
+                    loadVehicleAndCalculate(vid, 0);
                 }
             });
 
@@ -1270,9 +1338,10 @@
                 }
             });
 
-            // Calculate button
+            // Calculate button - triggers recalculation
             calculateBtn.addEventListener('click', function() {
-                if (!currentVehicle) {
+                const vid = variantSelect.value;
+                if (!vid) {
                     showToast('Please select a vehicle first', 'error');
                     return;
                 }
@@ -1281,8 +1350,11 @@
                     distanceError.textContent = 'Please enter a valid distance';
                     return;
                 }
-                updateResults();
-                showToast('Calculation updated', 'success');
+                if (dist === 0) {
+                    showToast('Please enter a distance greater than 0', 'error');
+                    return;
+                }
+                loadVehicleAndCalculate(vid, dist);
             });
 
             // Print
@@ -1313,24 +1385,29 @@
                 year: 'numeric', month: 'short', day: 'numeric'
             });
 
-            // Initial load
-            setStatus('● Loading...', true);
-            Promise.all([fetchCategories()])
+            // ── Initial Load ──
+            setStatus('● Connecting to backend...', true);
+            
+            // Try to connect to FastAPI backend
+            fetchCategories()
                 .then(() => {
-                    setStatus('● Online', true);
                     // Load vehicles for default category
                     if (categorySelect.value) {
-                        fetchVehicles(categorySelect.value, currentFuelFilter);
-                    } else if (categories.length > 0) {
-                        categorySelect.value = categories[0].id;
-                        categorySelect.dispatchEvent(new Event('change'));
+                        return fetchVehicles(categorySelect.value, currentFuelFilter);
                     }
                 })
-                .catch(() => {
-                    setStatus('⚠️ Offline', false);
+                .then(() => {
+                    setStatus('● Connected to FastAPI', true);
+                    console.log('✅ Application initialized successfully');
+                })
+                .catch((err) => {
+                    console.error('❌ Initialization error:', err);
+                    setStatus('⚠️ Backend connection failed', false);
+                    showToast('Could not connect to FastAPI backend. Please check your server.', 'error');
                 });
         }
 
+        // Start the application when DOM is ready
         document.addEventListener('DOMContentLoaded', init);
     })();
 </script>
