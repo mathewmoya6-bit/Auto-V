@@ -15,7 +15,7 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
 
     service_type = Column(String(50), nullable=False)  # valuation, inspection, mileage, fleet, certificate...
     purpose = Column(String(100))
@@ -33,12 +33,17 @@ class Payment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    user = relationship("UserProfile", back_populates="payments")
+    user = relationship(
+        "UserProfile", 
+        foreign_keys=[user_id],  # ← ADDED: Explicit foreign_keys
+        back_populates="payments"
+    )
 
     __table_args__ = (
         Index("idx_payments_user_id", "user_id"),
         Index("idx_payments_status", "status"),
         UniqueConstraint("reference", name="uq_payments_reference"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
