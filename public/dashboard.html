@@ -6,6 +6,9 @@
     <title>AUTO-V Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
@@ -313,14 +316,12 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V DASHBOARD — Production Ready
+        // AUTO-V DASHBOARD — Hybrid Architecture
+        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
-
-            // ─── PRODUCTION CONFIG ──────────────────────────────────────
-            const API_BASE = 'https://auto-v.onrender.com/api/v1';
 
             // ─── Services Configuration ────────────────────────────────────
             const ALL_SERVICES = [
@@ -336,84 +337,12 @@
             let currentUser = null;
             let userProfile = null;
 
-            // ─── API Client (built-in) ──────────────────────────────────────
-            const api = {
-                baseURL: API_BASE,
-                token: null,
-
-                setToken(token) {
-                    this.token = token;
-                    localStorage.setItem('access_token', token);
-                },
-
-                getToken() {
-                    return this.token || localStorage.getItem('access_token');
-                },
-
-                clearToken() {
-                    this.token = null;
-                    localStorage.removeItem('access_token');
-                },
-
-                async request(endpoint, options = {}) {
-                    const url = endpoint.startsWith('http') ? endpoint : `${this.baseURL}${endpoint}`;
-                    const headers = {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...options.headers,
-                    };
-
-                    const token = this.getToken();
-                    if (token) {
-                        headers['Authorization'] = `Bearer ${token}`;
-                    }
-
-                    const response = await fetch(url, {
-                        ...options,
-                        headers,
-                        credentials: 'include',
-                        mode: 'cors',
-                    });
-
-                    if (!response.ok) {
-                        let errorMessage = `HTTP ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            errorMessage = errorData.detail || errorData.message || errorMessage;
-                        } catch (e) {
-                            errorMessage = await response.text() || errorMessage;
-                        }
-                        throw new Error(errorMessage);
-                    }
-
-                    return response.json();
-                },
-
-                get(endpoint) {
-                    return this.request(endpoint, { method: 'GET' });
-                },
-
-                post(endpoint, data) {
-                    return this.request(endpoint, {
-                        method: 'POST',
-                        body: JSON.stringify(data),
-                    });
-                },
-
-                delete(endpoint) {
-                    return this.request(endpoint, { method: 'DELETE' });
-                },
-
-                put(endpoint, data) {
-                    return this.request(endpoint, {
-                        method: 'PUT',
-                        body: JSON.stringify(data),
-                    });
-                },
-            };
-
             // ─── Toast / Error handling ────────────────────────────────────
             function showToast(message, type = 'info') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(message, type);
+                    return;
+                }
                 const existing = document.querySelector('.toast-container');
                 if (existing) existing.remove();
                 
@@ -430,18 +359,28 @@
 
             // ─── Initialize ─────────────────────────────────────────────────
             async function init() {
+                // Wait for autoV to be ready
+                if (!window.autoV || !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
+
                 try {
-                    // Get user from token (stored in localStorage by login)
-                    const token = localStorage.getItem('access_token');
-                    if (!token) {
+                    // Get user from autoV
+                    currentUser = await window.autoV.getCurrentUser();
+                    if (!currentUser) {
                         window.location.href = '/login.html';
                         return;
                     }
-
-                    api.setToken(token);
-
-                    // Get user info from backend
-                    currentUser = await api.get('/auth/me');
                     
                     // Update profile
                     await loadUserProfile(currentUser);
@@ -459,13 +398,12 @@
                     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
                     
                     console.log('✅ Dashboard initialized successfully');
-                    console.log(`🔗 Backend API: ${API_BASE}`);
                     console.log(`👤 User: ${currentUser.email}`);
                     
                 } catch (error) {
                     console.error('Dashboard init error:', error);
                     if (error.message.includes('401') || error.message.includes('Session expired')) {
-                        api.clearToken();
+                        window.autoV.clearAuthToken();
                         window.location.href = '/login.html';
                     } else {
                         showToast('Failed to load dashboard: ' + error.message, 'error');
@@ -476,8 +414,8 @@
             // ─── Load User Profile ──────────────────────────────────────────
             async function loadUserProfile(user) {
                 try {
-                    // Fetch profile from backend
-                    const profile = await api.get(`/users/${user.id}/profile`);
+                    // Fetch profile via autoV
+                    const profile = await window.autoV.apiRequest(`/users/${user.id}/profile`);
                     userProfile = profile;
                     
                     document.getElementById('userName').textContent = profile.full_name || user.email.split('@')[0];
@@ -514,7 +452,7 @@
                 const vehicleList = document.getElementById('vehicleList');
                 
                 try {
-                    const vehicles = await api.get('/vehicles');
+                    const vehicles = await window.autoV.apiRequest('/vehicles');
                     
                     if (!vehicles || vehicles.length === 0) {
                         vehicleList.innerHTML = `<div class="empty-state">🚗 You haven't registered any vehicles yet. <a href="/add-vehicle.html">Add your first vehicle</a></div>`;
@@ -546,7 +484,7 @@
                 const reportsList = document.getElementById('recentReports');
                 
                 try {
-                    const reports = await api.get('/service-requests');
+                    const reports = await window.autoV.apiRequest('/service-requests');
                     
                     if (!reports || reports.length === 0) {
                         reportsList.innerHTML = `<div class="empty-state">No reports generated yet. Start a service to generate your first report.</div>`;
@@ -578,7 +516,7 @@
                 const certList = document.getElementById('certificateList');
                 
                 try {
-                    const certificates = await api.get('/certificates');
+                    const certificates = await window.autoV.apiRequest('/certificates');
                     
                     if (!certificates || certificates.length === 0) {
                         certList.innerHTML = `<div class="empty-state">No certificates issued yet. Complete a valuation to receive a certificate.</div>`;
@@ -607,12 +545,12 @@
             // ─── Load Summary Statistics ────────────────────────────────────
             async function loadSummaryStats() {
                 try {
-                    // Get counts from API
+                    // Get counts via autoV
                     const [vehicles, reports, certificates, valuations] = await Promise.all([
-                        api.get('/vehicles/count'),
-                        api.get('/service-requests/count'),
-                        api.get('/certificates/count'),
-                        api.get('/valuations/total')
+                        window.autoV.apiRequest('/vehicles/count'),
+                        window.autoV.apiRequest('/service-requests/count'),
+                        window.autoV.apiRequest('/certificates/count'),
+                        window.autoV.apiRequest('/valuations/total')
                     ]);
                     
                     document.getElementById('sumVehicles').textContent = vehicles.count || 0;
@@ -632,27 +570,23 @@
 
             // ─── Action Handlers ────────────────────────────────────────────
             async function handleLogout() {
-                try {
-                    await api.post('/auth/logout');
-                } catch (e) {}
-                api.clearToken();
-                window.location.href = '/login.html';
+                await window.autoV.logout();
             }
 
             function viewReport(requestId) {
-                window.open(`${API_BASE}/reports/generate/${requestId}`, '_blank');
+                window.open(`${window.autoV.API_BASE}/reports/generate/${requestId}`, '_blank');
             }
 
             function downloadReport(requestId) {
-                window.location.href = `${API_BASE}/reports/download/${requestId}`;
+                window.location.href = `${window.autoV.API_BASE}/reports/download/${requestId}`;
             }
 
             function viewCertificate(certId) {
-                window.open(`${API_BASE}/certificates/view/${certId}`, '_blank');
+                window.open(`${window.autoV.API_BASE}/certificates/view/${certId}`, '_blank');
             }
 
             function downloadCertificate(certId) {
-                window.location.href = `${API_BASE}/certificates/download/${certId}`;
+                window.location.href = `${window.autoV.API_BASE}/certificates/download/${certId}`;
             }
 
             function viewVehicleHistory(vehicleId) {
