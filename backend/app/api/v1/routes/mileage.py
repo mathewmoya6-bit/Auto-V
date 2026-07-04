@@ -1,15 +1,16 @@
 # app/api/v1/routes/mileage.py
 # =============================================================================
-# AUTO-V API - Mileage Routes (Database-Backed)
+# AUTO-V API - Mileage Routes (ORM-Based)
 # =============================================================================
 
 import logging
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
 
 from app.core.database import get_db
+from app.models.mileage import VehicleCategory, VehicleVariant, Route
 
 logger = logging.getLogger(__name__)
 
@@ -18,84 +19,24 @@ router = APIRouter(prefix="/mileage", tags=["Mileage"])
 
 # ─── Helper Functions ──────────────────────────────────────────────
 
-async def get_categories_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
-    """Fetch all vehicle categories with their variants from the database."""
-    query = text("""
-        SELECT 
-            c.id as category_id,
-            c.name as category_name,
-            c.fuel_type,
-            v.id as variant_id,
-            v.label as variant_label,
-            v.fixed_per_km,
-            v.operating_per_km,
-            v.total_per_km,
-            v.initial_cost,
-            v.year1,
-            v.year2,
-            v.year3,
-            v.year4,
-            v.year5,
-            v.components
-        FROM vehicle_categories c
-        LEFT JOIN vehicle_variants v ON c.id = v.category_id
-        WHERE c.is_active = true AND (v.is_active = true OR v.id IS NULL)
-        ORDER BY c.name, v.label
-    """)
-    
-    result = await db.execute(query)
-    rows = result.fetchall()
-    
-    # Build category structure
-    categories_map = {}
-    for row in rows:
-        category_id = str(row.category_id)
-        if category_id not in categories_map:
-            categories_map[category_id] = {
-                "id": category_id,
-                "label": row.category_name,
-                "fuel_type": row.fuel_type or "—",
-                "variants": []
-            }
-        
-        if row.variant_id:
-            variant = {
-                "id": str(row.variant_id),
-                "label": row.variant_label,
-                "category_id": category_id,
-                "category_name": row.category_name,
-                "fixed_per_km": float(row.fixed_per_km) if row.fixed_per_km else 0,
-                "operating_per_km": float(row.operating_per_km) if row.operating_per_km else 0,
-                "total_per_km": float(row.total_per_km) if row.total_per_km else 0,
-                "initial_cost": float(row.initial_cost) if row.initial_cost else 0,
-                "year1": float(row.year1) if row.year1 else 0,
-                "year2": float(row.year2) if row.year2 else 0,
-                "year3": float(row.year3) if row.year3 else 0,
-                "year4": float(row.year4) if row.year4 else 0,
-                "year5": float(row.year5) if row.year5 else 0,
-                "components": row.components or {}
-            }
-            categories_map[category_id]["variants"].append(variant)
-    
-    return list(categories_map.values())
-
-
-async def get_routes_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
-    """Fetch all routes from the database."""
-    query = text("""
-        SELECT from_city, to_city, km
-        FROM routes
-        WHERE is_active = true
-        ORDER BY from_city, to_city
-    """)
-    
-    result = await db.execute(query)
-    rows = result.fetchall()
-    
-    return [
-        {"from_city": row.from_city, "to_city": row.to_city, "km": float(row.km)}
-        for row in rows
-    ]
+def variant_to_dict(variant: VehicleVariant, category_name: str) -> Dict[str, Any]:
+    """Convert VehicleVariant ORM object to dictionary."""
+    return {
+        "id": str(variant.id),
+        "label": variant.label,
+        "category_id": str(variant.category_id),
+        "category_name": category_name,
+        "fixed_per_km": float(variant.fixed_per_km) if variant.fixed_per_km else 0,
+        "operating_per_km": float(variant.operating_per_km) if variant.operating_per_km else 0,
+        "total_per_km": float(variant.total_per_km) if variant.total_per_km else 0,
+        "initial_cost": float(variant.initial_cost) if variant.initial_cost else 0,
+        "year1": float(variant.year1) if variant.year1 else 0,
+        "year2": float(variant.year2) if variant.year2 else 0,
+        "year3": float(variant.year3) if variant.year3 else 0,
+        "year4": float(variant.year4) if variant.year4 else 0,
+        "year5": float(variant.year5) if variant.year5 else 0,
+        "components": variant.components or {},
+    }
 
 
 # ─── PUBLIC API ENDPOINTS ────────────────────────────────────────────
@@ -105,9 +46,36 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
     """Get all vehicle categories with their variants from the database."""
     try:
         logger.info("📊 Fetching mileage categories from database...")
-        categories = await get_categories_from_db(db)
-        logger.info(f"✅ Fetched {len(categories)} categories")
-        return categories
+        
+        # Query all active categories with their variants loaded
+        result = await db.execute(
+            select(VehicleCategory)
+            .where(VehicleCategory.is_active == True)
+            .order_by(VehicleCategory.name)
+        )
+        categories = result.scalars().all()
+        
+        response = []
+        for cat in categories:
+            # Get active variants for this category
+            variants_result = await db.execute(
+                select(VehicleVariant)
+                .where(VehicleVariant.category_id == cat.id)
+                .where(VehicleVariant.is_active == True)
+                .order_by(VehicleVariant.label)
+            )
+            variants = variants_result.scalars().all()
+            
+            response.append({
+                "id": str(cat.id),
+                "label": cat.name,
+                "fuel_type": cat.fuel_type or "—",
+                "variants": [variant_to_dict(v, cat.name) for v in variants],
+            })
+        
+        logger.info(f"✅ Fetched {len(response)} categories")
+        return response
+        
     except Exception as e:
         logger.error(f"❌ Error fetching categories: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -121,9 +89,26 @@ async def get_routes(db: AsyncSession = Depends(get_db)):
     """Get all quick routes with distances from the database."""
     try:
         logger.info("📍 Fetching mileage routes from database...")
-        routes = await get_routes_from_db(db)
-        logger.info(f"✅ Fetched {len(routes)} routes")
-        return routes
+        
+        result = await db.execute(
+            select(Route)
+            .where(Route.is_active == True)
+            .order_by(Route.from_city, Route.to_city)
+        )
+        routes = result.scalars().all()
+        
+        response = [
+            {
+                "from_city": r.from_city,
+                "to_city": r.to_city,
+                "km": float(r.km),
+            }
+            for r in routes
+        ]
+        
+        logger.info(f"✅ Fetched {len(response)} routes")
+        return response
+        
     except Exception as e:
         logger.error(f"❌ Error fetching routes: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -136,34 +121,34 @@ async def get_routes(db: AsyncSession = Depends(get_db)):
 async def get_mileage_rates(db: AsyncSession = Depends(get_db)):
     """Get all mileage rates (flattened view)."""
     try:
-        query = text("""
-            SELECT 
-                c.name as category,
-                v.label as variant,
-                v.total_per_km as rate_per_km,
-                v.fixed_per_km,
-                v.operating_per_km,
-                c.fuel_type
-            FROM vehicle_categories c
-            JOIN vehicle_variants v ON c.id = v.category_id
-            WHERE c.is_active = true AND v.is_active = true
-            ORDER BY c.name, v.label
-        """)
+        result = await db.execute(
+            select(VehicleCategory)
+            .where(VehicleCategory.is_active == True)
+            .order_by(VehicleCategory.name)
+        )
+        categories = result.scalars().all()
         
-        result = await db.execute(query)
-        rows = result.fetchall()
+        rates = []
+        for cat in categories:
+            variants_result = await db.execute(
+                select(VehicleVariant)
+                .where(VehicleVariant.category_id == cat.id)
+                .where(VehicleVariant.is_active == True)
+            )
+            variants = variants_result.scalars().all()
+            
+            for v in variants:
+                rates.append({
+                    "category": cat.name,
+                    "variant": v.label,
+                    "rate_per_km": float(v.total_per_km) if v.total_per_km else 0,
+                    "fixed_per_km": float(v.fixed_per_km) if v.fixed_per_km else 0,
+                    "operating_per_km": float(v.operating_per_km) if v.operating_per_km else 0,
+                    "fuel_type": cat.fuel_type or "—",
+                })
         
-        return [
-            {
-                "category": row.category,
-                "variant": row.variant,
-                "rate_per_km": float(row.rate_per_km) if row.rate_per_km else 0,
-                "fixed_per_km": float(row.fixed_per_km) if row.fixed_per_km else 0,
-                "operating_per_km": float(row.operating_per_km) if row.operating_per_km else 0,
-                "fuel_type": row.fuel_type or "—",
-            }
-            for row in rows
-        ]
+        return rates
+        
     except Exception as e:
         logger.error(f"❌ Error fetching rates: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -187,57 +172,49 @@ async def calculate_mileage(
                 detail="Distance must be greater than 0"
             )
         
-        query = text("""
-            SELECT 
-                c.name as category_name,
-                v.label as variant_label,
-                v.fixed_per_km,
-                v.operating_per_km,
-                v.total_per_km,
-                v.initial_cost,
-                v.year1,
-                v.year2,
-                v.year3,
-                v.year4,
-                v.year5,
-                v.components
-            FROM vehicle_variants v
-            JOIN vehicle_categories c ON v.category_id = c.id
-            WHERE v.id = :variant_id AND v.is_active = true
-        """)
+        # Find the variant
+        result = await db.execute(
+            select(VehicleVariant)
+            .where(VehicleVariant.id == variant_id)
+            .where(VehicleVariant.is_active == True)
+        )
+        variant = result.scalar_one_or_none()
         
-        result = await db.execute(query, {"variant_id": variant_id})
-        row = result.fetchone()
-        
-        if not row:
+        if not variant:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Vehicle variant not found"
             )
         
-        fixed_cost = (float(row.fixed_per_km) if row.fixed_per_km else 0) * distance_km
-        operating_cost = (float(row.operating_per_km) if row.operating_per_km else 0) * distance_km
-        total_cost = (float(row.total_per_km) if row.total_per_km else 0) * distance_km
+        # Get category name
+        cat_result = await db.execute(
+            select(VehicleCategory).where(VehicleCategory.id == variant.category_id)
+        )
+        category = cat_result.scalar_one_or_none()
+        
+        fixed_cost = (float(variant.fixed_per_km) if variant.fixed_per_km else 0) * distance_km
+        operating_cost = (float(variant.operating_per_km) if variant.operating_per_km else 0) * distance_km
+        total_cost = (float(variant.total_per_km) if variant.total_per_km else 0) * distance_km
         
         return {
-            "category": row.category_name,
-            "variant": row.variant_label,
+            "category": category.name if category else "Unknown",
+            "variant": variant.label,
             "distance_km": distance_km,
-            "fixed_per_km": float(row.fixed_per_km) if row.fixed_per_km else 0,
-            "operating_per_km": float(row.operating_per_km) if row.operating_per_km else 0,
-            "total_per_km": float(row.total_per_km) if row.total_per_km else 0,
+            "fixed_per_km": float(variant.fixed_per_km) if variant.fixed_per_km else 0,
+            "operating_per_km": float(variant.operating_per_km) if variant.operating_per_km else 0,
+            "total_per_km": float(variant.total_per_km) if variant.total_per_km else 0,
             "fixed_cost": round(fixed_cost, 2),
             "operating_cost": round(operating_cost, 2),
             "total_cost": round(total_cost, 2),
-            "components": row.components or {},
+            "components": variant.components or {},
             "years": {
-                "year1": float(row.year1) if row.year1 else 0,
-                "year2": float(row.year2) if row.year2 else 0,
-                "year3": float(row.year3) if row.year3 else 0,
-                "year4": float(row.year4) if row.year4 else 0,
-                "year5": float(row.year5) if row.year5 else 0,
+                "year1": float(variant.year1) if variant.year1 else 0,
+                "year2": float(variant.year2) if variant.year2 else 0,
+                "year3": float(variant.year3) if variant.year3 else 0,
+                "year4": float(variant.year4) if variant.year4 else 0,
+                "year5": float(variant.year5) if variant.year5 else 0,
             },
-            "initial_cost": float(row.initial_cost) if row.initial_cost else 0,
+            "initial_cost": float(variant.initial_cost) if variant.initial_cost else 0,
         }
         
     except HTTPException:
