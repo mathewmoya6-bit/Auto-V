@@ -15,17 +15,12 @@ from app.core.config import settings
 from app.core.database import init_db, close_db, is_database_configured, engine
 from app.api.v1.routes import auth, mileage
 
-# Import all models so Base.metadata knows about them
-from app.models import Base
+# ─── Import ALL models to register them with SQLAlchemy ────────────
+# This is CRITICAL - all models must be imported so Base.metadata knows about them
+from app.models import Base  # Base is imported first
 from app.models.user import UserProfile
+from app.models.vehicle import Vehicle, VehicleImage, VINScan
 from app.models.mileage import VehicleCategory, VehicleVariant, Route, MileageClaim
-# Import other models as needed
-# from app.models.vehicle import Vehicle
-# from app.models.valuation import Valuation
-# from app.models.inspection import Inspection
-# from app.models.fleet import Fleet
-# from app.models.certificate import Certificate
-# from app.models.payment import Payment
 
 # ─── Setup Logging ──────────────────────────────────────────────────
 
@@ -52,21 +47,40 @@ async def lifespan(app: FastAPI):
     
     if is_database_configured():
         try:
+            # Initialize database connection
             await init_db()
             logger.info("✅ Database initialized successfully")
             
             # ─── CREATE TABLES IF THEY DON'T EXIST ────────────────────
-            # This ensures all tables are created based on your models
-            logger.info("📋 Creating database tables if they don't exist...")
-            async with engine.begin() as conn:
-                # This creates all tables defined in your models
-                await conn.run_sync(Base.metadata.create_all)
-            logger.info("✅ Database tables verified/created successfully")
+            # CRITICAL: This creates ALL tables defined in your models
+            # Only use in development or if you're sure about the schema
+            if settings.ENV in ["development", "test"]:
+                logger.info("📋 Creating database tables if they don't exist...")
+                async with engine.begin() as conn:
+                    # This creates all tables defined in your models
+                    await conn.run_sync(Base.metadata.create_all)
+                logger.info("✅ Database tables verified/created successfully")
+            else:
+                logger.info("ℹ️  Skipping table creation in production mode")
+                logger.info("   Tables should be managed via migrations or SQL scripts")
+            
+            # Verify tables exist
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = 'users'"
+                )
+                user_table_count = result.scalar()
+                if user_table_count > 0:
+                    logger.info("✅ Verified: 'users' table exists")
+                else:
+                    logger.warning("⚠️  'users' table not found - some features may not work")
             
         except Exception as e:
             logger.error(f"❌ Failed to initialize database: {str(e)}")
-            # Optionally raise to prevent startup with broken DB
-            # raise
+            # In production, we might want to continue but log the error
+            if settings.ENV in ["development", "test"]:
+                raise
     
     yield
     
@@ -102,8 +116,15 @@ app.add_middleware(
 
 # ─── Register Routes ──────────────────────────────────────────────
 
-app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
+# Make sure the auth router exists before including it
+try:
+    app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
+    logger.info("✅ Auth routes registered")
+except AttributeError:
+    logger.warning("⚠️  Auth router not available - skipping")
+
 app.include_router(mileage.router, prefix=settings.API_V1_PREFIX, tags=["Mileage"])
+logger.info("✅ Mileage routes registered")
 
 logger.info("✅ All routes registered successfully")
 
@@ -112,12 +133,21 @@ logger.info("✅ All routes registered successfully")
 
 @app.get("/health")
 async def health_check():
+    db_status = "unknown"
+    try:
+        async with engine.connect() as conn:
+            await conn.execute("SELECT 1")
+            db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
     return {
-        "status": "healthy",
+        "status": "healthy" if db_status == "connected" else "degraded",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "environment": settings.ENV,
         "debug": settings.DEBUG,
+        "database": db_status,
         "database_configured": is_database_configured(),
         "timestamp": datetime.now().isoformat(),
     }
@@ -129,7 +159,7 @@ async def root():
         "message": f"Welcome to {settings.APP_NAME}",
         "version": settings.APP_VERSION,
         "environment": settings.ENV,
-        "docs": "/docs",
+        "docs": "/docs" if settings.ENABLE_SWAGGER else "disabled",
         "health": "/health",
         "api_prefix": settings.API_V1_PREFIX,
     }
@@ -139,23 +169,78 @@ async def root():
 
 @app.get("/debug/db")
 async def test_db():
-    """Test database connection."""
+    """Test database connection and list tables."""
     try:
         async with engine.connect() as conn:
+            # Test connection
             result = await conn.execute("SELECT 1")
-            # Also check if tables exist
+            db_connected = result.scalar() == 1
+            
+            # Get list of tables
             tables = await conn.execute(
                 "SELECT table_name FROM information_schema.tables "
                 "WHERE table_schema = 'public'"
             )
             table_list = [row[0] for row in tables.fetchall()]
+            
+            # Check for required tables
+            required_tables = ['users', 'vehicles', 'vehicle_categories', 'vehicle_variants', 'mileage_claims', 'routes']
+            table_status = {table: table in table_list for table in required_tables}
+            
+            # Get count of records in key tables
+            counts = {}
+            for table in required_tables:
+                if table in table_list:
+                    try:
+                        count_result = await conn.execute(f"SELECT COUNT(*) FROM {table}")
+                        counts[table] = count_result.scalar()
+                    except:
+                        counts[table] = "error"
+            
             return {
-                "status": "✅ Connected!",
-                "result": result.scalar(),
+                "status": "✅ Connected!" if db_connected else "❌ Failed",
+                "database_url": settings.DATABASE_URL[:50] + "..." if settings.DATABASE_URL else None,
                 "tables": table_list,
-                "has_vehicle_categories": "vehicle_categories" in table_list,
-                "database_url": settings.DATABASE_URL[:50] + "..." if settings.DATABASE_URL else None
+                "table_count": len(table_list),
+                "required_tables_present": all(table_status.values()),
+                "table_status": table_status,
+                "record_counts": counts,
             }
+    except Exception as e:
+        return {
+            "status": "❌ Failed",
+            "error": str(e),
+            "database_configured": is_database_configured(),
+        }
+
+
+# ─── Model Registration Debug Endpoint ────────────────────────────
+
+@app.get("/debug/models")
+async def debug_models():
+    """Check which models are registered with SQLAlchemy."""
+    try:
+        # Get all mapped classes
+        mapper_registry = Base.metadata
+        tables = mapper_registry.tables.keys()
+        classes = {}
+        
+        # Get class names from tables
+        for table_name in tables:
+            # Find the class associated with this table
+            for cls in Base.__subclasses__():
+                if hasattr(cls, '__tablename__') and cls.__tablename__ == table_name:
+                    classes[table_name] = cls.__name__
+                    break
+            else:
+                classes[table_name] = "No class found"
+        
+        return {
+            "registered_tables": list(tables),
+            "table_count": len(tables),
+            "class_mapping": classes,
+            "all_subclasses": [cls.__name__ for cls in Base.__subclasses__()],
+        }
     except Exception as e:
         return {"status": "❌ Failed", "error": str(e)}
 
