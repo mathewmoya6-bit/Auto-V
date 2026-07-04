@@ -1,11 +1,11 @@
-# app/models/vehicle.py
+# app/models/mileage.py
 # =============================================================================
-# AUTO-V API - Vehicle, VehicleImage, VINScan Models
+# AUTO-V API - Mileage Models
 # =============================================================================
 
 import uuid
 from sqlalchemy import (
-    Column, String, Integer, Boolean, DateTime, Text, JSON, Float, BigInteger,
+    Column, String, Boolean, Numeric, DateTime, Date, Text, JSON, BigInteger, Integer,
     ForeignKey, Index, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -14,139 +14,148 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
-class Vehicle(Base):
-    __tablename__ = "vehicles"
+class VehicleCategory(Base):
+    __tablename__ = "vehicle_categories"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
-
-    vin = Column(String(17), unique=True, nullable=False, index=True)
-    registration_number = Column(String(20), unique=True, index=True)
-    make = Column(String(100), nullable=False)
-    model = Column(String(100), nullable=False)
-    year = Column(Integer, nullable=False)
-    vehicle_type = Column(String(50), default="Car")
-
-    body_type = Column(String(50))
-    engine_cc = Column(Integer)
-    transmission = Column(String(20))
-    fuel_type = Column(String(20))
-    odometer = Column(BigInteger)
-    color = Column(String(50))
-
-    condition = Column(String(20))
-    accident_history = Column(String(20))
-    owners = Column(Integer, default=1)
-
+    name = Column(String(100), nullable=False, unique=True)
+    fuel_type = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    is_verified = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    # FIXED: Added explicit foreign_keys to relationships
-    owner = relationship(
-        "UserProfile",
-        foreign_keys=[user_id],  # ← ADDED: Explicit
-        back_populates="vehicles"
-    )
-    
-    images = relationship("VehicleImage", back_populates="vehicle", cascade="all, delete-orphan")
-    valuations = relationship("Valuation", back_populates="vehicle", cascade="all, delete-orphan")
-    inspections = relationship("Inspection", back_populates="vehicle", cascade="all, delete-orphan")
-    
-    mileage_claims = relationship(
-        "MileageClaim",
-        foreign_keys="MileageClaim.vehicle_id",  # ← ADDED: Explicit
-        back_populates="vehicle"
-    )
-    
-    fleet_vehicles = relationship("FleetVehicle", back_populates="vehicle", cascade="all, delete-orphan")
-    vin_scans = relationship("VINScan", back_populates="vehicle")
-
-    __table_args__ = (
-        Index("idx_vehicles_vin", "vin"),
-        Index("idx_vehicles_registration", "registration_number"),
-        Index("idx_vehicles_user_id", "user_id"),
-        UniqueConstraint("vin", name="uq_vehicles_vin"),
-        {"schema": "public"},  # ← ADDED: Explicit schema
-    )
-
-    def to_dict(self) -> dict:
-        return {
-            "id": str(self.id),
-            "user_id": str(self.user_id) if self.user_id else None,
-            "vin": self.vin,
-            "registration_number": self.registration_number,
-            "make": self.make,
-            "model": self.model,
-            "year": self.year,
-            "vehicle_type": self.vehicle_type,
-            "odometer": self.odometer,
-            "condition": self.condition,
-            "is_active": self.is_active,
-            "is_verified": self.is_verified,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
-
-class VehicleImage(Base):
-    __tablename__ = "vehicle_images"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="CASCADE"), nullable=False)
-
-    slot = Column(String(50), nullable=False)  # front, rear, left, right, interior, engine, vin
-    image_url = Column(String(500), nullable=False)
-    is_primary = Column(Boolean, default=False)
-    ai_analyzed = Column(Boolean, default=False)
-    ai_damage_detected = Column(Boolean, default=False)
-    ai_confidence = Column(Float)
-    ai_analysis_data = Column(JSON)
-    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    vehicle = relationship("Vehicle", back_populates="images")
-
-    __table_args__ = (
-        Index("idx_vehicle_images_vehicle_id", "vehicle_id"),
-        UniqueConstraint("vehicle_id", "slot", name="uq_vehicle_images_slot"),
-        {"schema": "public"},  # ← ADDED: Explicit schema
-    )
-
-
-class VINScan(Base):
-    __tablename__ = "vin_scans"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="SET NULL"), nullable=True)
-
-    vin = Column(String(17), nullable=False, index=True)
-    image_url = Column(String(500))
-    confidence = Column(Float)
-    validation_result = Column(JSON)
-    vehicle_data = Column(JSON)
-    status = Column(String(20), default="pending")  # pending, verified, failed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # FIXED: Added explicit foreign_keys
-    vehicle = relationship(
-        "Vehicle",
-        foreign_keys=[vehicle_id],  # ← ADDED: Explicit
-        back_populates="vin_scans"
-    )
+    variants = relationship("VehicleVariant", back_populates="category", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index("idx_vin_scans_vin", "vin"),
-        Index("idx_vin_scans_user_id", "user_id"),
-        {"schema": "public"},  # ← ADDED: Explicit schema
+        Index("idx_vehicle_categories_active", "is_active"),
+    )
+
+
+class VehicleVariant(Base):
+    __tablename__ = "vehicle_variants"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicle_categories.id", ondelete="CASCADE"), nullable=False)
+    label = Column(String(150), nullable=False)
+    
+    # Vehicle details
+    make = Column(String(100), nullable=True)
+    model = Column(String(100), nullable=True)
+    engine_size = Column(String(50), nullable=True)
+    fuel_type = Column(String(50), nullable=True)
+    
+    # Rate fields
+    fixed_per_km = Column(Numeric(10, 4), default=0)
+    operating_per_km = Column(Numeric(10, 4), default=0)
+    total_per_km = Column(Numeric(10, 4), default=0)
+
+    # Yearly cost projections
+    initial_cost = Column(Numeric(14, 2), default=0)
+    year1 = Column(Numeric(14, 2), default=0)
+    year2 = Column(Numeric(14, 2), default=0)
+    year3 = Column(Numeric(14, 2), default=0)
+    year4 = Column(Numeric(14, 2), default=0)
+    year5 = Column(Numeric(14, 2), default=0)
+    
+    # Rate components for calculation
+    insurance_rate = Column(Numeric(10, 4), default=0)
+    depreciation_rate = Column(Numeric(10, 4), default=0)
+    interest_rate = Column(Numeric(10, 4), default=0)
+    fuel_rate = Column(Numeric(10, 4), default=0)
+    servicing_rate = Column(Numeric(10, 4), default=0)
+    repairs_rate = Column(Numeric(10, 4), default=0)
+    tyres_rate = Column(Numeric(10, 4), default=0)
+    licences_rate = Column(Numeric(10, 4), default=0)
+    is_primary = Column(Boolean, default=False)
+
+    components = Column(JSON, default=dict)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    category = relationship("VehicleCategory", back_populates="variants")
+
+    __table_args__ = (
+        Index("idx_vehicle_variants_category_id", "category_id"),
+        Index("idx_vehicle_variants_active", "is_active"),
+    )
+
+
+class Route(Base):
+    __tablename__ = "routes"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    from_city = Column(String(150), nullable=False)
+    to_city = Column(String(150), nullable=False)
+    km = Column(Numeric(10, 2), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("from_city", "to_city", name="uq_routes_from_to"),
+        Index("idx_routes_active", "is_active"),
+    )
+
+
+class MileageClaim(Base):
+    __tablename__ = "mileage_claims"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True)
+
+    trip_date = Column(Date, nullable=False)
+    start_location = Column(String(255))
+    end_location = Column(String(255))
+    distance_km = Column(Numeric(8, 2))
+    vehicle_category = Column(String(50))
+    rate_per_km = Column(Numeric(8, 2))
+    claim_amount = Column(Numeric(10, 2))
+    purpose = Column(String(100))
+    notes = Column(Text)
+
+    odometer_start = Column(BigInteger)
+    odometer_end = Column(BigInteger)
+
+    status = Column(String(20), default="pending")  # pending, approved, rejected, paid, cancelled
+    approved_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships with explicit foreign_keys
+    user = relationship(
+        "UserProfile",
+        foreign_keys=[user_id],
+        back_populates="mileage_claims"
+    )
+    
+    approver = relationship(
+        "UserProfile",
+        foreign_keys=[approved_by],
+        back_populates="approved_mileage_claims"
+    )
+    
+    vehicle = relationship("Vehicle", back_populates="mileage_claims")
+
+    __table_args__ = (
+        Index("idx_mileage_claims_user_id", "user_id"),
+        Index("idx_mileage_claims_status", "status"),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
-            "vin": self.vin,
-            "confidence": self.confidence,
-            "vehicle_data": self.vehicle_data,
+            "user_id": str(self.user_id),
+            "vehicle_id": str(self.vehicle_id) if self.vehicle_id else None,
+            "trip_date": self.trip_date.isoformat() if self.trip_date else None,
+            "start_location": self.start_location,
+            "end_location": self.end_location,
+            "distance_km": float(self.distance_km) if self.distance_km else 0,
+            "rate_per_km": float(self.rate_per_km) if self.rate_per_km else 0,
+            "claim_amount": float(self.claim_amount) if self.claim_amount else 0,
+            "purpose": self.purpose,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
