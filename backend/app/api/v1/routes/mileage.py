@@ -1,293 +1,126 @@
 # app/api/v1/routes/mileage.py
 # =============================================================================
-# AUTO-V API - Mileage Routes (Public)
+# AUTO-V API - Mileage Routes (Database-Backed)
 # =============================================================================
 
 import logging
-from fastapi import APIRouter, HTTPException, status
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Dict, Any, Optional
+
+from app.core.database import get_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mileage", tags=["Mileage"])
 
 
-# ─── Response Models ──────────────────────────────────────────────
-class ComponentCost(BaseModel):
-    insurance: float = 0
-    depreciation: float = 0
-    interest: float = 0
-    fuel: float = 0
-    servicing: float = 0
-    repairs: float = 0
-    tyres: float = 0
-    licences: float = 0
+# ─── Helper Functions ──────────────────────────────────────────────
 
-
-class VariantResponse(BaseModel):
-    id: str
-    label: str
-    category_id: str
-    category_name: str
-    fixed_per_km: float = 0
-    operating_per_km: float = 0
-    total_per_km: float = 0
-    initial_cost: float = 0
-    year1: float = 0
-    year2: float = 0
-    year3: float = 0
-    year4: float = 0
-    year5: float = 0
-    components: ComponentCost = Field(default_factory=ComponentCost)
-
-
-class CategoryResponse(BaseModel):
-    id: str
-    label: str
-    fuel_type: str = "—"
-    variants: List[VariantResponse] = []
-
-
-class RouteResponse(BaseModel):
-    from_city: str
-    to_city: str
-    km: float
-
-
-# ─── MOCK DATA ──────────────────────────────────────────────────────
-MOCK_CATEGORIES: List[Dict[str, Any]] = [
-    {
-        "id": "cat-1",
-        "label": "Toyota Axio (1500cc)",
-        "fuel_type": "Petrol",
-        "variants": [
-            {
-                "id": "var-1",
-                "label": "Axio X (2018-2022)",
-                "fixed_per_km": 12.50,
-                "operating_per_km": 18.75,
-                "total_per_km": 31.25,
-                "initial_cost": 2850000,
-                "year1": 31.25,
-                "year2": 34.50,
-                "year3": 38.75,
-                "year4": 43.00,
-                "year5": 48.50,
-                "components": {
-                    "insurance": 3.50,
-                    "depreciation": 5.00,
-                    "interest": 2.00,
-                    "fuel": 9.75,
-                    "servicing": 2.50,
-                    "repairs": 3.50,
-                    "tyres": 2.00,
-                    "licences": 2.00
-                }
-            },
-            {
-                "id": "var-2",
-                "label": "Axio G (2018-2022)",
-                "fixed_per_km": 13.75,
-                "operating_per_km": 19.50,
-                "total_per_km": 33.25,
-                "initial_cost": 3200000,
-                "year1": 33.25,
-                "year2": 36.50,
-                "year3": 40.75,
-                "year4": 45.00,
-                "year5": 50.50,
-                "components": {
-                    "insurance": 4.00,
-                    "depreciation": 5.50,
-                    "interest": 2.25,
-                    "fuel": 10.00,
-                    "servicing": 2.75,
-                    "repairs": 3.75,
-                    "tyres": 2.25,
-                    "licences": 2.00
-                }
+async def get_categories_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
+    """
+    Fetch all vehicle categories with their variants from the database.
+    """
+    from sqlalchemy import text
+    
+    # Raw SQL query to get categories with variants
+    query = text("""
+        SELECT 
+            c.id as category_id,
+            c.name as category_name,
+            c.fuel_type,
+            v.id as variant_id,
+            v.label as variant_label,
+            v.fixed_per_km,
+            v.operating_per_km,
+            v.total_per_km,
+            v.initial_cost,
+            v.year1,
+            v.year2,
+            v.year3,
+            v.year4,
+            v.year5,
+            v.components
+        FROM vehicle_categories c
+        LEFT JOIN vehicle_variants v ON c.id = v.category_id
+        WHERE c.is_active = true AND (v.is_active = true OR v.id IS NULL)
+        ORDER BY c.name, v.label
+    """)
+    
+    result = await db.execute(query)
+    rows = result.fetchall()
+    
+    # Build category structure
+    categories_map = {}
+    for row in rows:
+        category_id = str(row.category_id)
+        if category_id not in categories_map:
+            categories_map[category_id] = {
+                "id": category_id,
+                "label": row.category_name,
+                "fuel_type": row.fuel_type or "—",
+                "variants": []
             }
-        ]
-    },
-    {
-        "id": "cat-2",
-        "label": "Toyota Land Cruiser Prado",
-        "fuel_type": "Diesel",
-        "variants": [
-            {
-                "id": "var-3",
-                "label": "Prado TX (2015-2020)",
-                "fixed_per_km": 28.00,
-                "operating_per_km": 35.00,
-                "total_per_km": 63.00,
-                "initial_cost": 6000000,
-                "year1": 63.00,
-                "year2": 68.00,
-                "year3": 74.00,
-                "year4": 81.00,
-                "year5": 89.00,
-                "components": {
-                    "insurance": 12.00,
-                    "depreciation": 10.00,
-                    "interest": 6.00,
-                    "fuel": 18.00,
-                    "servicing": 5.00,
-                    "repairs": 6.00,
-                    "tyres": 3.00,
-                    "licences": 3.00
-                }
+        
+        # Add variant if exists
+        if row.variant_id:
+            variant = {
+                "id": str(row.variant_id),
+                "label": row.variant_label,
+                "category_id": category_id,
+                "category_name": row.category_name,
+                "fixed_per_km": float(row.fixed_per_km) if row.fixed_per_km else 0,
+                "operating_per_km": float(row.operating_per_km) if row.operating_per_km else 0,
+                "total_per_km": float(row.total_per_km) if row.total_per_km else 0,
+                "initial_cost": float(row.initial_cost) if row.initial_cost else 0,
+                "year1": float(row.year1) if row.year1 else 0,
+                "year2": float(row.year2) if row.year2 else 0,
+                "year3": float(row.year3) if row.year3 else 0,
+                "year4": float(row.year4) if row.year4 else 0,
+                "year5": float(row.year5) if row.year5 else 0,
+                "components": row.components or {}
             }
-        ]
-    },
-    {
-        "id": "cat-3",
-        "label": "Toyota Hilux Double Cab",
-        "fuel_type": "Diesel",
-        "variants": [
-            {
-                "id": "var-4",
-                "label": "Hilux 2.8 GD-6 (2016-2022)",
-                "fixed_per_km": 22.50,
-                "operating_per_km": 28.00,
-                "total_per_km": 50.50,
-                "initial_cost": 4800000,
-                "year1": 50.50,
-                "year2": 54.50,
-                "year3": 59.50,
-                "year4": 65.50,
-                "year5": 72.50,
-                "components": {
-                    "insurance": 8.00,
-                    "depreciation": 8.00,
-                    "interest": 4.50,
-                    "fuel": 14.50,
-                    "servicing": 4.50,
-                    "repairs": 5.00,
-                    "tyres": 2.50,
-                    "licences": 2.50
-                }
-            }
-        ]
-    },
-    {
-        "id": "cat-4",
-        "label": "Honda Fit (1300cc)",
-        "fuel_type": "Petrol",
-        "variants": [
-            {
-                "id": "var-5",
-                "label": "Fit 1.3 (2015-2020)",
-                "fixed_per_km": 10.50,
-                "operating_per_km": 16.25,
-                "total_per_km": 26.75,
-                "initial_cost": 1800000,
-                "year1": 26.75,
-                "year2": 29.50,
-                "year3": 33.25,
-                "year4": 37.50,
-                "year5": 42.75,
-                "components": {
-                    "insurance": 3.00,
-                    "depreciation": 4.00,
-                    "interest": 1.50,
-                    "fuel": 8.25,
-                    "servicing": 2.00,
-                    "repairs": 3.00,
-                    "tyres": 1.75,
-                    "licences": 1.75
-                }
-            }
-        ]
-    },
-    {
-        "id": "cat-5",
-        "label": "Mercedes-Benz E-Class",
-        "fuel_type": "Petrol",
-        "variants": [
-            {
-                "id": "var-6",
-                "label": "E 300 (2016-2022)",
-                "fixed_per_km": 35.00,
-                "operating_per_km": 40.00,
-                "total_per_km": 75.00,
-                "initial_cost": 8500000,
-                "year1": 75.00,
-                "year2": 82.00,
-                "year3": 90.00,
-                "year4": 99.00,
-                "year5": 110.00,
-                "components": {
-                    "insurance": 15.00,
-                    "depreciation": 12.00,
-                    "interest": 8.00,
-                    "fuel": 20.00,
-                    "servicing": 6.00,
-                    "repairs": 7.00,
-                    "tyres": 4.00,
-                    "licences": 3.00
-                }
-            }
-        ]
-    },
-    {
-        "id": "cat-6",
-        "label": "Toyota Hiace (14 Seater)",
-        "fuel_type": "Diesel",
-        "variants": [
-            {
-                "id": "var-7",
-                "label": "Hiace Commuter (2015-2022)",
-                "fixed_per_km": 25.00,
-                "operating_per_km": 32.00,
-                "total_per_km": 57.00,
-                "initial_cost": 3500000,
-                "year1": 57.00,
-                "year2": 62.00,
-                "year3": 68.00,
-                "year4": 75.00,
-                "year5": 83.00,
-                "components": {
-                    "insurance": 10.00,
-                    "depreciation": 8.00,
-                    "interest": 4.00,
-                    "fuel": 16.00,
-                    "servicing": 4.00,
-                    "repairs": 5.00,
-                    "tyres": 3.00,
-                    "licences": 2.00
-                }
-            }
-        ]
-    }
-]
+            categories_map[category_id]["variants"].append(variant)
+    
+    return list(categories_map.values())
 
-MOCK_ROUTES: List[Dict[str, Any]] = [
-    {"from_city": "Nairobi", "to_city": "Mombasa", "km": 485},
-    {"from_city": "Nairobi", "to_city": "Kisumu", "km": 355},
-    {"from_city": "Nairobi", "to_city": "Nakuru", "km": 155},
-    {"from_city": "Nairobi", "to_city": "Eldoret", "km": 310},
-    {"from_city": "Nairobi", "to_city": "Thika", "km": 42},
-    {"from_city": "Nairobi", "to_city": "Malindi", "km": 520},
-    {"from_city": "Mombasa", "to_city": "Malindi", "km": 120},
-    {"from_city": "Nairobi", "to_city": "Meru", "km": 270},
-    {"from_city": "Nairobi", "to_city": "Nyeri", "km": 150},
-    {"from_city": "Kisumu", "to_city": "Eldoret", "km": 120},
-]
+
+async def get_routes_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
+    """Fetch all routes from the database."""
+    from sqlalchemy import text
+    
+    query = text("""
+        SELECT from_city, to_city, km
+        FROM routes
+        WHERE is_active = true
+        ORDER BY from_city, to_city
+    """)
+    
+    result = await db.execute(query)
+    rows = result.fetchall()
+    
+    return [
+        {"from_city": row.from_city, "to_city": row.to_city, "km": float(row.km)}
+        for row in rows
+    ]
 
 
 # ─── PUBLIC API ENDPOINTS ────────────────────────────────────────────
 
 @router.get("/categories")
-async def get_categories():
+async def get_categories(db: AsyncSession = Depends(get_db)):
     """
-    Get all vehicle categories with their variants.
-    This endpoint is PUBLIC - no authentication required.
+    Get all vehicle categories with their variants from the database.
     """
     try:
-        logger.info("📊 Fetching mileage categories...")
-        # Return as plain dict to avoid Pydantic validation issues
-        return MOCK_CATEGORIES
+        logger.info("📊 Fetching mileage categories from database...")
+        
+        categories = await get_categories_from_db(db)
+        
+        logger.info(f"✅ Fetched {len(categories)} categories")
+        return categories
+        
     except Exception as e:
         logger.error(f"❌ Error fetching categories: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -297,14 +130,18 @@ async def get_categories():
 
 
 @router.get("/routes")
-async def get_routes():
+async def get_routes(db: AsyncSession = Depends(get_db)):
     """
-    Get all quick routes with distances.
-    This endpoint is PUBLIC - no authentication required.
+    Get all quick routes with distances from the database.
     """
     try:
-        logger.info("📍 Fetching mileage routes...")
-        return MOCK_ROUTES
+        logger.info("📍 Fetching mileage routes from database...")
+        
+        routes = await get_routes_from_db(db)
+        
+        logger.info(f"✅ Fetched {len(routes)} routes")
+        return routes
+        
     except Exception as e:
         logger.error(f"❌ Error fetching routes: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -314,21 +151,42 @@ async def get_routes():
 
 
 @router.get("/rates")
-async def get_mileage_rates():
+async def get_mileage_rates(db: AsyncSession = Depends(get_db)):
     """Get all mileage rates (flattened view)."""
     try:
-        rates = []
-        for cat in MOCK_CATEGORIES:
-            for variant in cat["variants"]:
-                rates.append({
-                    "category": cat["label"],
-                    "variant": variant["label"],
-                    "rate_per_km": variant["total_per_km"],
-                    "fixed_per_km": variant["fixed_per_km"],
-                    "operating_per_km": variant["operating_per_km"],
-                    "fuel_type": cat["fuel_type"],
-                })
+        from sqlalchemy import text
+        
+        query = text("""
+            SELECT 
+                c.name as category,
+                v.label as variant,
+                v.total_per_km as rate_per_km,
+                v.fixed_per_km,
+                v.operating_per_km,
+                c.fuel_type
+            FROM vehicle_categories c
+            JOIN vehicle_variants v ON c.id = v.category_id
+            WHERE c.is_active = true AND v.is_active = true
+            ORDER BY c.name, v.label
+        """)
+        
+        result = await db.execute(query)
+        rows = result.fetchall()
+        
+        rates = [
+            {
+                "category": row.category,
+                "variant": row.variant,
+                "rate_per_km": float(row.rate_per_km) if row.rate_per_km else 0,
+                "fixed_per_km": float(row.fixed_per_km) if row.fixed_per_km else 0,
+                "operating_per_km": float(row.operating_per_km) if row.operating_per_km else 0,
+                "fuel_type": row.fuel_type or "—",
+            }
+            for row in rows
+        ]
+        
         return rates
+        
     except Exception as e:
         logger.error(f"❌ Error fetching rates: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -342,26 +200,11 @@ async def calculate_mileage(
     category_id: str,
     variant_id: str,
     distance_km: float,
+    db: AsyncSession = Depends(get_db),
 ):
     """Calculate mileage cost for a specific vehicle and distance."""
     try:
-        variant = None
-        category = None
-        
-        for cat in MOCK_CATEGORIES:
-            if cat["id"] == category_id:
-                category = cat
-                for v in cat["variants"]:
-                    if v["id"] == variant_id:
-                        variant = v
-                        break
-                break
-        
-        if not variant or not category:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Vehicle variant not found"
-            )
+        from sqlalchemy import text
         
         if distance_km <= 0:
             raise HTTPException(
@@ -369,30 +212,60 @@ async def calculate_mileage(
                 detail="Distance must be greater than 0"
             )
         
-        fixed_cost = variant["fixed_per_km"] * distance_km
-        operating_cost = variant["operating_per_km"] * distance_km
-        total_cost = variant["total_per_km"] * distance_km
+        # Fetch variant data
+        query = text("""
+            SELECT 
+                c.name as category_name,
+                v.label as variant_label,
+                v.fixed_per_km,
+                v.operating_per_km,
+                v.total_per_km,
+                v.initial_cost,
+                v.year1,
+                v.year2,
+                v.year3,
+                v.year4,
+                v.year5,
+                v.components
+            FROM vehicle_variants v
+            JOIN vehicle_categories c ON v.category_id = c.id
+            WHERE v.id = :variant_id AND v.is_active = true
+        """)
+        
+        result = await db.execute(query, {"variant_id": variant_id})
+        row = result.fetchone()
+        
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Vehicle variant not found"
+            )
+        
+        fixed_cost = (float(row.fixed_per_km) if row.fixed_per_km else 0) * distance_km
+        operating_cost = (float(row.operating_per_km) if row.operating_per_km else 0) * distance_km
+        total_cost = (float(row.total_per_km) if row.total_per_km else 0) * distance_km
         
         return {
-            "category": category["label"],
-            "variant": variant["label"],
+            "category": row.category_name,
+            "variant": row.variant_label,
             "distance_km": distance_km,
-            "fixed_per_km": variant["fixed_per_km"],
-            "operating_per_km": variant["operating_per_km"],
-            "total_per_km": variant["total_per_km"],
+            "fixed_per_km": float(row.fixed_per_km) if row.fixed_per_km else 0,
+            "operating_per_km": float(row.operating_per_km) if row.operating_per_km else 0,
+            "total_per_km": float(row.total_per_km) if row.total_per_km else 0,
             "fixed_cost": round(fixed_cost, 2),
             "operating_cost": round(operating_cost, 2),
             "total_cost": round(total_cost, 2),
-            "components": variant["components"],
+            "components": row.components or {},
             "years": {
-                "year1": variant["year1"],
-                "year2": variant["year2"],
-                "year3": variant["year3"],
-                "year4": variant["year4"],
-                "year5": variant["year5"],
+                "year1": float(row.year1) if row.year1 else 0,
+                "year2": float(row.year2) if row.year2 else 0,
+                "year3": float(row.year3) if row.year3 else 0,
+                "year4": float(row.year4) if row.year4 else 0,
+                "year5": float(row.year5) if row.year5 else 0,
             },
-            "initial_cost": variant["initial_cost"],
+            "initial_cost": float(row.initial_cost) if row.initial_cost else 0,
         }
+        
     except HTTPException:
         raise
     except Exception as e:
