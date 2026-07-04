@@ -1,6 +1,6 @@
 // ============================================
 // AUTO-V API CLIENT CONFIGURATION
-// Single Source of Truth - FastAPI Backend
+// Hybrid Architecture: Supabase + FastAPI
 // ============================================
 
 // ✅ GUARD: Prevent double initialization
@@ -11,8 +11,12 @@ if (window.autoV && window.autoV._initialized) {
         'use strict';
 
         // ─── PRODUCTION CONFIG ──────────────────────────────────────────
-        const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
-        const WS_BASE = 'wss://auto-v-backend.onrender.com/ws';
+        // Supabase (Single Source of Truth for data)
+        const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+
+        // FastAPI (Business Logic - Calculations, Claims, Auth)
+        const API_BASE = 'https://auto-v.onrender.com/api/v1';
 
         // ─── State ──────────────────────────────────────────────────────
         const state = {
@@ -35,13 +39,119 @@ if (window.autoV && window.autoV._initialized) {
                 vehicles: 0,
                 inspections: 0
             },
+            categories: [],
+            variants: [],
+            routes: [],
             lastUpdated: null,
             listeners: [],
-            subscriptions: [],
-            wsConnection: null,
-            wsReconnectAttempts: 0,
-            maxReconnectAttempts: 5
+            isSupabaseConnected: false
         };
+
+        // ─── Supabase Client ──────────────────────────────────────────
+        // Load Supabase JS from CDN if not already loaded
+        let supabaseClient = null;
+
+        async function getSupabaseClient() {
+            if (supabaseClient) return supabaseClient;
+            
+            try {
+                // Check if supabase is already loaded
+                if (window.supabase) {
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    console.log('🔗 Supabase client initialized');
+                    return supabaseClient;
+                }
+
+                // Dynamically load Supabase JS
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('🔗 Supabase client loaded and initialized');
+                return supabaseClient;
+            } catch (error) {
+                console.error('❌ Failed to initialize Supabase client:', error);
+                return null;
+            }
+        }
+
+        // ─── Supabase Data Fetching (Single Source of Truth) ──────────
+        async function fetchCategoriesFromSupabase() {
+            try {
+                const supabase = await getSupabaseClient();
+                if (!supabase) throw new Error('Supabase client not available');
+
+                const { data, error } = await supabase
+                    .from('vehicle_categories')
+                    .select(`
+                        id,
+                        name,
+                        fuel_type,
+                        is_active,
+                        vehicle_variants (
+                            id,
+                            label,
+                            fixed_per_km,
+                            operating_per_km,
+                            total_per_km,
+                            initial_cost,
+                            year1,
+                            year2,
+                            year3,
+                            year4,
+                            year5,
+                            components,
+                            is_active
+                        )
+                    `)
+                    .eq('is_active', true)
+                    .order('name', { ascending: true });
+
+                if (error) throw error;
+                
+                state.categories = data || [];
+                state.isSupabaseConnected = true;
+                return state.categories;
+            } catch (error) {
+                console.warn('⚠️ Supabase categories fetch failed:', error.message);
+                return state.categories;
+            }
+        }
+
+        async function fetchRoutesFromSupabase() {
+            try {
+                const supabase = await getSupabaseClient();
+                if (!supabase) throw new Error('Supabase client not available');
+
+                const { data, error } = await supabase
+                    .from('routes')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('from_city', { ascending: true });
+
+                if (error) throw error;
+                
+                state.routes = data || [];
+                return state.routes;
+            } catch (error) {
+                console.warn('⚠️ Supabase routes fetch failed:', error.message);
+                return state.routes;
+            }
+        }
+
+        async function fetchAllFromSupabase() {
+            await Promise.all([
+                fetchCategoriesFromSupabase(),
+                fetchRoutesFromSupabase()
+            ]);
+            notifyListeners();
+            return { categories: state.categories, routes: state.routes };
+        }
 
         // ─── Token Management ──────────────────────────────────────────
         function getAuthToken() {
@@ -65,7 +175,7 @@ if (window.autoV && window.autoV._initialized) {
             };
         }
 
-        // ─── API Request Helper ────────────────────────────────────────
+        // ─── FastAPI Request Helper (Business Logic) ──────────────────
         async function apiRequest(endpoint, options = {}) {
             const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
             const config = {
@@ -79,10 +189,8 @@ if (window.autoV && window.autoV._initialized) {
             try {
                 const response = await fetch(url, config);
                 
-                // Handle 401 Unauthorized
                 if (response.status === 401) {
                     clearAuthToken();
-                    // Redirect to login if not already there
                     if (!window.location.pathname.includes('login.html') && 
                         !window.location.pathname.includes('admin-login.html')) {
                         window.location.href = 'login.html';
@@ -90,7 +198,6 @@ if (window.autoV && window.autoV._initialized) {
                     throw new Error('Session expired. Please login again.');
                 }
 
-                // Handle non-JSON responses
                 const contentType = response.headers.get('content-type');
                 if (contentType && contentType.includes('application/json')) {
                     const data = await response.json();
@@ -112,7 +219,7 @@ if (window.autoV && window.autoV._initialized) {
             }
         }
 
-        // ─── Data Fetching Functions ────────────────────────────────────
+        // ─── Data Fetching (Supabase + FastAPI) ──────────────────────
         async function fetchFees() {
             try {
                 const data = await apiRequest('/admin/settings?keys=instant_fee,valuation_fee,inspection_fee,assessment_fee,mileage_fee,fleet_fee,verification_fee,professional_fee');
@@ -167,73 +274,32 @@ if (window.autoV && window.autoV._initialized) {
         }
 
         async function fetchAllData() {
-            await Promise.all([fetchFees(), fetchStats()]);
+            // Fetch from Supabase (data) and FastAPI (business logic)
+            await Promise.all([
+                fetchAllFromSupabase(),
+                fetchFees(),
+                fetchStats()
+            ]);
             notifyListeners();
-            return { fees: state.fees, stats: state.stats };
-        }
-
-        // ─── WebSocket Connection ──────────────────────────────────────
-        function connectWebSocket() {
-            const token = getAuthToken();
-            if (!token) return;
-
-            try {
-                const ws = new WebSocket(`${WS_BASE}/updates?token=${token}`);
-                
-                ws.onopen = () => {
-                    console.log('🔌 WebSocket connected');
-                    state.wsReconnectAttempts = 0;
-                };
-
-                ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        if (data.type === 'update') {
-                            console.log('🔄 WebSocket update:', data.payload);
-                            fetchAllData();
-                        }
-                    } catch (e) {
-                        console.warn('WebSocket message parse error:', e);
-                    }
-                };
-
-                ws.onclose = () => {
-                    console.log('🔌 WebSocket disconnected');
-                    attemptReconnect();
-                };
-
-                ws.onerror = (error) => {
-                    console.warn('WebSocket error:', error);
-                };
-
-                state.wsConnection = ws;
-            } catch (error) {
-                console.warn('WebSocket connection failed:', error);
-            }
-        }
-
-        function attemptReconnect() {
-            if (state.wsReconnectAttempts < state.maxReconnectAttempts) {
-                state.wsReconnectAttempts++;
-                const delay = Math.min(1000 * Math.pow(2, state.wsReconnectAttempts - 1), 30000);
-                console.log(`🔄 Reconnecting WebSocket in ${delay}ms (attempt ${state.wsReconnectAttempts})`);
-                setTimeout(() => {
-                    if (getAuthToken()) {
-                        connectWebSocket();
-                    }
-                }, delay);
-            } else {
-                console.warn('⚠️ Max WebSocket reconnect attempts reached');
-            }
+            return { 
+                categories: state.categories, 
+                routes: state.routes,
+                fees: state.fees, 
+                stats: state.stats 
+            };
         }
 
         // ─── Listener System ────────────────────────────────────────────
         function addListener(callback) {
             if (typeof callback === 'function') {
                 state.listeners.push(callback);
-                // Initial call with current state
                 try {
-                    callback({ fees: state.fees, stats: state.stats });
+                    callback({ 
+                        categories: state.categories, 
+                        routes: state.routes,
+                        fees: state.fees, 
+                        stats: state.stats 
+                    });
                 } catch (err) {
                     console.warn('Listener error:', err);
                 }
@@ -247,7 +313,12 @@ if (window.autoV && window.autoV._initialized) {
         function notifyListeners() {
             state.listeners.forEach(cb => {
                 try {
-                    cb({ fees: state.fees, stats: state.stats });
+                    cb({ 
+                        categories: state.categories, 
+                        routes: state.routes,
+                        fees: state.fees, 
+                        stats: state.stats 
+                    });
                 } catch (err) {
                     console.warn('Listener error:', err);
                 }
@@ -297,12 +368,18 @@ if (window.autoV && window.autoV._initialized) {
         // ─── Build the complete object ─────────────────────────────────
         const autoVInstance = {
             // Core
+            SUPABASE_URL: SUPABASE_URL,
             API_BASE: API_BASE,
-            WS_BASE: WS_BASE,
             state: state,
             _initialized: true,
             
-            // ─── API Methods ─────────────────────────────────────────────
+            // ─── Supabase Methods (Single Source of Truth) ─────────────
+            getSupabaseClient: getSupabaseClient,
+            fetchCategoriesFromSupabase: fetchCategoriesFromSupabase,
+            fetchRoutesFromSupabase: fetchRoutesFromSupabase,
+            fetchAllFromSupabase: fetchAllFromSupabase,
+            
+            // ─── FastAPI Methods (Business Logic) ──────────────────────
             apiRequest: apiRequest,
             getAuthToken: getAuthToken,
             setAuthToken: setAuthToken,
@@ -316,7 +393,6 @@ if (window.autoV && window.autoV._initialized) {
             refresh: fetchAllData,
             
             // ─── Real-time Sync ──────────────────────────────────────────
-            connectWebSocket: connectWebSocket,
             addListener: addListener,
             removeListener: removeListener,
             getLiveIndicator: getLiveIndicator,
@@ -408,7 +484,7 @@ if (window.autoV && window.autoV._initialized) {
                 window.location.href = "login.html";
             },
             
-            // ─── USER PROFILE ─────────────────────────────────────────
+            // ─── USER PROFILE ──────────────────────────────────────────
             async upsertUserProfile(userId, email, role) {
                 try {
                     const data = await apiRequest('/users/profile', {
@@ -592,7 +668,7 @@ if (window.autoV && window.autoV._initialized) {
                 URL.revokeObjectURL(url);
             },
             
-            // ─── Mileage ──────────────────────────────────────────────────
+            // ─── Mileage (Using Supabase Data + FastAPI Calculation) ──
             async getMileageRate(vehicleCategory) {
                 if (!vehicleCategory) return 25;
                 try {
@@ -752,19 +828,29 @@ if (window.autoV && window.autoV._initialized) {
             document.head.appendChild(style);
         }
 
-        // ─── Auto-initialize WebSocket if token exists ──────────────────
-        setTimeout(() => {
-            if (getAuthToken()) {
-                connectWebSocket();
-                console.log('🔌 WebSocket connection initiated');
+        // ─── Auto-initialize ──────────────────────────────────────────
+        setTimeout(async () => {
+            try {
+                // Load Supabase data
+                await fetchAllFromSupabase();
+                console.log('📊 Supabase data loaded:', {
+                    categories: state.categories.length,
+                    routes: state.routes.length
+                });
+
+                // If authenticated, fetch business data
+                if (getAuthToken()) {
+                    await Promise.all([fetchFees(), fetchStats()]);
+                    console.log('📊 Business data loaded');
+                }
+            } catch (error) {
+                console.warn('⚠️ Auto-initialization warning:', error.message);
             }
-            // Initial data fetch
-            fetchAllData().then(() => {
-                console.log('📊 Initial data loaded');
-            });
         }, 100);
 
-        console.log('✅ AUTO-V API client initialized (Single Source of Truth + WebSocket + Auth)');
-        console.log(`🔗 Backend API: ${API_BASE}`);
+        console.log('✅ AUTO-V API client initialized (Hybrid: Supabase + FastAPI)');
+        console.log(`🔗 Supabase URL: ${SUPABASE_URL}`);
+        console.log(`🔗 FastAPI URL: ${API_BASE}`);
+
     })(); // End of IIFE
 }
