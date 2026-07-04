@@ -6,10 +6,8 @@
     <title>AUTO-V | Vehicle Assessment</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E⚠️%3C/text%3E%3C/svg%3E">
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    <script src="js/loading.js"></script>
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -1251,7 +1249,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V ASSESSMENT — FastAPI Backend Integration
+        // AUTO-V ASSESSMENT — Hybrid Architecture
+        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -1259,9 +1258,6 @@
 
             if (window.autoVAssessmentInitialized) return;
             window.autoVAssessmentInitialized = true;
-
-            // ─── CONFIG ──────────────────────────────────────────────────
-            const API_BASE = 'http://localhost:8000/api';
 
             // ─── VEHICLE MODELS DATA ──────────────────────────────────
             const vehicleModels = {
@@ -1391,14 +1387,13 @@
             };
             let assessmentResult = null;
 
-            // ─── API CHECK ──────────────────────────────────────────────
-            if (typeof api === 'undefined') {
-                showToast('⚠️ API client not loaded. Please refresh the page.', 'error');
-                console.error('API client not found. Ensure js/api-client.js is loaded.');
-            }
-
             // ─── HELPERS ────────────────────────────────────────────────
             function showToast(msg, type = 'success') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(msg, type);
+                    return;
+                }
+                // Fallback
                 const t = document.createElement('div');
                 t.className = `toast toast-${type}`;
                 t.textContent = msg;
@@ -1723,7 +1718,11 @@
 
                 showLoading(true);
                 try {
-                    const result = await api.post('/vehicles/decode-vin', { vin });
+                    // Use autoV API for VIN decode
+                    const result = await window.autoV.apiRequest('/vehicles/decode-vin', {
+                        method: 'POST',
+                        body: JSON.stringify({ vin })
+                    });
 
                     if (result.success && result.data) {
                         const data = result.data.vehicle || result.data;
@@ -1742,7 +1741,6 @@
                     }
                 } catch (error) {
                     showMessage('Error: ' + error.message, 'error');
-                    ErrorHandler.handle(error, 'VIN Decode');
                 } finally {
                     showLoading(false);
                 }
@@ -1779,8 +1777,8 @@
                 showLoading(true);
 
                 try {
-                    // Get current user
-                    const user = await api.get('/auth/me');
+                    // Get current user via autoV
+                    const user = await window.autoV.getCurrentUser();
                     currentUser = user;
                     document.getElementById('userAvatar').textContent = (user.email || 'A')[0].toUpperCase();
                     document.getElementById('userName').textContent = user.full_name || user.email;
@@ -1846,10 +1844,13 @@
                         ...assessmentData
                     };
 
-                    // Send to backend
-                    const result = await api.post('/assessments/create', payload);
+                    // Send to backend via autoV
+                    const result = await window.autoV.apiRequest('/assessments/create', {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
 
-                    // Save to service_requests via API
+                    // Save to service_requests via autoV
                     const requestData = {
                         service_type: 'assessment',
                         registration_number: reg,
@@ -1864,7 +1865,10 @@
                         result: result.data || result
                     };
 
-                    await api.post('/service-requests', requestData);
+                    await window.autoV.apiRequest('/service-requests', {
+                        method: 'POST',
+                        body: JSON.stringify(requestData)
+                    });
 
                     // Display results
                     assessmentResult = result.data || result;
@@ -1874,7 +1878,6 @@
                 } catch (error) {
                     console.error('Assessment error:', error);
                     showMessage('Error: ' + error.message, 'error');
-                    ErrorHandler.handle(error, 'Assessment Submission');
                 } finally {
                     showLoading(false);
                 }
@@ -1973,23 +1976,33 @@
             document.getElementById('dashboardBtn').addEventListener('click', () => window.location.href = 'dashboard.html');
 
             document.getElementById('logoutBtn').addEventListener('click', async () => {
-                try {
-                    await api.post('/auth/logout');
-                } catch (e) {}
-                api.clearToken();
-                localStorage.removeItem('access_token');
-                window.location.href = 'login.html';
+                await window.autoV.logout();
             });
 
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
+                // Wait for autoV to be ready
+                if (!window.autoV || !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
+
                 populateYears();
                 const make = document.getElementById('vehicleMake').value;
                 const models = vehicleModels[make] || ['Other'];
                 document.getElementById('vehicleModel').innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
 
                 try {
-                    const user = await api.get('/auth/me');
+                    const user = await window.autoV.getCurrentUser();
                     currentUser = user;
                     document.getElementById('userAvatar').textContent = (user.email || 'A')[0].toUpperCase();
                     document.getElementById('userName').textContent = user.full_name || user.email;
