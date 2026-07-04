@@ -15,7 +15,7 @@ class Certificate(Base):
     __tablename__ = "certificates"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
 
     certificate_number = Column(String(50), unique=True, index=True)
     certificate_type = Column(String(50))  # valuation, inspection, assessment
@@ -45,6 +45,7 @@ class Certificate(Base):
         Index("idx_certificates_user_id", "user_id"),
         Index("idx_certificates_number", "certificate_number"),
         UniqueConstraint("certificate_number", name="uq_certificates_number"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
