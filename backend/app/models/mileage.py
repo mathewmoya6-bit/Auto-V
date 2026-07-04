@@ -21,12 +21,13 @@ class VehicleCategory(Base):
     name = Column(String(100), nullable=False, unique=True)
     fuel_type = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     variants = relationship("VehicleVariant", back_populates="category", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_vehicle_categories_active", "is_active"),
-        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
 
@@ -34,29 +35,49 @@ class VehicleVariant(Base):
     __tablename__ = "vehicle_variants"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    category_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicle_categories.id", ondelete="CASCADE"), nullable=False)
+    category_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicle_categories.id", ondelete="CASCADE"), nullable=False)
     label = Column(String(150), nullable=False)
-
+    
+    # Vehicle details
+    make = Column(String(100), nullable=True)
+    model = Column(String(100), nullable=True)
+    engine_size = Column(String(50), nullable=True)
+    fuel_type = Column(String(50), nullable=True)
+    
+    # Rate fields
     fixed_per_km = Column(Numeric(10, 4), default=0)
     operating_per_km = Column(Numeric(10, 4), default=0)
     total_per_km = Column(Numeric(10, 4), default=0)
 
+    # Yearly cost projections
     initial_cost = Column(Numeric(14, 2), default=0)
     year1 = Column(Numeric(14, 2), default=0)
     year2 = Column(Numeric(14, 2), default=0)
     year3 = Column(Numeric(14, 2), default=0)
     year4 = Column(Numeric(14, 2), default=0)
     year5 = Column(Numeric(14, 2), default=0)
+    
+    # Rate components for calculation
+    insurance_rate = Column(Numeric(10, 4), default=0)
+    depreciation_rate = Column(Numeric(10, 4), default=0)
+    interest_rate = Column(Numeric(10, 4), default=0)
+    fuel_rate = Column(Numeric(10, 4), default=0)
+    servicing_rate = Column(Numeric(10, 4), default=0)
+    repairs_rate = Column(Numeric(10, 4), default=0)
+    tyres_rate = Column(Numeric(10, 4), default=0)
+    licences_rate = Column(Numeric(10, 4), default=0)
+    is_primary = Column(Boolean, default=False)
 
     components = Column(JSON, default=dict)
     is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     category = relationship("VehicleCategory", back_populates="variants")
 
     __table_args__ = (
         Index("idx_vehicle_variants_category_id", "category_id"),
         Index("idx_vehicle_variants_active", "is_active"),
-        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
 
@@ -68,11 +89,12 @@ class Route(Base):
     to_city = Column(String(150), nullable=False)
     km = Column(Numeric(10, 2), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         UniqueConstraint("from_city", "to_city", name="uq_routes_from_to"),
         Index("idx_routes_active", "is_active"),
-        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
 
@@ -80,8 +102,8 @@ class MileageClaim(Base):
     __tablename__ = "mileage_claims"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True)
 
     trip_date = Column(Date, nullable=False)
     start_location = Column(String(255))
@@ -97,18 +119,18 @@ class MileageClaim(Base):
     odometer_end = Column(BigInteger)
 
     status = Column(String(20), default="pending")  # pending, approved, rejected, paid, cancelled
-    approved_by = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id"), nullable=True)
+    approved_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # FIXED: Both relationships now have foreign_keys specified
+    # Relationships with explicit foreign_keys
     user = relationship(
         "UserProfile",
         foreign_keys=[user_id],
         back_populates="mileage_claims"
     )
     
-    # ADDED: approver relationship with foreign_keys
     approver = relationship(
         "UserProfile",
         foreign_keys=[approved_by],
@@ -120,7 +142,6 @@ class MileageClaim(Base):
     __table_args__ = (
         Index("idx_mileage_claims_user_id", "user_id"),
         Index("idx_mileage_claims_status", "status"),
-        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
