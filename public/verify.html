@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Certificate Verification</title>
     
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -306,11 +309,12 @@
 (function() {
     'use strict';
 
-    // ─── PRODUCTION CONFIG ──────────────────────────────────────────
-    const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
-
     // ─── Toast helper ──────────────────────────────────────────────
     function showToast(message, type = 'success') {
+        if (window.autoV && window.autoV.showToast) {
+            window.autoV.showToast(message, type);
+            return;
+        }
         const existing = document.querySelector('.toast');
         if (existing) existing.remove();
         const div = document.createElement('div');
@@ -318,58 +322,6 @@
         div.textContent = message;
         document.body.appendChild(div);
         setTimeout(() => div.remove(), 3500);
-    }
-
-    // ─── Token helpers ──────────────────────────────────────────────
-    function getAuthToken() {
-        return localStorage.getItem('access_token');
-    }
-
-    function getAuthHeaders() {
-        const token = getAuthToken();
-        const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-        return headers;
-    }
-
-    // ─── API Client ──────────────────────────────────────────────────
-    async function apiRequest(endpoint, options = {}) {
-        const url = `${API_BASE}${endpoint}`;
-        const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...options.headers,
-        };
-
-        const token = getAuthToken();
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const response = await fetch(url, {
-            ...options,
-            headers,
-            credentials: 'include',
-            mode: 'cors',
-        });
-
-        if (!response.ok) {
-            let errorMessage = `HTTP ${response.status}`;
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.detail || errorData.message || errorMessage;
-            } catch (e) {
-                errorMessage = await response.text() || errorMessage;
-            }
-            throw new Error(errorMessage);
-        }
-
-        return response.json();
     }
 
     // ─── VERIFY CERTIFICATE ──────────────────────────────────────────
@@ -395,7 +347,8 @@
         verifyBtn.innerHTML = '<span class="spinner"></span> Verifying...';
         
         try {
-            const certificate = await apiRequest(`/certificates/verify/${encodeURIComponent(code)}`, {
+            // Use autoV for verification
+            const certificate = await window.autoV.apiRequest(`/certificates/verify/${encodeURIComponent(code)}`, {
                 method: 'GET'
             });
 
@@ -557,14 +510,17 @@
         verifyBtn.innerHTML = '<span class="spinner"></span> Scanning QR Code...';
         
         try {
-            // Read QR code using the backend API
+            // Read QR code using the backend API via autoV
             const formData = new FormData();
             formData.append('file', file);
             
-            const response = await fetch(`${API_BASE}/certificates/scan-qr`, {
+            // Get token from autoV
+            const token = window.autoV.getAuthToken();
+            
+            const response = await fetch(`${window.autoV.API_BASE}/certificates/scan-qr`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': getAuthHeaders().Authorization || ''
+                    'Authorization': token ? `Bearer ${token}` : ''
                 },
                 body: formData
             });
@@ -612,7 +568,22 @@
     }
 
     // ─── INITIALIZE ──────────────────────────────────────────────────
-    function init() {
+    async function init() {
+        // Wait for autoV to be ready
+        if (!window.autoV || !window.autoV._initialized) {
+            console.log('⏳ Waiting for autoV to initialize...');
+            await new Promise(resolve => {
+                const check = () => {
+                    if (window.autoV && window.autoV._initialized) {
+                        resolve();
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                };
+                check();
+            });
+        }
+
         // Check for URL params
         checkUrlParams();
         
@@ -624,7 +595,7 @@
         });
         
         console.log('🚀 AUTO-V Verification page initialized');
-        console.log(`🔗 Backend API: ${API_BASE}`);
+        console.log(`🔗 Backend API: ${window.autoV.API_BASE}`);
     }
 
     // Make functions global for inline onclick handlers
