@@ -312,9 +312,9 @@
         <div id="panel-rates" class="tab-panel">
             <div class="admin-section">
                 <h3>💰 Mileage Rate Tables</h3>
-                <p style="color:#64748b;font-size:12px;margin-bottom:12px;">📡 Data sourced from backend API</p>
+                <p style="color:#64748b;font-size:12px;margin-bottom:12px;">📡 Data sourced from Supabase (Single Source of Truth)</p>
                 <div class="rates-grid" id="ratesGrid">
-                    <div style="text-align:center;padding:20px;color:#64748b;grid-column:1/-1;"><div class="spinner"></div> Loading rates from API…</div>
+                    <div style="text-align:center;padding:20px;color:#64748b;grid-column:1/-1;"><div class="spinner"></div> Loading rates from Supabase…</div>
                 </div>
             </div>
         </div>
@@ -324,7 +324,7 @@
             <div class="admin-section">
                 <h3>⛽ Fuel Price Management</h3>
                 <div style="background:#1e293b;border-radius:10px;padding:12px 16px;margin-bottom:14px;border-left:4px solid #22c55e;">
-                    <p style="color:#94a3b8;font-size:12px;"><strong style="color:#22c55e;">🔄 Single Source of Truth:</strong> Fuel prices stored in backend API. Changes sync instantly.</p>
+                    <p style="color:#94a3b8;font-size:12px;"><strong style="color:#22c55e;">🔄 Single Source of Truth:</strong> Fuel prices from Supabase. Changes sync instantly.</p>
                 </div>
                 <div class="fuel-price-grid">
                     <div class="fuel-price-item"><div class="label">⛽ Petrol (KES/L)</div><input type="number" id="fuelPetrol" step="0.05" value="214.03"></div>
@@ -334,12 +334,12 @@
                     <div class="fuel-price-item"><div class="label">🔌 Electricity (KES/kWh)</div><input type="number" id="fuelElectric" step="0.05" value="20.00"></div>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                    <button class="action-btn save" id="saveFuelBtn">💾 Save to API</button>
-                    <button class="action-btn view" id="refreshFuelBtn">🔄 Refresh from API</button>
+                    <button class="action-btn save" id="saveFuelBtn">💾 Save to Supabase</button>
+                    <button class="action-btn view" id="refreshFuelBtn">🔄 Refresh from Supabase</button>
                 </div>
                 <div id="fuelUpdateStatus" style="margin-top:8px;display:none;font-size:13px;"></div>
                 <div style="margin-top:14px;padding:14px;background:#1e293b;border-radius:10px;">
-                    <h4 style="color:#eab308;font-size:12px;">📋 Active Prices (from API)</h4>
+                    <h4 style="color:#eab308;font-size:12px;">📋 Active Prices (from Supabase)</h4>
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:8px;">
                         <div><span style="color:#94a3b8;">Petrol:</span> <strong id="activePetrol">—</strong></div>
                         <div><span style="color:#94a3b8;">Diesel:</span> <strong id="activeDiesel">—</strong></div>
@@ -365,100 +365,22 @@
 
     <div id="editPriceModal" class="modal"><div class="modal-content"><h2>✏️ Edit Price</h2><form id="editPriceForm"><input type="hidden" id="editPriceId"><div class="form-group"><label>Service</label><input type="text" id="editPriceLabel" disabled></div><div class="form-group"><label>Price (KES) *</label><input type="number" id="editPriceValue" required></div><div class="modal-actions"><button type="submit" class="action-btn save">Save</button><button type="button" class="action-btn delete" onclick="closeModal('editPriceModal')">Cancel</button></div></form></div></div>
 
+    <script src="/auto-v-api.js"></script>
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V ADMIN DASHBOARD — Production Backend
+        // AUTO-V ADMIN DASHBOARD — Hybrid Architecture
+        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
-        // ─── PRODUCTION CONFIG ──────────────────────────────────────
-        const API_BASE = 'https://auto-v.onrender.com/api/v1';
-        
         // ─── STATE ──────────────────────────────────────────────────
         let allRequests = [],
             allUsers = [],
             allPayments = [],
             allServices = [],
             allPrices = [],
-            allRates = [],
             allFuelPrices = [];
         let charts = {};
         let currentUser = null;
-
-        // ─── API CLIENT ─────────────────────────────────────────────
-        const api = {
-            baseURL: API_BASE,
-            token: null,
-
-            setToken(token) {
-                this.token = token;
-                localStorage.setItem('access_token', token);
-            },
-
-            getToken() {
-                return this.token || localStorage.getItem('access_token');
-            },
-
-            async request(endpoint, options = {}) {
-                const url = `${this.baseURL}${endpoint}`;
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    ...options.headers,
-                };
-
-                const token = this.getToken();
-                if (token) {
-                    headers['Authorization'] = `Bearer ${token}`;
-                }
-
-                const response = await fetch(url, {
-                    ...options,
-                    headers,
-                    credentials: 'include',
-                    mode: 'cors',
-                });
-
-                if (!response.ok) {
-                    let errorMessage = `HTTP ${response.status}`;
-                    try {
-                        const errorData = await response.json();
-                        errorMessage = errorData.detail || errorData.message || errorMessage;
-                    } catch (e) {
-                        errorMessage = await response.text() || errorMessage;
-                    }
-                    throw new Error(errorMessage);
-                }
-
-                return response.json();
-            },
-
-            post(endpoint, data) {
-                return this.request(endpoint, {
-                    method: 'POST',
-                    body: JSON.stringify(data),
-                });
-            },
-
-            put(endpoint, data) {
-                return this.request(endpoint, {
-                    method: 'PUT',
-                    body: JSON.stringify(data),
-                });
-            },
-
-            delete(endpoint) {
-                return this.request(endpoint, { method: 'DELETE' });
-            },
-
-            get(endpoint) {
-                return this.request(endpoint, { method: 'GET' });
-            },
-
-            clearToken() {
-                this.token = null;
-                localStorage.removeItem('access_token');
-            }
-        };
 
         // ─── HELPERS ──────────────────────────────────────────────
         function formatKES(amount) { return 'KES ' + Number(amount || 0).toLocaleString('en-KE'); }
@@ -492,28 +414,16 @@
             return map[s] || 'pending';
         }
 
-        // ─── TOAST ──────────────────────────────────────────────────
-        function showToast(message, type = 'info') {
-            const existing = document.querySelector('.toast');
-            if (existing) existing.remove();
-            const div = document.createElement('div');
-            div.className = `toast toast-${type}`;
-            div.textContent = message;
-            document.body.appendChild(div);
-            setTimeout(() => div.remove(), 5000);
-        }
-
         // ─── AUTH CHECK ────────────────────────────────────────────
         async function checkAuth() {
             try {
-                const token = localStorage.getItem('access_token');
-                if (!token) {
+                // Use autoV for auth
+                const user = await window.autoV.getCurrentUser();
+                if (!user) {
                     window.location.href = 'admin-login.html';
                     return null;
                 }
 
-                api.setToken(token);
-                const user = await api.get('/auth/me');
                 currentUser = user;
                 
                 document.getElementById('userAvatar').textContent = (user.email || 'A')[0].toUpperCase();
@@ -521,7 +431,7 @@
                 document.getElementById('userRole').textContent = user.role || 'Admin';
                 
                 if (user.role !== 'admin' && user.role !== 'super_admin') {
-                    showToast('⛔ Admin access required', 'error');
+                    window.autoV.showToast('⛔ Admin access required', 'error');
                     window.location.href = 'dashboard.html';
                     return null;
                 }
@@ -529,7 +439,7 @@
                 return user;
             } catch (error) {
                 console.warn('Auth check error:', error);
-                localStorage.removeItem('access_token');
+                window.autoV.clearAuthToken();
                 window.location.href = 'admin-login.html';
                 return null;
             }
@@ -551,7 +461,8 @@
         // ─── DATA LOADERS ──────────────────────────────────────────
         async function loadStats() {
             try {
-                const stats = await api.get('/admin/stats');
+                // Use autoV to fetch stats from FastAPI
+                const stats = await window.autoV.apiRequest('/admin/stats');
                 document.getElementById('totalUsers').textContent = formatNumber(stats.total_users || 0);
                 document.getElementById('totalRequests').textContent = formatNumber(stats.total_requests || 0);
                 document.getElementById('totalRevenue').textContent = formatKES(stats.total_revenue || 0);
@@ -559,13 +470,13 @@
                 document.getElementById('instantRequests').textContent = formatNumber(stats.instant_requests || 0);
             } catch (error) {
                 console.error('Stats error:', error);
-                showToast('⚠️ Failed to load stats', 'error');
+                window.autoV.showToast('⚠️ Failed to load stats', 'error');
             }
         }
 
         async function loadRequests() {
             try {
-                const data = await api.get('/admin/requests');
+                const data = await window.autoV.apiRequest('/admin/requests');
                 allRequests = data || [];
                 const tbody = document.getElementById('requestsTableBody');
                 if (!allRequests.length) {
@@ -590,21 +501,27 @@
                 document.getElementById('requestsCount').textContent = allRequests.length + ' requests';
             } catch (error) {
                 console.error('Requests error:', error);
-                showToast('⚠️ Failed to load requests', 'error');
+                window.autoV.showToast('⚠️ Failed to load requests', 'error');
             }
         }
 
         window.filterRequests = function() { loadRequests(); };
-        window.viewRequest = function(id) { showToast('📄 Request details - feature coming soon', 'info'); };
+        window.viewRequest = function(id) { window.autoV.showToast('📄 Request details - feature coming soon', 'info'); };
         window.deleteRequest = async function(id) {
             if (!confirm('Delete this request?')) return;
-            try { await api.delete(`/admin/requests/${id}`); showToast('✅ Request deleted', 'success'); loadRequests(); loadStats(); } 
-            catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+            try { 
+                await window.autoV.apiRequest(`/admin/requests/${id}`, { method: 'DELETE' }); 
+                window.autoV.showToast('✅ Request deleted', 'success'); 
+                loadRequests(); 
+                loadStats(); 
+            } catch (e) { 
+                window.autoV.showToast('❌ Error: ' + e.message, 'error'); 
+            }
         };
 
         async function loadUsers() {
             try {
-                const data = await api.get('/admin/users');
+                const data = await window.autoV.apiRequest('/admin/users');
                 allUsers = data || [];
                 const tbody = document.getElementById('usersTableBody');
                 if (!allUsers.length) {
@@ -630,21 +547,27 @@
                 document.getElementById('usersCount').textContent = allUsers.length + ' users';
             } catch (error) {
                 console.error('Users error:', error);
-                showToast('⚠️ Failed to load users', 'error');
+                window.autoV.showToast('⚠️ Failed to load users', 'error');
             }
         }
 
         window.filterUsers = function() { loadUsers(); };
-        window.openEditUser = function(id) { showToast('✏️ Edit user - feature coming soon', 'info'); };
+        window.openEditUser = function(id) { window.autoV.showToast('✏️ Edit user - feature coming soon', 'info'); };
         window.deleteUser = async function(id) {
             if (!confirm('Delete this user?')) return;
-            try { await api.delete(`/admin/users/${id}`); showToast('✅ User deleted', 'success'); loadUsers(); loadStats(); } 
-            catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+            try { 
+                await window.autoV.apiRequest(`/admin/users/${id}`, { method: 'DELETE' }); 
+                window.autoV.showToast('✅ User deleted', 'success'); 
+                loadUsers(); 
+                loadStats(); 
+            } catch (e) { 
+                window.autoV.showToast('❌ Error: ' + e.message, 'error'); 
+            }
         };
 
         async function loadPayments() {
             try {
-                const data = await api.get('/admin/payments');
+                const data = await window.autoV.apiRequest('/admin/payments');
                 allPayments = data || [];
                 const tbody = document.getElementById('paymentsTableBody');
                 if (!allPayments.length) {
@@ -665,7 +588,7 @@
                 document.getElementById('paymentsCount').textContent = allPayments.length + ' payments';
             } catch (error) {
                 console.error('Payments error:', error);
-                showToast('⚠️ Failed to load payments', 'error');
+                window.autoV.showToast('⚠️ Failed to load payments', 'error');
             }
         }
 
@@ -673,7 +596,7 @@
 
         async function loadServices() {
             try {
-                const data = await api.get('/admin/services');
+                const data = await window.autoV.apiRequest('/admin/services');
                 allServices = data || [];
                 const tbody = document.getElementById('servicesTableBody');
                 if (!allServices.length) {
@@ -695,21 +618,26 @@
                 }).join('');
             } catch (error) {
                 console.error('Services error:', error);
-                showToast('⚠️ Failed to load services', 'error');
+                window.autoV.showToast('⚠️ Failed to load services', 'error');
             }
         }
 
         window.filterServices = function() { loadServices(); };
-        window.openEditService = function(id) { showToast('✏️ Edit service - feature coming soon', 'info'); };
+        window.openEditService = function(id) { window.autoV.showToast('✏️ Edit service - feature coming soon', 'info'); };
         window.deleteService = async function(id) {
             if (!confirm('Delete this service?')) return;
-            try { await api.delete(`/admin/services/${id}`); showToast('✅ Service deleted', 'success'); loadServices(); } 
-            catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+            try { 
+                await window.autoV.apiRequest(`/admin/services/${id}`, { method: 'DELETE' }); 
+                window.autoV.showToast('✅ Service deleted', 'success'); 
+                loadServices(); 
+            } catch (e) { 
+                window.autoV.showToast('❌ Error: ' + e.message, 'error'); 
+            }
         };
 
         async function loadPrices() {
             try {
-                const data = await api.get('/admin/settings');
+                const data = await window.autoV.apiRequest('/admin/settings');
                 allPrices = data || [];
                 const tbody = document.getElementById('pricesTableBody');
                 const keyMap = { 'instant_fee':'Instant Check', 'valuation_fee':'Valuation', 'inspection_fee':'Inspection', 'assessment_fee':'Assessment', 'mileage_fee':'Mileage', 'fleet_fee':'Fleet', 'verification_fee':'Verification' };
@@ -727,17 +655,17 @@
                 loadAdminFees();
             } catch (error) {
                 console.error('Prices error:', error);
-                showToast('⚠️ Failed to load prices', 'error');
+                window.autoV.showToast('⚠️ Failed to load prices', 'error');
             }
         }
 
         window.filterPrices = function() { loadPrices(); };
-        window.openEditPrice = function(key) { showToast('✏️ Edit price - feature coming soon', 'info'); };
+        window.openEditPrice = function(key) { window.autoV.showToast('✏️ Edit price - feature coming soon', 'info'); };
 
         async function loadAdminFees() {
             const container = document.getElementById('feeList');
             try {
-                const data = await api.get('/admin/fees');
+                const data = await window.autoV.apiRequest('/admin/fees');
                 if (!data || !data.length) {
                     container.innerHTML = '<div style="text-align:center;padding:16px;color:#64748b;">No fees configured</div>';
                     return;
@@ -759,70 +687,119 @@
             const input = document.getElementById('fee_' + id);
             if (!input) return;
             const val = parseFloat(input.value);
-            if (!val || val <= 0) return showToast('Enter valid amount', 'error');
+            if (!val || val <= 0) return window.autoV.showToast('Enter valid amount', 'error');
             try {
-                await api.put(`/admin/fees/${id}`, { fee: val });
-                showToast('✅ Fee updated', 'success');
+                await window.autoV.apiRequest(`/admin/fees/${id}`, { method: 'PUT', body: JSON.stringify({ fee: val }) });
+                window.autoV.showToast('✅ Fee updated', 'success');
                 loadAdminFees();
             } catch (error) {
-                showToast('❌ Error: ' + error.message, 'error');
+                window.autoV.showToast('❌ Error: ' + error.message, 'error');
             }
         };
 
+        // ─── RATES FROM SUPABASE ──────────────────────────────────
         async function loadRates() {
             const container = document.getElementById('ratesGrid');
             try {
-                const data = await api.get('/admin/mileage-rates');
-                allRates = data || [];
-                if (!allRates.length) {
-                    container.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;grid-column:1/-1;">No rate data found</div>';
+                // Use autoV's Supabase client to fetch rates
+                const supabase = await window.autoV.getSupabaseClient();
+                if (!supabase) throw new Error('Supabase client not available');
+
+                const { data, error } = await supabase
+                    .from('vehicle_variants')
+                    .select(`
+                        id,
+                        label,
+                        total_per_km,
+                        fixed_per_km,
+                        operating_per_km,
+                        vehicle_categories (
+                            name,
+                            fuel_type
+                        )
+                    `)
+                    .eq('is_active', true)
+                    .order('label', { ascending: true });
+
+                if (error) throw error;
+
+                if (!data || !data.length) {
+                    container.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;grid-column:1/-1;">No rate data found in Supabase</div>';
                     return;
                 }
-                container.innerHTML = allRates.map(r => `
+
+                container.innerHTML = data.slice(0, 24).map(r => `
                     <div class="rate-card">
-                        <div class="category">${r.class || r.vehicle_class || 'Unknown'}</div>
-                        <div class="rate">KES ${(r.rate_per_km || 0).toFixed(2)}/km</div>
-                        <div class="small">${r.fuel_type || '—'} · ${r.fuel_efficiency || '—'} km/L</div>
+                        <div class="category">${r.vehicle_categories?.name || 'Unknown'} - ${r.label || 'Variant'}</div>
+                        <div class="rate">KES ${(r.total_per_km || 0).toFixed(2)}/km</div>
+                        <div class="small">Fixed: KES ${(r.fixed_per_km || 0).toFixed(2)} · Operating: KES ${(r.operating_per_km || 0).toFixed(2)}</div>
+                        <div class="small">${r.vehicle_categories?.fuel_type || '—'}</div>
                     </div>
                 `).join('');
             } catch (error) {
                 console.error('Rates error:', error);
-                container.innerHTML = '<div style="text-align:center;padding:20px;color:#ef4444;grid-column:1/-1;">Error loading rates</div>';
+                container.innerHTML = '<div style="text-align:center;padding:20px;color:#ef4444;grid-column:1/-1;">Error loading rates from Supabase</div>';
             }
         }
 
+        // ─── FUEL PRICES FROM SUPABASE ────────────────────────────
         async function loadFuelPrices() {
             try {
-                const data = await api.get('/admin/fuel-prices');
-                allFuelPrices = data;
-                if (data) {
-                    document.getElementById('fuelPetrol').value = data.petrol || 214.03;
-                    document.getElementById('fuelDiesel').value = data.diesel || 222.86;
-                    document.getElementById('fuelHybrid').value = data.hybrid || 214.03;
-                    document.getElementById('fuelLpg').value = data.lpg || 120.00;
-                    document.getElementById('fuelElectric').value = data.electric || 20.00;
-                    document.getElementById('activePetrol').textContent = `KES ${(data.petrol||214.03).toFixed(2)}/L`;
-                    document.getElementById('activeDiesel').textContent = `KES ${(data.diesel||222.86).toFixed(2)}/L`;
-                    document.getElementById('activeHybrid').textContent = `KES ${(data.hybrid||214.03).toFixed(2)}/L`;
-                    document.getElementById('activeLpg').textContent = `KES ${(data.lpg||120.00).toFixed(2)}/kg`;
-                    document.getElementById('activeElectric').textContent = `KES ${(data.electric||20.00).toFixed(2)}/kWh`;
+                const supabase = await window.autoV.getSupabaseClient();
+                if (!supabase) throw new Error('Supabase client not available');
+
+                const { data, error } = await supabase
+                    .from('fuel_prices')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    const prices = data[0];
+                    document.getElementById('fuelPetrol').value = prices.petrol || 214.03;
+                    document.getElementById('fuelDiesel').value = prices.diesel || 222.86;
+                    document.getElementById('fuelHybrid').value = prices.hybrid || 214.03;
+                    document.getElementById('fuelLpg').value = prices.lpg || 120.00;
+                    document.getElementById('fuelElectric').value = prices.electric || 20.00;
+                    document.getElementById('activePetrol').textContent = `KES ${(prices.petrol||214.03).toFixed(2)}/L`;
+                    document.getElementById('activeDiesel').textContent = `KES ${(prices.diesel||222.86).toFixed(2)}/L`;
+                    document.getElementById('activeHybrid').textContent = `KES ${(prices.hybrid||214.03).toFixed(2)}/L`;
+                    document.getElementById('activeLpg').textContent = `KES ${(prices.lpg||120.00).toFixed(2)}/kg`;
+                    document.getElementById('activeElectric').textContent = `KES ${(prices.electric||20.00).toFixed(2)}/kWh`;
                 }
             } catch (error) {
                 console.error('Fuel prices error:', error);
-                if (error.message.includes('404')) {
-                    await createInitialFuelPrices();
+                if (error.message.includes('relation "fuel_prices" does not exist')) {
+                    await createFuelPricesTable();
                 }
             }
         }
 
-        async function createInitialFuelPrices() {
+        async function createFuelPricesTable() {
             try {
-                const prices = { petrol: 214.03, diesel: 222.86, hybrid: 214.03, lpg: 120.00, electric: 20.00 };
-                await api.post('/admin/fuel-prices', prices);
-                showToast('✅ Initial fuel prices created', 'success');
+                const supabase = await window.autoV.getSupabaseClient();
+                if (!supabase) return;
+
+                // Create the table using supabase's raw SQL
+                await supabase.rpc('create_fuel_prices_table');
+                
+                // Insert initial data
+                await supabase
+                    .from('fuel_prices')
+                    .insert({
+                        petrol: 214.03,
+                        diesel: 222.86,
+                        hybrid: 214.03,
+                        lpg: 120.00,
+                        electric: 20.00
+                    });
+
+                window.autoV.showToast('✅ Fuel prices table created', 'success');
                 loadFuelPrices();
             } catch (error) {
-                showToast('❌ Error creating fuel prices', 'error');
+                window.autoV.showToast('❌ Error creating fuel prices table: ' + error.message, 'error');
             }
         }
 
@@ -836,18 +813,26 @@
             };
             const statusEl = document.getElementById('fuelUpdateStatus');
             try {
-                await api.post('/admin/fuel-prices', prices);
+                const supabase = await window.autoV.getSupabaseClient();
+                if (!supabase) throw new Error('Supabase client not available');
+
+                const { error } = await supabase
+                    .from('fuel_prices')
+                    .insert(prices);
+
+                if (error) throw error;
+
                 statusEl.style.display = 'block';
                 statusEl.style.color = '#22c55e';
-                statusEl.textContent = '✅ Fuel prices saved!';
-                showToast('✅ Fuel prices saved', 'success');
+                statusEl.textContent = '✅ Fuel prices saved to Supabase!';
+                window.autoV.showToast('✅ Fuel prices saved', 'success');
                 setTimeout(() => statusEl.style.display = 'none', 4000);
                 loadFuelPrices();
             } catch (error) {
                 statusEl.style.display = 'block';
                 statusEl.style.color = '#ef4444';
                 statusEl.textContent = '❌ Error: ' + error.message;
-                showToast('❌ Error saving fuel prices', 'error');
+                window.autoV.showToast('❌ Error saving fuel prices', 'error');
             }
         }
 
@@ -874,49 +859,58 @@
             e.preventDefault();
             const email = document.getElementById('newUserEmail').value.trim();
             const pwd = document.getElementById('newUserPassword').value;
-            if (!email || !pwd || pwd.length < 6) return showToast('Email and password (min 6 chars) required', 'error');
+            if (!email || !pwd || pwd.length < 6) return window.autoV.showToast('Email and password (min 6 chars) required', 'error');
             try {
-                await api.post('/admin/users', {
-                    email,
-                    password: pwd,
-                    full_name: document.getElementById('newUserName').value.trim() || email.split('@')[0],
-                    role: document.getElementById('newUserRole').value
+                await window.autoV.apiRequest('/admin/users', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        email,
+                        password: pwd,
+                        full_name: document.getElementById('newUserName').value.trim() || email.split('@')[0],
+                        role: document.getElementById('newUserRole').value
+                    })
                 });
-                showToast('✅ User created', 'success');
+                window.autoV.showToast('✅ User created', 'success');
                 closeModal('addUserModal');
                 document.getElementById('addUserForm').reset();
                 loadUsers(); loadStats();
-            } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+            } catch (e) { window.autoV.showToast('❌ Error: ' + e.message, 'error'); }
         });
 
         document.getElementById('addServiceForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
             try {
-                await api.post('/admin/services', {
-                    service_name: document.getElementById('newServiceName').value.trim(),
-                    service_type: document.getElementById('newServiceType').value,
-                    fee: parseFloat(document.getElementById('newServicePrice').value),
-                    is_active: document.getElementById('newServiceActive').value === 'true'
+                await window.autoV.apiRequest('/admin/services', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        service_name: document.getElementById('newServiceName').value.trim(),
+                        service_type: document.getElementById('newServiceType').value,
+                        fee: parseFloat(document.getElementById('newServicePrice').value),
+                        is_active: document.getElementById('newServiceActive').value === 'true'
+                    })
                 });
-                showToast('✅ Service added', 'success');
+                window.autoV.showToast('✅ Service added', 'success');
                 closeModal('addServiceModal');
                 document.getElementById('addServiceForm').reset();
                 loadServices();
-            } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+            } catch (e) { window.autoV.showToast('❌ Error: ' + e.message, 'error'); }
         });
 
         document.getElementById('addPriceForm')?.addEventListener('submit', async function(e) {
             e.preventDefault();
             const key = document.getElementById('newPriceService').value;
             const val = parseInt(document.getElementById('newPriceValue').value);
-            if (!val || val <= 0) return showToast('Valid price required', 'error');
+            if (!val || val <= 0) return window.autoV.showToast('Valid price required', 'error');
             try {
-                await api.post('/admin/settings', { setting_key: key, setting_value: String(val) });
-                showToast('✅ Price saved', 'success');
+                await window.autoV.apiRequest('/admin/settings', {
+                    method: 'POST',
+                    body: JSON.stringify({ setting_key: key, setting_value: String(val) })
+                });
+                window.autoV.showToast('✅ Price saved', 'success');
                 closeModal('addPriceModal');
                 document.getElementById('addPriceForm').reset();
                 loadPrices();
-            } catch (e) { showToast('❌ Error: ' + e.message, 'error'); }
+            } catch (e) { window.autoV.showToast('❌ Error: ' + e.message, 'error'); }
         });
 
         // ─── EXPORT ──────────────────────────────────────────────────
@@ -933,14 +927,14 @@
                     formatDate(r.created_at)
                 ]);
             }
-            if (!rows.length) return showToast('No data to export', 'info');
+            if (!rows.length) return window.autoV.showToast('No data to export', 'info');
             const csv = headers.join(',') + '\n' + rows.map(r => r.join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
             link.download = `auto_v_${type}_${Date.now()}.csv`;
             link.click();
-            showToast('📤 Exported', 'success');
+            window.autoV.showToast('📤 Exported', 'success');
         };
 
         // ─── GLOBAL SEARCH ──────────────────────────────────────────
@@ -959,10 +953,7 @@
 
         // ─── LOGOUT ──────────────────────────────────────────────────
         document.getElementById('logoutBtn').addEventListener('click', async () => {
-            try { await api.post('/auth/logout'); } catch (e) {}
-            api.clearToken();
-            localStorage.removeItem('access_token');
-            window.location.href = 'admin-login.html';
+            await window.autoV.logout();
         });
 
         // ─── CHARTS ──────────────────────────────────────────────────
@@ -990,8 +981,24 @@
 
         // ─── INIT ────────────────────────────────────────────────────
         async function init() {
-            console.log('🚀 AUTO-V Admin Dashboard — Production Backend');
-            console.log(`📌 API Base: ${API_BASE}`);
+            console.log('🚀 AUTO-V Admin Dashboard — Hybrid Architecture');
+            console.log(`📌 Supabase: ${window.autoV.SUPABASE_URL}`);
+            console.log(`📌 FastAPI: ${window.autoV.API_BASE}`);
+
+            // Wait for autoV to be ready
+            if (!window.autoV || !window.autoV._initialized) {
+                console.log('⏳ Waiting for autoV to initialize...');
+                await new Promise(resolve => {
+                    const check = () => {
+                        if (window.autoV && window.autoV._initialized) {
+                            resolve();
+                        } else {
+                            setTimeout(check, 100);
+                        }
+                    };
+                    check();
+                });
+            }
 
             const user = await checkAuth();
             if (!user) return;
@@ -1014,8 +1021,9 @@
             document.getElementById('saveFuelBtn').addEventListener('click', saveFuelPrices);
             document.getElementById('refreshFuelBtn').addEventListener('click', loadFuelPrices);
 
-            showToast('✅ Connected to backend API', 'success');
+            window.autoV.showToast('✅ Connected to Hybrid Architecture (Supabase + FastAPI)', 'success');
 
+            // Auto-refresh every 60 seconds
             setInterval(() => {
                 if (document.querySelector('.tab-panel.active')) {
                     loadStats();
