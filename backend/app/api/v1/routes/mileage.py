@@ -1,6 +1,6 @@
 # app/api/v1/routes/mileage.py
 # =============================================================================
-# AUTO-V API - Mileage Routes (ORM-Based)
+# AUTO-V API - Mileage Routes
 # =============================================================================
 
 import logging
@@ -47,7 +47,6 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
     try:
         logger.info("📊 Fetching mileage categories from database...")
         
-        # Query all active categories with their variants loaded
         result = await db.execute(
             select(VehicleCategory)
             .where(VehicleCategory.is_active == True)
@@ -57,7 +56,6 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
         
         response = []
         for cat in categories:
-            # Get active variants for this category
             variants_result = await db.execute(
                 select(VehicleVariant)
                 .where(VehicleVariant.category_id == cat.id)
@@ -172,7 +170,6 @@ async def calculate_mileage(
                 detail="Distance must be greater than 0"
             )
         
-        # Find the variant
         result = await db.execute(
             select(VehicleVariant)
             .where(VehicleVariant.id == variant_id)
@@ -186,7 +183,6 @@ async def calculate_mileage(
                 detail="Vehicle variant not found"
             )
         
-        # Get category name
         cat_result = await db.execute(
             select(VehicleCategory).where(VehicleCategory.id == variant.category_id)
         )
