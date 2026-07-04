@@ -67,4 +67,65 @@ app = FastAPI(
 
 # ─── CORS Middleware ───────────────────────────────────────────────
 
-app.add
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Response-Time"],
+)
+
+
+# ─── Register Routes ──────────────────────────────────────────────
+
+app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
+app.include_router(mileage.router, prefix=settings.API_V1_PREFIX, tags=["Mileage"])
+
+logger.info("✅ All routes registered successfully")
+
+
+# ─── Health & Root Endpoints ──────────────────────────────────────
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENV,
+        "debug": settings.DEBUG,
+        "database_configured": is_database_configured(),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": f"Welcome to {settings.APP_NAME}",
+        "version": settings.APP_VERSION,
+        "environment": settings.ENV,
+        "docs": "/docs",
+        "health": "/health",
+        "api_prefix": settings.API_V1_PREFIX,
+    }
+
+
+# ─── Main Entry Point ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    port = int(os.getenv("PORT", settings.PORT))
+    host = os.getenv("HOST", settings.HOST)
+    debug = settings.DEBUG
+    
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=debug,
+        log_level=settings.LOG_LEVEL.lower(),
+        workers=1,
+    )
