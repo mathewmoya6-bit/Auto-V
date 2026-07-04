@@ -56,6 +56,7 @@ class UserProfile(Base):
     approved_mileage_claims = relationship(
         "MileageClaim",
         foreign_keys="MileageClaim.approved_by",
+        back_populates="approver",  # ← FIXED: Added back_populates
     )
 
     fleets = relationship(
@@ -80,6 +81,7 @@ class UserProfile(Base):
         Index("idx_users_email", "email"),
         Index("idx_users_role", "role"),
         Index("idx_users_active", "is_active"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def is_admin(self):
