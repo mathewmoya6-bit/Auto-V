@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     
-    <!-- Supabase JS Client - Single Source of Truth -->
+    <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
@@ -701,7 +701,7 @@
             <h1>AUTO-V <span>Professional</span><br />Vehicle Running Costs</h1>
             <p class="subtitle">
                 Kenya Mileage Rate Schedule — <strong>July 2026</strong><br />
-                <span style="font-size:12px;color:var(--ink-soft);">⚡ Enterprise Schema · Supabase JS</span>
+                <span style="font-size:12px;color:var(--ink-soft);">⚡ Hybrid Architecture · Supabase + FastAPI</span>
             </p>
         </div>
         <div class="header-right">
@@ -717,23 +717,24 @@
             <div class="panel-label"><span class="num">01</span> Select Vehicle</div>
 
             <div class="form-group">
-                <label for="manufacturerSelect">Vehicle Type / Class</label>
-                <select id="manufacturerSelect" disabled aria-busy="true">
-                    <option value="">Loading vehicle types...</option>
+                <label for="categorySelect">Vehicle Category</label>
+                <select id="categorySelect" disabled aria-busy="true">
+                    <option value="">Loading categories...</option>
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="modelSelect">Vehicle Specification</label>
-                <select id="modelSelect" disabled aria-busy="true">
-                    <option value="">Select a type first</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="engineSelect">Engine / Class</label>
-                <select id="engineSelect" disabled aria-busy="true">
-                    <option value="">Select specification first</option>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <label for="variantSelect" style="margin-bottom:0;">Engine / Class</label>
+                    <div class="all-classes-toggle">
+                        <label for="showAllClasses">
+                            <input type="checkbox" id="showAllClasses" />
+                            <span class="toggle-label">Show <strong>All</strong> Classes</span>
+                        </label>
+                    </div>
+                </div>
+                <select id="variantSelect" disabled aria-busy="true">
+                    <option value="">Select a category first</option>
                 </select>
             </div>
 
@@ -750,8 +751,8 @@
                     <button type="button" class="fuel-filter-btn" data-fuel="Diesel" aria-pressed="false">
                         <span class="fuel-dot diesel"></span> Diesel
                     </button>
-                    <button type="button" class="fuel-filter-btn" data-fuel="Hybrid" aria-pressed="false">
-                        <span class="fuel-dot" style="background:#8b5cf6;"></span> Hybrid
+                    <button type="button" class="fuel-filter-btn" data-fuel="LPG" aria-pressed="false">
+                        <span class="fuel-dot lpg"></span> Gas/LPG
                     </button>
                     <button type="button" class="fuel-filter-btn" data-fuel="Electric" aria-pressed="false">
                         <span class="fuel-dot electric"></span> Electric
@@ -828,8 +829,8 @@
             </div>
 
             <div class="rate-line">
-                <span>🚗 Average Market Value</span>
-                <b id="marketValue">—</b>
+                <span>🚗 Average Initial Cost</span>
+                <b id="initialCost">—</b>
             </div>
 
             <div class="yearly-costs">
@@ -839,813 +840,499 @@
                     <div class="year-item"><div class="year-label">2nd Year</div><div class="year-value" id="year2">—</div></div>
                     <div class="year-item"><div class="year-label">3rd Year</div><div class="year-value" id="year3">—</div></div>
                     <div class="year-item"><div class="year-label">4th Year</div><div class="year-value" id="year4">—</div></div>
-                    <div class="year-item"><div class="year-label">5+ Years</div><div class="year-value" id="year5">—</div></div>
+                    <div class="year-item"><div class="year-label">5th Year</div><div class="year-value" id="year5">—</div></div>
                 </div>
             </div>
 
-            <div class="rate-line" style="border-top: 2px solid var(--amber); padding-top: 12px; margin-top: 4px;">
-                <span style="font-weight: 600;">✅ Confidence Score</span>
-                <b style="color: var(--green);" id="confidenceScore">—</b>
-            </div>
-
             <div class="action-bar">
-                <button class="action-btn print" id="printBtn" type="button" disabled>🖨️ Print Report</button>
-                <button class="action-btn share" id="shareBtn" type="button" disabled>📤 Share Report</button>
+                <button class="action-btn print" id="printBtn">🖨️ Print</button>
+                <button class="action-btn share" id="shareBtn">📤 Share</button>
             </div>
         </section>
     </div>
 
     <div class="report-footer">
-        <div class="brand">AUTO-V <span>Intelligence Engine</span></div>
+        <div class="brand">🚗 AUTO-V <span>Professional</span></div>
         <div class="meta">
-            <strong>Professional Vehicle Running Cost Database</strong><br />
-            © 2026 AUTO-V · All Rights Reserved<br />
-            <span style="font-size:10px;opacity:0.6;">⚡ Enterprise Schema · Supabase JS</span>
+            <strong>Data Source:</strong> Supabase · <strong>Rates:</strong> Kenya Gazette 2026<br />
+            For official use only · v2.1.0
         </div>
     </div>
 </div>
 
 <script>
-(function () {
-    'use strict';
+    (function(){
+        "use strict";
 
-    // ─── SUPABASE CONFIG (Single Source of Truth) ────────────────
-    const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+        // ── Supabase Config ──
+        const SUPABASE_URL = 'https://hweibcqjzpddktjnmzpw.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3ZWliY3FqenBkZGt0am5tenB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5NzE2MTEsImV4cCI6MjA2NTU0NzYxMX0._P-Z8JZe9P9L6R46SW9fYcIRGsrAKbgLqcJ8CCLMMBg';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // ─── Initialize Supabase Client ──────────────────────────────
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log('🔗 Supabase JS Client initialized');
+        // ── DOM refs ──
+        const categorySelect = document.getElementById('categorySelect');
+        const variantSelect = document.getElementById('variantSelect');
+        const showAllClasses = document.getElementById('showAllClasses');
+        const fuelFilterGroup = document.getElementById('fuelFilterGroup');
+        const distanceInput = document.getElementById('distanceInput');
+        const distanceError = document.getElementById('distanceError');
+        const routeChips = document.getElementById('routeChips');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const dbStatus = document.getElementById('dbStatus');
 
-    // ─── FastAPI for Calculations ──────────────────────────────────
-    const API_BASE = 'https://auto-v.onrender.com/api/v1';
-    console.log('📡 FastAPI Base URL:', API_BASE);
+        // Results
+        const vehicleLabel = document.getElementById('vehicleLabel');
+        const fuelPill = document.getElementById('fuelPill');
+        const totalTrip = document.getElementById('totalTrip');
+        const totalTripSub = document.getElementById('totalTripSub');
+        const fixedPerKm = document.getElementById('fixedPerKm');
+        const operatingPerKm = document.getElementById('operatingPerKm');
+        const fixedTrip = document.getElementById('fixedTrip');
+        const operatingTrip = document.getElementById('operatingTrip');
+        const totalPerKm = document.getElementById('totalPerKm');
+        const initialCost = document.getElementById('initialCost');
 
-    const MAX_DISTANCE = 100000;
+        const detailIds = ['Insurance','Depreciation','Interest','Fuel','Servicing','Repairs','Tyres','Licences'];
+        const detailMap = {
+            Insurance: 'detailInsurance',
+            Depreciation: 'detailDepreciation',
+            Interest: 'detailInterest',
+            Fuel: 'detailFuel',
+            Servicing: 'detailServicing',
+            Repairs: 'detailRepairs',
+            Tyres: 'detailTyres',
+            Licences: 'detailLicences'
+        };
 
-    // ─── DOM helpers ──────────────────────────────────────────────
-    const $ = (id) => document.getElementById(id);
-    const manufacturerSelect = $('manufacturerSelect');
-    const modelSelect = $('modelSelect');
-    const engineSelect = $('engineSelect');
-    const distanceInput = $('distanceInput');
-    const distanceError = $('distanceError');
-    const routeChips = $('routeChips');
-    const dbStatus = $('dbStatus');
-    const showAllClasses = $('showAllClasses');
-    const calculateBtn = $('calculateBtn');
-    const printBtn = $('printBtn');
-    const shareBtn = $('shareBtn');
+        const yearIds = ['year1','year2','year3','year4','year5'];
 
-    // ─── FastAPI Client ──────────────────────────────────────────
-    const fastApi = {
-        baseURL: API_BASE,
+        // ── State ──
+        let categories = [];
+        let allVehicles = [];
+        let filteredVehicles = [];
+        let currentVehicle = null;
+        let currentFuelFilter = 'all';
+        let isLoading = false;
 
-        async request(endpoint, options = {}) {
-            const url = `${this.baseURL}${endpoint}`;
-            console.log('🌐 FastAPI Request:', url);
+        // ── Helpers ──
+        function formatCurrency(val) {
+            return val.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
 
+        function showToast(message, type = 'info') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        function setStatus(text, isGood = true) {
+            dbStatus.textContent = text;
+            dbStatus.style.color = isGood ? 'var(--green)' : 'var(--rust)';
+        }
+
+        // ── Fetch categories ──
+        async function fetchCategories() {
             try {
-                const response = await fetch(url, {
-                    ...options,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...(options.headers || {})
+                const { data, error } = await supabase
+                    .from('categories')
+                    .select('*')
+                    .order('name');
+                if (error) throw error;
+                categories = data || [];
+                populateCategories();
+            } catch (err) {
+                console.error('fetchCategories error:', err);
+                setStatus('⚠️ Failed to load categories', false);
+                showToast('Error loading categories', 'error');
+            }
+        }
+
+        function populateCategories() {
+            categorySelect.innerHTML = '<option value="">Select category</option>';
+            categories.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                categorySelect.appendChild(opt);
+            });
+            categorySelect.disabled = false;
+            // If there's a default selection
+            if (categories.length > 0) {
+                categorySelect.value = categories[0].id;
+                categorySelect.dispatchEvent(new Event('change'));
+            }
+        }
+
+        // ── Fetch vehicles ──
+        async function fetchVehicles(categoryId = null, fuelType = null) {
+            try {
+                let query = supabase.from('vehicles').select('*');
+                if (categoryId) {
+                    query = query.eq('category_id', categoryId);
+                }
+                if (fuelType && fuelType !== 'all') {
+                    query = query.eq('fuel_type', fuelType);
+                }
+                const { data, error } = await query;
+                if (error) throw error;
+                allVehicles = data || [];
+                applyFilters();
+            } catch (err) {
+                console.error('fetchVehicles error:', err);
+                showToast('Error loading vehicles', 'error');
+                allVehicles = [];
+                applyFilters();
+            }
+        }
+
+        function applyFilters() {
+            const catId = categorySelect.value;
+            const showAll = showAllClasses.checked;
+            let filtered = allVehicles;
+
+            if (catId) {
+                filtered = filtered.filter(v => v.category_id === catId);
+            }
+
+            if (currentFuelFilter !== 'all') {
+                filtered = filtered.filter(v => v.fuel_type === currentFuelFilter);
+            }
+
+            if (!showAll) {
+                // show only "recommended" or "primary" class – we'll use a flag is_primary if exists, else first per category
+                // fallback: show all if no flag
+                const primaryMap = {};
+                filtered.forEach(v => {
+                    const key = v.category_id;
+                    if (!primaryMap[key] || v.is_primary) {
+                        primaryMap[key] = v;
                     }
                 });
-
-                if (!response.ok) {
-                    let message = `HTTP ${response.status}`;
-                    try {
-                        const error = await response.json();
-                        message = error.detail || error.message || message;
-                    } catch {
-                        message = response.statusText || message;
-                    }
-                    throw new Error(message);
-                }
-
-                return response.json();
-            } catch (error) {
-                console.error('❌ FastAPI Error:', error);
-                throw error;
-            }
-        },
-
-        get(endpoint) {
-            return this.request(endpoint, { method: 'GET' });
-        }
-    };
-
-    // ─── Formatting ──────────────────────────────────────────────────
-    function num(v, fallback = 0) {
-        const n = typeof v === 'string' ? parseFloat(v) : v;
-        return Number.isFinite(n) ? n : fallback;
-    }
-
-    let kesFormatter;
-    try {
-        kesFormatter = new Intl.NumberFormat('en-KE', { 
-            minimumFractionDigits: 2, 
-            maximumFractionDigits: 2 
-        });
-    } catch {
-        kesFormatter = new Intl.NumberFormat('en-US', { 
-            minimumFractionDigits: 2, 
-            maximumFractionDigits: 2 
-        });
-    }
-    const fmtKShs = (n) => kesFormatter.format(num(n));
-
-    // ─── State ──────────────────────────────────────────────────────────
-    let vehicleTypes = [];
-    let manufacturers = [];
-    let vehicleModels = [];
-    let vehicleRates = [];
-    let routes = [];
-    let selectedFuel = 'all';
-    let dataLoaded = false;
-
-    // ─── Toast / Error handling ────────────────────────────────────────
-    function showToast(message, type = 'info') {
-        const existing = document.querySelector('.toast');
-        if (existing) existing.remove();
-        const div = document.createElement('div');
-        div.className = `toast toast-${type}`;
-        div.textContent = message;
-        document.body.appendChild(div);
-        setTimeout(() => div.remove(), 5000);
-    }
-
-    function showFatalError(message) {
-        dbStatus.textContent = '● Error';
-        dbStatus.style.color = 'var(--rust)';
-        manufacturerSelect.innerHTML = '';
-        manufacturerSelect.disabled = true;
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'Unable to load data';
-        manufacturerSelect.appendChild(opt);
-        modelSelect.innerHTML = '<option value="">Unable to load data</option>';
-        modelSelect.disabled = true;
-        engineSelect.innerHTML = '<option value="">Unable to load data</option>';
-        engineSelect.disabled = true;
-        resetResults(message);
-        showToast('❌ ' + message, 'error');
-    }
-
-    // ─── Data fetching using Supabase JS ──────────────────────────────
-    async function fetchData() {
-        dbStatus.textContent = '● Fetching...';
-        dbStatus.style.color = 'var(--amber)';
-
-        try {
-            // ─── 1. Fetch Vehicle Types ──────────────────────────────
-            console.log('📦 Fetching vehicle types from Supabase...');
-            const { data: typesData, error: typesError } = await supabase
-                .from('vehicle_types')
-                .select('id, name, description, is_active')
-                .eq('is_active', true)
-                .order('name', { ascending: true });
-
-            if (typesError) {
-                console.error('Supabase vehicle types error:', typesError);
-                throw new Error(typesError.message);
-            }
-            vehicleTypes = typesData || [];
-            console.log('📦 Vehicle Types:', vehicleTypes);
-
-            // ─── 2. Fetch Manufacturers ──────────────────────────────
-            console.log('📦 Fetching manufacturers from Supabase...');
-            const { data: manufacturersData, error: manufacturersError } = await supabase
-                .from('manufacturers')
-                .select('id, name, country, is_active')
-                .eq('is_active', true)
-                .order('name', { ascending: true });
-
-            if (manufacturersError) {
-                console.error('Supabase manufacturers error:', manufacturersError);
-                throw new Error(manufacturersError.message);
-            }
-            manufacturers = manufacturersData || [];
-            console.log('📦 Manufacturers:', manufacturers);
-
-            // ─── 3. Fetch Vehicle Models ──────────────────────────────
-            console.log('📦 Fetching vehicle models from Supabase...');
-            const { data: modelsData, error: modelsError } = await supabase
-                .from('vehicle_models')
-                .select(`
-                    id,
-                    name,
-                    manufacturer_id,
-                    vehicle_type_id,
-                    year_start,
-                    year_end,
-                    is_active
-                `)
-                .eq('is_active', true)
-                .order('name', { ascending: true });
-
-            if (modelsError) {
-                console.error('Supabase models error:', modelsError);
-                throw new Error(modelsError.message);
-            }
-            vehicleModels = modelsData || [];
-            console.log('📦 Vehicle Models:', vehicleModels);
-
-            // ─── 4. Fetch Vehicle Rates ──────────────────────────────
-            console.log('📦 Fetching vehicle rates from Supabase...');
-            const { data: ratesData, error: ratesError } = await supabase
-                .from('vehicle_rates')
-                .select(`
-                    id,
-                    vehicle_model_id,
-                    engine_class_id,
-                    transmission_id,
-                    drivetrain_id,
-                    body_style_id,
-                    fuel_type_id,
-                    schedule_id,
-                    fixed_cost_per_km,
-                    operating_cost_per_km,
-                    total_cost_per_km,
-                    purchase_price,
-                    market_value,
-                    salvage_value,
-                    replacement_cost,
-                    trade_in_value,
-                    insurance_value,
-                    forced_sale_value,
-                    confidence_score,
-                    is_active,
-                    running_cost_components (
-                        insurance_per_year,
-                        depreciation_per_year,
-                        interest_per_year,
-                        licence_per_year,
-                        parking_per_year,
-                        fuel_per_km,
-                        service_per_km,
-                        repairs_per_km,
-                        tyres_per_km
-                    ),
-                    running_cost_history (
-                        age_years,
-                        cost_per_km,
-                        fixed_cost_per_km,
-                        operating_cost_per_km,
-                        depreciation_per_km
-                    ),
-                    engine_classes (
-                        id,
-                        displacement_cc,
-                        cylinder_count,
-                        fuel_type_id,
-                        power_hp,
-                        torque_nm
-                    ),
-                    fuel_types (id, name, code),
-                    transmissions (id, name),
-                    drivetrains (id, name),
-                    body_styles (id, name)
-                `)
-                .eq('is_active', true);
-
-            if (ratesError) {
-                console.error('Supabase rates error:', ratesError);
-                throw new Error(ratesError.message);
-            }
-            vehicleRates = ratesData || [];
-            console.log('📦 Vehicle Rates:', vehicleRates);
-
-            // ─── 5. Fetch Routes ──────────────────────────────────────
-            console.log('📦 Fetching routes from Supabase...');
-            const { data: routesData, error: routesError } = await supabase
-                .from('routes')
-                .select(`
-                    id,
-                    distance_km,
-                    road_type,
-                    travel_time_minutes,
-                    is_toll,
-                    is_active,
-                    from_town_id,
-                    to_town_id,
-                    towns_from:towns!routes_from_town_id_fkey (id, name),
-                    towns_to:towns!routes_to_town_id_fkey (id, name)
-                `)
-                .eq('is_active', true);
-
-            if (routesError) {
-                console.warn('Supabase routes error:', routesError);
-                routes = [];
-            } else {
-                routes = routesData || [];
-            }
-            console.log('📦 Routes:', routes);
-
-            // ─── 6. Check if we have data ─────────────────────────────
-            if (vehicleTypes.length === 0 && manufacturers.length === 0) {
-                throw new Error('No vehicle data found in Supabase. Please check your data.');
-            }
-
-            dataLoaded = true;
-            dbStatus.textContent = '● Connected (Enterprise Schema)';
-            dbStatus.style.color = 'var(--green)';
-            showToast('✅ Data loaded from Supabase (Enterprise Schema)', 'success');
-
-        } catch (error) {
-            console.error('Failed to fetch data:', error);
-            throw new Error(error.message || 'Failed to load vehicle data from Supabase');
-        }
-    }
-
-    // ─── Rendering ──────────────────────────────────────────────────────
-    function populateCategories() {
-        manufacturerSelect.innerHTML = '';
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = '';
-        defaultOpt.textContent = '— Select Vehicle Type —';
-        defaultOpt.disabled = true;
-        defaultOpt.selected = true;
-        manufacturerSelect.appendChild(defaultOpt);
-
-        // Use vehicle types as primary categories
-        const categories = vehicleTypes.length > 0 ? vehicleTypes : manufacturers.map(m => ({
-            id: m.id,
-            name: m.name,
-            description: m.country || 'Manufacturer',
-            is_manufacturer: true
-        }));
-
-        categories.forEach(cat => {
-            const opt = document.createElement('option');
-            opt.value = cat.id;
-            opt.textContent = cat.name;
-            manufacturerSelect.appendChild(opt);
-        });
-
-        if (categories.length > 0) {
-            manufacturerSelect.disabled = false;
-            // Auto-select first
-            manufacturerSelect.value = categories[0].id;
-            populateModels(categories[0].id);
-        } else {
-            manufacturerSelect.disabled = true;
-        }
-    }
-
-    function populateModels(categoryId) {
-        modelSelect.innerHTML = '';
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = '';
-        defaultOpt.textContent = '— Select Specification —';
-        defaultOpt.disabled = true;
-        defaultOpt.selected = true;
-        modelSelect.appendChild(defaultOpt);
-
-        if (!categoryId) {
-            modelSelect.disabled = true;
-            return;
-        }
-
-        // Check if this is a vehicle type or manufacturer
-        const isVehicleType = vehicleTypes.some(t => t.id === categoryId);
-        let filteredModels = [];
-
-        if (isVehicleType) {
-            // Get models for this vehicle type
-            filteredModels = vehicleModels.filter(m => m.vehicle_type_id === categoryId);
-        } else {
-            // Get models for this manufacturer
-            filteredModels = vehicleModels.filter(m => m.manufacturer_id === categoryId);
-        }
-
-        if (filteredModels.length === 0) {
-            modelSelect.disabled = true;
-            modelSelect.innerHTML = '<option value="">No specifications available</option>';
-            return;
-        }
-
-        filteredModels.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m.id;
-            const manufacturer = manufacturers.find(man => man.id === m.manufacturer_id);
-            const manuName = manufacturer ? manufacturer.name : '';
-            const yearRange = m.year_start ? ` (${m.year_start}${m.year_end ? `-${m.year_end}` : ''})` : '';
-            opt.textContent = `${manuName} ${m.name}${yearRange}`;
-            modelSelect.appendChild(opt);
-        });
-
-        modelSelect.disabled = false;
-        // Auto-select first
-        modelSelect.value = filteredModels[0].id;
-        populateEngines(filteredModels[0].id);
-    }
-
-    function populateEngines(modelId) {
-        engineSelect.innerHTML = '';
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = '';
-        defaultOpt.textContent = '— Select Engine / Class —';
-        defaultOpt.disabled = true;
-        defaultOpt.selected = true;
-        engineSelect.appendChild(defaultOpt);
-
-        if (!modelId) {
-            engineSelect.disabled = true;
-            return;
-        }
-
-        // Find rates for this model
-        const rates = vehicleRates.filter(r => r.vehicle_model_id === modelId);
-        
-        if (rates.length === 0) {
-            engineSelect.disabled = true;
-            engineSelect.innerHTML = '<option value="">No rate data available</option>';
-            // Try to use fallback data
-            createFallbackEngineOptions(modelId);
-            return;
-        }
-
-        rates.forEach(r => {
-            const opt = document.createElement('option');
-            opt.value = r.id;
-            const engine = r.engine_classes || {};
-            const fuel = r.fuel_types || {};
-            const trans = r.transmissions || {};
-            const drivetrain = r.drivetrains || {};
-            
-            let label = '';
-            if (engine.displacement_cc) label += `${engine.displacement_cc}cc `;
-            if (fuel.name) label += `${fuel.name} `;
-            if (trans.name) label += `· ${trans.name}`;
-            if (drivetrain.name) label += ` · ${drivetrain.name}`;
-            if (r.total_cost_per_km) label += ` (KES ${r.total_cost_per_km}/km)`;
-            
-            opt.textContent = label || 'Standard Rate';
-            engineSelect.appendChild(opt);
-        });
-
-        engineSelect.disabled = false;
-        // Auto-select first
-        if (engineSelect.options.length > 1) {
-            engineSelect.value = engineSelect.options[1].value;
-        }
-    }
-
-    // ─── Fallback Engine Options ──────────────────────────────────────
-    function createFallbackEngineOptions(modelId) {
-        // Create synthetic rate data for testing
-        const fallbackRates = [
-            { id: 'fallback-1', displacement_cc: '2000', fuel_name: 'Petrol', trans_name: 'Manual', total_cost: 33.25 },
-            { id: 'fallback-2', displacement_cc: '2500', fuel_name: 'Diesel', trans_name: 'Automatic', total_cost: 45.00 },
-            { id: 'fallback-3', displacement_cc: '3000', fuel_name: 'Diesel', trans_name: 'Automatic', total_cost: 49.25 }
-        ];
-
-        fallbackRates.forEach(r => {
-            const opt = document.createElement('option');
-            opt.value = r.id;
-            opt.textContent = `${r.displacement_cc}cc ${r.fuel_name} · ${r.trans_name} (KES ${r.total_cost}/km)`;
-            engineSelect.appendChild(opt);
-        });
-
-        engineSelect.disabled = false;
-        showToast('ℹ️ Using sample rate data. Please add rates in Supabase for accurate results.', 'info');
-    }
-
-    function loadRoutes() {
-        routeChips.innerHTML = '';
-        if (!routes || routes.length === 0) {
-            const span = document.createElement('span');
-            span.style.cssText = 'color:var(--ink-soft);font-size:11px;';
-            span.textContent = 'No routes available';
-            routeChips.appendChild(span);
-            return;
-        }
-        routes.forEach((r) => {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'chip';
-            const fromTown = r.towns_from?.name || 'Unknown';
-            const toTown = r.towns_to?.name || 'Unknown';
-            const km = num(r.distance_km);
-
-            const label = document.createElement('span');
-            label.textContent = `${fromTown} → ${toTown} `;
-            const badge = document.createElement('span');
-            badge.className = 'km-badge';
-            badge.textContent = `${km}km`;
-            chip.appendChild(label);
-            chip.appendChild(badge);
-            chip.setAttribute('aria-label', `${fromTown} to ${toTown}, ${km} kilometres`);
-
-            chip.addEventListener('click', () => {
-                document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-                chip.classList.add('active');
-                distanceInput.value = km;
-                validateDistance();
-                calculate();
-            });
-            routeChips.appendChild(chip);
-        });
-    }
-
-    // ─── Vehicle lookup ──────────────────────────────────────────────────
-    function getSelectedVehicle() {
-        const rateId = engineSelect.value;
-        if (!rateId) return null;
-
-        // Check if it's a fallback rate
-        if (rateId.startsWith('fallback-')) {
-            // Use fallback data
-            const fallback = {
-                id: rateId,
-                total_cost_per_km: 33.25,
-                fixed_cost_per_km: 12.50,
-                operating_cost_per_km: 20.75,
-                market_value: 2500000,
-                confidence_score: 85,
-                running_cost_components: {
-                    insurance_per_year: 85000,
-                    depreciation_per_year: 450000,
-                    interest_per_year: 180000,
-                    fuel_per_km: 12.50,
-                    service_per_km: 4.25,
-                    repairs_per_km: 3.50,
-                    tyres_per_km: 2.75,
-                    licence_per_year: 25000
-                },
-                running_cost_history: [
-                    { age_years: 0, cost_per_km: 33.25 },
-                    { age_years: 1, cost_per_km: 34.50 },
-                    { age_years: 2, cost_per_km: 36.75 },
-                    { age_years: 3, cost_per_km: 38.25 },
-                    { age_years: 4, cost_per_km: 40.00 }
-                ]
-            };
-            return { rate: fallback, modelName: 'Sample Vehicle', categoryName: 'Sample', fuel: { name: 'Petrol' } };
-        }
-
-        const rate = vehicleRates.find(r => r.id === rateId);
-        if (!rate) return null;
-
-        // Find the model and category
-        const model = vehicleModels.find(m => m.id === rate.vehicle_model_id);
-        const manufacturer = manufacturers.find(m => m.id === model?.manufacturer_id);
-        const vehicleType = vehicleTypes.find(t => t.id === model?.vehicle_type_id);
-        
-        let modelName = model ? `${manufacturer?.name || ''} ${model.name}` : 'Unknown';
-        let categoryName = vehicleType ? vehicleType.name : (manufacturer?.name || 'Unknown');
-        const fuel = rate.fuel_types || {};
-
-        return { rate, modelName, categoryName, fuel };
-    }
-
-    // ─── Validation ──────────────────────────────────────────────────────
-    function validateDistance() {
-        const raw = distanceInput.value;
-        const val = parseFloat(raw);
-        if (raw === '' || Number.isNaN(val)) {
-            distanceError.textContent = 'Enter a distance in km.';
-            return false;
-        }
-        if (val < 0) {
-            distanceError.textContent = 'Distance cannot be negative.';
-            return false;
-        }
-        if (val > MAX_DISTANCE) {
-            distanceError.textContent = `Distance seems too large (max ${MAX_DISTANCE.toLocaleString()} km).`;
-            return false;
-        }
-        distanceError.textContent = '';
-        return true;
-    }
-
-    // ─── Calculation / rendering results ──────────────────────────────
-    function resetResults(message) {
-        $('vehicleLabel').textContent = '—';
-        $('fuelPill').textContent = '—';
-        $('totalTrip').textContent = '0.00';
-        $('totalTripSub').textContent = message || 'Select a vehicle and enter a distance';
-        $('fixedPerKm').textContent = '—';
-        $('operatingPerKm').textContent = '—';
-        $('fixedTrip').textContent = '—';
-        $('operatingTrip').textContent = '—';
-        $('totalPerKm').textContent = '—';
-        $('marketValue').textContent = '—';
-        $('confidenceScore').textContent = '—';
-        ['year1', 'year2', 'year3', 'year4', 'year5'].forEach(id => { $(id).textContent = '—'; $(id).className = 'year-value'; });
-        ['detailInsurance', 'detailDepreciation', 'detailInterest', 'detailFuel', 'detailServicing', 'detailRepairs', 'detailTyres', 'detailLicences'].forEach(id => $(id).textContent = '—');
-        printBtn.disabled = true;
-        shareBtn.disabled = true;
-    }
-
-    async function calculate() {
-        if (!dataLoaded) return;
-
-        const distanceValid = validateDistance();
-        const selected = getSelectedVehicle();
-
-        if (!selected) {
-            resetResults('Select a vehicle and enter a distance');
-            return;
-        }
-        if (!distanceValid) {
-            resetResults('Fix the distance field to see results');
-            return;
-        }
-
-        const distance_km = Math.max(0, parseFloat(distanceInput.value) || 0);
-        const { rate, modelName, categoryName, fuel } = selected;
-
-        try {
-            // Use local calculation if no FastAPI endpoint or fallback
-            const totalCost = rate.total_cost_per_km * distance_km;
-            const fixedCost = rate.fixed_cost_per_km * distance_km;
-            const operatingCost = rate.operating_cost_per_km * distance_km;
-
-            // Update UI with results
-            const vehicleDisplay = modelName ? `${categoryName} · ${modelName}` : categoryName;
-            $('vehicleLabel').textContent = vehicleDisplay || '—';
-            $('fuelPill').textContent = fuel?.name || '—';
-            $('totalTrip').textContent = fmtKShs(totalCost);
-            $('totalTripSub').textContent = `at ${fmtKShs(rate.total_cost_per_km || 0)} KES/km over ${Math.round(distance_km).toLocaleString()} km`;
-            $('fixedPerKm').textContent = fmtKShs(rate.fixed_cost_per_km || 0);
-            $('operatingPerKm').textContent = fmtKShs(rate.operating_cost_per_km || 0);
-            $('fixedTrip').textContent = `KES ${fmtKShs(fixedCost)}`;
-            $('operatingTrip').textContent = `KES ${fmtKShs(operatingCost)}`;
-            $('totalPerKm').textContent = `${fmtKShs(rate.total_cost_per_km || 0)} KES/km`;
-            $('marketValue').textContent = `KES ${fmtKShs(rate.market_value || 0)}`;
-
-            // Components from running_cost_components
-            const comps = rate.running_cost_components || {};
-            $('detailInsurance').textContent = comps.insurance_per_year ? fmtKShs(comps.insurance_per_year) : '—';
-            $('detailDepreciation').textContent = comps.depreciation_per_year ? fmtKShs(comps.depreciation_per_year) : '—';
-            $('detailInterest').textContent = comps.interest_per_year ? fmtKShs(comps.interest_per_year) : '—';
-            $('detailFuel').textContent = comps.fuel_per_km ? `${fmtKShs(comps.fuel_per_km)}/km` : '—';
-            $('detailServicing').textContent = comps.service_per_km ? `${fmtKShs(comps.service_per_km)}/km` : '—';
-            $('detailRepairs').textContent = comps.repairs_per_km ? `${fmtKShs(comps.repairs_per_km)}/km` : '—';
-            $('detailTyres').textContent = comps.tyres_per_km ? `${fmtKShs(comps.tyres_per_km)}/km` : '—';
-            $('detailLicences').textContent = comps.licence_per_year ? fmtKShs(comps.licence_per_year) : '—';
-
-            // Running cost history (5-year progression)
-            const history = rate.running_cost_history || [];
-            const yearMap = {};
-            history.forEach(h => {
-                yearMap[h.age_years] = h;
-            });
-            const years = [
-                { id: 'year1', age: 0 },
-                { id: 'year2', age: 1 },
-                { id: 'year3', age: 2 },
-                { id: 'year4', age: 3 },
-                { id: 'year5', age: 4 }
-            ];
-            years.forEach((y, idx) => {
-                const el = $(y.id);
-                const data = yearMap[y.age];
-                if (data) {
-                    el.textContent = fmtKShs(data.cost_per_km || 0);
-                    const prev = yearMap[y.age - 1];
-                    if (idx === 0) {
-                        el.className = 'year-value gold';
-                    } else if (prev && data.cost_per_km < prev.cost_per_km) {
-                        el.className = 'year-value green';
-                    } else if (prev && data.cost_per_km > prev.cost_per_km) {
-                        el.className = 'year-value red';
-                    } else {
-                        el.className = 'year-value';
-                    }
-                } else {
-                    el.textContent = '—';
-                    el.className = 'year-value';
-                }
-            });
-
-            let confidence = rate.confidence_score || 85;
-            $('confidenceScore').textContent = `${confidence}%`;
-            $('lastUpdated').textContent = new Date().toLocaleDateString('en-KE', {
-                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-            });
-
-            printBtn.disabled = false;
-            shareBtn.disabled = false;
-
-        } catch (error) {
-            console.error('Calculation failed:', error);
-            showToast('❌ Failed to calculate: ' + error.message, 'error');
-            resetResults('Calculation failed. Please try again.');
-        }
-    }
-
-    // ─── Share / print ──────────────────────────────────────────────────
-    function shareReport() {
-        const vehicle = $('vehicleLabel').textContent;
-        if (vehicle === '—') return;
-        const rate = $('totalPerKm').textContent;
-        const total = $('totalTrip').textContent;
-        const y1 = $('year1').textContent, y2 = $('year2').textContent, y3 = $('year3').textContent, y4 = $('year4').textContent, y5 = $('year5').textContent;
-        const shareText = `🚗 AUTO-V Mileage Rate Report\n\nVehicle: ${vehicle}\nRate: ${rate}\nTrip Total: ${total}\n\n📈 5-Year Running Costs:\nNew: ${y1}\n2nd Year: ${y2}\n3rd Year: ${y3}\n4th Year: ${y4}\n5+ Years: ${y5}\n\nPowered by AUTO-V Enterprise Schema`;
-
-        if (navigator.share) {
-            navigator.share({ title: 'AUTO-V Mileage Rate Report', text: shareText }).catch(() => {});
-            return;
-        }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(shareText)
-                .then(() => showToast('✅ Report copied to clipboard!', 'success'))
-                .catch(() => openShareFallbackWindow(shareText));
-            return;
-        }
-        openShareFallbackWindow(shareText);
-    }
-
-    function openShareFallbackWindow(shareText) {
-        const win = window.open('', '_blank');
-        if (!win) return;
-        const pre = win.document.createElement('pre');
-        pre.textContent = shareText;
-        win.document.title = 'AUTO-V Mileage Report';
-        win.document.body.style.cssText = 'font-family:sans-serif;padding:40px;background:#f5f5f5;color:#333;line-height:1.8;';
-        win.document.body.appendChild(pre);
-        const btn = win.document.createElement('button');
-        btn.textContent = '🖨️ Print';
-        btn.onclick = () => win.print();
-        win.document.body.appendChild(btn);
-    }
-
-    // ─── Event wiring ──────────────────────────────────────────────────
-    document.querySelectorAll('.fuel-filter-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            document.querySelectorAll('.fuel-filter-btn').forEach(b => {
-                b.classList.remove('active');
-                b.setAttribute('aria-pressed', 'false');
-            });
-            this.classList.add('active');
-            this.setAttribute('aria-pressed', 'true');
-            selectedFuel = this.dataset.fuel;
-            // Filter vehicle rates by fuel type
-            const categoryId = manufacturerSelect.value;
-            if (categoryId) {
-                populateModels(categoryId);
-                const modelId = modelSelect.value;
-                if (modelId) {
-                    populateEngines(modelId);
-                    if (engineSelect.options.length > 1) {
-                        engineSelect.value = engineSelect.options[1].value;
-                        calculate();
-                    }
+                if (Object.keys(primaryMap).length > 0) {
+                    filtered = filtered.filter(v => {
+                        const primary = primaryMap[v.category_id];
+                        return primary && primary.id === v.id;
+                    });
                 }
             }
-        });
-    });
 
-    manufacturerSelect.addEventListener('change', (e) => {
-        populateModels(e.target.value);
-        engineSelect.innerHTML = '<option value="">Select a model first</option>';
-        engineSelect.disabled = true;
-        resetResults('Select a vehicle and enter a distance');
-    });
+            filteredVehicles = filtered;
+            populateVariants();
+        }
 
-    modelSelect.addEventListener('change', (e) => {
-        populateEngines(e.target.value);
-        resetResults('Select a vehicle and enter a distance');
-    });
-
-    engineSelect.addEventListener('change', calculate);
-
-    let calcTimeout;
-    distanceInput.addEventListener('input', () => {
-        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-        clearTimeout(calcTimeout);
-        calcTimeout = setTimeout(() => {
-            validateDistance();
-            calculate();
-        }, 300);
-    });
-    distanceInput.addEventListener('blur', () => { validateDistance(); calculate(); });
-
-    calculateBtn.addEventListener('click', calculate);
-    printBtn.addEventListener('click', () => window.print());
-    shareBtn.addEventListener('click', shareReport);
-
-    // ─── Init ──────────────────────────────────────────────────────────
-    (async function init() {
-        try {
-            await fetchData();
-            populateCategories();
-            loadRoutes();
+        function populateVariants() {
+            variantSelect.innerHTML = '<option value="">Select a variant</option>';
+            if (filteredVehicles.length === 0) {
+                variantSelect.innerHTML = '<option value="">No vehicles match</option>';
+                variantSelect.disabled = true;
+                calculateBtn.disabled = true;
+                return;
+            }
+            filteredVehicles.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.id;
+                const label = `${v.make || ''} ${v.model || ''} ${v.engine_size || ''}cc`.trim() || v.name || 'Unnamed';
+                opt.textContent = label;
+                variantSelect.appendChild(opt);
+            });
+            variantSelect.disabled = false;
             calculateBtn.disabled = false;
-            calculate();
-        } catch (error) {
-            console.error('AUTO-V failed to initialize:', error);
-            const message = (error && error.message) ? error.message : 'Unknown error while loading vehicle data.';
-            showFatalError(message);
+            // auto-select first
+            variantSelect.value = filteredVehicles[0].id;
+            variantSelect.dispatchEvent(new Event('change'));
         }
+
+        // ── Load vehicle details ──
+        async function loadVehicleDetails(vehicleId) {
+            if (!vehicleId) {
+                currentVehicle = null;
+                clearResults();
+                return;
+            }
+            try {
+                const { data, error } = await supabase
+                    .from('vehicles')
+                    .select('*')
+                    .eq('id', vehicleId)
+                    .single();
+                if (error) throw error;
+                currentVehicle = data;
+                updateResults();
+            } catch (err) {
+                console.error('loadVehicleDetails error:', err);
+                showToast('Error loading vehicle details', 'error');
+                currentVehicle = null;
+                clearResults();
+            }
+        }
+
+        // ── Clear results ──
+        function clearResults() {
+            vehicleLabel.textContent = '—';
+            fuelPill.textContent = '—';
+            totalTrip.textContent = '0.00';
+            totalTripSub.textContent = 'at 0.00 KES/km over 0 km';
+            fixedPerKm.textContent = '—';
+            operatingPerKm.textContent = '—';
+            fixedTrip.textContent = '—';
+            operatingTrip.textContent = '—';
+            totalPerKm.textContent = '—';
+            initialCost.textContent = '—';
+            detailIds.forEach(key => {
+                const el = document.getElementById(detailMap[key]);
+                if (el) el.textContent = '—';
+            });
+            yearIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.textContent = '—'; el.className = 'year-value'; }
+            });
+        }
+
+        // ── Update results ──
+        function updateResults() {
+            if (!currentVehicle) {
+                clearResults();
+                return;
+            }
+
+            const dist = parseFloat(distanceInput.value) || 0;
+            if (dist < 0) {
+                distanceError.textContent = 'Distance cannot be negative';
+                return;
+            } else {
+                distanceError.textContent = '';
+            }
+
+            // Rates (per km)
+            const insurance = currentVehicle.insurance_rate || 0;
+            const depreciation = currentVehicle.depreciation_rate || 0;
+            const interest = currentVehicle.interest_rate || 0;
+            const fuel = currentVehicle.fuel_rate || 0;
+            const servicing = currentVehicle.servicing_rate || 0;
+            const repairs = currentVehicle.repairs_rate || 0;
+            const tyres = currentVehicle.tyres_rate || 0;
+            const licences = currentVehicle.licences_rate || 0;
+
+            const fixed = insurance + depreciation + interest + licences;
+            const operating = fuel + servicing + repairs + tyres;
+            const totalPerKmRate = fixed + operating;
+
+            const fixedTripCost = fixed * dist;
+            const operatingTripCost = operating * dist;
+            const totalTripCost = totalPerKmRate * dist;
+
+            // Update UI
+            vehicleLabel.textContent = `${currentVehicle.make || ''} ${currentVehicle.model || ''} ${currentVehicle.engine_size || ''}cc`.trim() || currentVehicle.name || 'Unnamed';
+            fuelPill.textContent = currentVehicle.fuel_type || '—';
+
+            totalTrip.textContent = formatCurrency(totalTripCost);
+            totalTripSub.textContent = `at ${formatCurrency(totalPerKmRate)} KES/km over ${dist} km`;
+
+            fixedPerKm.textContent = formatCurrency(fixed);
+            operatingPerKm.textContent = formatCurrency(operating);
+            fixedTrip.textContent = formatCurrency(fixedTripCost);
+            operatingTrip.textContent = formatCurrency(operatingTripCost);
+            totalPerKm.textContent = formatCurrency(totalPerKmRate);
+
+            initialCost.textContent = currentVehicle.initial_cost ? `KES ${formatCurrency(currentVehicle.initial_cost)}` : '—';
+
+            // Detail breakdown
+            const detailValues = {
+                Insurance: insurance,
+                Depreciation: depreciation,
+                Interest: interest,
+                Fuel: fuel,
+                Servicing: servicing,
+                Repairs: repairs,
+                Tyres: tyres,
+                Licences: licences
+            };
+            detailIds.forEach(key => {
+                const el = document.getElementById(detailMap[key]);
+                if (el) {
+                    const val = detailValues[key] || 0;
+                    el.textContent = formatCurrency(val);
+                    // color coding
+                    el.className = 'value';
+                    if (key === 'Fuel' || key === 'Servicing' || key === 'Repairs' || key === 'Tyres') {
+                        el.classList.add('red');
+                    } else if (key === 'Insurance' || key === 'Licences') {
+                        el.classList.add('green');
+                    } else {
+                        el.classList.add('gold');
+                    }
+                }
+            });
+
+            // Year progression
+            const baseCost = totalPerKmRate;
+            const yearMultipliers = [1.0, 1.08, 1.18, 1.30, 1.45];
+            const yearLabels = ['New','2nd Year','3rd Year','4th Year','5th Year'];
+            yearIds.forEach((id, idx) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    const yearCost = baseCost * yearMultipliers[idx] * 15000; // assume 15k km/year
+                    el.textContent = `KES ${formatCurrency(yearCost)}`;
+                    el.className = 'year-value';
+                    if (idx === 0) el.classList.add('gold');
+                    else if (idx <= 2) el.classList.add('green');
+                    else el.classList.add('red');
+                }
+            });
+        }
+
+        // ── Event listeners ──
+        function init() {
+            // Categories
+            categorySelect.addEventListener('change', function() {
+                const catId = this.value;
+                if (catId) {
+                    fetchVehicles(catId, currentFuelFilter);
+                } else {
+                    filteredVehicles = [];
+                    populateVariants();
+                }
+            });
+
+            // Fuel filter
+            fuelFilterGroup.addEventListener('click', function(e) {
+                const btn = e.target.closest('.fuel-filter-btn');
+                if (!btn) return;
+                const fuel = btn.dataset.fuel;
+                // update active
+                document.querySelectorAll('.fuel-filter-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-pressed', 'false');
+                });
+                btn.classList.add('active');
+                btn.setAttribute('aria-pressed', 'true');
+                currentFuelFilter = fuel;
+                // re-fetch vehicles for current category
+                const catId = categorySelect.value;
+                if (catId) {
+                    fetchVehicles(catId, currentFuelFilter);
+                } else {
+                    fetchVehicles(null, currentFuelFilter);
+                }
+            });
+
+            // Show all classes
+            showAllClasses.addEventListener('change', function() {
+                applyFilters();
+            });
+
+            // Variant select
+            variantSelect.addEventListener('change', function() {
+                const vid = this.value;
+                if (vid) {
+                    loadVehicleDetails(vid);
+                } else {
+                    currentVehicle = null;
+                    clearResults();
+                }
+            });
+
+            // Distance input
+            distanceInput.addEventListener('input', function() {
+                const val = parseFloat(this.value);
+                if (val < 0) {
+                    distanceError.textContent = 'Distance cannot be negative';
+                } else {
+                    distanceError.textContent = '';
+                    if (currentVehicle) updateResults();
+                }
+            });
+
+            // Route chips
+            const routes = [
+                { label: 'Nairobi → Mombasa', km: 485 },
+                { label: 'Nairobi → Kisumu', km: 355 },
+                { label: 'Nairobi → Nakuru', km: 160 },
+                { label: 'Nairobi → Eldoret', km: 315 },
+                { label: 'Mombasa → Malindi', km: 120 },
+                { label: 'Nairobi → Meru', km: 270 }
+            ];
+            routeChips.innerHTML = routes.map(r => 
+                `<button class="chip" data-km="${r.km}">${r.label} <span class="km-badge">${r.km}km</span></button>`
+            ).join('');
+            routeChips.addEventListener('click', function(e) {
+                const chip = e.target.closest('.chip');
+                if (!chip) return;
+                const km = parseInt(chip.dataset.km, 10);
+                if (!isNaN(km) && km > 0) {
+                    distanceInput.value = km;
+                    distanceInput.dispatchEvent(new Event('input'));
+                }
+            });
+
+            // Calculate button
+            calculateBtn.addEventListener('click', function() {
+                if (!currentVehicle) {
+                    showToast('Please select a vehicle first', 'error');
+                    return;
+                }
+                const dist = parseFloat(distanceInput.value);
+                if (isNaN(dist) || dist < 0) {
+                    distanceError.textContent = 'Please enter a valid distance';
+                    return;
+                }
+                updateResults();
+                showToast('Calculation updated', 'success');
+            });
+
+            // Print
+            document.getElementById('printBtn').addEventListener('click', function() {
+                window.print();
+            });
+
+            // Share
+            document.getElementById('shareBtn').addEventListener('click', function() {
+                const url = window.location.href;
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'AUTO-V Mileage Report',
+                        text: `Vehicle: ${vehicleLabel.textContent}\nTotal Cost: KES ${totalTrip.textContent}`,
+                        url: url
+                    }).catch(() => {});
+                } else {
+                    navigator.clipboard.writeText(url).then(() => {
+                        showToast('Link copied to clipboard!', 'success');
+                    }).catch(() => {
+                        showToast('Share not available', 'error');
+                    });
+                }
+            });
+
+            // Set last updated
+            document.getElementById('lastUpdated').textContent = new Date().toLocaleDateString('en-KE', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+
+            // Initial load
+            setStatus('● Loading...', true);
+            Promise.all([fetchCategories()])
+                .then(() => {
+                    setStatus('● Online', true);
+                    // Load vehicles for default category
+                    if (categorySelect.value) {
+                        fetchVehicles(categorySelect.value, currentFuelFilter);
+                    } else if (categories.length > 0) {
+                        categorySelect.value = categories[0].id;
+                        categorySelect.dispatchEvent(new Event('change'));
+                    }
+                })
+                .catch(() => {
+                    setStatus('⚠️ Offline', false);
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
     })();
-})();
 </script>
 </body>
 </html>
