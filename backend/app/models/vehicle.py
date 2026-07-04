@@ -18,7 +18,7 @@ class Vehicle(Base):
     __tablename__ = "vehicles"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
 
     vin = Column(String(17), unique=True, nullable=False, index=True)
     registration_number = Column(String(20), unique=True, index=True)
@@ -43,11 +43,23 @@ class Vehicle(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    owner = relationship("UserProfile", back_populates="vehicles")
+    # FIXED: Added explicit foreign_keys to relationships
+    owner = relationship(
+        "UserProfile",
+        foreign_keys=[user_id],  # ← ADDED: Explicit
+        back_populates="vehicles"
+    )
+    
     images = relationship("VehicleImage", back_populates="vehicle", cascade="all, delete-orphan")
     valuations = relationship("Valuation", back_populates="vehicle", cascade="all, delete-orphan")
     inspections = relationship("Inspection", back_populates="vehicle", cascade="all, delete-orphan")
-    mileage_claims = relationship("MileageClaim", back_populates="vehicle")
+    
+    mileage_claims = relationship(
+        "MileageClaim",
+        foreign_keys="MileageClaim.vehicle_id",  # ← ADDED: Explicit
+        back_populates="vehicle"
+    )
+    
     fleet_vehicles = relationship("FleetVehicle", back_populates="vehicle", cascade="all, delete-orphan")
     vin_scans = relationship("VINScan", back_populates="vehicle")
 
@@ -56,6 +68,7 @@ class Vehicle(Base):
         Index("idx_vehicles_registration", "registration_number"),
         Index("idx_vehicles_user_id", "user_id"),
         UniqueConstraint("vin", name="uq_vehicles_vin"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
@@ -80,7 +93,7 @@ class VehicleImage(Base):
     __tablename__ = "vehicle_images"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="CASCADE"), nullable=False)
 
     slot = Column(String(50), nullable=False)  # front, rear, left, right, interior, engine, vin
     image_url = Column(String(500), nullable=False)
@@ -96,6 +109,7 @@ class VehicleImage(Base):
     __table_args__ = (
         Index("idx_vehicle_images_vehicle_id", "vehicle_id"),
         UniqueConstraint("vehicle_id", "slot", name="uq_vehicle_images_slot"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
 
@@ -103,8 +117,8 @@ class VINScan(Base):
     __tablename__ = "vin_scans"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="SET NULL"), nullable=True)
 
     vin = Column(String(17), nullable=False, index=True)
     image_url = Column(String(500))
@@ -114,11 +128,17 @@ class VINScan(Base):
     status = Column(String(20), default="pending")  # pending, verified, failed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    vehicle = relationship("Vehicle", back_populates="vin_scans")
+    # FIXED: Added explicit foreign_keys
+    vehicle = relationship(
+        "Vehicle",
+        foreign_keys=[vehicle_id],  # ← ADDED: Explicit
+        back_populates="vin_scans"
+    )
 
     __table_args__ = (
         Index("idx_vin_scans_vin", "vin"),
         Index("idx_vin_scans_user_id", "user_id"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
