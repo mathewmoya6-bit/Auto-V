@@ -15,8 +15,8 @@ class Valuation(Base):
     __tablename__ = "valuations"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
 
     valuation_type = Column(String(20), default="standard")  # instant, standard, premium
 
@@ -39,13 +39,24 @@ class Valuation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    vehicle = relationship("Vehicle", back_populates="valuations")
-    user = relationship("UserProfile", back_populates="valuations")
+    # FIXED: Added explicit foreign_keys to both relationships
+    vehicle = relationship(
+        "Vehicle",
+        foreign_keys=[vehicle_id],  # ← ADDED: Explicit
+        back_populates="valuations"
+    )
+    
+    user = relationship(
+        "UserProfile",
+        foreign_keys=[user_id],  # ← ADDED: Explicit
+        back_populates="valuations"
+    )
 
     __table_args__ = (
         Index("idx_valuations_vehicle_id", "vehicle_id"),
         Index("idx_valuations_user_id", "user_id"),
         Index("idx_valuations_status", "status"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
