@@ -4,6 +4,7 @@
 # =============================================================================
 
 import re
+import ssl
 import logging
 from contextlib import asynccontextmanager
 
@@ -32,7 +33,22 @@ def _build_database_url(raw_url: str) -> tuple[str, dict]:
         url = re.sub(r"[?&]ssl=[^&]*", "", url)
         url = url.rstrip("?&")
 
-    return url, {"ssl": True}  # Supabase Postgres requires TLS
+    # Supabase Postgres requires TLS, but its cert chain isn't always in the
+    # system trust store -> full verification (ssl=True) fails with
+    # "self-signed certificate in certificate chain". Encrypt the connection
+    # without verifying the chain (equivalent to libpq's sslmode=require).
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    # If using the Transaction pooler (port 6543), asyncpg's prepared
+    # statement caching isn't supported -> disable it. Session pooler
+    # (5432) and direct connections are unaffected by this.
+    connect_args = {"ssl": ssl_context}
+    if ":6543" in url:
+        connect_args["statement_cache_size"] = 0
+
+    return url, connect_args
 
 
 if not settings.database_configured():
