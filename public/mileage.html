@@ -717,23 +717,23 @@
             <div class="panel-label"><span class="num">01</span> Select Vehicle</div>
 
             <div class="form-group">
-                <label for="manufacturerSelect">Manufacturer</label>
+                <label for="manufacturerSelect">Vehicle Type / Class</label>
                 <select id="manufacturerSelect" disabled aria-busy="true">
-                    <option value="">Loading manufacturers...</option>
+                    <option value="">Loading vehicle types...</option>
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="modelSelect">Vehicle Model</label>
+                <label for="modelSelect">Vehicle Specification</label>
                 <select id="modelSelect" disabled aria-busy="true">
-                    <option value="">Select a manufacturer first</option>
+                    <option value="">Select a type first</option>
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="engineSelect">Engine / Class</label>
+                <label for="engineSelect">Rate / Class</label>
                 <select id="engineSelect" disabled aria-busy="true">
-                    <option value="">Select a model first</option>
+                    <option value="">Select specification first</option>
                 </select>
             </div>
 
@@ -959,9 +959,8 @@
     const fmtKShs = (n) => kesFormatter.format(num(n));
 
     // ─── State ──────────────────────────────────────────────────────────
-    let manufacturers = [];
-    let models = [];
-    let engines = [];
+    let vehicleCategories = [];
+    let vehicleSubCategories = [];
     let vehicleRates = [];
     let routes = [];
     let selectedFuel = 'all';
@@ -1001,7 +1000,22 @@
         dbStatus.style.color = 'var(--amber)';
 
         try {
-            // ─── 1. Fetch Manufacturers ──────────────────────────────
+            // ─── 1. Fetch Vehicle Types (SUV, Pickup, Sedan, etc.) ────
+            console.log('📦 Fetching vehicle types from Supabase...');
+            const { data: typesData, error: typesError } = await supabase
+                .from('vehicle_types')
+                .select('id, name, description, is_active')
+                .eq('is_active', true)
+                .order('name', { ascending: true });
+
+            if (typesError) {
+                console.error('Supabase vehicle types error:', typesError);
+                throw new Error(typesError.message);
+            }
+            vehicleCategories = typesData || [];
+            console.log('📦 Vehicle Types:', vehicleCategories);
+
+            // ─── 2. Fetch Manufacturers ──────────────────────────────
             console.log('📦 Fetching manufacturers from Supabase...');
             const { data: manufacturersData, error: manufacturersError } = await supabase
                 .from('manufacturers')
@@ -1013,10 +1027,10 @@
                 console.error('Supabase manufacturers error:', manufacturersError);
                 throw new Error(manufacturersError.message);
             }
-            manufacturers = manufacturersData || [];
+            const manufacturers = manufacturersData || [];
             console.log('📦 Manufacturers:', manufacturers);
 
-            // ─── 2. Fetch Vehicle Models ──────────────────────────────
+            // ─── 3. Fetch Vehicle Models with manufacturer names ──────
             console.log('📦 Fetching vehicle models from Supabase...');
             const { data: modelsData, error: modelsError } = await supabase
                 .from('vehicle_models')
@@ -1027,9 +1041,7 @@
                     vehicle_type_id,
                     year_start,
                     year_end,
-                    is_active,
-                    vehicle_types (name),
-                    manufacturers (name)
+                    is_active
                 `)
                 .eq('is_active', true)
                 .order('name', { ascending: true });
@@ -1038,10 +1050,72 @@
                 console.error('Supabase models error:', modelsError);
                 throw new Error(modelsError.message);
             }
-            models = modelsData || [];
-            console.log('📦 Vehicle Models:', models);
 
-            // ─── 3. Fetch Vehicle Rates with all related data ─────────
+            // Build combined category list with manufacturer + model + type
+            const combinedCategories = [];
+            
+            // If we have vehicle types, use them as primary categories
+            if (vehicleCategories.length > 0) {
+                vehicleCategories.forEach(type => {
+                    // Find models of this type
+                    const typeModels = modelsData.filter(m => m.vehicle_type_id === type.id);
+                    
+                    if (typeModels.length > 0) {
+                        // Group by manufacturer
+                        const manufacturersMap = {};
+                        typeModels.forEach(model => {
+                            const manu = manufacturers.find(m => m.id === model.manufacturer_id);
+                            const manuName = manu ? manu.name : 'Unknown';
+                            if (!manufacturersMap[manuName]) {
+                                manufacturersMap[manuName] = [];
+                            }
+                            manufacturersMap[manuName].push({
+                                id: model.id,
+                                name: model.name,
+                                manufacturer_id: model.manufacturer_id,
+                                year_start: model.year_start,
+                                year_end: model.year_end
+                            });
+                        });
+                        
+                        // Add as combined category
+                        combinedCategories.push({
+                            id: type.id,
+                            name: type.name,
+                            description: type.description,
+                            manufacturers: manufacturersMap
+                        });
+                    }
+                });
+            }
+            
+            // If no vehicle types, fall back to manufacturers
+            if (combinedCategories.length === 0 && manufacturers.length > 0) {
+                manufacturers.forEach(manu => {
+                    const manuModels = modelsData.filter(m => m.manufacturer_id === manu.id);
+                    if (manuModels.length > 0) {
+                        combinedCategories.push({
+                            id: manu.id,
+                            name: manu.name,
+                            description: manu.country || 'Manufacturer',
+                            manufacturers: {
+                                [manu.name]: manuModels.map(m => ({
+                                    id: m.id,
+                                    name: m.name,
+                                    manufacturer_id: m.manufacturer_id,
+                                    year_start: m.year_start,
+                                    year_end: m.year_end
+                                }))
+                            }
+                        });
+                    }
+                });
+            }
+
+            vehicleSubCategories = combinedCategories;
+            console.log('📦 Combined Categories:', vehicleSubCategories);
+
+            // ─── 4. Fetch Vehicle Rates with all related data ─────────
             console.log('📦 Fetching vehicle rates from Supabase...');
             const { data: ratesData, error: ratesError } = await supabase
                 .from('vehicle_rates')
@@ -1106,7 +1180,7 @@
             vehicleRates = ratesData || [];
             console.log('📦 Vehicle Rates:', vehicleRates);
 
-            // ─── 4. Fetch Routes ──────────────────────────────────────
+            // ─── 5. Fetch Routes ──────────────────────────────────────
             console.log('📦 Fetching routes from Supabase...');
             const { data: routesData, error: routesError } = await supabase
                 .from('routes')
@@ -1132,9 +1206,9 @@
             }
             console.log('📦 Routes:', routes);
 
-            // ─── 5. Check if we have data ─────────────────────────────
-            if (!manufacturers || manufacturers.length === 0) {
-                throw new Error('No manufacturers found in Supabase. Please check your data.');
+            // ─── 6. Check if we have data ─────────────────────────────
+            if (!vehicleCategories || vehicleCategories.length === 0 && !vehicleSubCategories.length === 0) {
+                throw new Error('No vehicle data found in Supabase. Please check your data.');
             }
 
             dataLoaded = true;
@@ -1149,67 +1223,94 @@
     }
 
     // ─── Rendering ──────────────────────────────────────────────────────
-    function populateManufacturers() {
+    function populateCategories() {
         manufacturerSelect.innerHTML = '';
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
-        defaultOpt.textContent = '— Select Manufacturer —';
+        defaultOpt.textContent = '— Select Vehicle Type —';
         defaultOpt.disabled = true;
         defaultOpt.selected = true;
         manufacturerSelect.appendChild(defaultOpt);
 
-        manufacturers.forEach(m => {
+        vehicleSubCategories.forEach(cat => {
             const opt = document.createElement('option');
-            opt.value = m.id;
-            opt.textContent = m.name + (m.country ? ` (${m.country})` : '');
+            opt.value = cat.id;
+            opt.textContent = cat.name;
             manufacturerSelect.appendChild(opt);
         });
 
-        if (manufacturers.length > 0) {
+        if (vehicleSubCategories.length > 0) {
             manufacturerSelect.disabled = false;
+            // Auto-select first
+            manufacturerSelect.value = vehicleSubCategories[0].id;
+            populateModels(vehicleSubCategories[0].id);
         } else {
             manufacturerSelect.disabled = true;
         }
     }
 
-    function populateModels(manufacturerId) {
+    function populateModels(categoryId) {
         modelSelect.innerHTML = '';
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
-        defaultOpt.textContent = '— Select Model —';
+        defaultOpt.textContent = '— Select Specification —';
         defaultOpt.disabled = true;
         defaultOpt.selected = true;
         modelSelect.appendChild(defaultOpt);
 
-        if (!manufacturerId) {
+        if (!categoryId) {
             modelSelect.disabled = true;
             return;
         }
 
-        const filtered = models.filter(m => m.manufacturer_id === manufacturerId);
-        
-        if (filtered.length === 0) {
+        const category = vehicleSubCategories.find(c => c.id === categoryId);
+        if (!category || !category.manufacturers) {
             modelSelect.disabled = true;
-            modelSelect.innerHTML = '<option value="">No models available</option>';
+            modelSelect.innerHTML = '<option value="">No specifications available</option>';
             return;
         }
 
-        filtered.forEach(m => {
+        // Get all models from all manufacturers in this category
+        let allModels = [];
+        Object.keys(category.manufacturers).forEach(manuName => {
+            const models = category.manufacturers[manuName] || [];
+            models.forEach(m => {
+                allModels.push({
+                    id: m.id,
+                    name: `${manuName} ${m.name}`,
+                    manufacturer_name: manuName,
+                    model_name: m.name,
+                    year_start: m.year_start,
+                    year_end: m.year_end
+                });
+            });
+        });
+
+        if (allModels.length === 0) {
+            modelSelect.disabled = true;
+            modelSelect.innerHTML = '<option value="">No specifications available</option>';
+            return;
+        }
+
+        allModels.forEach(m => {
             const opt = document.createElement('option');
             opt.value = m.id;
-            const yearRange = m.year_start ? `${m.year_start}${m.year_end ? `-${m.year_end}` : ''}` : '';
-            opt.textContent = m.name + (yearRange ? ` (${yearRange})` : '');
+            const yearRange = m.year_start ? ` (${m.year_start}${m.year_end ? `-${m.year_end}` : ''})` : '';
+            opt.textContent = m.name + yearRange;
             modelSelect.appendChild(opt);
         });
 
         modelSelect.disabled = false;
+        // Auto-select first
+        modelSelect.value = allModels[0].id;
+        populateEngines(allModels[0].id);
     }
 
     function populateEngines(modelId) {
         engineSelect.innerHTML = '';
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
-        defaultOpt.textContent = '— Select Engine —';
+        defaultOpt.textContent = '— Select Rate / Class —';
         defaultOpt.disabled = true;
         defaultOpt.selected = true;
         engineSelect.appendChild(defaultOpt);
@@ -1224,7 +1325,7 @@
         
         if (rates.length === 0) {
             engineSelect.disabled = true;
-            engineSelect.innerHTML = '<option value="">No engine options available</option>';
+            engineSelect.innerHTML = '<option value="">No rate data available</option>';
             return;
         }
 
@@ -1243,11 +1344,15 @@
             if (drivetrain.name) label += ` · ${drivetrain.name}`;
             if (r.total_cost_per_km) label += ` (KES ${r.total_cost_per_km}/km)`;
             
-            opt.textContent = label || 'Standard';
+            opt.textContent = label || 'Standard Rate';
             engineSelect.appendChild(opt);
         });
 
         engineSelect.disabled = false;
+        // Auto-select first
+        if (engineSelect.options.length > 1) {
+            engineSelect.value = engineSelect.options[1].value;
+        }
     }
 
     function loadRoutes() {
@@ -1295,11 +1400,26 @@
         const rate = vehicleRates.find(r => r.id === rateId);
         if (!rate) return null;
 
-        const model = models.find(m => m.id === rate.vehicle_model_id);
-        const manufacturer = manufacturers.find(m => m.id === model?.manufacturer_id);
+        // Find the model and category
+        const modelId = rate.vehicle_model_id;
+        let modelName = 'Unknown';
+        let categoryName = 'Unknown';
+        
+        vehicleSubCategories.forEach(cat => {
+            Object.keys(cat.manufacturers || {}).forEach(manuName => {
+                const models = cat.manufacturers[manuName] || [];
+                models.forEach(m => {
+                    if (m.id === modelId) {
+                        modelName = `${manuName} ${m.name}`;
+                        categoryName = cat.name;
+                    }
+                });
+            });
+        });
+
         const fuel = rate.fuel_types || {};
 
-        return { rate, model, manufacturer, fuel };
+        return { rate, modelName, categoryName, fuel };
     }
 
     // ─── Validation ──────────────────────────────────────────────────────
@@ -1357,7 +1477,7 @@
         }
 
         const distance_km = Math.max(0, parseFloat(distanceInput.value) || 0);
-        const { rate, model, manufacturer, fuel } = selected;
+        const { rate, modelName, categoryName, fuel } = selected;
 
         try {
             // Call the FastAPI calculate endpoint with enterprise data
@@ -1366,8 +1486,8 @@
             );
 
             // Update UI with results
-            const vehicleName = `${manufacturer?.name || 'Unknown'} ${model?.name || 'Unknown'}`;
-            $('vehicleLabel').textContent = vehicleName;
+            const vehicleDisplay = modelName ? `${categoryName} · ${modelName}` : categoryName;
+            $('vehicleLabel').textContent = vehicleDisplay || '—';
             $('fuelPill').textContent = fuel?.name || '—';
             $('totalTrip').textContent = fmtKShs(result.total_cost || rate.total_cost_per_km * distance_km || 0);
             $('totalTripSub').textContent = `at ${fmtKShs(rate.total_cost_per_km || 0)} KES/km over ${Math.round(distance_km).toLocaleString()} km`;
@@ -1487,9 +1607,9 @@
             selectedFuel = this.dataset.fuel;
             // Filter vehicle rates by fuel type
             // Re-populate based on selected fuel
-            const manufacturerId = manufacturerSelect.value;
-            if (manufacturerId) {
-                populateModels(manufacturerId);
+            const categoryId = manufacturerSelect.value;
+            if (categoryId) {
+                populateModels(categoryId);
                 const modelId = modelSelect.value;
                 if (modelId) {
                     populateEngines(modelId);
@@ -1535,26 +1655,8 @@
     (async function init() {
         try {
             await fetchData();
-            populateManufacturers();
+            populateCategories();
             loadRoutes();
-            
-            // Auto-select first manufacturer
-            if (manufacturers.length > 0) {
-                manufacturerSelect.value = manufacturers[0].id;
-                populateModels(manufacturers[0].id);
-                
-                // Auto-select first model
-                if (modelSelect.options.length > 1) {
-                    modelSelect.value = modelSelect.options[1].value;
-                    populateEngines(modelSelect.value);
-                    
-                    // Auto-select first engine
-                    if (engineSelect.options.length > 1) {
-                        engineSelect.value = engineSelect.options[1].value;
-                    }
-                }
-            }
-            
             calculateBtn.disabled = false;
             calculate();
         } catch (error) {
