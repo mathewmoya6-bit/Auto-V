@@ -1,6 +1,7 @@
+
 # app/models/user.py
 # =============================================================================
-# AUTO-V API - User Models
+# AUTO-V API - User Profile Model
 # =============================================================================
 
 import uuid
@@ -30,12 +31,12 @@ class UserProfile(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login = Column(DateTime(timezone=True))
 
-    # Relationships
+    # Relationships (string references to avoid circular imports)
     vehicles = relationship("Vehicle", foreign_keys="Vehicle.user_id", back_populates="owner")
     mileage_claims = relationship("MileageClaim", foreign_keys="MileageClaim.user_id", back_populates="user")
     approved_mileage_claims = relationship("MileageClaim", foreign_keys="MileageClaim.approved_by", back_populates="approver")
     vin_scans = relationship("VINScan", foreign_keys="VINScan.user_id", back_populates="user")
-    
+
     __table_args__ = (
         Index("idx_users_email", "email"),
         Index("idx_users_role", "role"),
