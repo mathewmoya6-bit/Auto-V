@@ -868,13 +868,9 @@
     'use strict';
 
     // ─── CONFIG ──────────────────────────────────────────────────────
-    // Use HTTPS explicitly - do NOT change to HTTP
-    const API_BASE = new URL('/api/v1', 'https://auto-v.onrender.com').href;
-    // Remove trailing slash if present
-    const API_BASE_CLEAN = API_BASE.replace(/\/$/, '');
-    
-    // Log the API base URL for debugging
-    console.log('🔗 API Base URL:', API_BASE_CLEAN);
+    // Use the backend API URL
+    const API_BASE = 'https://auto-v.onrender.com/api/v1';
+    console.log('🔗 API Base URL:', API_BASE);
 
     const MAX_DISTANCE = 100000;
 
@@ -893,47 +889,28 @@
 
     // ─── API Client ──────────────────────────────────────────────
     const api = {
-        baseURL: API_BASE_CLEAN,
-        token: null,
-
-        getToken() {
-            return this.token || localStorage.getItem('access_token');
-        },
-
-        setToken(token) {
-            this.token = token;
-            localStorage.setItem('access_token', token);
-        },
+        baseURL: API_BASE,
 
         async request(endpoint, options = {}) {
             const url = `${this.baseURL}${endpoint}`;
-            console.log('🌐 API Request URL:', url);
-
-            const headers = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                ...(options.headers || {})
-            };
-
-            const token = this.getToken();
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
+            console.log('🌐 API Request:', url);
 
             try {
                 const response = await fetch(url, {
                     ...options,
-                    headers,
-                    credentials: 'include'
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...(options.headers || {})
+                    }
                 });
 
                 if (!response.ok) {
                     let message = `HTTP ${response.status}`;
                     try {
-                        const errorData = await response.json();
-                        message = errorData.detail || errorData.message || message;
+                        const error = await response.json();
+                        message = error.detail || error.message || message;
                     } catch {
-                        // If response is not JSON, use status text
                         message = response.statusText || message;
                     }
                     throw new Error(message);
@@ -941,21 +918,7 @@
 
                 return response.json();
             } catch (error) {
-                console.error('❌ API request failed:', error);
-                
-                // Provide clearer error messages for SSL issues
-                if (error.message && (
-                    error.message.includes('CERTIFICATE_VERIFY_FAILED') ||
-                    error.message.includes('self-signed') ||
-                    error.message.includes('SSL') ||
-                    error.message.includes('certificate')
-                )) {
-                    throw new Error(
-                        'SSL Certificate verification failed. The backend SSL certificate is invalid or self-signed. ' +
-                        'Please check the server SSL configuration.'
-                    );
-                }
-                
+                console.error('❌ API Error:', error);
                 throw error;
             }
         },
@@ -969,7 +932,7 @@
                 method: 'POST',
                 body: JSON.stringify(data),
             });
-        },
+        }
     };
 
     // ─── Formatting ──────────────────────────────────────────────────
@@ -978,24 +941,19 @@
         return Number.isFinite(n) ? n : fallback;
     }
 
-    function debounce(fn, wait) {
-        let t;
-        return (...args) => {
-            clearTimeout(t);
-            t = setTimeout(() => fn(...args), wait);
-        };
-    }
-
-    let kesFormatter, kesFormatterInt;
+    let kesFormatter;
     try {
-        kesFormatter = new Intl.NumberFormat('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        kesFormatterInt = new Intl.NumberFormat('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    } catch (e) {
-        kesFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        kesFormatterInt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        kesFormatter = new Intl.NumberFormat('en-KE', { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2 
+        });
+    } catch {
+        kesFormatter = new Intl.NumberFormat('en-US', { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2 
+        });
     }
     const fmtKShs = (n) => kesFormatter.format(num(n));
-    const fmtKShsInt = (n) => kesFormatterInt.format(num(n));
 
     // ─── State ──────────────────────────────────────────────────────────
     let categories = [];
@@ -1036,7 +994,7 @@
         dbStatus.style.color = 'var(--amber)';
 
         try {
-            // Fetch categories with their variants from backend
+            // Fetch categories with their variants
             const categoriesData = await api.get('/mileage/categories');
             
             if (!categoriesData || !Array.isArray(categoriesData)) {
@@ -1055,32 +1013,23 @@
             // Transform backend data to match frontend format
             categories = categoriesData.map(cat => ({
                 id: cat.id,
-                label: cat.name || cat.category_name || 'Unnamed category',
+                label: cat.label || cat.name || 'Unnamed category',
                 fuel_type: cat.fuel_type || '—',
                 variants: (cat.variants || []).map(v => ({
                     id: v.id,
-                    label: v.engine_class || v.variant_name || v.label || 'Unnamed variant',
+                    label: v.label || 'Unnamed variant',
                     category_id: cat.id,
-                    category_name: cat.name || cat.category_name || 'Unknown',
-                    fixed_per_km: num(v.fixed_per_km || v.fixed_cost_per_km || 0),
-                    operating_per_km: num(v.operating_per_km || v.operating_cost_per_km || 0),
-                    total_per_km: num(v.total_per_km || v.total_cost_per_km || 0),
+                    category_name: cat.label || cat.name || 'Unknown',
+                    fixed_per_km: num(v.fixed_per_km || 0),
+                    operating_per_km: num(v.operating_per_km || 0),
+                    total_per_km: num(v.total_per_km || 0),
                     initial_cost: num(v.initial_cost || 0),
-                    year1: num(v.year1 || v.total_per_km || v.total_cost_per_km || 0),
-                    year2: num(v.year2 || v.total_per_km || v.total_cost_per_km || 0),
-                    year3: num(v.year3 || v.total_per_km || v.total_cost_per_km || 0),
-                    year4: num(v.year4 || v.total_per_km || v.total_cost_per_km || 0),
-                    year5: num(v.year5 || v.total_per_km || v.total_cost_per_km || 0),
-                    components: {
-                        insurance: num(v.insurance || 0),
-                        depreciation: num(v.depreciation || 0),
-                        interest: num(v.interest_on_capital || v.interest || 0),
-                        fuel: num(v.fuel_per_km || v.fuel || 0),
-                        servicing: num(v.servicing || 0),
-                        repairs: num(v.repairs || v.repairs_replacements || 0),
-                        tyres: num(v.tyres || v.automotive_tyres || 0),
-                        licences: num(v.licences || v.licences_parking || 0)
-                    }
+                    year1: num(v.year1 || 0),
+                    year2: num(v.year2 || 0),
+                    year3: num(v.year3 || 0),
+                    year4: num(v.year4 || 0),
+                    year5: num(v.year5 || 0),
+                    components: v.components || {}
                 }))
             }));
 
@@ -1251,7 +1200,7 @@
             return false;
         }
         if (val > MAX_DISTANCE) {
-            distanceError.textContent = `Distance seems too large (max ${fmtKShsInt(MAX_DISTANCE)} km).`;
+            distanceError.textContent = `Distance seems too large (max ${MAX_DISTANCE.toLocaleString()} km).`;
             return false;
         }
         distanceError.textContent = '';
@@ -1277,7 +1226,7 @@
         shareBtn.disabled = true;
     }
 
-    function calculate() {
+    async function calculate() {
         if (!dataLoaded) return;
 
         const distanceValid = validateDistance();
@@ -1294,63 +1243,74 @@
 
         const distance_km = Math.max(0, parseFloat(distanceInput.value) || 0);
         const { category, variant } = selected;
-        const fixedCostTrip = variant.fixed_per_km * distance_km;
-        const operatingCostTrip = variant.operating_per_km * distance_km;
-        const totalCostTrip = variant.total_per_km * distance_km;
 
-        $('vehicleLabel').textContent = `${category.label} — ${variant.label}`;
-        $('fuelPill').textContent = category.fuel_type || '—';
-        $('totalTrip').textContent = fmtKShs(totalCostTrip);
-        $('totalTripSub').textContent = `at ${fmtKShs(variant.total_per_km)} KES/km over ${fmtKShsInt(distance_km)} km`;
-        $('fixedPerKm').textContent = fmtKShs(variant.fixed_per_km);
-        $('operatingPerKm').textContent = fmtKShs(variant.operating_per_km);
-        $('fixedTrip').textContent = `KES ${fmtKShs(fixedCostTrip)}`;
-        $('operatingTrip').textContent = `KES ${fmtKShs(operatingCostTrip)}`;
-        $('totalPerKm').textContent = `${fmtKShs(variant.total_per_km)} KES/km`;
-        $('initialCost').textContent = `KES ${fmtKShsInt(variant.initial_cost)}`;
+        try {
+            // Call the backend calculate endpoint
+            const result = await api.get(
+                `/mileage/calculate?category_id=${category.id}&variant_id=${variant.id}&distance_km=${distance_km}`
+            );
 
-        const comp = variant.components || {};
-        $('detailInsurance').textContent = comp.insurance ? fmtKShsInt(comp.insurance) : '—';
-        $('detailDepreciation').textContent = comp.depreciation ? fmtKShsInt(comp.depreciation) : '—';
-        $('detailInterest').textContent = comp.interest ? fmtKShsInt(comp.interest) : '—';
-        $('detailFuel').textContent = comp.fuel ? `${fmtKShs(comp.fuel)}/km` : '—';
-        $('detailServicing').textContent = comp.servicing ? `${fmtKShs(comp.servicing)}/km` : '—';
-        $('detailRepairs').textContent = comp.repairs ? `${fmtKShs(comp.repairs)}/km` : '—';
-        $('detailTyres').textContent = comp.tyres ? `${fmtKShs(comp.tyres)}/km` : '—';
-        $('detailLicences').textContent = comp.licences ? fmtKShsInt(comp.licences) : '—';
+            // Update UI with results
+            $('vehicleLabel').textContent = `${category.label} — ${variant.label}`;
+            $('fuelPill').textContent = category.fuel_type || '—';
+            $('totalTrip').textContent = fmtKShs(result.total_cost || 0);
+            $('totalTripSub').textContent = `at ${fmtKShs(result.total_per_km || 0)} KES/km over ${Math.round(distance_km).toLocaleString()} km`;
+            $('fixedPerKm').textContent = fmtKShs(result.fixed_per_km || 0);
+            $('operatingPerKm').textContent = fmtKShs(result.operating_per_km || 0);
+            $('fixedTrip').textContent = `KES ${fmtKShs(result.fixed_cost || 0)}`;
+            $('operatingTrip').textContent = `KES ${fmtKShs(result.operating_cost || 0)}`;
+            $('totalPerKm').textContent = `${fmtKShs(result.total_per_km || 0)} KES/km`;
+            $('initialCost').textContent = `KES ${fmtKShs(variant.initial_cost || 0)}`;
 
-        const years = [
-            { id: 'year1', val: variant.year1 },
-            { id: 'year2', val: variant.year2 },
-            { id: 'year3', val: variant.year3 },
-            { id: 'year4', val: variant.year4 },
-            { id: 'year5', val: variant.year5 }
-        ];
-        years.forEach((y, idx) => {
-            const el = $(y.id);
-            el.textContent = fmtKShs(y.val);
-            if (idx === 0) {
-                el.className = 'year-value gold';
-            } else {
-                const prev = years[idx - 1].val;
-                if (y.val < prev) el.className = 'year-value green';
-                else if (y.val > prev) el.className = 'year-value red';
-                else el.className = 'year-value';
-            }
-        });
+            const comp = result.components || {};
+            $('detailInsurance').textContent = comp.insurance ? fmtKShs(comp.insurance) : '—';
+            $('detailDepreciation').textContent = comp.depreciation ? fmtKShs(comp.depreciation) : '—';
+            $('detailInterest').textContent = comp.interest ? fmtKShs(comp.interest) : '—';
+            $('detailFuel').textContent = comp.fuel ? `${fmtKShs(comp.fuel)}/km` : '—';
+            $('detailServicing').textContent = comp.servicing ? `${fmtKShs(comp.servicing)}/km` : '—';
+            $('detailRepairs').textContent = comp.repairs ? `${fmtKShs(comp.repairs)}/km` : '—';
+            $('detailTyres').textContent = comp.tyres ? `${fmtKShs(comp.tyres)}/km` : '—';
+            $('detailLicences').textContent = comp.licences ? fmtKShs(comp.licences) : '—';
 
-        let confidence = 95;
-        if (variant.fixed_per_km > 0 && variant.operating_per_km > 0) confidence += 2;
-        if (variant.initial_cost > 0) confidence += 1;
-        if (variant.total_per_km > 0) confidence += 2;
-        confidence = Math.min(confidence, 99);
-        $('confidenceScore').textContent = `${confidence}%`;
-        $('lastUpdated').textContent = new Date().toLocaleDateString('en-KE', {
-            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-        });
+            const yearly = result.yearly_costs || {};
+            const years = [
+                { id: 'year1', val: yearly.year1 || 0 },
+                { id: 'year2', val: yearly.year2 || 0 },
+                { id: 'year3', val: yearly.year3 || 0 },
+                { id: 'year4', val: yearly.year4 || 0 },
+                { id: 'year5', val: yearly.year5 || 0 }
+            ];
+            years.forEach((y, idx) => {
+                const el = $(y.id);
+                el.textContent = fmtKShs(y.val);
+                if (idx === 0) {
+                    el.className = 'year-value gold';
+                } else {
+                    const prev = years[idx - 1].val;
+                    if (y.val < prev) el.className = 'year-value green';
+                    else if (y.val > prev) el.className = 'year-value red';
+                    else el.className = 'year-value';
+                }
+            });
 
-        printBtn.disabled = false;
-        shareBtn.disabled = false;
+            let confidence = 95;
+            if (result.fixed_per_km > 0 && result.operating_per_km > 0) confidence += 2;
+            if (variant.initial_cost > 0) confidence += 1;
+            if (result.total_per_km > 0) confidence += 2;
+            confidence = Math.min(confidence, 99);
+            $('confidenceScore').textContent = `${confidence}%`;
+            $('lastUpdated').textContent = new Date().toLocaleDateString('en-KE', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+
+            printBtn.disabled = false;
+            shareBtn.disabled = false;
+
+        } catch (error) {
+            console.error('Calculation failed:', error);
+            showToast('❌ Failed to calculate: ' + error.message, 'error');
+            resetResults('Calculation failed. Please try again.');
+        }
     }
 
     // ─── Share / print ──────────────────────────────────────────────────
@@ -1417,11 +1377,15 @@
 
     variantSelect.addEventListener('change', calculate);
 
-    const debouncedCalc = debounce(() => {
+    let calcTimeout;
+    distanceInput.addEventListener('input', () => {
         document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-        calculate();
-    }, 150);
-    distanceInput.addEventListener('input', debouncedCalc);
+        clearTimeout(calcTimeout);
+        calcTimeout = setTimeout(() => {
+            validateDistance();
+            calculate();
+        }, 300);
+    });
     distanceInput.addEventListener('blur', () => { validateDistance(); calculate(); });
 
     calculateBtn.addEventListener('click', calculate);
