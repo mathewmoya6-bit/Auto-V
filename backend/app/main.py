@@ -12,8 +12,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.database import init_db, close_db, is_database_configured
+from app.core.database import init_db, close_db, is_database_configured, engine
 from app.api.v1.routes import auth, mileage
+
+# Import all models so Base.metadata knows about them
+from app.models import Base
+from app.models.user import UserProfile
+from app.models.mileage import VehicleCategory, VehicleVariant, Route, MileageClaim
+# Import other models as needed
+# from app.models.vehicle import Vehicle
+# from app.models.valuation import Valuation
+# from app.models.inspection import Inspection
+# from app.models.fleet import Fleet
+# from app.models.certificate import Certificate
+# from app.models.payment import Payment
 
 # ─── Setup Logging ──────────────────────────────────────────────────
 
@@ -42,8 +54,19 @@ async def lifespan(app: FastAPI):
         try:
             await init_db()
             logger.info("✅ Database initialized successfully")
+            
+            # ─── CREATE TABLES IF THEY DON'T EXIST ────────────────────
+            # This ensures all tables are created based on your models
+            logger.info("📋 Creating database tables if they don't exist...")
+            async with engine.begin() as conn:
+                # This creates all tables defined in your models
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("✅ Database tables verified/created successfully")
+            
         except Exception as e:
             logger.error(f"❌ Failed to initialize database: {str(e)}")
+            # Optionally raise to prevent startup with broken DB
+            # raise
     
     yield
     
