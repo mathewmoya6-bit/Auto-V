@@ -1,11 +1,11 @@
 # app/models/mileage.py
 # =============================================================================
-# AUTO-V API - Mileage Models
+# AUTO-V API - Mileage Models (Aligned with Database Schema)
 # =============================================================================
 
 import uuid
 from sqlalchemy import (
-    Column, String, Boolean, Numeric, DateTime, Date, Text, JSON, BigInteger, Integer,
+    Column, String, Boolean, Numeric, DateTime, Date, Text, JSON, BigInteger,
     ForeignKey, Index, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -37,36 +37,17 @@ class VehicleVariant(Base):
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     category_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicle_categories.id", ondelete="CASCADE"), nullable=False)
     label = Column(String(150), nullable=False)
-    
-    # Vehicle details
-    make = Column(String(100), nullable=True)
-    model = Column(String(100), nullable=True)
-    engine_size = Column(String(50), nullable=True)
-    fuel_type = Column(String(50), nullable=True)
-    
-    # Rate fields
+
     fixed_per_km = Column(Numeric(10, 4), default=0)
     operating_per_km = Column(Numeric(10, 4), default=0)
     total_per_km = Column(Numeric(10, 4), default=0)
 
-    # Yearly cost projections
     initial_cost = Column(Numeric(14, 2), default=0)
     year1 = Column(Numeric(14, 2), default=0)
     year2 = Column(Numeric(14, 2), default=0)
     year3 = Column(Numeric(14, 2), default=0)
     year4 = Column(Numeric(14, 2), default=0)
     year5 = Column(Numeric(14, 2), default=0)
-    
-    # Rate components for calculation
-    insurance_rate = Column(Numeric(10, 4), default=0)
-    depreciation_rate = Column(Numeric(10, 4), default=0)
-    interest_rate = Column(Numeric(10, 4), default=0)
-    fuel_rate = Column(Numeric(10, 4), default=0)
-    servicing_rate = Column(Numeric(10, 4), default=0)
-    repairs_rate = Column(Numeric(10, 4), default=0)
-    tyres_rate = Column(Numeric(10, 4), default=0)
-    licences_rate = Column(Numeric(10, 4), default=0)
-    is_primary = Column(Boolean, default=False)
 
     components = Column(JSON, default=dict)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -118,26 +99,16 @@ class MileageClaim(Base):
     odometer_start = Column(BigInteger)
     odometer_end = Column(BigInteger)
 
-    status = Column(String(20), default="pending")  # pending, approved, rejected, paid, cancelled
+    status = Column(String(20), default="pending")
     approved_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships with explicit foreign_keys
-    user = relationship(
-        "UserProfile",
-        foreign_keys=[user_id],
-        back_populates="mileage_claims"
-    )
-    
-    approver = relationship(
-        "UserProfile",
-        foreign_keys=[approved_by],
-        back_populates="approved_mileage_claims"
-    )
-    
-    vehicle = relationship("Vehicle", back_populates="mileage_claims")
+    # Relationships
+    user = relationship("UserProfile", foreign_keys=[user_id], back_populates="mileage_claims")
+    approver = relationship("UserProfile", foreign_keys=[approved_by], back_populates="approved_mileage_claims")
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id], back_populates="mileage_claims")
 
     __table_args__ = (
         Index("idx_mileage_claims_user_id", "user_id"),
