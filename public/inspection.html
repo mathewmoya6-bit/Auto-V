@@ -6,6 +6,9 @@
     <title>AUTO-V | Professional Inspection Engine</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🔍%3C/text%3E%3C/svg%3E">
     
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
@@ -1148,7 +1151,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V PROFESSIONAL INSPECTION ENGINE — FastAPI Backend
+        // AUTO-V PROFESSIONAL INSPECTION ENGINE — Hybrid Architecture
+        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -1156,9 +1160,6 @@
 
             if (window.autoVProfInspectionInitialized) return;
             window.autoVProfInspectionInitialized = true;
-
-            // ─── PRODUCTION CONFIG ──────────────────────────────────────
-            const API_BASE = 'https://auto-v.onrender.com/api/v1';
 
             // ─── VEHICLE MODELS ──────────────────────────────────────────
             const vehicleModels = {
@@ -1230,82 +1231,6 @@
             requiredImages.forEach(slot => imageStatus[slot] = { uploaded: false, file: null, publicUrl: null });
             requiredDocs.forEach(doc => docStatus[doc] = { uploaded: false, file: null, publicUrl: null });
 
-            // ─── API CLIENT (built-in) ──────────────────────────────────
-            const api = {
-                baseURL: API_BASE,
-                token: null,
-
-                setToken(token) {
-                    this.token = token;
-                    localStorage.setItem('access_token', token);
-                },
-
-                getToken() {
-                    return this.token || localStorage.getItem('access_token');
-                },
-
-                clearToken() {
-                    this.token = null;
-                    localStorage.removeItem('access_token');
-                },
-
-                async request(endpoint, options = {}) {
-                    const url = `${this.baseURL}${endpoint}`;
-                    const headers = {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...options.headers,
-                    };
-
-                    const token = this.getToken();
-                    if (token) {
-                        headers['Authorization'] = `Bearer ${token}`;
-                    }
-
-                    const response = await fetch(url, {
-                        ...options,
-                        headers,
-                        credentials: 'include',
-                        mode: 'cors',
-                    });
-
-                    if (!response.ok) {
-                        let errorMessage = `HTTP ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            errorMessage = errorData.detail || errorData.message || errorMessage;
-                        } catch (e) {
-                            errorMessage = await response.text() || errorMessage;
-                        }
-                        throw new Error(errorMessage);
-                    }
-
-                    return response.json();
-                },
-
-                get(endpoint) {
-                    return this.request(endpoint, { method: 'GET' });
-                },
-
-                post(endpoint, data) {
-                    return this.request(endpoint, {
-                        method: 'POST',
-                        body: JSON.stringify(data),
-                    });
-                },
-
-                put(endpoint, data) {
-                    return this.request(endpoint, {
-                        method: 'PUT',
-                        body: JSON.stringify(data),
-                    });
-                },
-
-                delete(endpoint) {
-                    return this.request(endpoint, { method: 'DELETE' });
-                },
-            };
-
             // ─── HELPERS ────────────────────────────────────────────────
             function showMessage(msg, type = 'error') {
                 const el = document.getElementById(type === 'error' ? 'errorMsg' : 'successMsg');
@@ -1315,6 +1240,10 @@
             }
 
             function showToast(msg, type = 'success') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(msg, type);
+                    return;
+                }
                 const t = document.createElement('div');
                 t.className = `toast toast-${type}`;
                 t.textContent = msg;
@@ -1369,23 +1298,6 @@
             }
 
             // ─── UPLOAD FUNCTIONS ──────────────────────────────────────
-            async function uploadFile(file, bucket, path) {
-                try {
-                    return new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            resolve(e.target.result);
-                        };
-                        reader.onerror = function(e) {
-                            reject(e);
-                        };
-                        reader.readAsDataURL(file);
-                    });
-                } catch (error) {
-                    throw error;
-                }
-            }
-
             window.handleImageUpload = async function(input, slot) {
                 const file = input.files[0];
                 if (!file) return;
@@ -1554,7 +1466,11 @@
 
                 showLoading(true);
                 try {
-                    const result = await api.post('/vehicles/decode-vin', { vin });
+                    // Use autoV API for VIN decode
+                    const result = await window.autoV.apiRequest('/vehicles/decode-vin', {
+                        method: 'POST',
+                        body: JSON.stringify({ vin })
+                    });
                     if (result.success && result.data) {
                         const data = result.data.vehicle || result.data;
                         document.getElementById('vehicleMake').value = data.make || 'Toyota';
@@ -1696,7 +1612,8 @@
                 showLoading(true);
 
                 try {
-                    const user = await api.get('/auth/me');
+                    // Get current user via autoV
+                    const user = await window.autoV.getCurrentUser();
                     currentUser = user;
                     document.getElementById('userEmail').textContent = user.email;
 
@@ -1743,7 +1660,7 @@
                         kebs: kebsResult
                     };
 
-                    // Save to FastAPI backend
+                    // Save to FastAPI backend via autoV
                     const inspectionData = {
                         user_id: user.id,
                         registration_number: reg,
@@ -1770,7 +1687,10 @@
                         status: kebsResult.status === 'FAIL' ? 'failed' : 'completed'
                     };
 
-                    await api.post('/inspections', inspectionData);
+                    await window.autoV.apiRequest('/inspections', {
+                        method: 'POST',
+                        body: JSON.stringify(inspectionData)
+                    });
 
                     // Show results
                     document.getElementById('dataEntryCard').classList.add('hidden');
@@ -1941,16 +1861,26 @@
             document.getElementById('downloadReportBtn').addEventListener('click', downloadPDF);
             document.getElementById('verifyReportBtn').addEventListener('click', verifyReport);
             document.getElementById('logoutBtn').addEventListener('click', async () => {
-                try {
-                    await api.post('/auth/logout');
-                } catch (e) {}
-                api.clearToken();
-                localStorage.removeItem('access_token');
-                window.location.href = 'login.html';
+                await window.autoV.logout();
             });
 
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
+                // Wait for autoV to be ready
+                if (!window.autoV || !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
+
                 populateYears();
                 const make = document.getElementById('vehicleMake').value;
                 const models = vehicleModels[make] || ['Other'];
@@ -1962,7 +1892,7 @@
                 document.getElementById('priceDisplay').textContent = `KES ${(pricingMap[purpose] || 3500).toLocaleString()}`;
 
                 try {
-                    const user = await api.get('/auth/me');
+                    const user = await window.autoV.getCurrentUser();
                     currentUser = user;
                     document.getElementById('userEmail').textContent = user.email;
                     document.getElementById('inspectorName').value = user.full_name || user.email || 'Inspector';
