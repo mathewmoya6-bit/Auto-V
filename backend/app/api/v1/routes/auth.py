@@ -118,7 +118,6 @@ async def get_me(
     # current_user: UserProfile = Depends(get_current_user)
 ):
     """Get current user profile."""
-    # Temporary: Return a test user until get_current_user is implemented
     return {
         "id": "test-user-id",
         "email": "test@example.com",
