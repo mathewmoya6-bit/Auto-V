@@ -6,10 +6,8 @@
     <title>AUTO-V | Instant Value Check</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
-    <!-- Import API Client -->
-    <script src="js/api-client.js"></script>
-    <script src="js/error-handler.js"></script>
-    <script src="js/loading.js"></script>
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js">
     </script>
@@ -1003,7 +1001,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V INSTANT VALUE CHECK — FastAPI Backend Integration
+        // AUTO-V INSTANT VALUE CHECK — Hybrid Architecture
+        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -1011,17 +1010,6 @@
 
             if (window.autoVInstantCheckInitialized) return;
             window.autoVInstantCheckInitialized = true;
-
-            // ─── CONFIG ──────────────────────────────────────────────────
-            const API_BASE = 'http://localhost:8000/api';
-
-            // ─── API CHECK ──────────────────────────────────────────────
-            if (typeof api === 'undefined') {
-                console.error('API client not found. Ensure js/api-client.js is loaded.');
-                document.getElementById('statusBox').className = 'status-box status-error';
-                document.getElementById('statusBox').textContent = '⚠️ API client not loaded. Please refresh the page.';
-                document.getElementById('statusBox').style.display = 'block';
-            }
 
             // ─── MODEL MAPPING ──────────────────────────────────────────
             let MODEL_MAP = {};
@@ -1240,7 +1228,7 @@
             // ─── FETCH SERVICE FEE FROM API ──────────────────────────
             async function fetchServiceFee() {
                 try {
-                    const data = await api.get('/settings/instant_fee');
+                    const data = await window.autoV.apiRequest('/settings/instant_fee');
                     const fee = parseInt(data.setting_value) || 500;
                     serviceFeeDisplay.textContent = `KES ${fee.toLocaleString()}`;
                     return fee;
@@ -1254,7 +1242,7 @@
             // ─── FETCH VEHICLE DATA FROM API ─────────────────────────
             async function loadVehicleData() {
                 try {
-                    const vehicles = await api.get('/vehicles/models');
+                    const vehicles = await window.autoV.apiRequest('/vehicles/models');
                     
                     // Build MODEL_MAP from API data
                     MODEL_MAP = {};
@@ -1527,7 +1515,7 @@
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
 
-                if (typeof api === 'undefined') {
+                if (!window.autoV || !window.autoV._initialized) {
                     statusBox.className = 'status-box status-error';
                     statusBox.textContent = '❌ API service unavailable. Please refresh the page.';
                     statusBox.style.display = 'block';
@@ -1570,8 +1558,8 @@
                 updateLoadingStep(1);
 
                 try {
-                    // Get current user
-                    const user = await api.get('/auth/me');
+                    // Get current user via autoV
+                    const user = await window.autoV.getCurrentUser();
 
                     let step = 1;
                     const stepInterval = setInterval(() => {
@@ -1599,42 +1587,51 @@
                         phone: formData.phone
                     };
 
-                    // Save to API valuations endpoint
-                    const savedValuation = await api.post('/valuations', valuationData);
+                    // Save to API valuations endpoint via autoV
+                    const savedValuation = await window.autoV.apiRequest('/valuations', {
+                        method: 'POST',
+                        body: JSON.stringify(valuationData)
+                    });
 
                     // ─── CALL VALUATION ENGINE ──────────────────────
-                    const result = await api.post('/valuations/instant', {
-                        user_id: user.id,
-                        vehicle: {
-                            type: formData.vehicleType,
-                            make: formData.make,
-                            model: formData.model,
-                            year: formData.year,
-                            engine_capacity: formData.engineCapacity,
-                            fuel_type: formData.fuelType,
-                            transmission: formData.transmission,
-                            body_type: formData.bodyType,
-                            body_color: formData.bodyColor,
-                            mileage: formData.mileage,
-                            condition: formData.condition,
-                            accident_history: formData.accidentHistory,
-                            location: formData.location,
-                            previous_owners: formData.previousOwners,
-                            usage_type: formData.usageType
-                        },
-                        phone: formData.phone,
-                        valuation_id: savedValuation.id
+                    const result = await window.autoV.apiRequest('/valuations/instant', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            user_id: user.id,
+                            vehicle: {
+                                type: formData.vehicleType,
+                                make: formData.make,
+                                model: formData.model,
+                                year: formData.year,
+                                engine_capacity: formData.engineCapacity,
+                                fuel_type: formData.fuelType,
+                                transmission: formData.transmission,
+                                body_type: formData.bodyType,
+                                body_color: formData.bodyColor,
+                                mileage: formData.mileage,
+                                condition: formData.condition,
+                                accident_history: formData.accidentHistory,
+                                location: formData.location,
+                                previous_owners: formData.previousOwners,
+                                usage_type: formData.usageType
+                            },
+                            phone: formData.phone,
+                            valuation_id: savedValuation.id
+                        })
                     });
 
                     clearInterval(stepInterval);
                     updateLoadingStep(5);
 
                     // ─── UPDATE VALUATION WITH RESULTS ──────────────
-                    await api.put(`/valuations/${savedValuation.id}`, {
-                        market_value: result.market_value,
-                        confidence_score: result.confidence_score,
-                        certificate_number: result.certificate_number,
-                        status: 'completed'
+                    await window.autoV.apiRequest(`/valuations/${savedValuation.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            market_value: result.market_value,
+                            confidence_score: result.confidence_score,
+                            certificate_number: result.certificate_number,
+                            status: 'completed'
+                        })
                     });
 
                     loadingSteps.classList.remove('show');
@@ -1656,13 +1653,26 @@
                     statusBox.style.display = 'block';
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '🚀 Get AI Valuation';
-                    
-                    ErrorHandler.handle(err, 'Valuation Processing');
                 }
             });
 
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
+                // Wait for autoV to be ready
+                if (!window.autoV || !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
+
                 initTomSelect();
 
                 vehicleTypeSelect.value = 'Car';
@@ -1672,7 +1682,7 @@
 
                 // Check auth and set user info
                 try {
-                    const user = await api.get('/auth/me');
+                    const user = await window.autoV.getCurrentUser();
                     console.log('✅ Authenticated user:', user.email);
                 } catch (error) {
                     if (error.message.includes('401')) {
@@ -1687,7 +1697,7 @@
                 const currentYear = new Date().getFullYear();
                 document.getElementById('year').max = currentYear;
 
-                console.log('🚗 AUTO-V Instant Value Check loaded successfully with FastAPI backend!');
+                console.log('🚗 AUTO-V Instant Value Check loaded successfully with Hybrid Architecture!');
             }
 
             document.addEventListener('DOMContentLoaded', init);
