@@ -623,6 +623,17 @@
         .toast-info { background: #3b82f6; color: #fff; }
         @keyframes slideIn { from{opacity:0; transform:translateX(80px);} to{opacity:1; transform:translateX(0);} }
 
+        .loading-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top: 2px solid var(--amber);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         @media (max-width: 768px) {
             .wrap { padding: 16px 12px 40px; }
             .report-header { padding: 20px 18px; }
@@ -849,7 +860,6 @@
         "use strict";
 
         // ── Configuration ──
-        // ✅ Your backend URL
         const API_BASE_URL = 'https://auto-v.onrender.com/api/v1';
         
         // ── DOM refs ──
@@ -895,9 +905,11 @@
         let filteredVehicles = [];
         let currentVehicle = null;
         let currentFuelFilter = 'all';
+        let isLoading = false;
 
         // ── Helpers ──
         function formatCurrency(val) {
+            if (val === undefined || val === null || isNaN(val)) return '0.00';
             return val.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
@@ -916,9 +928,13 @@
             dbStatus.style.color = isGood ? 'var(--green)' : 'var(--rust)';
         }
 
-        // ── API Calls to FastAPI Backend ──
-        
-        // Helper function to handle API responses
+        function isValidUUID(str) {
+            if (!str) return false;
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            return uuidRegex.test(str);
+        }
+
+        // ── API Calls ──
         async function apiCall(url, options = {}) {
             try {
                 const response = await fetch(url, {
@@ -943,12 +959,10 @@
             }
         }
 
-        // 1. Fetch categories
         async function fetchCategories() {
             try {
                 setStatus('● Loading categories...', true);
                 const data = await apiCall(`${API_BASE_URL}/categories`);
-                // Handle different response formats
                 categories = Array.isArray(data) ? data : (data.categories || data.data || []);
                 console.log('📦 Categories loaded:', categories.length);
                 populateCategories();
@@ -959,25 +973,34 @@
                 showToast(`Cannot connect to backend: ${err.message}`, 'error');
                 // Fallback data for testing
                 categories = [
-                    { id: '1', name: 'Saloon Cars' },
-                    { id: '2', name: 'SUVs & Crossovers' },
-                    { id: '3', name: 'Pickups & Vans' },
-                    { id: '4', name: 'Commercial Trucks' }
+                    { id: '11111111-1111-1111-1111-111111111111', name: 'Saloon Cars' },
+                    { id: '22222222-2222-2222-2222-222222222222', name: 'SUVs & Crossovers' },
+                    { id: '33333333-3333-3333-3333-333333333333', name: 'Pickups & Vans' }
                 ];
                 populateCategories();
                 return categories;
             }
         }
 
-        // 2. Fetch vehicles
         async function fetchVehicles(categoryId = null, fuelType = null) {
             try {
                 let url = `${API_BASE_URL}/vehicles`;
                 const params = new URLSearchParams();
-                if (categoryId) params.append('category_id', categoryId);
-                if (fuelType && fuelType !== 'all') params.append('fuel_type', fuelType);
+                
+                // Only add category_id if it's a valid UUID
+                if (categoryId && isValidUUID(categoryId)) {
+                    params.append('category_id', categoryId);
+                } else if (categoryId) {
+                    console.warn(`⚠️ Invalid UUID format: ${categoryId}, skipping filter`);
+                }
+                
+                if (fuelType && fuelType !== 'all') {
+                    params.append('fuel_type', fuelType);
+                }
+                
                 if (params.toString()) url += '?' + params.toString();
                 
+                console.log('📡 Fetching vehicles from:', url);
                 const data = await apiCall(url);
                 allVehicles = Array.isArray(data) ? data : (data.vehicles || data.data || []);
                 console.log('🚗 Vehicles loaded:', allVehicles.length);
@@ -992,11 +1015,13 @@
             }
         }
 
-        // 3. Fetch vehicle details
         async function fetchVehicleDetails(vehicleId) {
             try {
+                if (!isValidUUID(vehicleId)) {
+                    throw new Error(`Invalid vehicle ID format: ${vehicleId}`);
+                }
                 const data = await apiCall(`${API_BASE_URL}/vehicles/${vehicleId}`);
-                return data.vehicle || data.data || data;
+                return data;
             } catch (err) {
                 console.error('❌ fetchVehicleDetails error:', err);
                 showToast(`Error loading vehicle details: ${err.message}`, 'error');
@@ -1004,9 +1029,11 @@
             }
         }
 
-        // 4. Calculate costs
         async function calculateCosts(vehicleId, distance) {
             try {
+                if (!isValidUUID(vehicleId)) {
+                    throw new Error(`Invalid vehicle ID format: ${vehicleId}`);
+                }
                 const data = await apiCall(`${API_BASE_URL}/calculate`, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -1022,8 +1049,7 @@
             }
         }
 
-        // ── UI Population Functions ──
-
+        // ── UI Population ──
         function populateCategories() {
             categorySelect.innerHTML = '<option value="">Select category</option>';
             categories.forEach(c => {
@@ -1045,7 +1071,7 @@
             const showAll = showAllClasses.checked;
             let filtered = allVehicles;
 
-            if (catId) {
+            if (catId && isValidUUID(catId)) {
                 filtered = filtered.filter(v => v.category_id === catId);
             }
 
@@ -1053,7 +1079,6 @@
                 filtered = filtered.filter(v => v.fuel_type === currentFuelFilter);
             }
 
-            // If "Show All" is unchecked, show only primary vehicles
             if (!showAll && filtered.length > 0) {
                 const primaryMap = {};
                 filtered.forEach(v => {
@@ -1086,7 +1111,7 @@
             filteredVehicles.forEach(v => {
                 const opt = document.createElement('option');
                 opt.value = v.id;
-                const label = `${v.make || ''} ${v.model || ''} ${v.engine_size || ''}cc`.trim() || v.name || 'Unnamed';
+                const label = v.label || v.name || `${v.make || ''} ${v.model || ''}`.trim() || 'Unnamed';
                 opt.textContent = label;
                 variantSelect.appendChild(opt);
             });
@@ -1096,13 +1121,17 @@
             variantSelect.dispatchEvent(new Event('change'));
         }
 
-        // ── Load vehicle and calculate ──
+        // ── Load and Calculate ──
         async function loadVehicleAndCalculate(vehicleId, distance) {
-            if (!vehicleId) {
+            if (!vehicleId || !isValidUUID(vehicleId)) {
                 currentVehicle = null;
                 clearResults();
                 return;
             }
+
+            if (isLoading) return;
+            isLoading = true;
+            calculateBtn.disabled = true;
 
             try {
                 const vehicle = await fetchVehicleDetails(vehicleId);
@@ -1128,12 +1157,16 @@
                 console.error('❌ loadVehicleAndCalculate error:', err);
                 currentVehicle = null;
                 clearResults();
+            } finally {
+                isLoading = false;
+                calculateBtn.disabled = false;
             }
         }
 
-        // ── Update results with calculated data ──
+        // ── Update Results ──
         function updateResultsWithCalculatedData(result, vehicle, distance) {
-            vehicleLabel.textContent = `${vehicle.make || ''} ${vehicle.model || ''} ${vehicle.engine_size || ''}cc`.trim() || vehicle.name || 'Unnamed';
+            const label = vehicle.label || vehicle.name || `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unnamed';
+            vehicleLabel.textContent = label;
             fuelPill.textContent = vehicle.fuel_type || '—';
 
             const totalCost = result.total_cost || 0;
@@ -1188,7 +1221,8 @@
         }
 
         function updateResultsWithVehicleOnly(vehicle) {
-            vehicleLabel.textContent = `${vehicle.make || ''} ${vehicle.model || ''} ${vehicle.engine_size || ''}cc`.trim() || vehicle.name || 'Unnamed';
+            const label = vehicle.label || vehicle.name || `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unnamed';
+            vehicleLabel.textContent = label;
             fuelPill.textContent = vehicle.fuel_type || '—';
             
             totalTrip.textContent = '0.00';
@@ -1236,8 +1270,10 @@
         function init() {
             categorySelect.addEventListener('change', function() {
                 const catId = this.value;
-                if (catId) {
+                if (catId && isValidUUID(catId)) {
                     fetchVehicles(catId, currentFuelFilter);
+                } else if (catId) {
+                    showToast('Invalid category ID format', 'error');
                 } else {
                     filteredVehicles = [];
                     populateVariants();
@@ -1256,7 +1292,7 @@
                 btn.setAttribute('aria-pressed', 'true');
                 currentFuelFilter = fuel;
                 const catId = categorySelect.value;
-                if (catId) {
+                if (catId && isValidUUID(catId)) {
                     fetchVehicles(catId, currentFuelFilter);
                 } else {
                     fetchVehicles(null, currentFuelFilter);
@@ -1269,7 +1305,7 @@
 
             variantSelect.addEventListener('change', function() {
                 const vid = this.value;
-                if (vid) {
+                if (vid && isValidUUID(vid)) {
                     const distance = parseFloat(distanceInput.value) || 0;
                     loadVehicleAndCalculate(vid, distance);
                 } else {
@@ -1287,9 +1323,9 @@
                     distanceError.textContent = '';
                 }
                 const vid = variantSelect.value;
-                if (vid && val > 0) {
+                if (vid && isValidUUID(vid) && val > 0) {
                     loadVehicleAndCalculate(vid, val);
-                } else if (vid) {
+                } else if (vid && isValidUUID(vid)) {
                     loadVehicleAndCalculate(vid, 0);
                 }
             });
@@ -1317,8 +1353,8 @@
 
             calculateBtn.addEventListener('click', function() {
                 const vid = variantSelect.value;
-                if (!vid) {
-                    showToast('Please select a vehicle first', 'error');
+                if (!vid || !isValidUUID(vid)) {
+                    showToast('Please select a valid vehicle', 'error');
                     return;
                 }
                 const dist = parseFloat(distanceInput.value);
@@ -1363,9 +1399,10 @@
             
             fetchCategories()
                 .then(() => {
-                    if (categorySelect.value) {
+                    if (categorySelect.value && isValidUUID(categorySelect.value)) {
                         return fetchVehicles(categorySelect.value, currentFuelFilter);
                     }
+                    return null;
                 })
                 .then(() => {
                     setStatus('● Connected to FastAPI', true);
