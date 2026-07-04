@@ -5,9 +5,9 @@
 
 import logging
 from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy import select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from app.core.database import get_db
 
@@ -19,12 +19,7 @@ router = APIRouter(prefix="/mileage", tags=["Mileage"])
 # ─── Helper Functions ──────────────────────────────────────────────
 
 async def get_categories_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
-    """
-    Fetch all vehicle categories with their variants from the database.
-    """
-    from sqlalchemy import text
-    
-    # Raw SQL query to get categories with variants
+    """Fetch all vehicle categories with their variants from the database."""
     query = text("""
         SELECT 
             c.id as category_id,
@@ -63,7 +58,6 @@ async def get_categories_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
                 "variants": []
             }
         
-        # Add variant if exists
         if row.variant_id:
             variant = {
                 "id": str(row.variant_id),
@@ -88,8 +82,6 @@ async def get_categories_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
 
 async def get_routes_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
     """Fetch all routes from the database."""
-    from sqlalchemy import text
-    
     query = text("""
         SELECT from_city, to_city, km
         FROM routes
@@ -110,17 +102,12 @@ async def get_routes_from_db(db: AsyncSession) -> List[Dict[str, Any]]:
 
 @router.get("/categories")
 async def get_categories(db: AsyncSession = Depends(get_db)):
-    """
-    Get all vehicle categories with their variants from the database.
-    """
+    """Get all vehicle categories with their variants from the database."""
     try:
         logger.info("📊 Fetching mileage categories from database...")
-        
         categories = await get_categories_from_db(db)
-        
         logger.info(f"✅ Fetched {len(categories)} categories")
         return categories
-        
     except Exception as e:
         logger.error(f"❌ Error fetching categories: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -131,17 +118,12 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
 
 @router.get("/routes")
 async def get_routes(db: AsyncSession = Depends(get_db)):
-    """
-    Get all quick routes with distances from the database.
-    """
+    """Get all quick routes with distances from the database."""
     try:
         logger.info("📍 Fetching mileage routes from database...")
-        
         routes = await get_routes_from_db(db)
-        
         logger.info(f"✅ Fetched {len(routes)} routes")
         return routes
-        
     except Exception as e:
         logger.error(f"❌ Error fetching routes: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -154,8 +136,6 @@ async def get_routes(db: AsyncSession = Depends(get_db)):
 async def get_mileage_rates(db: AsyncSession = Depends(get_db)):
     """Get all mileage rates (flattened view)."""
     try:
-        from sqlalchemy import text
-        
         query = text("""
             SELECT 
                 c.name as category,
@@ -173,7 +153,7 @@ async def get_mileage_rates(db: AsyncSession = Depends(get_db)):
         result = await db.execute(query)
         rows = result.fetchall()
         
-        rates = [
+        return [
             {
                 "category": row.category,
                 "variant": row.variant,
@@ -184,9 +164,6 @@ async def get_mileage_rates(db: AsyncSession = Depends(get_db)):
             }
             for row in rows
         ]
-        
-        return rates
-        
     except Exception as e:
         logger.error(f"❌ Error fetching rates: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -204,15 +181,12 @@ async def calculate_mileage(
 ):
     """Calculate mileage cost for a specific vehicle and distance."""
     try:
-        from sqlalchemy import text
-        
         if distance_km <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Distance must be greater than 0"
             )
         
-        # Fetch variant data
         query = text("""
             SELECT 
                 c.name as category_name,
