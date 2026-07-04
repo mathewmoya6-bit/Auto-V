@@ -884,7 +884,7 @@
     const printBtn = $('printBtn');
     const shareBtn = $('shareBtn');
 
-    // ─── API Client (built-in) ──────────────────────────────────────
+    // ─── API Client with SSL bypass ──────────────────────────────
     const api = {
         baseURL: API_BASE,
         token: null,
@@ -912,12 +912,23 @@
             }
 
             try {
-                const response = await fetch(url, {
+                // Add SSL bypass options for fetch
+                const fetchOptions = {
                     ...options,
                     headers,
                     credentials: 'include',
                     mode: 'cors',
-                });
+                };
+
+                // Try with standard fetch first
+                let response = await fetch(url, fetchOptions);
+
+                // If SSL error, try with additional options
+                if (!response.ok && response.status === 0) {
+                    // Some browsers allow bypass with these options
+                    fetchOptions.mode = 'no-cors';
+                    response = await fetch(url, fetchOptions);
+                }
 
                 if (!response.ok) {
                     let errorMessage = `HTTP ${response.status}`;
@@ -933,6 +944,36 @@
                 return response.json();
             } catch (error) {
                 console.error('API request failed:', error);
+                
+                // Check for SSL certificate errors
+                if (error.message && (
+                    error.message.includes('CERTIFICATE_VERIFY_FAILED') ||
+                    error.message.includes('self-signed') ||
+                    error.message.includes('SSL')
+                )) {
+                    // Try using HTTP instead (if available)
+                    try {
+                        const httpUrl = url.replace('https://', 'http://');
+                        const response = await fetch(httpUrl, {
+                            ...options,
+                            headers,
+                            credentials: 'include',
+                            mode: 'cors',
+                        });
+                        if (response.ok) {
+                            return response.json();
+                        }
+                    } catch (httpError) {
+                        // Fall through to the SSL error
+                    }
+                    
+                    // Show a helpful message about the SSL issue
+                    throw new Error(
+                        'SSL Certificate verification failed. Please ensure the server has a valid SSL certificate. ' +
+                        'If you are testing locally, try using a different browser or disabling SSL verification.'
+                    );
+                }
+                
                 throw error;
             }
         },
@@ -1079,6 +1120,13 @@
 
         } catch (error) {
             console.error('Failed to fetch data:', error);
+            // Handle SSL errors specifically
+            if (error.message && error.message.includes('SSL')) {
+                throw new Error(
+                    'SSL Certificate verification failed. ' +
+                    'Please check the server SSL configuration or try accessing the page via HTTP.'
+                );
+            }
             throw new Error(error.message || 'Failed to load vehicle data from backend');
         }
     }
