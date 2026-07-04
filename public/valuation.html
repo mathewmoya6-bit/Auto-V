@@ -6,6 +6,9 @@
     <title>AUTO-V | Professional Valuation Engine</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
     
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
         /* ─── RESET & BASE ─── */
@@ -530,16 +533,14 @@
 
     <script>
         // ============================================================
-        // AUTO-V PROFESSIONAL VALUATION ENGINE – PRODUCTION READY
+        // AUTO-V PROFESSIONAL VALUATION ENGINE – Hybrid Architecture
+        // Uses window.autoV (Supabase + FastAPI)
         // ============================================================
         (function() {
             'use strict';
 
             if (window.autoVProfValuationInitialized) return;
             window.autoVProfValuationInitialized = true;
-
-            // ─── PRODUCTION CONFIG ──────────────────────────────────
-            const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
 
             // ─── STATE ──────────────────────────────────────────────
             let currentUser = null;
@@ -634,6 +635,10 @@
 
             // ─── TOAST HELPERS ──────────────────────────────────────
             function showToast(msg, type = 'success') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(msg, type);
+                    return;
+                }
                 const existing = document.querySelector('.toast');
                 if (existing) existing.remove();
                 const t = document.createElement('div');
@@ -647,89 +652,6 @@
                 const overlay = document.getElementById('loadingOverlay');
                 document.getElementById('loadingText').textContent = text;
                 overlay.style.display = show ? 'flex' : 'none';
-            }
-
-            // ─── API CLIENT ──────────────────────────────────────────
-            function getAuthToken() {
-                return localStorage.getItem('access_token');
-            }
-
-            function getAuthHeaders() {
-                const token = getAuthToken();
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                };
-                if (token) {
-                    headers['Authorization'] = `Bearer ${token}`;
-                }
-                return headers;
-            }
-
-            async function apiRequest(endpoint, options = {}) {
-                const url = `${API_BASE}${endpoint}`;
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    ...options.headers,
-                };
-
-                const token = getAuthToken();
-                if (token) {
-                    headers['Authorization'] = `Bearer ${token}`;
-                }
-
-                const response = await fetch(url, {
-                    ...options,
-                    headers,
-                    credentials: 'include',
-                    mode: 'cors',
-                });
-
-                if (!response.ok) {
-                    let errorMessage = `HTTP ${response.status}`;
-                    try {
-                        const errorData = await response.json();
-                        errorMessage = errorData.detail || errorData.message || errorMessage;
-                    } catch (e) {
-                        errorMessage = await response.text() || errorMessage;
-                    }
-                    throw new Error(errorMessage);
-                }
-
-                return response.json();
-            }
-
-            // ─── AUTH ──────────────────────────────────────────────────
-            async function requireAuth() {
-                const token = getAuthToken();
-                if (!token) {
-                    window.location.href = 'login.html';
-                    return null;
-                }
-
-                try {
-                    const user = await apiRequest('/auth/me');
-                    currentUser = user;
-                    document.getElementById('userEmail').textContent = user.email;
-                    document.getElementById('userRoleBadge').textContent = (user.role || 'individual').toUpperCase();
-                    return user;
-                } catch (e) {
-                    localStorage.removeItem('access_token');
-                    window.location.href = 'login.html';
-                    return null;
-                }
-            }
-
-            // ─── HELPERS ─────────────────────────────────────────────
-            function populateYears() {
-                const yearSelect = document.getElementById('vehicleYear');
-                const currentYear = new Date().getFullYear();
-                yearSelect.innerHTML = '';
-                for (let y = currentYear; y >= 1950; y--) {
-                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
-                }
-                yearSelect.value = 2022;
             }
 
             // ─── UPLOAD FUNCTIONS ────────────────────────────────────
@@ -767,7 +689,7 @@
             }
 
             async function uploadFile(file, type, slot) {
-                const token = getAuthToken();
+                const token = window.autoV.getAuthToken();
                 if (!token) throw new Error('Not authenticated');
 
                 const formData = new FormData();
@@ -775,7 +697,7 @@
                 formData.append('type', type);
                 formData.append('slot', slot);
 
-                const response = await fetch(`${API_BASE}/upload`, {
+                const response = await fetch(`${window.autoV.API_BASE}/upload`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
                     body: formData
@@ -799,7 +721,7 @@
                 statusEl.textContent = '⏳ Uploading...';
                 
                 try {
-                    const user = await requireAuth();
+                    const user = await window.autoV.getCurrentUser();
                     if (!user) throw new Error('Please login again');
                     
                     const publicUrl = await uploadFile(file, 'image', slot);
@@ -987,7 +909,7 @@
 
             // ─── GENERATE VALUATION ──────────────────────────────────
             async function generateValuation() {
-                const user = await requireAuth();
+                const user = await window.autoV.getCurrentUser();
                 if (!user) return;
 
                 // Validate required fields
@@ -1108,7 +1030,7 @@
                         purpose_fields: purposeFieldValues
                     };
 
-                    const result = await apiRequest('/valuations', {
+                    const result = await window.autoV.apiRequest('/valuations', {
                         method: 'POST',
                         body: JSON.stringify(payload)
                     });
@@ -1259,14 +1181,32 @@
             document.getElementById('downloadReportBtn').addEventListener('click', downloadPDF);
             document.getElementById('verifyReportBtn').addEventListener('click', verifyReport);
             document.getElementById('logoutBtn').addEventListener('click', async () => {
-                localStorage.removeItem('access_token');
-                window.location.href = 'login.html';
+                await window.autoV.logout();
             });
 
             // ─── INIT ──────────────────────────────────────────────
             async function init() {
-                const user = await requireAuth();
+                // Wait for autoV to be ready
+                if (!window.autoV || !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
+
+                const user = await window.autoV.getCurrentUser();
                 if (!user) return;
+
+                currentUser = user;
+                document.getElementById('userEmail').textContent = user.email;
+                document.getElementById('userRoleBadge').textContent = (user.role || 'individual').toUpperCase();
 
                 populateYears();
                 
@@ -1300,7 +1240,6 @@
 
                 console.log('✅ AUTO-V Professional Valuation Engine ready');
                 console.log(`👤 User: ${user.email}`);
-                console.log(`🔗 Backend API: ${API_BASE}`);
             }
 
             document.getElementById('vehicleForm').addEventListener('keypress', function(e) {
