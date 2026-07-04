@@ -55,7 +55,10 @@ class Settings(BaseSettings):
                     return [v]
         return ["*"]
 
-    DATABASE_URL: Optional[str] = Field(default=None)
+    # Database configuration
+    DATABASE_URL: Optional[str] = Field(
+        default="postgresql+asyncpg://postgres.tsvejnzxrxrrecgquxbq:aDANGI22313261@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?ssl=require"
+    )
     DB_POOL_SIZE: int = Field(default=10)
     DB_MAX_OVERFLOW: int = Field(default=20)
     DB_POOL_TIMEOUT: int = Field(default=30)
