@@ -5,7 +5,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import MetaData, event
+from sqlalchemy import MetaData, event, text
 import logging
 import os
 
@@ -32,20 +32,23 @@ if settings.DATABASE_URL:
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     
-    # 🔧 FIX: Disable prepared statement cache for Supabase/PgBouncer
+    # 🔧 FIX: Remove duplicate pool_pre_ping
     engine = create_async_engine(
         database_url,
         echo=settings.DEBUG,
-        pool_pre_ping=True,
         pool_size=5,  # Reduced for PgBouncer
         max_overflow=10,
+        pool_pre_ping=True,  # ⚠️ Only ONCE!
+        pool_recycle=300,  # Recycle connections every 5 minutes
+        pool_timeout=30,
         # ⚡ Critical fix: Disable statement caching
-        pool_pre_ping=True,
         connect_args={
             "statement_cache_size": 0,  # This disables prepared statements
             "command_timeout": 60,
             "server_settings": {
-                "application_name": "auto-v-api"
+                "application_name": "auto-v-api",
+                "statement_timeout": "60000",  # 60 seconds
+                "idle_in_transaction_session_timeout": "60000"
             }
         }
     )
@@ -81,8 +84,12 @@ async def init_db():
         logger.warning("⚠️ Database not configured - skipping initialization")
         return
     try:
+        # Test connection
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            result = await conn.execute(text("SELECT 1 as test, version() as version"))
+            row = result.fetchone()
+            logger.info(f"✅ Database connection established")
+            logger.info(f"📊 PostgreSQL version: {row[1][:50]}...")
         logger.info("✅ Database connection established")
     except Exception as e:
         logger.error(f"❌ Database connection failed: {str(e)}")
