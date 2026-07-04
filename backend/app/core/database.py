@@ -4,6 +4,7 @@
 # =============================================================================
 
 import logging
+import re
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -18,27 +19,40 @@ logger = logging.getLogger(__name__)
 
 # ─── DATABASE URL ──────────────────────────────────────────────────
 
-# Your DATABASE_URL from Render (correct format)
 DATABASE_URL = settings.DATABASE_URL
 
-if DATABASE_URL:
-    # Mask password for logging
-    masked_url = DATABASE_URL[:30] + "..." if len(DATABASE_URL) > 30 else DATABASE_URL
-    logger.info(f"📊 Database URL: {masked_url}")
-else:
+if not DATABASE_URL:
     logger.error("❌ DATABASE_URL is not configured!")
+    raise RuntimeError("DATABASE_URL is not configured")
+
+# ✅ FIX: Remove sslmode from URL for asyncpg
+# asyncpg does NOT accept sslmode as a parameter
+if DATABASE_URL:
+    # Remove sslmode=require from URL
+    if "sslmode=require" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("sslmode=require", "ssl=require")
+        logger.info("✅ Fixed sslmode=require -> ssl=require")
+    
+    # Remove any remaining sslmode parameters
+    if "sslmode" in DATABASE_URL:
+        # Remove sslmode=xxx from the URL
+        DATABASE_URL = re.sub(r'\?sslmode=[^&]*', '', DATABASE_URL)
+        DATABASE_URL = re.sub(r'&sslmode=[^&]*', '', DATABASE_URL)
+        logger.info("✅ Removed sslmode from DATABASE_URL")
+
+logger.info(f"📊 Database URL configured (password hidden)")
 
 # ─── CREATE ENGINE ──────────────────────────────────────────────────
 
-# ✅ Correct: No sslmode parameter here - it's in the connection string
+# ✅ CORRECT: No connect_args with sslmode
 engine = create_async_engine(
     DATABASE_URL,
-    echo=settings.DEBUG if hasattr(settings, 'DEBUG') else False,
+    echo=settings.DEBUG,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
     pool_recycle=3600,
-    pool_timeout=30,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
 )
 
 logger.info("✅ Database engine created successfully")
@@ -53,24 +67,13 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-logger.info("✅ AsyncSessionLocal created successfully")
-
-# ─── BASE MODEL ──────────────────────────────────────────────────
-
 Base = declarative_base()
 
 
 # ─── DATABASE DEPENDENCY ──────────────────────────────────────────
 
 async def get_db():
-    """
-    FastAPI dependency for database session.
-    
-    Usage:
-        @app.get("/items")
-        async def get_items(db: AsyncSession = Depends(get_db)):
-            ...
-    """
+    """FastAPI dependency for database session."""
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -101,8 +104,6 @@ async def close_db():
         await engine.dispose()
         logger.info("✅ Database connections closed")
 
-
-# ─── DATABASE STATUS CHECKS ──────────────────────────────────────
 
 def is_database_configured() -> bool:
     """Check if the database is properly configured."""
