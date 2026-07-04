@@ -13,14 +13,27 @@ from app.models.fleet import Fleet, FleetVehicle, FleetDriver
 from app.models.certificate import Certificate
 from app.models.payment import Payment
 
+# Ensure all models are imported so Base.metadata knows about them
+# This is critical for Alembic migrations and table creation
+
 __all__ = [
     "Base",
     "UserProfile",
-    "Vehicle", "VehicleImage", "VINScan",
+    "Vehicle", 
+    "VehicleImage", 
+    "VINScan",
     "Valuation",
     "Inspection",
-    "VehicleCategory", "VehicleVariant", "Route", "MileageClaim",
-    "Fleet", "FleetVehicle", "FleetDriver",
+    "VehicleCategory", 
+    "VehicleVariant", 
+    "Route", 
+    "MileageClaim",
+    "Fleet", 
+    "FleetVehicle", 
+    "FleetDriver",
     "Certificate",
     "Payment",
 ]
+
+# Optional: Print loaded models for debugging
+# print(f"Loaded models: {[name for name in __all__ if name != 'Base']}")
