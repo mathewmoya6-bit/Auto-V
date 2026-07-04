@@ -15,8 +15,8 @@ class Inspection(Base):
     __tablename__ = "inspections"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
-    inspector_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="CASCADE"), nullable=False)
+    inspector_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="SET NULL"), nullable=True)
 
     inspection_type = Column(String(20))  # Standard, Premium, Express, AI, Virtual
     inspection_date = Column(Date, nullable=False)
@@ -40,13 +40,24 @@ class Inspection(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    vehicle = relationship("Vehicle", back_populates="inspections")
-    inspector = relationship("UserProfile", back_populates="inspections")
+    # FIXED: Explicitly specify foreign_keys for both relationships
+    vehicle = relationship(
+        "Vehicle", 
+        foreign_keys=[vehicle_id],
+        back_populates="inspections"
+    )
+    
+    inspector = relationship(
+        "UserProfile", 
+        foreign_keys=[inspector_id],
+        back_populates="inspections"
+    )
 
     __table_args__ = (
         Index("idx_inspections_vehicle_id", "vehicle_id"),
         Index("idx_inspections_inspector_id", "inspector_id"),
         Index("idx_inspections_status", "status"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
