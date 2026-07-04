@@ -24,14 +24,17 @@ class VehicleCategory(Base):
 
     variants = relationship("VehicleVariant", back_populates="category", cascade="all, delete-orphan")
 
-    __table_args__ = (Index("idx_vehicle_categories_active", "is_active"),)
+    __table_args__ = (
+        Index("idx_vehicle_categories_active", "is_active"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
+    )
 
 
 class VehicleVariant(Base):
     __tablename__ = "vehicle_variants"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    category_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicle_categories.id", ondelete="CASCADE"), nullable=False)
+    category_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicle_categories.id", ondelete="CASCADE"), nullable=False)
     label = Column(String(150), nullable=False)
 
     fixed_per_km = Column(Numeric(10, 4), default=0)
@@ -53,6 +56,7 @@ class VehicleVariant(Base):
     __table_args__ = (
         Index("idx_vehicle_variants_category_id", "category_id"),
         Index("idx_vehicle_variants_active", "is_active"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
 
@@ -68,6 +72,7 @@ class Route(Base):
     __table_args__ = (
         UniqueConstraint("from_city", "to_city", name="uq_routes_from_to"),
         Index("idx_routes_active", "is_active"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
 
@@ -75,8 +80,8 @@ class MileageClaim(Base):
     __tablename__ = "mileage_claims"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
+    vehicle_id = Column(PGUUID(as_uuid=True), ForeignKey("public.vehicles.id", ondelete="SET NULL"), nullable=True)
 
     trip_date = Column(Date, nullable=False)
     start_location = Column(String(255))
@@ -92,7 +97,7 @@ class MileageClaim(Base):
     odometer_end = Column(BigInteger)
 
     status = Column(String(20), default="pending")  # pending, approved, rejected, paid, cancelled
-    approved_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    approved_by = Column(PGUUID(as_uuid=True), ForeignKey("public.users.id"), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -115,6 +120,7 @@ class MileageClaim(Base):
     __table_args__ = (
         Index("idx_mileage_claims_user_id", "user_id"),
         Index("idx_mileage_claims_status", "status"),
+        {"schema": "public"},  # ← ADDED: Explicit schema
     )
 
     def to_dict(self) -> dict:
