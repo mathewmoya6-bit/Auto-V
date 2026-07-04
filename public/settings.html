@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AUTO-V Settings</title>
     
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -552,14 +555,15 @@
 (function() {
     'use strict';
 
-    // ─── PRODUCTION CONFIG ────────────────────────────────────────────
-    const API_BASE = 'https://auto-v-backend.onrender.com/api/v1';
-
     // ─── STATE ──────────────────────────────────────────────────────────
     let currentUser = null;
 
     // ─── Toast / Error handling ────────────────────────────────────────
     function showToast(message, type = 'info') {
+        if (window.autoV && window.autoV.showToast) {
+            window.autoV.showToast(message, type);
+            return;
+        }
         const existing = document.querySelector('.toast');
         if (existing) existing.remove();
         const div = document.createElement('div');
@@ -589,77 +593,18 @@
         showToast(message, 'success');
     }
 
-    // ─── Token helpers ──────────────────────────────────────────────────
-    function getAuthToken() {
-        return localStorage.getItem('access_token');
-    }
-
-    function getAuthHeaders() {
-        const token = getAuthToken();
-        const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`
-        };
-        return headers;
-    }
-
-    async function apiRequest(endpoint, options = {}) {
-        const url = `${API_BASE}${endpoint}`;
-        const config = {
-            ...options,
-            headers: {
-                ...getAuthHeaders(),
-                ...(options.headers || {})
-            }
-        };
-
-        try {
-            const response = await fetch(url, config);
-            
-            if (response.status === 401) {
-                localStorage.removeItem('access_token');
-                window.location.href = 'login.html';
-                throw new Error('Session expired. Please login again.');
-            }
-
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.detail || data.error || `HTTP ${response.status}`);
-                }
-                return data;
-            } else {
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                return response;
-            }
-        } catch (error) {
-            if (error.message.includes('fetch')) {
-                throw new Error('Network error. Please check your connection.');
-            }
-            throw error;
-        }
-    }
-
     // ─── Check Authentication ──────────────────────────────────────────
     async function checkAuth() {
-        const token = getAuthToken();
-        if (!token) {
-            window.location.href = "login.html";
-            return false;
-        }
-
         try {
-            currentUser = await apiRequest('/auth/me');
+            currentUser = await window.autoV.getCurrentUser();
+            if (!currentUser) {
+                window.location.href = "login.html";
+                return false;
+            }
             return true;
         } catch (error) {
             console.error('Auth check failed:', error);
-            localStorage.removeItem('access_token');
+            window.autoV.clearAuthToken();
             window.location.href = "login.html";
             return false;
         }
@@ -717,16 +662,14 @@
 
     function saveToLocalStorage(settings) {
         localStorage.setItem('autov_settings', JSON.stringify(settings));
-        // Also save to backend if available
+        // Also save to backend via autoV
         saveSettingsToBackend(settings);
     }
 
     async function saveSettingsToBackend(settings) {
         try {
-            const token = getAuthToken();
-            if (!token) return;
-
-            await apiRequest('/users/settings', {
+            if (!currentUser) return;
+            await window.autoV.apiRequest('/users/settings', {
                 method: 'PUT',
                 body: JSON.stringify(settings)
             });
@@ -802,10 +745,9 @@
     // ─── Export All Data ──────────────────────────────────────────────────
     window.exportAllData = async function() {
         try {
-            const token = getAuthToken();
-            if (!token) throw new Error('Not authenticated');
+            if (!currentUser) throw new Error('Not authenticated');
 
-            const data = await apiRequest('/users/export-data');
+            const data = await window.autoV.apiRequest('/users/export-data');
 
             const dataStr = JSON.stringify(data, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
@@ -836,9 +778,8 @@
     window.changeEmail = function() {
         const newEmail = prompt('Enter your new email address:');
         if (newEmail && newEmail.includes('@')) {
-            const token = getAuthToken();
-            if (token) {
-                apiRequest('/auth/change-email', {
+            if (currentUser) {
+                window.autoV.apiRequest('/auth/change-email', {
                     method: 'POST',
                     body: JSON.stringify({ new_email: newEmail })
                 }).then(() => {
@@ -855,9 +796,9 @@
     // ─── Reset Password ────────────────────────────────────────────────────
     window.resetPassword = async function() {
         const confirmed = confirm('Reset your password? You will receive an email with reset instructions.');
-        if (confirmed) {
+        if (confirmed && currentUser) {
             try {
-                await apiRequest('/auth/reset-password', {
+                await window.autoV.apiRequest('/auth/reset-password', {
                     method: 'POST',
                     body: JSON.stringify({ email: currentUser.email })
                 });
@@ -870,14 +811,7 @@
 
     // ─── Logout ────────────────────────────────────────────────────────────
     window.logout = async function() {
-        try {
-            const token = getAuthToken();
-            if (token) {
-                await apiRequest('/auth/logout', { method: 'POST' });
-            }
-        } catch (e) {}
-        localStorage.removeItem('access_token');
-        window.location.href = 'login.html';
+        await window.autoV.logout();
     };
 
     // ─── Delete Account ────────────────────────────────────────────────────
@@ -901,13 +835,12 @@
         }
         
         try {
-            const token = getAuthToken();
-            if (!token) throw new Error('Not authenticated');
+            if (!currentUser) throw new Error('Not authenticated');
 
-            await apiRequest('/users/delete', { method: 'DELETE' });
+            await window.autoV.apiRequest('/users/delete', { method: 'DELETE' });
 
             showSuccess('Account deleted successfully. Redirecting...');
-            localStorage.removeItem('access_token');
+            window.autoV.clearAuthToken();
 
             setTimeout(() => {
                 window.location.href = 'login.html';
@@ -920,13 +853,27 @@
 
     // ─── Init ──────────────────────────────────────────────────────────────
     async function init() {
+        // Wait for autoV to be ready
+        if (!window.autoV || !window.autoV._initialized) {
+            console.log('⏳ Waiting for autoV to initialize...');
+            await new Promise(resolve => {
+                const check = () => {
+                    if (window.autoV && window.autoV._initialized) {
+                        resolve();
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                };
+                check();
+            });
+        }
+
         try {
             const isAuth = await checkAuth();
             if (!isAuth) return;
             
             loadSettings();
             console.log('✅ AUTO-V Settings initialized successfully');
-            console.log(`🔗 Backend API: ${API_BASE}`);
             console.log(`👤 User: ${currentUser?.email}`);
             
         } catch (err) {
