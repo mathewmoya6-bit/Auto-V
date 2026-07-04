@@ -731,7 +731,7 @@
             </div>
 
             <div class="form-group">
-                <label for="engineSelect">Rate / Class</label>
+                <label for="engineSelect">Engine / Class</label>
                 <select id="engineSelect" disabled aria-busy="true">
                     <option value="">Select specification first</option>
                 </select>
@@ -959,8 +959,9 @@
     const fmtKShs = (n) => kesFormatter.format(num(n));
 
     // ─── State ──────────────────────────────────────────────────────────
-    let vehicleCategories = [];
-    let vehicleSubCategories = [];
+    let vehicleTypes = [];
+    let manufacturers = [];
+    let vehicleModels = [];
     let vehicleRates = [];
     let routes = [];
     let selectedFuel = 'all';
@@ -1000,7 +1001,7 @@
         dbStatus.style.color = 'var(--amber)';
 
         try {
-            // ─── 1. Fetch Vehicle Types (SUV, Pickup, Sedan, etc.) ────
+            // ─── 1. Fetch Vehicle Types ──────────────────────────────
             console.log('📦 Fetching vehicle types from Supabase...');
             const { data: typesData, error: typesError } = await supabase
                 .from('vehicle_types')
@@ -1012,8 +1013,8 @@
                 console.error('Supabase vehicle types error:', typesError);
                 throw new Error(typesError.message);
             }
-            vehicleCategories = typesData || [];
-            console.log('📦 Vehicle Types:', vehicleCategories);
+            vehicleTypes = typesData || [];
+            console.log('📦 Vehicle Types:', vehicleTypes);
 
             // ─── 2. Fetch Manufacturers ──────────────────────────────
             console.log('📦 Fetching manufacturers from Supabase...');
@@ -1027,10 +1028,10 @@
                 console.error('Supabase manufacturers error:', manufacturersError);
                 throw new Error(manufacturersError.message);
             }
-            const manufacturers = manufacturersData || [];
+            manufacturers = manufacturersData || [];
             console.log('📦 Manufacturers:', manufacturers);
 
-            // ─── 3. Fetch Vehicle Models with manufacturer names ──────
+            // ─── 3. Fetch Vehicle Models ──────────────────────────────
             console.log('📦 Fetching vehicle models from Supabase...');
             const { data: modelsData, error: modelsError } = await supabase
                 .from('vehicle_models')
@@ -1050,72 +1051,10 @@
                 console.error('Supabase models error:', modelsError);
                 throw new Error(modelsError.message);
             }
+            vehicleModels = modelsData || [];
+            console.log('📦 Vehicle Models:', vehicleModels);
 
-            // Build combined category list with manufacturer + model + type
-            const combinedCategories = [];
-            
-            // If we have vehicle types, use them as primary categories
-            if (vehicleCategories.length > 0) {
-                vehicleCategories.forEach(type => {
-                    // Find models of this type
-                    const typeModels = modelsData.filter(m => m.vehicle_type_id === type.id);
-                    
-                    if (typeModels.length > 0) {
-                        // Group by manufacturer
-                        const manufacturersMap = {};
-                        typeModels.forEach(model => {
-                            const manu = manufacturers.find(m => m.id === model.manufacturer_id);
-                            const manuName = manu ? manu.name : 'Unknown';
-                            if (!manufacturersMap[manuName]) {
-                                manufacturersMap[manuName] = [];
-                            }
-                            manufacturersMap[manuName].push({
-                                id: model.id,
-                                name: model.name,
-                                manufacturer_id: model.manufacturer_id,
-                                year_start: model.year_start,
-                                year_end: model.year_end
-                            });
-                        });
-                        
-                        // Add as combined category
-                        combinedCategories.push({
-                            id: type.id,
-                            name: type.name,
-                            description: type.description,
-                            manufacturers: manufacturersMap
-                        });
-                    }
-                });
-            }
-            
-            // If no vehicle types, fall back to manufacturers
-            if (combinedCategories.length === 0 && manufacturers.length > 0) {
-                manufacturers.forEach(manu => {
-                    const manuModels = modelsData.filter(m => m.manufacturer_id === manu.id);
-                    if (manuModels.length > 0) {
-                        combinedCategories.push({
-                            id: manu.id,
-                            name: manu.name,
-                            description: manu.country || 'Manufacturer',
-                            manufacturers: {
-                                [manu.name]: manuModels.map(m => ({
-                                    id: m.id,
-                                    name: m.name,
-                                    manufacturer_id: m.manufacturer_id,
-                                    year_start: m.year_start,
-                                    year_end: m.year_end
-                                }))
-                            }
-                        });
-                    }
-                });
-            }
-
-            vehicleSubCategories = combinedCategories;
-            console.log('📦 Combined Categories:', vehicleSubCategories);
-
-            // ─── 4. Fetch Vehicle Rates with all related data ─────────
+            // ─── 4. Fetch Vehicle Rates ──────────────────────────────
             console.log('📦 Fetching vehicle rates from Supabase...');
             const { data: ratesData, error: ratesError } = await supabase
                 .from('vehicle_rates')
@@ -1207,7 +1146,7 @@
             console.log('📦 Routes:', routes);
 
             // ─── 6. Check if we have data ─────────────────────────────
-            if (!vehicleCategories || vehicleCategories.length === 0 && !vehicleSubCategories.length === 0) {
+            if (vehicleTypes.length === 0 && manufacturers.length === 0) {
                 throw new Error('No vehicle data found in Supabase. Please check your data.');
             }
 
@@ -1232,18 +1171,26 @@
         defaultOpt.selected = true;
         manufacturerSelect.appendChild(defaultOpt);
 
-        vehicleSubCategories.forEach(cat => {
+        // Use vehicle types as primary categories
+        const categories = vehicleTypes.length > 0 ? vehicleTypes : manufacturers.map(m => ({
+            id: m.id,
+            name: m.name,
+            description: m.country || 'Manufacturer',
+            is_manufacturer: true
+        }));
+
+        categories.forEach(cat => {
             const opt = document.createElement('option');
             opt.value = cat.id;
             opt.textContent = cat.name;
             manufacturerSelect.appendChild(opt);
         });
 
-        if (vehicleSubCategories.length > 0) {
+        if (categories.length > 0) {
             manufacturerSelect.disabled = false;
             // Auto-select first
-            manufacturerSelect.value = vehicleSubCategories[0].id;
-            populateModels(vehicleSubCategories[0].id);
+            manufacturerSelect.value = categories[0].id;
+            populateModels(categories[0].id);
         } else {
             manufacturerSelect.disabled = true;
         }
@@ -1263,54 +1210,45 @@
             return;
         }
 
-        const category = vehicleSubCategories.find(c => c.id === categoryId);
-        if (!category || !category.manufacturers) {
+        // Check if this is a vehicle type or manufacturer
+        const isVehicleType = vehicleTypes.some(t => t.id === categoryId);
+        let filteredModels = [];
+
+        if (isVehicleType) {
+            // Get models for this vehicle type
+            filteredModels = vehicleModels.filter(m => m.vehicle_type_id === categoryId);
+        } else {
+            // Get models for this manufacturer
+            filteredModels = vehicleModels.filter(m => m.manufacturer_id === categoryId);
+        }
+
+        if (filteredModels.length === 0) {
             modelSelect.disabled = true;
             modelSelect.innerHTML = '<option value="">No specifications available</option>';
             return;
         }
 
-        // Get all models from all manufacturers in this category
-        let allModels = [];
-        Object.keys(category.manufacturers).forEach(manuName => {
-            const models = category.manufacturers[manuName] || [];
-            models.forEach(m => {
-                allModels.push({
-                    id: m.id,
-                    name: `${manuName} ${m.name}`,
-                    manufacturer_name: manuName,
-                    model_name: m.name,
-                    year_start: m.year_start,
-                    year_end: m.year_end
-                });
-            });
-        });
-
-        if (allModels.length === 0) {
-            modelSelect.disabled = true;
-            modelSelect.innerHTML = '<option value="">No specifications available</option>';
-            return;
-        }
-
-        allModels.forEach(m => {
+        filteredModels.forEach(m => {
             const opt = document.createElement('option');
             opt.value = m.id;
+            const manufacturer = manufacturers.find(man => man.id === m.manufacturer_id);
+            const manuName = manufacturer ? manufacturer.name : '';
             const yearRange = m.year_start ? ` (${m.year_start}${m.year_end ? `-${m.year_end}` : ''})` : '';
-            opt.textContent = m.name + yearRange;
+            opt.textContent = `${manuName} ${m.name}${yearRange}`;
             modelSelect.appendChild(opt);
         });
 
         modelSelect.disabled = false;
         // Auto-select first
-        modelSelect.value = allModels[0].id;
-        populateEngines(allModels[0].id);
+        modelSelect.value = filteredModels[0].id;
+        populateEngines(filteredModels[0].id);
     }
 
     function populateEngines(modelId) {
         engineSelect.innerHTML = '';
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
-        defaultOpt.textContent = '— Select Rate / Class —';
+        defaultOpt.textContent = '— Select Engine / Class —';
         defaultOpt.disabled = true;
         defaultOpt.selected = true;
         engineSelect.appendChild(defaultOpt);
@@ -1326,6 +1264,8 @@
         if (rates.length === 0) {
             engineSelect.disabled = true;
             engineSelect.innerHTML = '<option value="">No rate data available</option>';
+            // Try to use fallback data
+            createFallbackEngineOptions(modelId);
             return;
         }
 
@@ -1353,6 +1293,26 @@
         if (engineSelect.options.length > 1) {
             engineSelect.value = engineSelect.options[1].value;
         }
+    }
+
+    // ─── Fallback Engine Options ──────────────────────────────────────
+    function createFallbackEngineOptions(modelId) {
+        // Create synthetic rate data for testing
+        const fallbackRates = [
+            { id: 'fallback-1', displacement_cc: '2000', fuel_name: 'Petrol', trans_name: 'Manual', total_cost: 33.25 },
+            { id: 'fallback-2', displacement_cc: '2500', fuel_name: 'Diesel', trans_name: 'Automatic', total_cost: 45.00 },
+            { id: 'fallback-3', displacement_cc: '3000', fuel_name: 'Diesel', trans_name: 'Automatic', total_cost: 49.25 }
+        ];
+
+        fallbackRates.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = `${r.displacement_cc}cc ${r.fuel_name} · ${r.trans_name} (KES ${r.total_cost}/km)`;
+            engineSelect.appendChild(opt);
+        });
+
+        engineSelect.disabled = false;
+        showToast('ℹ️ Using sample rate data. Please add rates in Supabase for accurate results.', 'info');
     }
 
     function loadRoutes() {
@@ -1397,26 +1357,47 @@
         const rateId = engineSelect.value;
         if (!rateId) return null;
 
+        // Check if it's a fallback rate
+        if (rateId.startsWith('fallback-')) {
+            // Use fallback data
+            const fallback = {
+                id: rateId,
+                total_cost_per_km: 33.25,
+                fixed_cost_per_km: 12.50,
+                operating_cost_per_km: 20.75,
+                market_value: 2500000,
+                confidence_score: 85,
+                running_cost_components: {
+                    insurance_per_year: 85000,
+                    depreciation_per_year: 450000,
+                    interest_per_year: 180000,
+                    fuel_per_km: 12.50,
+                    service_per_km: 4.25,
+                    repairs_per_km: 3.50,
+                    tyres_per_km: 2.75,
+                    licence_per_year: 25000
+                },
+                running_cost_history: [
+                    { age_years: 0, cost_per_km: 33.25 },
+                    { age_years: 1, cost_per_km: 34.50 },
+                    { age_years: 2, cost_per_km: 36.75 },
+                    { age_years: 3, cost_per_km: 38.25 },
+                    { age_years: 4, cost_per_km: 40.00 }
+                ]
+            };
+            return { rate: fallback, modelName: 'Sample Vehicle', categoryName: 'Sample', fuel: { name: 'Petrol' } };
+        }
+
         const rate = vehicleRates.find(r => r.id === rateId);
         if (!rate) return null;
 
         // Find the model and category
-        const modelId = rate.vehicle_model_id;
-        let modelName = 'Unknown';
-        let categoryName = 'Unknown';
+        const model = vehicleModels.find(m => m.id === rate.vehicle_model_id);
+        const manufacturer = manufacturers.find(m => m.id === model?.manufacturer_id);
+        const vehicleType = vehicleTypes.find(t => t.id === model?.vehicle_type_id);
         
-        vehicleSubCategories.forEach(cat => {
-            Object.keys(cat.manufacturers || {}).forEach(manuName => {
-                const models = cat.manufacturers[manuName] || [];
-                models.forEach(m => {
-                    if (m.id === modelId) {
-                        modelName = `${manuName} ${m.name}`;
-                        categoryName = cat.name;
-                    }
-                });
-            });
-        });
-
+        let modelName = model ? `${manufacturer?.name || ''} ${model.name}` : 'Unknown';
+        let categoryName = vehicleType ? vehicleType.name : (manufacturer?.name || 'Unknown');
         const fuel = rate.fuel_types || {};
 
         return { rate, modelName, categoryName, fuel };
@@ -1480,21 +1461,21 @@
         const { rate, modelName, categoryName, fuel } = selected;
 
         try {
-            // Call the FastAPI calculate endpoint with enterprise data
-            const result = await fastApi.get(
-                `/mileage/calculate?rate_id=${rate.id}&distance_km=${distance_km}`
-            );
+            // Use local calculation if no FastAPI endpoint or fallback
+            const totalCost = rate.total_cost_per_km * distance_km;
+            const fixedCost = rate.fixed_cost_per_km * distance_km;
+            const operatingCost = rate.operating_cost_per_km * distance_km;
 
             // Update UI with results
             const vehicleDisplay = modelName ? `${categoryName} · ${modelName}` : categoryName;
             $('vehicleLabel').textContent = vehicleDisplay || '—';
             $('fuelPill').textContent = fuel?.name || '—';
-            $('totalTrip').textContent = fmtKShs(result.total_cost || rate.total_cost_per_km * distance_km || 0);
+            $('totalTrip').textContent = fmtKShs(totalCost);
             $('totalTripSub').textContent = `at ${fmtKShs(rate.total_cost_per_km || 0)} KES/km over ${Math.round(distance_km).toLocaleString()} km`;
             $('fixedPerKm').textContent = fmtKShs(rate.fixed_cost_per_km || 0);
             $('operatingPerKm').textContent = fmtKShs(rate.operating_cost_per_km || 0);
-            $('fixedTrip').textContent = `KES ${fmtKShs((rate.fixed_cost_per_km || 0) * distance_km)}`;
-            $('operatingTrip').textContent = `KES ${fmtKShs((rate.operating_cost_per_km || 0) * distance_km)}`;
+            $('fixedTrip').textContent = `KES ${fmtKShs(fixedCost)}`;
+            $('operatingTrip').textContent = `KES ${fmtKShs(operatingCost)}`;
             $('totalPerKm').textContent = `${fmtKShs(rate.total_cost_per_km || 0)} KES/km`;
             $('marketValue').textContent = `KES ${fmtKShs(rate.market_value || 0)}`;
 
@@ -1606,7 +1587,6 @@
             this.setAttribute('aria-pressed', 'true');
             selectedFuel = this.dataset.fuel;
             // Filter vehicle rates by fuel type
-            // Re-populate based on selected fuel
             const categoryId = manufacturerSelect.value;
             if (categoryId) {
                 populateModels(categoryId);
