@@ -135,6 +135,31 @@ async def root():
     }
 
 
+# ─── Debug Endpoint ──────────────────────────────────────────────
+
+@app.get("/debug/db")
+async def test_db():
+    """Test database connection."""
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute("SELECT 1")
+            # Also check if tables exist
+            tables = await conn.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'public'"
+            )
+            table_list = [row[0] for row in tables.fetchall()]
+            return {
+                "status": "✅ Connected!",
+                "result": result.scalar(),
+                "tables": table_list,
+                "has_vehicle_categories": "vehicle_categories" in table_list,
+                "database_url": settings.DATABASE_URL[:50] + "..." if settings.DATABASE_URL else None
+            }
+    except Exception as e:
+        return {"status": "❌ Failed", "error": str(e)}
+
+
 # ─── Main Entry Point ──────────────────────────────────────────────
 
 if __name__ == "__main__":
