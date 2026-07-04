@@ -33,7 +33,23 @@ class UserProfile(Base):
     vehicles = relationship("Vehicle", back_populates="owner", cascade="all, delete-orphan")
     valuations = relationship("Valuation", back_populates="user", cascade="all, delete-orphan")
     inspections = relationship("Inspection", back_populates="inspector")
-    mileage_claims = relationship("MileageClaim", back_populates="user", cascade="all, delete-orphan")
+    
+    # Fix: Specify foreign_keys for mileage_claims since MileageClaim has multiple FKs to users
+    mileage_claims = relationship(
+        "MileageClaim", 
+        back_populates="user", 
+        foreign_keys="MileageClaim.user_id",  # Explicitly tell SQLAlchemy which FK to use
+        cascade="all, delete-orphan"
+    )
+    
+    # Add relationship for claims approved by this user (if needed)
+    # approved_mileage_claims = relationship(
+    #     "MileageClaim",
+    #     back_populates="approver",
+    #     foreign_keys="MileageClaim.approved_by",
+    #     cascade="all, delete-orphan"
+    # )
+    
     fleets = relationship("Fleet", back_populates="owner", cascade="all, delete-orphan")
     certificates = relationship("Certificate", back_populates="user", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
@@ -60,7 +76,12 @@ class UserProfile(Base):
         }
 
     def to_public_dict(self) -> dict:
-        return {"id": str(self.id) if self.id else None, "email": self.email, "full_name": self.full_name, "role": self.role}
+        return {
+            "id": str(self.id) if self.id else None,
+            "email": self.email,
+            "full_name": self.full_name,
+            "role": self.role
+        }
 
     def is_admin(self) -> bool:
         return self.role in ("admin", "super_admin")
