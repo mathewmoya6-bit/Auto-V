@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AUTO-V | Professional Mileage Calculator</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E%F0%9F%93%8A%3C/text%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* ─── Same CSS as before ─── */
+        :root {
+            --asphalt: #0a0c15;
+            --asphalt-2: #111827;
+            --cream: #f0ece4;
+            --cream-dim: #cbd5e1;
+            --ink: #0a0c10;
+            --ink-soft: #64748b;
+            --amber: #eab308;
+            --amber-deep: #ca8a04;
+            --green: #22c55e;
+            --rust: #ef4444;
+            --blue: #3b82f6;
+            --line: rgba(255,255,255,0.06);
+            --line-dark: rgba(0,0,0,0.08);
+            --radius: 12px;
+            --shadow: 0 8px 40px rgba(0,0,0,0.5);
+            --font-heading: 'Space Grotesk', sans-serif;
+            --font-body: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--font-body);
+            background: var(--asphalt);
+            color: var(--cream);
+            min-height: 100vh;
+        }
+        .wrap {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 28px 32px 60px;
+        }
+        .report-header {
+            background: linear-gradient(135deg, var(--asphalt-2), var(--asphalt));
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            margin-bottom: 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .report-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 40%;
+            height: 200%;
+            background: radial-gradient(ellipse, rgba(234, 179, 8, 0.03), transparent 70%);
+            pointer-events: none;
+        }
+        .header-left .badge {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--amber);
+            background: rgba(234, 179, 8, 0.12);
+            padding: 4px 14px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 8px;
+            border: 1px solid rgba(234, 179, 8, 0.15);
+        }
+        .header-left h1 {
+            font-family: var(--font-heading);
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--cream);
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+        }
+        .header-left h1 span { color: var(--amber); }
+        .header-left .subtitle {
+            font-size: 14px;
+            color: var(--cream-dim);
+            margin-top: 4px;
+            font-weight: 400;
+        }
+        .header-left .subtitle strong { color: var(--amber); }
+        .header-right {
+            text-align: right;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--ink-soft);
+            line-height: 1.9;
+            flex-shrink: 0;
+        }
+        .header-right .version {
+            color: var(--cream-dim);
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .header-right .version span { color: var(--amber); }
+        .header-right .status {
+            display: inline-block;
+            background: rgba(34, 197, 94, 0.12);
+            color: var(--green);
+            padding: 2px 12px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 28px;
+            margin-bottom: 28px;
+        }
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+
+        .calculator-panel {
+            background: var(--asphalt-2);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 28px;
+            box-shadow: var(--shadow);
+        }
+        .panel-label {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--amber);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .panel-label .num {
+            font-family: var(--font-mono);
+            color: var(--ink-soft);
+            background: var(--cream);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .form-group { margin-bottom: 16px; }
+        label {
+            display: block;
+            font-size: 11px;
+            color: var(--cream-dim);
+            margin-bottom: 4px;
+            font-family: var(--font-mono);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        select, input[type="number"] {
+            width: 100%;
+            background: var(--cream);
+            color: var(--ink);
+            border: none;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 500;
+            appearance: none;
+            -webkit-appearance: none;
+            transition: outline 0.15s;
+        }
+        select:disabled, input:disabled { opacity: 0.6; cursor: not-allowed; }
+        select:focus, input:focus {
+            outline: 2px solid var(--amber);
+            outline-offset: 1px;
+        }
+        select {
+            background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+                linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+            background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+            background-size: 6px 6px, 6px 6px;
+            background-repeat: no-repeat;
+            cursor: pointer;
+        }
+        .field-row { display: flex; gap: 12px; }
+        .field-row>div { flex: 1; }
+        .field-error {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--rust);
+            margin-top: 4px;
+            min-height: 14px;
+        }
+
+        .quick-routes { margin-top: 4px; }
+        .quick-routes-title {
+            font-size: 10px;
+            color: var(--cream-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-family: var(--font-mono);
+            margin-bottom: 6px;
+            opacity: 0.7;
+        }
+        .route-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 100px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .route-chips::-webkit-scrollbar { width: 4px; }
+        .route-chips::-webkit-scrollbar-track { background: transparent; }
+        .route-chips::-webkit-scrollbar-thumb { background: var(--amber); border-radius: 10px; }
+        .chip {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--cream-dim);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .chip:hover {
+            border-color: var(--amber);
+            color: var(--amber);
+            background: rgba(234, 179, 8, 0.08);
+        }
+        .chip.active {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: var(--ink);
+            font-weight: 600;
+        }
+        .chip .km-badge { font-size: 8px; opacity: 0.6; margin-left: 4px; }
+
+        .calc-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--amber);
+            color: var(--ink);
+            border: none;
+            border-radius: 6px;
+            font-family: var(--font-heading);
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+        .calc-btn:hover {
+            background: var(--amber-deep);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(234, 179, 8, 0.3);
+        }
+        .calc-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results-panel {
+            background: var(--cream);
+            color: var(--ink);
+            border-radius: var(--radius);
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: var(--shadow);
+        }
+        .vehicle-tag {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--line-dark);
+        }
+        .vehicle-tag #vehicleLabel { color: var(--ink); }
+        .fuel-pill {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            background: var(--asphalt);
+            color: var(--amber);
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.04em;
+            font-weight: 600;
+        }
+        .odometer-block {
+            background: var(--ink);
+            border-radius: 6px;
+            padding: 20px 24px;
+            text-align: center;
+        }
+        .odometer-caption {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--amber);
+            margin-bottom: 6px;
+        }
+        .odometer {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 38px;
+            color: var(--cream);
+            letter-spacing: 0.02em;
+            display: flex;
+            justify-content: center;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .odometer .currency { font-size: 16px; color: var(--amber); }
+        .odometer .digits { font-variant-numeric: tabular-nums; }
+        .odometer .sub {
+            font-size: 12px;
+            color: var(--cream-dim);
+            font-weight: 500;
+            margin-top: 4px;
+            width: 100%;
+        }
+        .breakdown-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .stat {
+            border: 1px solid var(--line-dark);
+            border-radius: 4px;
+            padding: 12px 14px;
+            transition: border-color 0.15s;
+        }
+        .stat:hover { border-color: var(--amber); }
+        .stat .k {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--ink-soft);
+            margin-bottom: 4px;
+        }
+        .stat .v {
+            font-family: var(--font-mono);
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .stat.fixed .v { color: var(--green); }
+        .stat.operating .v { color: var(--rust); }
+        .stat.total-stat .v { color: var(--amber-deep); }
+
+        .rate-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            border-top: 1px dashed var(--line-dark);
+            padding-top: 10px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--ink-soft);
+        }
+        .rate-line b { color: var(--ink); font-size: 14px; }
+
+        .cost-detail {
+            border-top: 1px solid var(--line-dark);
+            padding-top: 14px;
+            margin-top: 4px;
+        }
+        .cost-detail h4 {
+            font-family: var(--font-heading);
+            font-size: 13px;
+            color: var(--amber-deep);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .cost-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 20px;
+            font-size: 12px;
+        }
+        .cost-detail-grid .item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+            font-family: var(--font-mono);
+        }
+        .cost-detail-grid .item .label {
+            color: var(--ink-soft);
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        .cost-detail-grid .item .value {
+            font-weight: 600;
+        }
+        .cost-detail-grid .item .value.green { color: var(--green); }
+        .cost-detail-grid .item .value.gold { color: var(--amber-deep); }
+        .cost-detail-grid .item .value.red { color: var(--rust); }
+
+        .yearly-costs {
+            margin-top: 4px;
+            border-top: 1px solid var(--line-dark);
+            padding-top: 14px;
+        }
+        .yearly-costs h4 {
+            font-family: var(--font-heading);
+            font-size: 13px;
+            color: var(--amber-deep);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .year-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+        }
+        .year-item {
+            text-align: center;
+            padding: 8px 4px;
+            background: var(--asphalt);
+            border-radius: 4px;
+            border: 1px solid var(--line);
+        }
+        .year-item .year-label {
+            font-size: 9px;
+            color: var(--ink-soft);
+            text-transform: uppercase;
+            font-family: var(--font-mono);
+        }
+        .year-item .year-value {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: var(--cream);
+            font-size: 14px;
+            margin-top: 2px;
+            font-variant-numeric: tabular-nums;
+        }
+        .year-item .year-value.green { color: var(--green); }
+        .year-item .year-value.gold { color: var(--amber); }
+        .year-item .year-value.red { color: var(--rust); }
+
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            padding: 8px 16px;
+            border: 1px solid var(--line-dark);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--ink-soft);
+            cursor: pointer;
+            font-family: var(--font-body);
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .action-btn:hover {
+            border-color: var(--amber);
+            color: var(--amber);
+            background: rgba(234, 179, 8, 0.05);
+        }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .action-btn.print { border-color: var(--blue); color: var(--blue); }
+        .action-btn.print:hover { background: rgba(59, 130, 246, 0.08); }
+        .action-btn.share { border-color: var(--green); color: var(--green); }
+        .action-btn.share:hover { background: rgba(34, 197, 94, 0.08); }
+
+        .fuel-filter-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+            padding: 8px 0;
+        }
+        .fuel-filter-btn {
+            padding: 4px 14px;
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            background: transparent;
+            color: var(--cream-dim);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .fuel-filter-btn:hover {
+            border-color: var(--amber);
+            color: var(--amber);
+        }
+        .fuel-filter-btn.active {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: var(--ink);
+            font-weight: 600;
+        }
+        .fuel-filter-btn .fuel-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .fuel-filter-btn .fuel-dot.petrol { background: #eab308; }
+        .fuel-filter-btn .fuel-dot.diesel { background: #22c55e; }
+        .fuel-filter-btn .fuel-dot.lpg { background: #3b82f6; }
+        .fuel-filter-btn .fuel-dot.electric { background: #8b5cf6; }
+
+        .all-classes-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0 6px 0;
+        }
+        .all-classes-toggle label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--cream-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 0;
+        }
+        .all-classes-toggle input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--amber);
+            cursor: pointer;
+            border-radius: 3px;
+            background: var(--cream);
+            flex-shrink: 0;
+        }
+        .all-classes-toggle .toggle-label {
+            font-size: 10px;
+            color: var(--cream-dim);
+            font-family: var(--font-body);
+        }
+        .all-classes-toggle .toggle-label strong {
+            color: var(--amber);
+        }
+
+        .report-footer {
+            border-top: 1px solid var(--line);
+            padding-top: 24px;
+            margin-top: 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .report-footer .brand {
+            font-family: var(--font-heading);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--cream-dim);
+        }
+        .report-footer .brand span { color: var(--amber); }
+        .report-footer .meta {
+            font-size: 11px;
+            color: var(--ink-soft);
+            text-align: right;
+            line-height: 1.8;
+        }
+        .report-footer .meta strong { color: var(--cream-dim); }
+
+        .sr-only {
+            position: absolute;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #1e293b;
+            border-top-color: #eab308;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to{transform:rotate(360deg);} }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn .3s ease;
+            max-width: 380px;
+            font-size: 14px;
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        @keyframes slideIn { from{opacity:0; transform:translateX(80px);} to{opacity:1; transform:translateX(0);} }
+
+        @media (max-width: 768px) {
+            .wrap { padding: 16px 12px 40px; }
+            .report-header { padding: 20px 18px; }
+            .header-left h1 { font-size: 22px; }
+            .main-grid { gap: 20px; }
+            .calculator-panel, .results-panel { padding: 20px; }
+            .odometer { font-size: 30px; }
+            .breakdown-grid { grid-template-columns: 1fr; }
+            .field-row { flex-direction: column; }
+            .header-right { text-align: left; width: 100%; }
+            .year-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+            .year-item .year-value { font-size: 12px; }
+            .report-footer { flex-direction: column; text-align: center; }
+            .report-footer .meta { text-align: center; }
+            .cost-detail-grid { grid-template-columns: 1fr; }
+            .fuel-filter-group { justify-content: center; }
+        }
+        @media (max-width: 480px) {
+            .header-left h1 { font-size: 18px; }
+            .odometer { font-size: 24px; }
+            .stat .v { font-size: 15px; }
+            .chip { font-size: 9px; padding: 4px 8px; }
+            .year-grid { grid-template-columns: repeat(3, 1fr); }
+            .action-bar { flex-direction: column; }
+            .action-btn { justify-content: center; }
+        }
+        @media print {
+            .report-header, .calculator-panel, .report-footer { background: #f5f5f5 !important; border-color: #ddd !important; }
+            .calculator-panel .panel-label, .report-header .badge, .results-panel .action-bar { display: none !important; }
+            .results-panel { background: #fff !important; border: 1px solid #ddd !important; box-shadow: none !important; }
+            .calc-btn { display: none; }
+            .odometer-block { background: #eee !important; }
+            .odometer { color: #000 !important; }
+            .odometer .currency { color: #b8860b !important; }
+            .year-item { background: #f5f5f5 !important; border-color: #ddd !important; }
+            .year-item .year-value { color: #000 !important; }
+            .stat { border-color: #ddd !important; }
+            .stat .v { color: #000 !important; }
+            .vehicle-tag #vehicleLabel { color: #000 !important; }
+            .fuel-pill { background: #eee !important; color: #b8860b !important; }
+            .rate-line b { color: #000 !important; }
+            .header-right .status { display: none; }
+            body { background: #fff !important; }
+            .wrap { padding: 20px !important; }
+            .main-grid { display: block !important; }
+            .results-panel { margin-top: 20px !important; }
+            .cost-detail-grid .item { border-bottom-color: #ddd !important; }
+            .cost-detail-grid .item .label { color: #666 !important; }
+            .fuel-filter-group { display: none !important; }
+            .all-classes-toggle { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <div class="report-header">
+        <div class="header-left">
+            <div class="badge">📋 Official Reimbursement Schedule</div>
+            <h1>AUTO-V <span>Professional</span><br />Vehicle Running Costs</h1>
+            <p class="subtitle">
+                Kenya Mileage Rate Schedule — <strong>July 2026</strong><br />
+                <span style="font-size:12px;color:var(--ink-soft);">Single Source of Truth · Powered by FastAPI Backend</span>
+            </p>
+        </div>
+        <div class="header-right">
+            <div class="version">Report Version <span>2026.07</span></div>
+            <div>Last Updated: <span id="lastUpdated">—</span></div>
+            <div>Data Status: <span class="status" id="dbStatus" role="status" aria-live="polite">● Connecting...</span></div>
+        </div>
+    </div>
+
+    <div class="main-grid">
+
+        <section class="calculator-panel">
+            <div class="panel-label"><span class="num">01</span> Select Vehicle</div>
+
+            <div class="form-group">
+                <label for="categorySelect">Vehicle Category</label>
+                <select id="categorySelect" disabled aria-busy="true">
+                    <option value="">Loading categories...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <label for="variantSelect" style="margin-bottom:0;">Engine / Class</label>
+                    <div class="all-classes-toggle">
+                        <label for="showAllClasses">
+                            <input type="checkbox" id="showAllClasses" />
+                            <span class="toggle-label">Show <strong>All</strong> Classes</span>
+                        </label>
+                    </div>
+                </div>
+                <select id="variantSelect" disabled aria-busy="true">
+                    <option value="">Select a category first</option>
+                </select>
+            </div>
+
+            <!-- Fuel Type Filter -->
+            <div class="form-group">
+                <label id="fuelFilterLabel">Fuel Type</label>
+                <div class="fuel-filter-group" id="fuelFilterGroup" role="group" aria-labelledby="fuelFilterLabel">
+                    <button type="button" class="fuel-filter-btn active" data-fuel="all" aria-pressed="true">
+                        <span class="fuel-dot" style="background:var(--cream-dim);"></span> All
+                    </button>
+                    <button type="button" class="fuel-filter-btn" data-fuel="Petrol" aria-pressed="false">
+                        <span class="fuel-dot petrol"></span> Petrol
+                    </button>
+                    <button type="button" class="fuel-filter-btn" data-fuel="Diesel" aria-pressed="false">
+                        <span class="fuel-dot diesel"></span> Diesel
+                    </button>
+                    <button type="button" class="fuel-filter-btn" data-fuel="Gas/LPG" aria-pressed="false">
+                        <span class="fuel-dot lpg"></span> Gas/LPG
+                    </button>
+                    <button type="button" class="fuel-filter-btn" data-fuel="Electric" aria-pressed="false">
+                        <span class="fuel-dot electric"></span> Electric
+                    </button>
+                </div>
+            </div>
+
+            <div class="panel-label" style="margin-top:16px;"><span class="num">02</span> Trip Distance</div>
+
+            <div class="form-group">
+                <label for="distanceInput">Distance (km)</label>
+                <input type="number" id="distanceInput" min="0" max="100000" step="1" value="100" inputmode="decimal" />
+                <div class="field-error" id="distanceError" role="alert"></div>
+            </div>
+
+            <div class="quick-routes">
+                <p class="quick-routes-title">📌 Quick Routes</p>
+                <div class="route-chips" id="routeChips"></div>
+            </div>
+
+            <button class="calc-btn" id="calculateBtn" disabled>🚀 Calculate Mileage Rate</button>
+        </section>
+
+        <section class="results-panel" aria-label="Cost results" aria-live="polite">
+            <div class="vehicle-tag">
+                <span id="vehicleLabel">—</span>
+                <span class="fuel-pill" id="fuelPill">—</span>
+            </div>
+
+            <div class="odometer-block">
+                <p class="odometer-caption">Total Trip Cost</p>
+                <div class="odometer">
+                    <span class="currency">KES</span>
+                    <span class="digits" id="totalTrip">0.00</span>
+                    <span class="sub" id="totalTripSub">at 0.00 KES/km over 0 km</span>
+                </div>
+            </div>
+
+            <div class="breakdown-grid">
+                <div class="stat fixed">
+                    <div class="k">📊 Fixed Cost / km</div>
+                    <div class="v" id="fixedPerKm">—</div>
+                </div>
+                <div class="stat operating">
+                    <div class="k">⚙️ Operating Cost / km</div>
+                    <div class="v" id="operatingPerKm">—</div>
+                </div>
+                <div class="stat fixed">
+                    <div class="k">📊 Fixed Cost — Trip</div>
+                    <div class="v" id="fixedTrip">—</div>
+                </div>
+                <div class="stat operating">
+                    <div class="k">⚙️ Operating Cost — Trip</div>
+                    <div class="v" id="operatingTrip">—</div>
+                </div>
+                <div class="stat total-stat" style="grid-column: 1 / -1; background: rgba(234, 179, 8, 0.08);">
+                    <div class="k">💰 Total Running Cost / km</div>
+                    <div class="v" id="totalPerKm" style="color: var(--amber-deep);">—</div>
+                </div>
+            </div>
+
+            <div class="cost-detail">
+                <h4>🔍 Detailed Cost Breakdown</h4>
+                <div class="cost-detail-grid" id="costDetailGrid">
+                    <div class="item"><span class="label">Insurance</span><span class="value" id="detailInsurance">—</span></div>
+                    <div class="item"><span class="label">Depreciation</span><span class="value" id="detailDepreciation">—</span></div>
+                    <div class="item"><span class="label">Interest on Capital</span><span class="value" id="detailInterest">—</span></div>
+                    <div class="item"><span class="label">Fuel</span><span class="value" id="detailFuel">—</span></div>
+                    <div class="item"><span class="label">Servicing</span><span class="value" id="detailServicing">—</span></div>
+                    <div class="item"><span class="label">Repairs & Replacements</span><span class="value" id="detailRepairs">—</span></div>
+                    <div class="item"><span class="label">Automotive Tyres</span><span class="value" id="detailTyres">—</span></div>
+                    <div class="item"><span class="label">Licences & Parking</span><span class="value" id="detailLicences">—</span></div>
+                </div>
+            </div>
+
+            <div class="rate-line">
+                <span>🚗 Average Initial Cost</span>
+                <b id="initialCost">—</b>
+            </div>
+
+            <div class="yearly-costs">
+                <h4>📈 5-Year Running Cost Progression</h4>
+                <div class="year-grid" id="yearGrid">
+                    <div class="year-item"><div class="year-label">New</div><div class="year-value gold" id="year1">—</div></div>
+                    <div class="year-item"><div class="year-label">2nd Year</div><div class="year-value" id="year2">—</div></div>
+                    <div class="year-item"><div class="year-label">3rd Year</div><div class="year-value" id="year3">—</div></div>
+                    <div class="year-item"><div class="year-label">4th Year</div><div class="year-value" id="year4">—</div></div>
+                    <div class="year-item"><div class="year-label">5+ Years</div><div class="year-value" id="year5">—</div></div>
+                </div>
+            </div>
+
+            <div class="rate-line" style="border-top: 2px solid var(--amber); padding-top: 12px; margin-top: 4px;">
+                <span style="font-weight: 600;">✅ Confidence Score</span>
+                <b style="color: var(--green);" id="confidenceScore">—</b>
+            </div>
+
+            <div class="action-bar">
+                <button class="action-btn print" id="printBtn" type="button" disabled>🖨️ Print Report</button>
+                <button class="action-btn share" id="shareBtn" type="button" disabled>📤 Share Report</button>
+            </div>
+        </section>
+    </div>
+
+    <div class="report-footer">
+        <div class="brand">AUTO-V <span>Intelligence Engine</span></div>
+        <div class="meta">
+            <strong>Professional Vehicle Running Cost Database</strong><br />
+            © 2026 AUTO-V · All Rights Reserved<br />
+            <span style="font-size:10px;opacity:0.6;">Data subject to change. For official use only.</span>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // ─── PRODUCTION CONFIG ──────────────────────────────────────────
+    const API_BASE = 'https://auto-v.onrender.com/api/v1';
+    const MAX_DISTANCE = 100000;
+
+    // ─── DOM helpers ──────────────────────────────────────────────
+    const $ = (id) => document.getElementById(id);
+    const categorySelect = $('categorySelect');
+    const variantSelect = $('variantSelect');
+    const distanceInput = $('distanceInput');
+    const distanceError = $('distanceError');
+    const routeChips = $('routeChips');
+    const dbStatus = $('dbStatus');
+    const showAllClasses = $('showAllClasses');
+    const calculateBtn = $('calculateBtn');
+    const printBtn = $('printBtn');
+    const shareBtn = $('shareBtn');
+
+    // ─── API Client (built-in) ──────────────────────────────────────
+    const api = {
+        baseURL: API_BASE,
+        token: null,
+
+        getToken() {
+            return this.token || localStorage.getItem('access_token');
+        },
+
+        setToken(token) {
+            this.token = token;
+            localStorage.setItem('access_token', token);
+        },
+
+        async request(endpoint, options = {}) {
+            const url = `${this.baseURL}${endpoint}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                ...options.headers,
+            };
+
+            const token = this.getToken();
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers,
+                    credentials: 'include',
+                    mode: 'cors',
+                });
+
+                if (!response.ok) {
+                    let errorMessage = `HTTP ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.detail || errorData.message || errorMessage;
+                    } catch (e) {
+                        errorMessage = await response.text() || errorMessage;
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                return response.json();
+            } catch (error) {
+                console.error('API request failed:', error);
+                throw error;
+            }
+        },
+
+        get(endpoint) {
+            return this.request(endpoint, { method: 'GET' });
+        },
+
+        post(endpoint, data) {
+            return this.request(endpoint, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+        },
+    };
+
+    // ─── Formatting ──────────────────────────────────────────────────
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function num(v, fallback = 0) {
+        const n = typeof v === 'string' ? parseFloat(v) : v;
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    function debounce(fn, wait) {
+        let t;
+        return (...args) => {
+            clearTimeout(t);
+            t = setTimeout(() => fn(...args), wait);
+        };
+    }
+
+    let kesFormatter, kesFormatterInt;
+    try {
+        kesFormatter = new Intl.NumberFormat('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        kesFormatterInt = new Intl.NumberFormat('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    } catch (e) {
+        kesFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        kesFormatterInt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    const fmtKShs = (n) => kesFormatter.format(num(n));
+    const fmtKShsInt = (n) => kesFormatterInt.format(num(n));
+
+    // ─── State ──────────────────────────────────────────────────────────
+    let categories = [];
+    let routes = [];
+    let selectedFuel = 'all';
+    let allVariants = [];
+    let dataLoaded = false;
+
+    // ─── Toast / Error handling ────────────────────────────────────────
+    function showToast(message, type = 'info') {
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.className = `toast toast-${type}`;
+        div.textContent = message;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 5000);
+    }
+
+    function showFatalError(message) {
+        dbStatus.textContent = '● Error';
+        dbStatus.style.color = 'var(--rust)';
+        categorySelect.innerHTML = '';
+        categorySelect.disabled = true;
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Unable to load data';
+        categorySelect.appendChild(opt);
+        variantSelect.innerHTML = '<option value="">Unable to load data</option>';
+        variantSelect.disabled = true;
+        resetResults(escapeHtml(message));
+        showToast('❌ ' + message, 'error');
+    }
+
+    // ─── Data fetching from FastAPI ──────────────────────────────────
+    async function fetchData() {
+        dbStatus.textContent = '● Fetching...';
+        dbStatus.style.color = 'var(--amber)';
+
+        try {
+            // Fetch categories with their variants from backend
+            const categoriesData = await api.get('/mileage/categories');
+            
+            if (!categoriesData || !categoriesData.length) {
+                throw new Error('No categories found in backend');
+            }
+
+            // Fetch routes
+            const routesData = await api.get('/mileage/routes');
+            routes = routesData || [];
+
+            // Transform backend data to match frontend format
+            categories = categoriesData.map(cat => ({
+                id: cat.id,
+                label: cat.name || 'Unnamed category',
+                fuel_type: cat.fuel_type || '—',
+                variants: (cat.variants || []).map(v => ({
+                    id: v.id,
+                    label: v.engine_class || v.name || 'Unnamed variant',
+                    category_id: cat.id,
+                    category_name: cat.name || 'Unknown',
+                    fixed_per_km: num(v.fixed_per_km),
+                    operating_per_km: num(v.operating_per_km),
+                    total_per_km: num(v.total_per_km),
+                    initial_cost: num(v.initial_cost),
+                    year1: num(v.year1 || v.total_per_km),
+                    year2: num(v.year2 || v.total_per_km),
+                    year3: num(v.year3 || v.total_per_km),
+                    year4: num(v.year4 || v.total_per_km),
+                    year5: num(v.year5 || v.total_per_km),
+                    components: {
+                        insurance: num(v.insurance),
+                        depreciation: num(v.depreciation),
+                        interest: num(v.interest),
+                        fuel: num(v.fuel_per_km || v.fuel),
+                        servicing: num(v.servicing),
+                        repairs: num(v.repairs),
+                        tyres: num(v.tyres),
+                        licences: num(v.licences)
+                    }
+                }))
+            }));
+
+            // Build flat list of all variants for "Show All" mode
+            allVariants = [];
+            categories.forEach(cat => {
+                cat.variants.forEach(v => {
+                    allVariants.push({
+                        ...v,
+                        fuel_type: cat.fuel_type
+                    });
+                });
+            });
+
+            dataLoaded = true;
+            dbStatus.textContent = '● Connected';
+            dbStatus.style.color = 'var(--green)';
+            showToast('✅ Data loaded from backend', 'success');
+
+        } catch (error) {
+            console.error('Failed to fetch data:', error);
+            throw new Error(error.message || 'Failed to load vehicle data from backend');
+        }
+    }
+
+    // ─── Rendering ──────────────────────────────────────────────────────
+    function populateCategories() {
+        categorySelect.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '— Select a category —';
+        defaultOpt.disabled = true;
+        defaultOpt.selected = true;
+        categorySelect.appendChild(defaultOpt);
+
+        const filtered = selectedFuel === 'all'
+            ? categories
+            : categories.filter(cat => cat.fuel_type && cat.fuel_type.toLowerCase() === selectedFuel.toLowerCase());
+
+        filtered.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat.id;
+            opt.textContent = cat.label;
+            categorySelect.appendChild(opt);
+        });
+
+        if (filtered.length > 0) {
+            categorySelect.disabled = false;
+            categorySelect.value = filtered[0].id;
+            populateVariants(filtered[0].id);
+        } else {
+            categorySelect.disabled = true;
+            variantSelect.innerHTML = '<option value="">No categories for this fuel type</option>';
+            variantSelect.disabled = true;
+        }
+    }
+
+    function populateVariants(categoryId) {
+        variantSelect.innerHTML = '';
+
+        if (showAllClasses.checked) {
+            let filtered = selectedFuel === 'all'
+                ? allVariants
+                : allVariants.filter(v => v.fuel_type && v.fuel_type.toLowerCase() === selectedFuel.toLowerCase());
+
+            if (filtered.length === 0) {
+                variantSelect.innerHTML = '<option value="">No variants available</option>';
+                variantSelect.disabled = true;
+                return;
+            }
+
+            filtered = [...filtered].sort((a, b) => {
+                const catCmp = a.category_name.localeCompare(b.category_name);
+                return catCmp !== 0 ? catCmp : a.label.localeCompare(b.label);
+            });
+
+            filtered.forEach((variant, index) => {
+                const opt = document.createElement('option');
+                opt.value = variant.id;
+                opt.textContent = `${variant.category_name} — ${variant.label}`;
+                if (index === 0) opt.selected = true;
+                variantSelect.appendChild(opt);
+            });
+            variantSelect.disabled = false;
+            return;
+        }
+
+        const category = categories.find(c => c.id === categoryId);
+        if (!category || !category.variants || category.variants.length === 0) {
+            variantSelect.innerHTML = '<option value="">No variants available</option>';
+            variantSelect.disabled = true;
+            return;
+        }
+
+        category.variants.forEach((variant, index) => {
+            const opt = document.createElement('option');
+            opt.value = variant.id;
+            opt.textContent = variant.label;
+            if (index === 0) opt.selected = true;
+            variantSelect.appendChild(opt);
+        });
+        variantSelect.disabled = false;
+    }
+
+    function loadRoutes() {
+        routeChips.innerHTML = '';
+        if (!routes || routes.length === 0) {
+            const span = document.createElement('span');
+            span.style.cssText = 'color:var(--ink-soft);font-size:11px;';
+            span.textContent = 'No routes available';
+            routeChips.appendChild(span);
+            return;
+        }
+        routes.forEach((r) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'chip';
+            const fromCity = r.from_city || r.from || 'Unknown';
+            const toCity = r.to_city || r.to || 'Unknown';
+            const km = num(r.km);
+
+            const label = document.createElement('span');
+            label.textContent = `${fromCity} → ${toCity} `;
+            const badge = document.createElement('span');
+            badge.className = 'km-badge';
+            badge.textContent = `${km}km`;
+            chip.appendChild(label);
+            chip.appendChild(badge);
+            chip.setAttribute('aria-label', `${fromCity} to ${toCity}, ${km} kilometres`);
+
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                distanceInput.value = km;
+                validateDistance();
+                calculate();
+            });
+            routeChips.appendChild(chip);
+        });
+    }
+
+    // ─── Vehicle lookup ──────────────────────────────────────────────────
+    function getSelectedVehicle() {
+        const variantId = variantSelect.value;
+        if (!variantId) return null;
+
+        const variant = allVariants.find(v => v.id === variantId);
+        if (!variant) return null;
+
+        const category = categories.find(c => c.id === variant.category_id);
+        if (!category) return null;
+
+        return { category, variant };
+    }
+
+    // ─── Validation ──────────────────────────────────────────────────────
+    function validateDistance() {
+        const raw = distanceInput.value;
+        const val = parseFloat(raw);
+        if (raw === '' || Number.isNaN(val)) {
+            distanceError.textContent = 'Enter a distance in km.';
+            return false;
+        }
+        if (val < 0) {
+            distanceError.textContent = 'Distance cannot be negative.';
+            return false;
+        }
+        if (val > MAX_DISTANCE) {
+            distanceError.textContent = `Distance seems too large (max ${fmtKShsInt(MAX_DISTANCE)} km).`;
+            return false;
+        }
+        distanceError.textContent = '';
+        return true;
+    }
+
+    // ─── Calculation / rendering results ──────────────────────────────
+    function resetResults(message) {
+        $('vehicleLabel').textContent = '—';
+        $('fuelPill').textContent = '—';
+        $('totalTrip').textContent = '0.00';
+        $('totalTripSub').textContent = message || 'Select a vehicle and enter a distance';
+        $('fixedPerKm').textContent = '—';
+        $('operatingPerKm').textContent = '—';
+        $('fixedTrip').textContent = '—';
+        $('operatingTrip').textContent = '—';
+        $('totalPerKm').textContent = '—';
+        $('initialCost').textContent = '—';
+        $('confidenceScore').textContent = '—';
+        ['year1', 'year2', 'year3', 'year4', 'year5'].forEach(id => { $(id).textContent = '—'; $(id).className = 'year-value'; });
+        ['detailInsurance', 'detailDepreciation', 'detailInterest', 'detailFuel', 'detailServicing', 'detailRepairs', 'detailTyres', 'detailLicences'].forEach(id => $(id).textContent = '—');
+        printBtn.disabled = true;
+        shareBtn.disabled = true;
+    }
+
+    function calculate() {
+        if (!dataLoaded) return;
+
+        const distanceValid = validateDistance();
+        const selected = getSelectedVehicle();
+
+        if (!selected) {
+            resetResults('Select a vehicle and enter a distance');
+            return;
+        }
+        if (!distanceValid) {
+            resetResults('Fix the distance field to see results');
+            return;
+        }
+
+        const distance_km = Math.max(0, parseFloat(distanceInput.value) || 0);
+        const { category, variant } = selected;
+        const fixedCostTrip = variant.fixed_per_km * distance_km;
+        const operatingCostTrip = variant.operating_per_km * distance_km;
+        const totalCostTrip = variant.total_per_km * distance_km;
+
+        $('vehicleLabel').textContent = `${category.label} — ${variant.label}`;
+        $('fuelPill').textContent = category.fuel_type || '—';
+        $('totalTrip').textContent = fmtKShs(totalCostTrip);
+        $('totalTripSub').textContent = `at ${fmtKShs(variant.total_per_km)} KES/km over ${fmtKShsInt(distance_km)} km`;
+        $('fixedPerKm').textContent = fmtKShs(variant.fixed_per_km);
+        $('operatingPerKm').textContent = fmtKShs(variant.operating_per_km);
+        $('fixedTrip').textContent = `KES ${fmtKShs(fixedCostTrip)}`;
+        $('operatingTrip').textContent = `KES ${fmtKShs(operatingCostTrip)}`;
+        $('totalPerKm').textContent = `${fmtKShs(variant.total_per_km)} KES/km`;
+        $('initialCost').textContent = `KES ${fmtKShsInt(variant.initial_cost)}`;
+
+        const comp = variant.components || {};
+        $('detailInsurance').textContent = comp.insurance ? fmtKShsInt(comp.insurance) : '—';
+        $('detailDepreciation').textContent = comp.depreciation ? fmtKShsInt(comp.depreciation) : '—';
+        $('detailInterest').textContent = comp.interest ? fmtKShsInt(comp.interest) : '—';
+        $('detailFuel').textContent = comp.fuel ? `${fmtKShs(comp.fuel)}/km` : '—';
+        $('detailServicing').textContent = comp.servicing ? `${fmtKShs(comp.servicing)}/km` : '—';
+        $('detailRepairs').textContent = comp.repairs ? `${fmtKShs(comp.repairs)}/km` : '—';
+        $('detailTyres').textContent = comp.tyres ? `${fmtKShs(comp.tyres)}/km` : '—';
+        $('detailLicences').textContent = comp.licences ? fmtKShsInt(comp.licences) : '—';
+
+        const years = [
+            { id: 'year1', val: variant.year1 },
+            { id: 'year2', val: variant.year2 },
+            { id: 'year3', val: variant.year3 },
+            { id: 'year4', val: variant.year4 },
+            { id: 'year5', val: variant.year5 }
+        ];
+        years.forEach((y, idx) => {
+            const el = $(y.id);
+            el.textContent = fmtKShs(y.val);
+            if (idx === 0) {
+                el.className = 'year-value gold';
+            } else {
+                const prev = years[idx - 1].val;
+                if (y.val < prev) el.className = 'year-value green';
+                else if (y.val > prev) el.className = 'year-value red';
+                else el.className = 'year-value';
+            }
+        });
+
+        let confidence = 95;
+        if (variant.fixed_per_km > 0 && variant.operating_per_km > 0) confidence += 2;
+        if (variant.initial_cost > 0) confidence += 1;
+        if (variant.total_per_km > 0) confidence += 2;
+        confidence = Math.min(confidence, 99);
+        $('confidenceScore').textContent = `${confidence}%`;
+        $('lastUpdated').textContent = new Date().toLocaleDateString('en-KE', {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+
+        printBtn.disabled = false;
+        shareBtn.disabled = false;
+    }
+
+    // ─── Share / print ──────────────────────────────────────────────────
+    function shareReport() {
+        const vehicle = $('vehicleLabel').textContent;
+        if (vehicle === '—') return;
+        const rate = $('totalPerKm').textContent;
+        const total = $('totalTrip').textContent;
+        const y1 = $('year1').textContent, y2 = $('year2').textContent, y3 = $('year3').textContent, y4 = $('year4').textContent, y5 = $('year5').textContent;
+        const shareText = `🚗 AUTO-V Mileage Rate Report\n\nVehicle: ${vehicle}\nRate: ${rate}\nTrip Total: ${total}\n\n📈 5-Year Running Costs:\nNew: ${y1}\n2nd Year: ${y2}\n3rd Year: ${y3}\n4th Year: ${y4}\n5+ Years: ${y5}\n\nPowered by AUTO-V Intelligence Engine`;
+
+        if (navigator.share) {
+            navigator.share({ title: 'AUTO-V Mileage Rate Report', text: shareText }).catch(() => {});
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(shareText)
+                .then(() => showToast('✅ Report copied to clipboard!', 'success'))
+                .catch(() => openShareFallbackWindow(shareText));
+            return;
+        }
+        openShareFallbackWindow(shareText);
+    }
+
+    function openShareFallbackWindow(shareText) {
+        const win = window.open('', '_blank');
+        if (!win) return;
+        const pre = win.document.createElement('pre');
+        pre.textContent = shareText;
+        win.document.title = 'AUTO-V Mileage Report';
+        win.document.body.style.cssText = 'font-family:sans-serif;padding:40px;background:#f5f5f5;color:#333;line-height:1.8;';
+        win.document.body.appendChild(pre);
+        const btn = win.document.createElement('button');
+        btn.textContent = '🖨️ Print';
+        btn.onclick = () => win.print();
+        win.document.body.appendChild(btn);
+    }
+
+    // ─── Event wiring ──────────────────────────────────────────────────
+    document.querySelectorAll('.fuel-filter-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.fuel-filter-btn').forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-pressed', 'false');
+            });
+            this.classList.add('active');
+            this.setAttribute('aria-pressed', 'true');
+            selectedFuel = this.dataset.fuel;
+            populateCategories();
+            if (showAllClasses.checked) populateVariants(null);
+            calculate();
+        });
+    });
+
+    showAllClasses.addEventListener('change', () => {
+        populateVariants(categorySelect.value);
+        calculate();
+    });
+
+    categorySelect.addEventListener('change', (e) => {
+        populateVariants(e.target.value);
+        calculate();
+    });
+
+    variantSelect.addEventListener('change', calculate);
+
+    const debouncedCalc = debounce(() => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        calculate();
+    }, 150);
+    distanceInput.addEventListener('input', debouncedCalc);
+    distanceInput.addEventListener('blur', () => { validateDistance(); calculate(); });
+
+    calculateBtn.addEventListener('click', calculate);
+    printBtn.addEventListener('click', () => window.print());
+    shareBtn.addEventListener('click', shareReport);
+
+    // ─── Init ──────────────────────────────────────────────────────────
+    (async function init() {
+        try {
+            await fetchData();
+            populateCategories();
+            loadRoutes();
+            calculateBtn.disabled = false;
+            calculate();
+        } catch (error) {
+            console.error('AUTO-V failed to initialize:', error);
+            const message = (error && error.message) ? error.message : 'Unknown error while loading vehicle data.';
+            showFatalError(message);
+        }
+    })();
+})();
+</script>
+</body>
+</html>

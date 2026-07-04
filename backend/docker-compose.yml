@@ -1,0 +1,315 @@
+# ============================================================
+# AUTO-V BACKEND DOCKER COMPOSE
+# Production Ready - FastAPI + Redis + Supabase
+# ============================================================
+
+version: '3.8'
+
+services:
+  # ─── API Service ──────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - APP_VERSION=${APP_VERSION:-2.0.0}
+    container_name: auto-v-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      # Application
+      - APP_NAME=${APP_NAME:-AUTO-V}
+      - APP_VERSION=${APP_VERSION:-2.0.0}
+      - ENV=${ENV:-production}
+      - DEBUG=${DEBUG:-false}
+      - HOST=0.0.0.0
+      - PORT=8000
+      
+      # Supabase
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      
+      # Security
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-30}
+      
+      # M-Pesa
+      - MPESA_CONSUMER_KEY=${MPESA_CONSUMER_KEY}
+      - MPESA_CONSUMER_SECRET=${MPESA_CONSUMER_SECRET}
+      - MPESA_PASSKEY=${MPESA_PASSKEY}
+      - MPESA_SHORTCODE=${MPESA_SHORTCODE:-4095377}
+      - MPESA_ENVIRONMENT=${MPESA_ENVIRONMENT:-production}
+      - MPESA_CALLBACK_URL=${MPESA_CALLBACK_URL}
+      - BASE_URL=${BASE_URL}
+      
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      - REDIS_ENABLED=${REDIS_ENABLED:-true}
+      
+      # Rate Limiting
+      - RATELIMIT_ENABLED=${RATELIMIT_ENABLED:-true}
+      - RATELIMIT_DEFAULT=${RATELIMIT_DEFAULT:-100/minute}
+      - RATELIMIT_STORAGE_URI=redis://redis:6379
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_DIR=/app/logs
+      
+      # AI Services
+      - AI_WEIGHT=${AI_WEIGHT:-0.4}
+      - AI_MIN_CONFIDENCE=${AI_MIN_CONFIDENCE:-0.3}
+      - AI_CACHE_ENABLED=${AI_CACHE_ENABLED:-true}
+      - AI_FALLBACK_ENABLED=${AI_FALLBACK_ENABLED:-true}
+      - AI_MODEL_PATH=/app/models
+      
+      # Feature Flags
+      - FEATURE_MPESA=${FEATURE_MPESA:-true}
+      - FEATURE_AI_VALUATION=${FEATURE_AI_VALUATION:-true}
+      - FEATURE_REPORT_GENERATION=${FEATURE_REPORT_GENERATION:-true}
+      - FEATURE_QR_VERIFICATION=${FEATURE_QR_VERIFICATION:-true}
+      - REALTIME_ENABLED=${REALTIME_ENABLED:-true}
+      
+      # File Uploads
+      - MAX_IMAGE_SIZE=${MAX_IMAGE_SIZE:-10485760}
+      - MAX_DOCUMENT_SIZE=${MAX_DOCUMENT_SIZE:-20971520}
+      - STORAGE_TYPE=${STORAGE_TYPE:-supabase}
+      - STORAGE_BUCKET=${STORAGE_BUCKET:-autov-storage}
+      
+      # External APIs
+      - CARAPI_KEY=${CARAPI_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_VISION_API_KEY=${GOOGLE_VISION_API_KEY}
+      
+      # SMTP
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-noreply@autov.africa}
+      
+      # Realtime
+      - REALTIME_ENABLED=${REALTIME_ENABLED:-true}
+      - REALTIME_HEARTBEAT_INTERVAL=${REALTIME_HEARTBEAT_INTERVAL:-30}
+      - REALTIME_MAX_CHANNELS=${REALTIME_MAX_CHANNELS:-100}
+      
+      # Payment Worker
+      - PAYMENT_WORKER_ENABLED=${PAYMENT_WORKER_ENABLED:-true}
+      - PAYMENT_WORKER_INTERVAL=${PAYMENT_WORKER_INTERVAL:-60}
+      - PAYMENT_RETRY_MAX=${PAYMENT_RETRY_MAX:-3}
+      
+      # CORS
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./models:/app/models
+      - ./.env:/app/.env:ro
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - auto-v-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Redis Cache ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: auto-v-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - auto-v-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Celery Worker (Background Tasks) ──────────────────────
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auto-v-celery
+    restart: unless-stopped
+    command: celery -A app.tasks worker --loglevel=info --concurrency=4
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - CARAPI_KEY=${CARAPI_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_VISION_API_KEY=${GOOGLE_VISION_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./.env:/app/.env:ro
+    depends_on:
+      - redis
+    networks:
+      - auto-v-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Celery Beat (Scheduled Tasks) ──────────────────────────
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auto-v-celery-beat
+    restart: unless-stopped
+    command: celery -A app.tasks beat --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - redis
+      - celery
+    networks:
+      - auto-v-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Nginx (Reverse Proxy / Static Files) ──────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: auto-v-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./static:/usr/share/nginx/html/static:ro
+    depends_on:
+      - api
+    networks:
+      - auto-v-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Postgres (Optional - if not using Supabase) ──────────
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: auto-v-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_DB=autov
+  #     - POSTGRES_USER=autov
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #     - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U autov"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   networks:
+  #     - auto-v-network
+
+  # ─── PGAdmin (Optional - Database Management) ──────────────
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: auto-v-pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@autov.com}
+  #     - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD}
+  #   ports:
+  #     - "5050:80"
+  #   volumes:
+  #     - pgadmin-data:/var/lib/pgadmin
+  #   depends_on:
+  #     - postgres
+  #   networks:
+  #     - auto-v-network
+
+  # ─── Prometheus (Monitoring) ──────────────────────────────────
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: auto-v-prometheus
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus-data:/prometheus
+  #   networks:
+  #     - auto-v-network
+
+  # ─── Grafana (Dashboard) ──────────────────────────────────────
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: auto-v-grafana
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #     - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+  #   depends_on:
+  #     - prometheus
+  #   networks:
+  #     - auto-v-network
+
+networks:
+  auto-v-network:
+    driver: bridge
+    name: auto-v-network
+
+volumes:
+  redis-data:
+    driver: local
+  # postgres-data:
+  #   driver: local
+  # pgadmin-data:
+  #   driver: local
+  # prometheus-data:
+  #   driver: local
+  # grafana-data:
+  #   driver: local
