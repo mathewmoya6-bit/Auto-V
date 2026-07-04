@@ -748,7 +748,7 @@
                     <button type="button" class="fuel-filter-btn" data-fuel="Diesel" aria-pressed="false">
                         <span class="fuel-dot diesel"></span> Diesel
                     </button>
-                    <button type="button" class="fuel-filter-btn" data-fuel="Gas/LPG" aria-pressed="false">
+                    <button type="button" class="fuel-filter-btn" data-fuel="LPG" aria-pressed="false">
                         <span class="fuel-dot lpg"></span> Gas/LPG
                     </button>
                     <button type="button" class="fuel-filter-btn" data-fuel="Electric" aria-pressed="false">
@@ -950,15 +950,6 @@
     };
 
     // ─── Formatting ──────────────────────────────────────────────────
-    function escapeHtml(str) {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
     function num(v, fallback = 0) {
         const n = typeof v === 'string' ? parseFloat(v) : v;
         return Number.isFinite(n) ? n : fallback;
@@ -1012,7 +1003,7 @@
         categorySelect.appendChild(opt);
         variantSelect.innerHTML = '<option value="">Unable to load data</option>';
         variantSelect.disabled = true;
-        resetResults(escapeHtml(message));
+        resetResults(message);
         showToast('❌ ' + message, 'error');
     }
 
@@ -1025,42 +1016,47 @@
             // Fetch categories with their variants from backend
             const categoriesData = await api.get('/mileage/categories');
             
-            if (!categoriesData || !categoriesData.length) {
-                throw new Error('No categories found in backend');
+            if (!categoriesData || !Array.isArray(categoriesData)) {
+                throw new Error('Invalid response from server');
             }
 
             // Fetch routes
-            const routesData = await api.get('/mileage/routes');
-            routes = routesData || [];
+            try {
+                const routesData = await api.get('/mileage/routes');
+                routes = Array.isArray(routesData) ? routesData : [];
+            } catch (e) {
+                console.warn('Failed to load routes:', e);
+                routes = [];
+            }
 
             // Transform backend data to match frontend format
             categories = categoriesData.map(cat => ({
                 id: cat.id,
-                label: cat.name || 'Unnamed category',
+                label: cat.name || cat.category_name || 'Unnamed category',
                 fuel_type: cat.fuel_type || '—',
                 variants: (cat.variants || []).map(v => ({
                     id: v.id,
-                    label: v.engine_class || v.name || 'Unnamed variant',
+                    label: v.engine_class || v.variant_name || v.label || 'Unnamed variant',
                     category_id: cat.id,
-                    category_name: cat.name || 'Unknown',
-                    fixed_per_km: num(v.fixed_per_km),
-                    operating_per_km: num(v.operating_per_km),
-                    total_per_km: num(v.total_per_km),
-                    initial_cost: num(v.initial_cost),
-                    year1: num(v.year1 || v.total_per_km),
-                    year2: num(v.year2 || v.total_per_km),
-                    year3: num(v.year3 || v.total_per_km),
-                    year4: num(v.year4 || v.total_per_km),
-                    year5: num(v.year5 || v.total_per_km),
+                    category_name: cat.name || cat.category_name || 'Unknown',
+                    fixed_per_km: num(v.fixed_per_km || v.fixed_cost_per_km || 0),
+                    operating_per_km: num(v.operating_per_km || v.operating_cost_per_km || 0),
+                    total_per_km: num(v.total_per_km || v.total_cost_per_km || 0),
+                    initial_cost: num(v.initial_cost || 0),
+                    year1: num(v.year1 || v.total_per_km || v.total_cost_per_km || 0),
+                    year2: num(v.year2 || v.total_per_km || v.total_cost_per_km || 0),
+                    year3: num(v.year3 || v.total_per_km || v.total_cost_per_km || 0),
+                    year4: num(v.year4 || v.total_per_km || v.total_cost_per_km || 0),
+                    year5: num(v.year5 || v.total_per_km || v.total_cost_per_km || 0),
                     components: {
-                        insurance: num(v.insurance),
-                        depreciation: num(v.depreciation),
-                        interest: num(v.interest),
-                        fuel: num(v.fuel_per_km || v.fuel),
-                        servicing: num(v.servicing),
-                        repairs: num(v.repairs),
-                        tyres: num(v.tyres),
-                        licences: num(v.licences)
+                        insurance: num(v.insurance || 0),
+                        depreciation: num(v.depreciation || 0),
+                        interest: num(v.interest_on_capital || v.interest || 0),
+                        fuel: num(v.fuel_per_km || v.fuel || 0),
+                        servicing: num(v.servicing || 0),
+                        repairs: num(v.repairs || v.repairs_replacements || 0),
+                        tyres: num(v.tyres || v.automotive_tyres || 0),
+                        licences: num(v.licences || v.licences_parking || 0)
                     }
                 }))
             }));
@@ -1134,14 +1130,16 @@
             }
 
             filtered = [...filtered].sort((a, b) => {
-                const catCmp = a.category_name.localeCompare(b.category_name);
-                return catCmp !== 0 ? catCmp : a.label.localeCompare(b.label);
+                const catCmp = (a.category_name || '').localeCompare(b.category_name || '');
+                return catCmp !== 0 ? catCmp : (a.label || '').localeCompare(b.label || '');
             });
 
             filtered.forEach((variant, index) => {
                 const opt = document.createElement('option');
                 opt.value = variant.id;
-                opt.textContent = `${variant.category_name} — ${variant.label}`;
+                const categoryName = variant.category_name || 'Unknown';
+                const label = variant.label || 'Unnamed';
+                opt.textContent = `${categoryName} — ${label}`;
                 if (index === 0) opt.selected = true;
                 variantSelect.appendChild(opt);
             });
@@ -1159,7 +1157,7 @@
         category.variants.forEach((variant, index) => {
             const opt = document.createElement('option');
             opt.value = variant.id;
-            opt.textContent = variant.label;
+            opt.textContent = variant.label || 'Unnamed';
             if (index === 0) opt.selected = true;
             variantSelect.appendChild(opt);
         });
