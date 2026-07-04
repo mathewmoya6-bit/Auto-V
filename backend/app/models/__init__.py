@@ -1,39 +1,28 @@
 # app/models/__init__.py
 # =============================================================================
-# AUTO-V API - Models package
+# AUTO-V API - Models Registry (Single Source of Truth)
 # =============================================================================
+
 from app.core.database import Base
 
-from app.models.user import UserProfile
-from app.models.vehicle import Vehicle, VehicleImage, VINScan
-from app.models.valuation import Valuation
-from app.models.inspection import Inspection
-from app.models.mileage import VehicleCategory, VehicleVariant, Route, MileageClaim
-from app.models.fleet import Fleet, FleetVehicle, FleetDriver
-from app.models.certificate import Certificate
-from app.models.payment import Payment
-
-# Ensure all models are imported so Base.metadata knows about them
-# This is critical for Alembic migrations and table creation
+# Import all models in the correct order (dependencies first)
+from .user import UserProfile
+from .vehicle import Vehicle, VehicleImage, VINScan
+from .mileage import (
+    VehicleCategory,
+    VehicleVariant,
+    Route,
+    MileageClaim,
+)
 
 __all__ = [
     "Base",
     "UserProfile",
-    "Vehicle", 
-    "VehicleImage", 
+    "Vehicle",
+    "VehicleImage",
     "VINScan",
-    "Valuation",
-    "Inspection",
-    "VehicleCategory", 
-    "VehicleVariant", 
-    "Route", 
+    "VehicleCategory",
+    "VehicleVariant",
+    "Route",
     "MileageClaim",
-    "Fleet", 
-    "FleetVehicle", 
-    "FleetDriver",
-    "Certificate",
-    "Payment",
 ]
-
-# Optional: Print loaded models for debugging
-# print(f"Loaded models: {[name for name in __all__ if name != 'Base']}")
