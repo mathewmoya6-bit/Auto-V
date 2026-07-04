@@ -96,7 +96,9 @@ class MileageClaim(Base):
     approved_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    user = relationship("UserProfile", back_populates="mileage_claims", foreign_keys=[user_id])
+    # Relationships - BOTH need to be specified
+    user = relationship("UserProfile", foreign_keys=[user_id], back_populates="mileage_claims")
+    approver = relationship("UserProfile", foreign_keys=[approved_by], back_populates="approved_mileage_claims")  # Added this
     vehicle = relationship("Vehicle", back_populates="mileage_claims")
 
     __table_args__ = (
