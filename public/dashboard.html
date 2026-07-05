@@ -2,16 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
     <!-- Hybrid API Client - Single Source of Truth -->
     <script src="/auto-v-api.js"></script>
     
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
+        /* ─── RESET & BASE ─── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #0b1120; color: white; min-height: 100vh; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #0b1120;
+            color: white;
+            min-height: 100vh;
+        }
         
         /* ─── Header ────────────────────────────────────────────────── */
         header {
@@ -24,13 +32,17 @@
             position: sticky;
             top: 0;
             z-index: 100;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .logo { font-size: 24px; color: #eab308; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 12px; color: #94a3b8; font-weight: normal; }
         .header-right {
             display: flex;
             align-items: center;
             gap: 20px;
             font-size: 14px;
+            flex-wrap: wrap;
         }
         .header-right .member-id { color: #94a3b8; font-size: 12px; }
         .header-right .icon-btn {
@@ -69,6 +81,7 @@
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
+            gap: 12px;
         }
         .welcome-card h2 { color: #eab308; font-size: 24px; margin: 0; }
         .welcome-card p { color: #94a3b8; margin: 5px 0 0; }
@@ -138,6 +151,7 @@
             transition: 0.3s;
             text-decoration: none;
             display: inline-block;
+            font-family: inherit;
         }
         .service-actions .btn:hover { background: #facc15; transform: scale(1.02); }
         .service-actions .btn-outline {
@@ -183,6 +197,7 @@
             font-size: 12px;
             cursor: pointer;
             transition: 0.3s;
+            font-family: inherit;
         }
         .list-item .actions .btn-sm:hover { background: #eab308; color: black; }
         .list-item .status-badge {
@@ -212,7 +227,7 @@
             padding: 16px 24px;
             border-radius: 8px;
             color: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             animation: slideIn 0.3s ease-out;
         }
@@ -221,6 +236,7 @@
             to { transform: translateX(0); opacity: 1; }
         }
 
+        /* ─── Responsive ────────────────────────────────────────────── */
         @media (max-width: 768px) {
             header { flex-direction: column; gap: 10px; padding: 12px 16px; }
             .header-right { flex-wrap: wrap; justify-content: center; }
@@ -239,7 +255,7 @@
 <body>
     <!-- ─── Header ──────────────────────────────────────────────────── -->
     <header>
-        <div class="logo">🚗 AUTO-V</div>
+        <div class="logo">🚗 AUTO-V <span>Dashboard</span></div>
         <div class="header-right">
             <span id="memberId" class="member-id">Member ID: ---</span>
             <button class="icon-btn" onclick="showNotifications()">🔔</button>
@@ -325,8 +341,8 @@
 
             // ─── Services Configuration ────────────────────────────────────
             const ALL_SERVICES = [
-                { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', desc: 'Quick AI market estimate', page: 'customer-portal.html?service=instant-value-check' },
-                { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per kilometre analysis', page: 'customer-portal.html?service=mileage-rate' },
+                { id: 'instant-value-check', icon: '💡', name: 'Instant Value Check', desc: 'Quick AI market estimate', page: 'customer-portal.html?service=instant' },
+                { id: 'mileage-rate', icon: '📏', name: 'Mileage Rate Report', desc: 'Cost per kilometre analysis', page: 'customer-portal.html?service=mileage' },
                 { id: 'valuation', icon: '💰', name: 'Vehicle Valuation', desc: 'Certified valuation report', page: 'customer-portal.html?service=valuation' },
                 { id: 'inspection', icon: '🔍', name: 'Vehicle Inspection', desc: 'Comprehensive inspection report', page: 'customer-portal.html?service=inspection' },
                 { id: 'assessment', icon: '⚠️', name: 'Vehicle Assessment', desc: 'Accident and damage assessment', page: 'customer-portal.html?service=assessment' },
@@ -336,6 +352,7 @@
             // ─── State ──────────────────────────────────────────────────────
             let currentUser = null;
             let userProfile = null;
+            let isInitialized = false;
 
             // ─── Toast / Error handling ────────────────────────────────────
             function showToast(message, type = 'info') {
@@ -348,17 +365,52 @@
                 
                 const div = document.createElement('div');
                 div.className = 'toast-container';
+                const colors = {
+                    success: { bg: '#22c55e', text: '#000' },
+                    error: { bg: '#ef4444', text: '#fff' },
+                    warning: { bg: '#f59e0b', text: '#000' },
+                    info: { bg: '#3b82f6', text: '#fff' }
+                };
+                const style = colors[type] || colors.info;
                 div.style.cssText = `
-                    background: ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
-                    color: ${type === 'success' || type === 'warning' ? '#000' : '#fff'};
+                    background: ${style.bg};
+                    color: ${style.text};
                 `;
                 div.textContent = message;
                 document.body.appendChild(div);
                 setTimeout(() => div.remove(), 4000);
             }
 
+            // ─── API Helper with Fallback ──────────────────────────────────
+            async function apiRequest(endpoint, options = {}) {
+                if (window.autoV) {
+                    return window.autoV.apiRequest(endpoint, options);
+                }
+                // Fallback
+                const API_BASE = 'https://auto-v.onrender.com/api/v1';
+                const url = `${API_BASE}${endpoint}`;
+                const token = localStorage.getItem('access_token');
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...options.headers
+                };
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+                const response = await fetch(url, { ...options, headers, credentials: 'include' });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.detail || error.message || `HTTP ${response.status}`);
+                }
+                return response.json();
+            }
+
             // ─── Initialize ─────────────────────────────────────────────────
             async function init() {
+                if (isInitialized) return;
+                isInitialized = true;
+
                 // Wait for autoV to be ready
                 if (!window.autoV || !window.autoV._initialized) {
                     console.log('⏳ Waiting for autoV to initialize...');
@@ -375,10 +427,21 @@
                 }
 
                 try {
-                    // Get user from autoV
-                    currentUser = await window.autoV.getCurrentUser();
+                    // Get user from autoV or fallback
+                    if (window.autoV) {
+                        currentUser = await window.autoV.getCurrentUser();
+                    } else {
+                        // Fallback: try to get user from localStorage
+                        const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            window.location.href = 'login.html';
+                            return;
+                        }
+                        currentUser = await apiRequest('/auth/me');
+                    }
+                    
                     if (!currentUser) {
-                        window.location.href = '/login.html';
+                        window.location.href = 'login.html';
                         return;
                     }
                     
@@ -400,11 +463,19 @@
                     console.log('✅ Dashboard initialized successfully');
                     console.log(`👤 User: ${currentUser.email}`);
                     
+                    if (window.autoV) {
+                        window.autoV.showToast('🚀 Welcome to AUTO-V Dashboard', 'success');
+                    }
+                    
                 } catch (error) {
                     console.error('Dashboard init error:', error);
                     if (error.message.includes('401') || error.message.includes('Session expired')) {
-                        window.autoV.clearAuthToken();
-                        window.location.href = '/login.html';
+                        if (window.autoV) {
+                            window.autoV.clearAuthToken();
+                        } else {
+                            localStorage.removeItem('access_token');
+                        }
+                        window.location.href = 'login.html';
                     } else {
                         showToast('Failed to load dashboard: ' + error.message, 'error');
                     }
@@ -414,8 +485,12 @@
             // ─── Load User Profile ──────────────────────────────────────────
             async function loadUserProfile(user) {
                 try {
-                    // Fetch profile via autoV
-                    const profile = await window.autoV.apiRequest(`/users/${user.id}/profile`);
+                    let profile;
+                    if (window.autoV) {
+                        profile = await window.autoV.apiRequest(`/users/${user.id}/profile`);
+                    } else {
+                        profile = await apiRequest(`/users/${user.id}/profile`);
+                    }
                     userProfile = profile;
                     
                     document.getElementById('userName').textContent = profile.full_name || user.email.split('@')[0];
@@ -452,10 +527,15 @@
                 const vehicleList = document.getElementById('vehicleList');
                 
                 try {
-                    const vehicles = await window.autoV.apiRequest('/vehicles');
+                    let vehicles;
+                    if (window.autoV) {
+                        vehicles = await window.autoV.apiRequest('/vehicles');
+                    } else {
+                        vehicles = await apiRequest('/vehicles');
+                    }
                     
                     if (!vehicles || vehicles.length === 0) {
-                        vehicleList.innerHTML = `<div class="empty-state">🚗 You haven't registered any vehicles yet. <a href="/add-vehicle.html">Add your first vehicle</a></div>`;
+                        vehicleList.innerHTML = `<div class="empty-state">🚗 You haven't registered any vehicles yet. <a href="customer-portal.html">Add your first vehicle</a></div>`;
                         return;
                     }
                     
@@ -484,7 +564,12 @@
                 const reportsList = document.getElementById('recentReports');
                 
                 try {
-                    const reports = await window.autoV.apiRequest('/service-requests');
+                    let reports;
+                    if (window.autoV) {
+                        reports = await window.autoV.apiRequest('/service-requests');
+                    } else {
+                        reports = await apiRequest('/service-requests');
+                    }
                     
                     if (!reports || reports.length === 0) {
                         reportsList.innerHTML = `<div class="empty-state">No reports generated yet. Start a service to generate your first report.</div>`;
@@ -516,7 +601,12 @@
                 const certList = document.getElementById('certificateList');
                 
                 try {
-                    const certificates = await window.autoV.apiRequest('/certificates');
+                    let certificates;
+                    if (window.autoV) {
+                        certificates = await window.autoV.apiRequest('/certificates');
+                    } else {
+                        certificates = await apiRequest('/certificates');
+                    }
                     
                     if (!certificates || certificates.length === 0) {
                         certList.innerHTML = `<div class="empty-state">No certificates issued yet. Complete a valuation to receive a certificate.</div>`;
@@ -545,13 +635,23 @@
             // ─── Load Summary Statistics ────────────────────────────────────
             async function loadSummaryStats() {
                 try {
-                    // Get counts via autoV
-                    const [vehicles, reports, certificates, valuations] = await Promise.all([
-                        window.autoV.apiRequest('/vehicles/count'),
-                        window.autoV.apiRequest('/service-requests/count'),
-                        window.autoV.apiRequest('/certificates/count'),
-                        window.autoV.apiRequest('/valuations/total')
-                    ]);
+                    let vehicles, reports, certificates, valuations;
+                    
+                    if (window.autoV) {
+                        [vehicles, reports, certificates, valuations] = await Promise.all([
+                            window.autoV.apiRequest('/vehicles/count'),
+                            window.autoV.apiRequest('/service-requests/count'),
+                            window.autoV.apiRequest('/certificates/count'),
+                            window.autoV.apiRequest('/valuations/total')
+                        ]);
+                    } else {
+                        [vehicles, reports, certificates, valuations] = await Promise.all([
+                            apiRequest('/vehicles/count'),
+                            apiRequest('/service-requests/count'),
+                            apiRequest('/certificates/count'),
+                            apiRequest('/valuations/total')
+                        ]);
+                    }
                     
                     document.getElementById('sumVehicles').textContent = vehicles.count || 0;
                     document.getElementById('sumReports').textContent = reports.count || 0;
@@ -570,27 +670,39 @@
 
             // ─── Action Handlers ────────────────────────────────────────────
             async function handleLogout() {
-                await window.autoV.logout();
+                if (window.autoV) {
+                    await window.autoV.logout();
+                } else {
+                    try {
+                        await apiRequest('/auth/logout', { method: 'POST' });
+                    } catch (e) {}
+                    localStorage.removeItem('access_token');
+                    window.location.href = 'login.html';
+                }
             }
 
             function viewReport(requestId) {
-                window.open(`${window.autoV.API_BASE}/reports/generate/${requestId}`, '_blank');
+                const base = window.autoV ? window.autoV.API_BASE : 'https://auto-v.onrender.com/api/v1';
+                window.open(`${base}/reports/generate/${requestId}`, '_blank');
             }
 
             function downloadReport(requestId) {
-                window.location.href = `${window.autoV.API_BASE}/reports/download/${requestId}`;
+                const base = window.autoV ? window.autoV.API_BASE : 'https://auto-v.onrender.com/api/v1';
+                window.location.href = `${base}/reports/download/${requestId}`;
             }
 
             function viewCertificate(certId) {
-                window.open(`${window.autoV.API_BASE}/certificates/view/${certId}`, '_blank');
+                const base = window.autoV ? window.autoV.API_BASE : 'https://auto-v.onrender.com/api/v1';
+                window.open(`${base}/certificates/view/${certId}`, '_blank');
             }
 
             function downloadCertificate(certId) {
-                window.location.href = `${window.autoV.API_BASE}/certificates/download/${certId}`;
+                const base = window.autoV ? window.autoV.API_BASE : 'https://auto-v.onrender.com/api/v1';
+                window.location.href = `${base}/certificates/download/${certId}`;
             }
 
             function viewVehicleHistory(vehicleId) {
-                window.location.href = `/vehicle-history.html?id=${vehicleId}`;
+                window.location.href = `vehicle-history.html?id=${vehicleId}`;
             }
 
             function showServiceInfo(serviceId) {
@@ -605,7 +717,7 @@
             }
 
             function goToProfile() {
-                window.location.href = '/profile.html';
+                window.location.href = 'profile.html';
             }
 
             // ─── Helpers ──────────────────────────────────────────────────
