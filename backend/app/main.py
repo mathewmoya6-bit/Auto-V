@@ -13,16 +13,32 @@ from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.database import check_db_health, close_db, init_db, is_database_configured
 
+# =============================================================================
+# Logging Configuration
+# =============================================================================
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# Lifespan Manager
+# =============================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan context manager for startup and shutdown events.
+    
     Tables are managed via mileage_schema.sql / Alembic migrations.
+    
+    Startup:
+        - Initialize database tables
+        - Check database health
+        - Log connection status
+    
+    Shutdown:
+        - Close database connections
+        - Clean up resources
     """
-    # STARTUP
+    # ── STARTUP ──
     logger.info("🚀 Starting AUTO-V API...")
     
     if is_database_configured():
@@ -37,6 +53,7 @@ async def lifespan(app: FastAPI):
                 logger.info("✅ Database connection healthy")
             else:
                 logger.warning("⚠️  Database health check failed - continuing with degraded functionality")
+                
         except Exception as e:
             logger.error(f"❌ Failed to initialize database: {e}")
             logger.warning("⚠️  Continuing with degraded functionality")
@@ -45,13 +62,15 @@ async def lifespan(app: FastAPI):
     
     yield  # Application runs here
     
-    # SHUTDOWN
+    # ── SHUTDOWN ──
     logger.info("🛑 Shutting down AUTO-V API...")
     await close_db()
     logger.info("✅ Shutdown complete")
 
 
-# Create FastAPI application
+# =============================================================================
+# FastAPI Application
+# =============================================================================
 app = FastAPI(
     title="AUTO-V API",
     version="3.1.0",
@@ -59,7 +78,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# =============================================================================
 # CORS Middleware
+# =============================================================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS if settings.CORS_ORIGINS else ["*"],
@@ -68,13 +90,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API Router
+
+# =============================================================================
+# API Routers
+# =============================================================================
 app.include_router(api_router, prefix="/api/v1")
 
 
+# =============================================================================
+# Root Endpoint
+# =============================================================================
 @app.get("/")
 async def root():
-    """Root endpoint."""
+    """
+    Root endpoint.
+    
+    Returns:
+        Service information and status
+    """
     return {
         "service": "AUTO-V API",
         "version": "3.1.0",
@@ -83,11 +116,18 @@ async def root():
     }
 
 
+# =============================================================================
+# Health Check Endpoint
+# =============================================================================
 @app.get("/health")
 async def health():
     """
     Health check endpoint.
+    
     Returns service status and database connectivity.
+    
+    Returns:
+        dict: Health status with database connectivity
     """
     db_ok = await check_db_health() if is_database_configured() else False
     
@@ -99,11 +139,19 @@ async def health():
     }
 
 
+# =============================================================================
+# Readiness Probe Endpoint
+# =============================================================================
 @app.get("/ready")
 async def ready():
     """
     Readiness probe endpoint.
+    
     Checks if the service is ready to accept traffic.
+    
+    Returns:
+        dict: Readiness status
+        HTTP 503: If database is not available
     """
     db_ok = await check_db_health() if is_database_configured() else False
     
