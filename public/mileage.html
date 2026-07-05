@@ -895,16 +895,19 @@
         };
 
         // ── Initialize Supabase Client ──
-        const supabase = window.supabase.createClient(CONFIG.SUPABASE.URL, CONFIG.SUPABASE.ANON_KEY, {
-            auth: {
-                autoRefreshToken: true,
-                persistSession: true
-            },
-            db: { schema: 'public' },
-            realtime: {
-                params: { eventsPerSecond: 10 }
-            }
-        });
+        let supabase = null;
+        try {
+            supabase = window.supabase.createClient(CONFIG.SUPABASE.URL, CONFIG.SUPABASE.ANON_KEY, {
+                auth: {
+                    autoRefreshToken: true,
+                    persistSession: true
+                },
+                db: { schema: 'public' }
+            });
+            console.log('✅ Supabase client initialized');
+        } catch (error) {
+            console.error('❌ Failed to initialize Supabase:', error);
+        }
 
         // ── DOM refs ──
         const categorySelect = document.getElementById('categorySelect');
@@ -952,7 +955,7 @@
         let routes = [];
         let currentFuelFilter = 'all';
         let isLoading = false;
-        let useFastAPI = true; // Try FastAPI first, fallback to client
+        let useFastAPI = true;
         let cache = {};
 
         // ── Helpers ──
@@ -1002,7 +1005,7 @@
             cache[key] = { data, timestamp: Date.now() };
         }
 
-        // ── Supabase Data Access (Direct Reads) ──
+        // ── Supabase Data Access ──
         async function fetchCategoriesFromSupabase() {
             try {
                 const cached = getCache('categories');
@@ -1010,6 +1013,8 @@
                     console.log('📦 Using cached categories');
                     return cached;
                 }
+
+                if (!supabase) throw new Error('Supabase not initialized');
 
                 const { data, error } = await supabase
                     .from('vehicle_categories')
@@ -1021,7 +1026,7 @@
                 
                 setCache('categories', data);
                 dataSource.textContent = 'Supabase';
-                return data;
+                return data || [];
             } catch (error) {
                 console.error('❌ Supabase categories error:', error);
                 throw error;
@@ -1037,12 +1042,11 @@
                     return cached;
                 }
 
+                if (!supabase) throw new Error('Supabase not initialized');
+
                 const { data, error } = await supabase
                     .from('vehicle_variants')
-                    .select(`
-                        *,
-                        category:vehicle_categories(name, fuel_type)
-                    `)
+                    .select('*')
                     .eq('category_id', categoryId)
                     .eq('is_active', true)
                     .order('label');
@@ -1051,7 +1055,7 @@
                 
                 setCache(cacheKey, data);
                 dataSource.textContent = 'Supabase';
-                return data;
+                return data || [];
             } catch (error) {
                 console.error('❌ Supabase variants error:', error);
                 throw error;
@@ -1066,6 +1070,8 @@
                     return cached;
                 }
 
+                if (!supabase) throw new Error('Supabase not initialized');
+
                 const { data, error } = await supabase
                     .from('routes')
                     .select('*')
@@ -1075,7 +1081,7 @@
                 if (error) throw error;
                 
                 setCache('routes', data);
-                return data;
+                return data || [];
             } catch (error) {
                 console.error('❌ Supabase routes error:', error);
                 throw error;
@@ -1094,8 +1100,7 @@
                     body: JSON.stringify({
                         variant_id: variantId,
                         distance: distance,
-                        include_forecast: true,
-                        include_comparison: true
+                        include_forecast: true
                     })
                 });
 
@@ -1108,12 +1113,12 @@
                 calcMethod.textContent = 'FastAPI';
                 return result;
             } catch (error) {
-                console.warn('⚠️ FastAPI calculation failed, falling back to client:', error);
+                console.warn('⚠️ FastAPI calculation failed:', error.message);
                 return null;
             }
         }
 
-        // ── Client-side Calculation (Fallback) ──
+        // ── Client-side Calculation ──
         function calculateClientSide(variant, distance) {
             const fixedRate = num(variant.fixed_per_km);
             const operatingRate = num(variant.operating_per_km);
@@ -1147,26 +1152,21 @@
             };
         }
 
-        // ── Main Calculation Orchestrator ──
+        // ── Main Calculation ──
         async function calculateMileage(variant, distance) {
             if (!variant || !distance) return null;
 
-            // Try FastAPI first for complex business logic
+            // Try FastAPI first
             let result = null;
             if (useFastAPI) {
-                try {
-                    result = await calculateViaFastAPI(variant.id, distance);
-                    if (result) {
-                        // Enhance with variant data if needed
-                        result.variant = variant;
-                        return result;
-                    }
-                } catch (error) {
-                    console.warn('FastAPI unavailable, using client-side');
+                result = await calculateViaFastAPI(variant.id, distance);
+                if (result) {
+                    result.variant = variant;
+                    return result;
                 }
             }
 
-            // Fallback to client-side calculation
+            // Fallback to client-side
             result = calculateClientSide(variant, distance);
             result.variant = variant;
             return result;
@@ -1180,7 +1180,7 @@
                 : categories.filter(c => c.fuel_type === currentFuelFilter);
 
             categorySelect.innerHTML = '';
-            if (visible.length === 0) {
+            if (!visible || visible.length === 0) {
                 categorySelect.innerHTML = '<option value="">No categories match</option>';
                 categorySelect.disabled = true;
                 allVariants = [];
@@ -1192,7 +1192,7 @@
             visible.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
-                opt.textContent = c.name;
+                opt.textContent = c.name || 'Unnamed';
                 categorySelect.appendChild(opt);
             });
 
@@ -1208,7 +1208,7 @@
 
         function populateVariants() {
             variantSelect.innerHTML = '';
-            if (filteredVariants.length === 0) {
+            if (!filteredVariants || filteredVariants.length === 0) {
                 variantSelect.innerHTML = '<option value="">No vehicles match</option>';
                 variantSelect.disabled = true;
                 calculateBtn.disabled = true;
@@ -1228,8 +1228,13 @@
         }
 
         function renderRouteChips() {
+            routeChips.innerHTML = '';
+            if (!routes || routes.length === 0) {
+                routeChips.innerHTML = '<span style="color:var(--ink-soft);font-size:11px;">No routes available</span>';
+                return;
+            }
             routeChips.innerHTML = routes.map(r =>
-                `<button class="chip" data-km="${r.km}">${r.from_city} → ${r.to_city} <span class="km-badge">${r.km}km</span></button>`
+                `<button class="chip" data-km="${r.km}">${r.from_city || '?'} → ${r.to_city || '?'} <span class="km-badge">${r.km}km</span></button>`
             ).join('');
         }
 
@@ -1257,12 +1262,10 @@
                 return;
             }
 
-            // Show loading state
             calculateBtn.disabled = true;
             calculateBtn.innerHTML = '<span class="spinner"></span> Calculating...';
 
             try {
-                // Use hybrid calculation
                 const result = await calculateMileage(variant, distance);
                 
                 if (!result) {
@@ -1270,7 +1273,6 @@
                     return;
                 }
 
-                // Update UI with results
                 vehicleLabel.textContent = variant.label || 'Unnamed variant';
                 fuelPill.textContent = (category && category.fuel_type) || '—';
 
@@ -1283,7 +1285,6 @@
                 operatingTrip.textContent = formatCurrency(result.operatingCost);
                 totalPerKm.textContent = formatCurrency(result.totalRate);
 
-                // Components
                 const components = result.components || {};
                 detailIds.forEach(key => {
                     const el = document.getElementById(detailMap[key]);
@@ -1300,11 +1301,9 @@
                     }
                 });
 
-                // Initial Cost
                 const initialVal = result.initialCost || variant.initial_cost || 0;
                 initialCost.textContent = initialVal ? `KES ${formatCurrency(initialVal)}` : '—';
 
-                // Yearly costs
                 const yearly = result.yearly || {};
                 yearIds.forEach((id, idx) => {
                     const el = document.getElementById(id);
@@ -1365,18 +1364,18 @@
                 populateCategories();
             });
 
-            // Category change - fetch variants from Supabase
+            // Category change
             categorySelect.addEventListener('change', async function() {
                 const catId = this.value;
                 if (!catId || isLoading) return;
                 
                 isLoading = true;
                 try {
-                    // Fetch from Supabase directly
                     const variants = await fetchVariantsFromSupabase(catId);
-                    allVariants = variants;
+                    allVariants = variants || [];
                     applyVariantFilter();
                 } catch (error) {
+                    console.error('Error loading variants:', error);
                     showToast('Error loading vehicles', 'error');
                     allVariants = [];
                     applyVariantFilter();
@@ -1425,12 +1424,10 @@
                 await computeAndRender();
             });
 
-            // Print
             document.getElementById('printBtn').addEventListener('click', function() {
                 window.print();
             });
 
-            // Share
             document.getElementById('shareBtn').addEventListener('click', function() {
                 const url = window.location.href;
                 const text = `AUTO-V Mileage Report\nVehicle: ${vehicleLabel.textContent}\nTotal Cost: KES ${totalTrip.textContent}`;
@@ -1450,7 +1447,6 @@
                 }
             });
 
-            // Export CSV
             document.getElementById('exportBtn').addEventListener('click', function() {
                 const variant = currentVariant();
                 if (!variant) {
@@ -1478,7 +1474,6 @@
                 a.download = `auto-v-report-${Date.now()}.csv`;
                 a.click();
                 URL.revokeObjectURL(url);
-                
                 showToast('CSV exported!', 'success');
             });
 
@@ -1489,44 +1484,49 @@
             });
 
             try {
-                // Load data from Supabase
+                if (!supabase) throw new Error('Supabase client not available');
+
                 const [categoriesData, routesData] = await Promise.all([
                     fetchCategoriesFromSupabase(),
                     fetchRoutesFromSupabase()
                 ]);
 
-                categories = categoriesData;
-                routes = routesData;
+                categories = categoriesData || [];
+                routes = routesData || [];
 
                 populateCategories();
                 renderRouteChips();
                 
                 // Check FastAPI health
                 try {
-                    const healthCheck = await fetch(`${CONFIG.FASTAPI.BASE_URL}/health`);
+                    const healthCheck = await fetch(`${CONFIG.FASTAPI.BASE_URL}/health`, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    });
                     if (healthCheck.ok) {
                         useFastAPI = true;
                         setStatus('● Connected to Supabase + FastAPI', true);
                         showToast('✅ Connected to Supabase & FastAPI', 'success');
                     } else {
                         useFastAPI = false;
-                        setStatus('⚠️ FastAPI unavailable, using client-side', false);
-                        showToast('⚠️ FastAPI unavailable - using client-side calculations', 'warning');
+                        setStatus('⚠️ FastAPI degraded, using client-side', false);
+                        showToast('⚠️ Using client-side calculations', 'warning');
                     }
                 } catch (error) {
                     useFastAPI = false;
                     setStatus('⚠️ FastAPI unavailable, using client-side', false);
-                    showToast('⚠️ FastAPI unavailable - using client-side calculations', 'warning');
+                    showToast('⚠️ Using client-side calculations', 'warning');
                 }
 
                 console.log('✅ Application initialized (Hybrid Mode)');
+                console.log(`📊 Categories: ${categories.length}, Routes: ${routes.length}`);
                 
             } catch (error) {
                 console.error('❌ Initialization error:', error);
-                setStatus('⚠️ Could not connect to Supabase', false);
-                showToast('Could not connect to Supabase. Please check your connection.', 'error');
+                setStatus('⚠️ Supabase connection failed', false);
+                showToast('Could not connect to Supabase. Using fallback data.', 'error');
                 
-                // Fallback to hardcoded data
+                // Fallback data
                 categories = [
                     { id: '11111111-1111-1111-1111-111111111111', name: 'Saloon Cars', fuel_type: 'Petrol' },
                     { id: '22222222-2222-2222-2222-222222222222', name: 'SUVs & Crossovers', fuel_type: 'Diesel' },
