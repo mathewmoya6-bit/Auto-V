@@ -6,6 +6,9 @@
     <title>AUTO-V | Admin Login</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
@@ -260,6 +263,29 @@
 
         .security-badge svg { width: 14px; height: 14px; fill: #22c55e; }
 
+        /* ─── Toast for API Client ─── */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn 0.3s ease;
+            max-width: 380px;
+            font-size: 14px;
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        .toast-warning { background: #eab308; color: #000; }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(80px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
         @media (max-width: 480px) {
             .login-container { padding: 32px 20px 28px; border-radius: 24px; margin: 12px; }
             .logo h1 { font-size: 26px; }
@@ -330,15 +356,15 @@
     <script>
         // ═══════════════════════════════════════════════════════════════
         // AUTO-V ADMIN LOGIN — Production Ready
+        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
             // ─── PRODUCTION CONFIG ──────────────────────────────────────
-            const API_BASE = 'https://auto-v.onrender.com/api/v1';
-            const ADMIN_DASHBOARD = '/admin/dashboard';
-            const USER_DASHBOARD = '/dashboard';
+            const ADMIN_DASHBOARD = '/admin-dashboard.html';
+            const USER_DASHBOARD = '/dashboard.html';
 
             // ─── DOM REFS ───────────────────────────────────────────────
             const emailInput = document.getElementById('email');
@@ -346,71 +372,6 @@
             const loginBtn = document.getElementById('loginBtn');
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
-
-            // ─── API CLIENT ─────────────────────────────────────────────
-            const api = {
-                baseURL: API_BASE,
-                token: null,
-
-                setToken(token) {
-                    this.token = token;
-                    localStorage.setItem('access_token', token);
-                },
-
-                getToken() {
-                    return this.token || localStorage.getItem('access_token');
-                },
-
-                async request(endpoint, options = {}) {
-                    const url = `${this.baseURL}${endpoint}`;
-                    const headers = {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...options.headers,
-                    };
-
-                    const token = this.getToken();
-                    if (token) {
-                        headers['Authorization'] = `Bearer ${token}`;
-                    }
-
-                    try {
-                        const response = await fetch(url, {
-                            ...options,
-                            headers,
-                            credentials: 'include',
-                            mode: 'cors',
-                        });
-
-                        if (!response.ok) {
-                            let errorMessage = `HTTP ${response.status}`;
-                            try {
-                                const errorData = await response.json();
-                                errorMessage = errorData.detail || errorData.message || errorMessage;
-                            } catch (e) {
-                                errorMessage = await response.text() || errorMessage;
-                            }
-                            throw new Error(errorMessage);
-                        }
-
-                        return response.json();
-                    } catch (error) {
-                        console.error('API request failed:', error);
-                        throw error;
-                    }
-                },
-
-                post(endpoint, data) {
-                    return this.request(endpoint, {
-                        method: 'POST',
-                        body: JSON.stringify(data),
-                    });
-                },
-
-                get(endpoint) {
-                    return this.request(endpoint, { method: 'GET' });
-                },
-            };
 
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
             function showMessage(text, type = 'error') {
@@ -443,11 +404,14 @@
             // ─── CHECK EXISTING SESSION ────────────────────────────────
             async function checkExistingSession() {
                 try {
-                    const token = localStorage.getItem('access_token');
-                    if (!token) return;
+                    // Use autoV to check session
+                    if (!window.autoV) {
+                        console.warn('autoV not loaded, using fallback');
+                        return;
+                    }
 
-                    api.setToken(token);
-                    const user = await api.get('/auth/me');
+                    const user = await window.autoV.getCurrentUser();
+                    if (!user) return;
 
                     if (user.role === 'admin' || user.role === 'super_admin') {
                         console.log('✅ Admin session valid — redirecting');
@@ -458,7 +422,11 @@
                     }
                 } catch (error) {
                     console.log('Session expired or invalid');
-                    localStorage.removeItem('access_token');
+                    if (window.autoV) {
+                        window.autoV.clearAuthToken();
+                    } else {
+                        localStorage.removeItem('access_token');
+                    }
                 }
             }
 
@@ -487,25 +455,34 @@
                 setLoading(true);
 
                 try {
+                    // ─── Check if autoV is available ────────────────────
+                    if (!window.autoV || !window.autoV._initialized) {
+                        throw new Error('API client not loaded. Please refresh the page.');
+                    }
+
                     // ─── Step 1: Call Login Endpoint ────────────────────
-                    console.log('🔐 Attempting login for:', email);
-                    const loginResponse = await api.post('/auth/login', {
-                        email: email,
-                        password: password
+                    console.log('🔐 Attempting admin login for:', email);
+                    
+                    const loginResponse = await window.autoV.apiRequest('/auth/login', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            email: email,
+                            password: password
+                        })
                     });
 
-                    console.log('✅ Login response:', loginResponse);
+                    console.log('✅ Login response received');
 
                     // ─── Step 2: Store Token ─────────────────────────────
                     if (loginResponse.access_token) {
-                        api.setToken(loginResponse.access_token);
+                        window.autoV.setAuthToken(loginResponse.access_token);
                         console.log('✅ Token stored successfully');
                     } else {
                         throw new Error('No access token received');
                     }
 
                     // ─── Step 3: Get User Info ──────────────────────────
-                    const user = await api.get('/auth/me');
+                    const user = await window.autoV.getCurrentUser();
                     console.log('✅ User info:', user);
 
                     // ─── Step 4: Check Admin Role ───────────────────────
@@ -527,10 +504,10 @@
                             window.location.href = ADMIN_DASHBOARD;
                         }, 1000);
                     } else {
-                        showMessage('✅ Login successful! Redirecting to dashboard...', 'success');
+                        showMessage('⛔ Admin privileges required. Redirecting to user dashboard...', 'info');
                         setTimeout(() => {
                             window.location.href = USER_DASHBOARD;
-                        }, 1000);
+                        }, 1500);
                     }
 
                 } catch (error) {
@@ -546,9 +523,9 @@
                     } else if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('too many')) {
                         showMessage('⏳ Too many login attempts. Please wait a moment.', 'error');
                     } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch') || errorMsg.includes('CORS')) {
-                        showMessage('🌐 Network/CORS error. Cannot reach the server.', 'error');
+                        showMessage('🌐 Network error. Cannot reach the server. Please check your connection.', 'error');
                     } else if (errorMsg.includes('404')) {
-                        showMessage('🔍 API endpoint not found. Please check the backend URL.', 'error');
+                        showMessage('🔍 API endpoint not found. Please contact support.', 'error');
                     } else if (errorMsg.includes('500')) {
                         showMessage('⚠️ Server error. Please try again later.', 'error');
                     } else if (errorMsg.includes('Email not confirmed')) {
@@ -575,16 +552,47 @@
             });
 
             // ─── CHECK FOR EXISTING SESSION ON LOAD ────────────────────
-            checkExistingSession();
+            async function init() {
+                // Wait for autoV to be ready
+                if (window.autoV && !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
 
-            // ─── FOCUS EMAIL ────────────────────────────────────────────
-            setTimeout(() => emailInput.focus(), 150);
+                // Check if autoV is available
+                if (!window.autoV) {
+                    console.error('❌ autoV API client not loaded.');
+                    showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
+                    return;
+                }
 
-            console.log('🚀 AUTO-V Admin Login');
-            console.log(`📌 API Base: ${API_BASE}`);
-            console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
-            console.log(`📌 User Dashboard: ${USER_DASHBOARD}`);
-            console.log(`📌 Origin: ${window.location.origin}`);
+                await checkExistingSession();
+
+                // Focus email field
+                setTimeout(() => emailInput.focus(), 150);
+
+                console.log('🚀 AUTO-V Admin Login');
+                console.log(`📌 API Base: ${window.autoV.API_BASE || 'https://auto-v.onrender.com/api/v1'}`);
+                console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
+                console.log(`📌 User Dashboard: ${USER_DASHBOARD}`);
+                console.log(`📌 Origin: ${window.location.origin}`);
+            }
+
+            // ─── START ──────────────────────────────────────────────────
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
 
         })();
     </script>
