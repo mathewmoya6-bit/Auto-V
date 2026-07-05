@@ -11,8 +11,7 @@ from typing import Optional, Dict, Any
 import logging
 
 from app.core.database import get_db
-from app.models.vehicle_variant import VehicleVariant
-from app.models.vehicle_category import VehicleCategory
+from app.models.mileage import VehicleCategory, VehicleVariant
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -58,7 +57,7 @@ async def calculate_mileage(
 ):
     """
     Calculate mileage costs for a vehicle variant.
-    
+
     Business Logic:
     1. Fetch variant from database
     2. Calculate fixed and operating costs
@@ -77,27 +76,27 @@ async def calculate_mileage(
             .where(VehicleVariant.id == request.variant_id)
             .where(VehicleVariant.is_active == True)
         )
-        
+
         result = await db.execute(query)
         row = result.first()
-        
+
         if not row:
             raise HTTPException(
                 status_code=404,
                 detail=f"Variant with ID {request.variant_id} not found"
             )
-        
+
         variant, category = row
-        
+
         # 2. Calculate costs
         fixed_rate = float(variant.fixed_per_km or 0)
         operating_rate = float(variant.operating_per_km or 0)
         total_rate = float(variant.total_per_km or (fixed_rate + operating_rate))
-        
+
         total_cost = total_rate * request.distance
         fixed_cost = fixed_rate * request.distance
         operating_cost = operating_rate * request.distance
-        
+
         # 3. Component breakdown
         components = variant.components or {}
         component_costs = {}
@@ -106,7 +105,7 @@ async def calculate_mileage(
                 component_costs[key] = float(value or 0) * request.distance
             except (ValueError, TypeError):
                 component_costs[key] = 0
-        
+
         # 4. Build response
         response_data = {
             "totalCost": round(total_cost, 2),
@@ -127,18 +126,18 @@ async def calculate_mileage(
             "method": "fastapi",
             "distance": request.distance
         }
-        
+
         # 5. Add forecast if requested
         if request.include_forecast:
             response_data["forecast"] = calculate_forecast(variant, request.distance)
-        
+
         # 6. Add comparison if requested
         if request.include_comparison and category:
             response_data["comparison"] = get_comparison(variant, category)
-        
+
         logger.info(f"✅ Mileage calculation completed for variant: {variant.label}")
         return response_data
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -166,9 +165,9 @@ def calculate_forecast(variant, distance: float) -> Dict[str, float]:
         'year4': float(variant.year4 or 0),
         'year5': float(variant.year5 or 0)
     }
-    
+
     total_rate = float(variant.total_per_km or (float(variant.fixed_per_km or 0) + float(variant.operating_per_km or 0)))
-    
+
     for year, rate in yearly_rates.items():
         if rate > 0:
             forecast[year] = round(rate * distance, 2)
@@ -176,14 +175,14 @@ def calculate_forecast(variant, distance: float) -> Dict[str, float]:
             # If no specific rate, use base rate with slight increase
             adjustment = {'year1': 1.00, 'year2': 1.02, 'year3': 1.04, 'year4': 1.06, 'year5': 1.08}
             forecast[year] = round(total_rate * distance * adjustment.get(year, 1.0), 2)
-    
+
     return forecast
 
 
 def get_comparison(variant, category) -> Dict[str, Any]:
     """Get fuel type comparison data."""
     fuel_type = category.fuel_type or 'Unknown'
-    
+
     # Average rates by fuel type (based on Kenya data)
     averages = {
         'Petrol': 45.00,
@@ -192,9 +191,9 @@ def get_comparison(variant, category) -> Dict[str, Any]:
         'LPG': 38.00,
         'Unknown': 45.00
     }
-    
+
     current_rate = float(variant.total_per_km or 0)
-    
+
     return {
         "fuelType": fuel_type,
         "category": category.name,
