@@ -7,9 +7,9 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E%F0%9F%93%8A%3C/text%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    
+
     <style>
-        /* ─── CSS ─── */
+        /* ─── CSS (unchanged from original visual design) ─── */
         :root {
             --asphalt: #0a0c15;
             --asphalt-2: #111827;
@@ -696,7 +696,7 @@
             <h1>AUTO-V <span>Professional</span><br />Vehicle Running Costs</h1>
             <p class="subtitle">
                 Kenya Mileage Rate Schedule — <strong>July 2026</strong><br />
-                <span style="font-size:12px;color:var(--ink-soft);">⚡ Clean Architecture · FastAPI Backend · Supabase Read-Only</span>
+                <span style="font-size:12px;color:var(--ink-soft);">⚡ Rates computed from stored vehicle data · FastAPI Backend · Supabase Read-Only</span>
             </p>
         </div>
         <div class="header-right">
@@ -711,29 +711,7 @@
         <section class="calculator-panel">
             <div class="panel-label"><span class="num">01</span> Select Vehicle</div>
 
-            <div class="form-group">
-                <label for="categorySelect">Vehicle Category</label>
-                <select id="categorySelect" disabled aria-busy="true">
-                    <option value="">Loading categories...</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                    <label for="variantSelect" style="margin-bottom:0;">Engine / Class</label>
-                    <div class="all-classes-toggle">
-                        <label for="showAllClasses">
-                            <input type="checkbox" id="showAllClasses" />
-                            <span class="toggle-label">Show <strong>All</strong> Classes</span>
-                        </label>
-                    </div>
-                </div>
-                <select id="variantSelect" disabled aria-busy="true">
-                    <option value="">Select a category first</option>
-                </select>
-            </div>
-
-            <!-- Fuel Type Filter -->
+            <!-- Fuel Type Filter — filters CATEGORIES, since fuel_type lives on vehicle_categories -->
             <div class="form-group">
                 <label id="fuelFilterLabel">Fuel Type</label>
                 <div class="fuel-filter-group" id="fuelFilterGroup" role="group" aria-labelledby="fuelFilterLabel">
@@ -753,6 +731,28 @@
                         <span class="fuel-dot electric"></span> Electric
                     </button>
                 </div>
+            </div>
+
+            <div class="form-group">
+                <label for="categorySelect">Vehicle Category</label>
+                <select id="categorySelect" disabled aria-busy="true">
+                    <option value="">Loading categories...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <label for="variantSelect" style="margin-bottom:0;">Engine / Class</label>
+                    <div class="all-classes-toggle">
+                        <label for="showAllClasses">
+                            <input type="checkbox" id="showAllClasses" />
+                            <span class="toggle-label">Show <strong>All</strong> Variants</span>
+                        </label>
+                    </div>
+                </div>
+                <select id="variantSelect" disabled aria-busy="true">
+                    <option value="">Select a category first</option>
+                </select>
             </div>
 
             <div class="panel-label" style="margin-top:16px;"><span class="num">02</span> Trip Distance</div>
@@ -849,8 +849,8 @@
     <div class="report-footer">
         <div class="brand">🚗 AUTO-V <span>Professional</span></div>
         <div class="meta">
-            <strong>Architecture:</strong> React/Next.js → FastAPI → Supabase (Read-Only) → PostgreSQL<br />
-            For official use only · v3.0.0
+            <strong>Architecture:</strong> FastAPI → Supabase (Read-Only) → PostgreSQL. Rates computed client-side from stored per-km values.<br />
+            For official use only · v3.1.0
         </div>
     </div>
 </div>
@@ -861,7 +861,7 @@
 
         // ── Configuration ──
         const API_BASE_URL = 'https://auto-v.onrender.com/api/v1';
-        
+
         // ── DOM refs ──
         const categorySelect = document.getElementById('categorySelect');
         const variantSelect = document.getElementById('variantSelect');
@@ -885,7 +885,7 @@
         const totalPerKm = document.getElementById('totalPerKm');
         const initialCost = document.getElementById('initialCost');
 
-        const detailIds = ['Insurance','Depreciation','Interest','Fuel','Servicing','Repairs','Tyres','Licences'];
+        // components JSON keys stored on vehicle_variants -> DOM element ids
         const detailMap = {
             Insurance: 'detailInsurance',
             Depreciation: 'detailDepreciation',
@@ -896,21 +896,27 @@
             Tyres: 'detailTyres',
             Licences: 'detailLicences'
         };
-
+        const detailIds = Object.keys(detailMap);
         const yearIds = ['year1','year2','year3','year4','year5'];
+        const yearFields = ['year1','year2','year3','year4','year5'];
 
         // ── State ──
-        let categories = [];
-        let allVehicles = [];
-        let filteredVehicles = [];
-        let currentVehicle = null;
+        let categories = [];        // vehicle_categories rows
+        let allVariants = [];       // vehicle_variants rows for the selected category
+        let filteredVariants = [];  // after "show all" toggle is applied
+        let routes = [];            // routes rows
         let currentFuelFilter = 'all';
         let isLoading = false;
 
         // ── Helpers ──
+        function num(v) {
+            const n = parseFloat(v);
+            return isNaN(n) ? 0 : n;
+        }
+
         function formatCurrency(val) {
             if (val === undefined || val === null || isNaN(val)) return '0.00';
-            return val.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return Number(val).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         function showToast(message, type = 'info') {
@@ -945,254 +951,190 @@
                         ...(options.headers || {})
                     }
                 });
-                
+
                 if (!response.ok) {
                     const errorText = await response.text();
                     throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
                 }
-                
-                const data = await response.json();
-                return data;
+
+                return await response.json();
             } catch (err) {
                 console.error(`❌ API call failed: ${url}`, err);
                 throw err;
             }
         }
 
+        // GET /categories -> vehicle_categories rows: { id, name, fuel_type, is_active }
         async function fetchCategories() {
             try {
                 setStatus('● Loading categories...', true);
                 const data = await apiCall(`${API_BASE_URL}/categories`);
                 categories = Array.isArray(data) ? data : (data.categories || data.data || []);
                 console.log('📦 Categories loaded:', categories.length);
-                populateCategories();
                 return categories;
             } catch (err) {
                 console.error('❌ fetchCategories error:', err);
                 setStatus('⚠️ Backend unavailable', false);
                 showToast(`Cannot connect to backend: ${err.message}`, 'error');
-                // Fallback data for testing
+                // Fallback data so the UI is still explorable offline
                 categories = [
-                    { id: '11111111-1111-1111-1111-111111111111', name: 'Saloon Cars' },
-                    { id: '22222222-2222-2222-2222-222222222222', name: 'SUVs & Crossovers' },
-                    { id: '33333333-3333-3333-3333-333333333333', name: 'Pickups & Vans' }
+                    { id: '11111111-1111-1111-1111-111111111111', name: 'Saloon Cars', fuel_type: 'Petrol' },
+                    { id: '22222222-2222-2222-2222-222222222222', name: 'SUVs & Crossovers', fuel_type: 'Diesel' },
+                    { id: '33333333-3333-3333-3333-333333333333', name: 'Pickups & Vans', fuel_type: 'Diesel' }
                 ];
-                populateCategories();
                 return categories;
             }
         }
 
-        async function fetchVehicles(categoryId = null, fuelType = null) {
+        // GET /vehicles?category_id=... -> vehicle_variants rows for that category
+        // { id, category_id, label, fixed_per_km, operating_per_km, total_per_km,
+        //   initial_cost, year1..year5, components: {...}, is_active }
+        async function fetchVariants(categoryId) {
             try {
-                let url = `${API_BASE_URL}/vehicles`;
-                const params = new URLSearchParams();
-                
-                // Only add category_id if it's a valid UUID
-                if (categoryId && isValidUUID(categoryId)) {
-                    params.append('category_id', categoryId);
-                } else if (categoryId) {
-                    console.warn(`⚠️ Invalid UUID format: ${categoryId}, skipping filter`);
+                if (!categoryId || !isValidUUID(categoryId)) {
+                    allVariants = [];
+                    applyVariantFilter();
+                    return [];
                 }
-                
-                if (fuelType && fuelType !== 'all') {
-                    params.append('fuel_type', fuelType);
-                }
-                
-                if (params.toString()) url += '?' + params.toString();
-                
-                console.log('📡 Fetching vehicles from:', url);
+                const url = `${API_BASE_URL}/vehicles?category_id=${encodeURIComponent(categoryId)}`;
+                console.log('📡 Fetching variants from:', url);
                 const data = await apiCall(url);
-                allVehicles = Array.isArray(data) ? data : (data.vehicles || data.data || []);
-                console.log('🚗 Vehicles loaded:', allVehicles.length);
-                applyFilters();
-                return allVehicles;
+                allVariants = Array.isArray(data) ? data : (data.vehicles || data.data || []);
+                console.log('🚗 Variants loaded:', allVariants.length);
+                applyVariantFilter();
+                return allVariants;
             } catch (err) {
-                console.error('❌ fetchVehicles error:', err);
+                console.error('❌ fetchVariants error:', err);
                 showToast(`Error loading vehicles: ${err.message}`, 'error');
-                allVehicles = [];
-                applyFilters();
+                allVariants = [];
+                applyVariantFilter();
                 return [];
             }
         }
 
-        async function fetchVehicleDetails(vehicleId) {
+        // GET /routes -> routes rows: { id, from_city, to_city, km, is_active }
+        async function fetchRoutes() {
             try {
-                if (!isValidUUID(vehicleId)) {
-                    throw new Error(`Invalid vehicle ID format: ${vehicleId}`);
-                }
-                const data = await apiCall(`${API_BASE_URL}/vehicles/${vehicleId}`);
-                return data;
+                const data = await apiCall(`${API_BASE_URL}/routes`);
+                routes = Array.isArray(data) ? data : (data.routes || data.data || []);
             } catch (err) {
-                console.error('❌ fetchVehicleDetails error:', err);
-                showToast(`Error loading vehicle details: ${err.message}`, 'error');
-                return null;
+                console.warn('⚠️ fetchRoutes failed, using local fallback routes:', err.message);
+                routes = [
+                    { from_city: 'Nairobi', to_city: 'Mombasa', km: 485 },
+                    { from_city: 'Nairobi', to_city: 'Kisumu', km: 355 },
+                    { from_city: 'Nairobi', to_city: 'Nakuru', km: 160 },
+                    { from_city: 'Nairobi', to_city: 'Eldoret', km: 315 },
+                    { from_city: 'Mombasa', to_city: 'Malindi', km: 120 },
+                    { from_city: 'Nairobi', to_city: 'Meru', km: 270 }
+                ];
             }
-        }
-
-        async function calculateCosts(vehicleId, distance) {
-            try {
-                if (!isValidUUID(vehicleId)) {
-                    throw new Error(`Invalid vehicle ID format: ${vehicleId}`);
-                }
-                const data = await apiCall(`${API_BASE_URL}/calculate`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        vehicle_id: vehicleId,
-                        distance_km: parseFloat(distance)
-                    })
-                });
-                return data;
-            } catch (err) {
-                console.error('❌ calculateCosts error:', err);
-                showToast(`Error calculating costs: ${err.message}`, 'error');
-                return null;
-            }
+            renderRouteChips();
         }
 
         // ── UI Population ──
         function populateCategories() {
-            categorySelect.innerHTML = '<option value="">Select category</option>';
-            categories.forEach(c => {
+            const showAll = currentFuelFilter === 'all';
+            const visible = showAll
+                ? categories
+                : categories.filter(c => c.fuel_type === currentFuelFilter);
+
+            categorySelect.innerHTML = '';
+            if (visible.length === 0) {
+                categorySelect.innerHTML = '<option value="">No categories match</option>';
+                categorySelect.disabled = true;
+                allVariants = [];
+                applyVariantFilter();
+                return;
+            }
+
+            categorySelect.disabled = false;
+            visible.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
                 opt.textContent = c.name;
                 categorySelect.appendChild(opt);
             });
-            categorySelect.disabled = false;
-            if (categories.length > 0) {
-                categorySelect.value = categories[0].id;
-                categorySelect.dispatchEvent(new Event('change'));
-            }
-            setStatus('● Connected to backend', true);
+
+            categorySelect.value = visible[0].id;
+            categorySelect.dispatchEvent(new Event('change'));
         }
 
-        function applyFilters() {
-            const catId = categorySelect.value;
+        function applyVariantFilter() {
             const showAll = showAllClasses.checked;
-            let filtered = allVehicles;
-
-            if (catId && isValidUUID(catId)) {
-                filtered = filtered.filter(v => v.category_id === catId);
-            }
-
-            if (currentFuelFilter !== 'all') {
-                filtered = filtered.filter(v => v.fuel_type === currentFuelFilter);
-            }
-
-            if (!showAll && filtered.length > 0) {
-                const primaryMap = {};
-                filtered.forEach(v => {
-                    const key = v.category_id;
-                    if (!primaryMap[key] || v.is_primary) {
-                        primaryMap[key] = v;
-                    }
-                });
-                if (Object.keys(primaryMap).length > 0) {
-                    filtered = filtered.filter(v => {
-                        const primary = primaryMap[v.category_id];
-                        return primary && primary.id === v.id;
-                    });
-                }
-            }
-
-            filteredVehicles = filtered;
+            // Without a primary/default flag on vehicle_variants, "primary" is simply
+            // the first row returned for the category (order however the backend query does).
+            filteredVariants = showAll ? allVariants : allVariants.slice(0, 1);
             populateVariants();
         }
 
         function populateVariants() {
-            variantSelect.innerHTML = '<option value="">Select a variant</option>';
-            if (filteredVehicles.length === 0) {
+            variantSelect.innerHTML = '';
+            if (filteredVariants.length === 0) {
                 variantSelect.innerHTML = '<option value="">No vehicles match</option>';
                 variantSelect.disabled = true;
                 calculateBtn.disabled = true;
                 clearResults();
                 return;
             }
-            filteredVehicles.forEach(v => {
+            filteredVariants.forEach(v => {
                 const opt = document.createElement('option');
                 opt.value = v.id;
-                const label = v.label || v.name || `${v.make || ''} ${v.model || ''}`.trim() || 'Unnamed';
-                opt.textContent = label;
+                opt.textContent = v.label || 'Unnamed variant';
                 variantSelect.appendChild(opt);
             });
             variantSelect.disabled = false;
             calculateBtn.disabled = false;
-            variantSelect.value = filteredVehicles[0].id;
+            variantSelect.value = filteredVariants[0].id;
             variantSelect.dispatchEvent(new Event('change'));
         }
 
-        // ── Load and Calculate ──
-        async function loadVehicleAndCalculate(vehicleId, distance) {
-            if (!vehicleId || !isValidUUID(vehicleId)) {
-                currentVehicle = null;
+        function renderRouteChips() {
+            routeChips.innerHTML = routes.map(r =>
+                `<button class="chip" data-km="${r.km}">${r.from_city} → ${r.to_city} <span class="km-badge">${r.km}km</span></button>`
+            ).join('');
+        }
+
+        // ── Compute & Render (all client-side, straight from the variant row) ──
+        function currentCategory() {
+            return categories.find(c => c.id === categorySelect.value) || null;
+        }
+
+        function currentVariant() {
+            return filteredVariants.find(v => v.id === variantSelect.value) || null;
+        }
+
+        function computeAndRender() {
+            const variant = currentVariant();
+            const category = currentCategory();
+            if (!variant) {
                 clearResults();
                 return;
             }
 
-            if (isLoading) return;
-            isLoading = true;
-            calculateBtn.disabled = true;
+            const distance = num(distanceInput.value);
 
-            try {
-                const vehicle = await fetchVehicleDetails(vehicleId);
-                if (!vehicle) {
-                    currentVehicle = null;
-                    clearResults();
-                    return;
-                }
-                currentVehicle = vehicle;
+            vehicleLabel.textContent = variant.label || 'Unnamed variant';
+            fuelPill.textContent = (category && category.fuel_type) || '—';
 
-                const dist = distance || parseFloat(distanceInput.value) || 0;
-                if (dist > 0) {
-                    const result = await calculateCosts(vehicleId, dist);
-                    if (result) {
-                        updateResultsWithCalculatedData(result, vehicle, dist);
-                        return;
-                    }
-                }
-                
-                updateResultsWithVehicleOnly(vehicle);
+            const fixedRate = num(variant.fixed_per_km);
+            const operatingRate = num(variant.operating_per_km);
+            const totalRate = num(variant.total_per_km) || (fixedRate + operatingRate);
 
-            } catch (err) {
-                console.error('❌ loadVehicleAndCalculate error:', err);
-                currentVehicle = null;
-                clearResults();
-            } finally {
-                isLoading = false;
-                calculateBtn.disabled = false;
-            }
-        }
+            if (distance > 0) {
+                totalTrip.textContent = formatCurrency(totalRate * distance);
+                totalTripSub.textContent = `at ${formatCurrency(totalRate)} KES/km over ${distance} km`;
+                fixedPerKm.textContent = formatCurrency(fixedRate);
+                operatingPerKm.textContent = formatCurrency(operatingRate);
+                fixedTrip.textContent = formatCurrency(fixedRate * distance);
+                operatingTrip.textContent = formatCurrency(operatingRate * distance);
+                totalPerKm.textContent = formatCurrency(totalRate);
 
-        // ── Update Results ──
-        function updateResultsWithCalculatedData(result, vehicle, distance) {
-            const label = vehicle.label || vehicle.name || `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unnamed';
-            vehicleLabel.textContent = label;
-            fuelPill.textContent = vehicle.fuel_type || '—';
-
-            const totalCost = result.total_cost || 0;
-            const perKm = result.per_km || 0;
-            const fixedPerKmRate = result.fixed_per_km || 0;
-            const operatingPerKmRate = result.operating_per_km || 0;
-            const fixedTotal = result.fixed_total || 0;
-            const operatingTotal = result.operating_total || 0;
-
-            totalTrip.textContent = formatCurrency(totalCost);
-            totalTripSub.textContent = `at ${formatCurrency(perKm)} KES/km over ${distance} km`;
-
-            fixedPerKm.textContent = formatCurrency(fixedPerKmRate);
-            operatingPerKm.textContent = formatCurrency(operatingPerKmRate);
-            fixedTrip.textContent = formatCurrency(fixedTotal);
-            operatingTrip.textContent = formatCurrency(operatingTotal);
-            totalPerKm.textContent = formatCurrency(perKm);
-
-            initialCost.textContent = vehicle.initial_cost ? `KES ${formatCurrency(vehicle.initial_cost)}` : '—';
-
-            const breakdown = result.breakdown || {};
-            detailIds.forEach(key => {
-                const el = document.getElementById(detailMap[key]);
-                if (el) {
-                    const val = breakdown[key] || 0;
-                    el.textContent = formatCurrency(val);
+                const components = variant.components || {};
+                detailIds.forEach(key => {
+                    const el = document.getElementById(detailMap[key]);
+                    if (!el) return;
+                    const perKmVal = num(components[key]);
+                    el.textContent = formatCurrency(perKmVal * distance);
                     el.className = 'value';
                     if (['Fuel', 'Servicing', 'Repairs', 'Tyres'].includes(key)) {
                         el.classList.add('red');
@@ -1201,48 +1143,36 @@
                     } else {
                         el.classList.add('gold');
                     }
-                }
-            });
+                });
+            } else {
+                totalTrip.textContent = '0.00';
+                totalTripSub.textContent = '—';
+                fixedPerKm.textContent = formatCurrency(fixedRate);
+                operatingPerKm.textContent = formatCurrency(operatingRate);
+                fixedTrip.textContent = '—';
+                operatingTrip.textContent = '—';
+                totalPerKm.textContent = formatCurrency(totalRate);
+                detailIds.forEach(key => {
+                    const el = document.getElementById(detailMap[key]);
+                    if (el) el.textContent = '—';
+                });
+            }
 
-            const yearData = result.yearly_projection || [];
+            initialCost.textContent = variant.initial_cost ? `KES ${formatCurrency(variant.initial_cost)}` : '—';
+
+            // Yearly figures are absolute annual costs stored on the variant, not distance-dependent
             yearIds.forEach((id, idx) => {
                 const el = document.getElementById(id);
-                if (el) {
-                    const val = yearData[idx] || 0;
-                    el.textContent = `KES ${formatCurrency(val)}`;
-                    el.className = 'year-value';
-                    if (idx === 0) el.classList.add('gold');
-                    else if (idx <= 2) el.classList.add('green');
-                    else el.classList.add('red');
-                }
+                if (!el) return;
+                const val = num(variant[yearFields[idx]]);
+                el.textContent = `KES ${formatCurrency(val)}`;
+                el.className = 'year-value';
+                if (idx === 0) el.classList.add('gold');
+                else if (idx <= 2) el.classList.add('green');
+                else el.classList.add('red');
             });
 
-            showToast('✅ Calculation complete!', 'success');
-        }
-
-        function updateResultsWithVehicleOnly(vehicle) {
-            const label = vehicle.label || vehicle.name || `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unnamed';
-            vehicleLabel.textContent = label;
-            fuelPill.textContent = vehicle.fuel_type || '—';
-            
-            totalTrip.textContent = '0.00';
-            totalTripSub.textContent = '—';
-            fixedPerKm.textContent = '—';
-            operatingPerKm.textContent = '—';
-            fixedTrip.textContent = '—';
-            operatingTrip.textContent = '—';
-            totalPerKm.textContent = '—';
-            
-            detailIds.forEach(key => {
-                const el = document.getElementById(detailMap[key]);
-                if (el) el.textContent = '—';
-            });
-            yearIds.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) { el.textContent = '—'; el.className = 'year-value'; }
-            });
-            
-            initialCost.textContent = vehicle.initial_cost ? `KES ${formatCurrency(vehicle.initial_cost)}` : '—';
+            if (distance > 0) showToast('✅ Calculation complete!', 'success');
         }
 
         function clearResults() {
@@ -1268,79 +1198,36 @@
 
         // ── Event Listeners ──
         function init() {
-            categorySelect.addEventListener('change', function() {
-                const catId = this.value;
-                if (catId && isValidUUID(catId)) {
-                    fetchVehicles(catId, currentFuelFilter);
-                } else if (catId) {
-                    showToast('Invalid category ID format', 'error');
-                } else {
-                    filteredVehicles = [];
-                    populateVariants();
-                }
-            });
-
             fuelFilterGroup.addEventListener('click', function(e) {
                 const btn = e.target.closest('.fuel-filter-btn');
                 if (!btn) return;
-                const fuel = btn.dataset.fuel;
                 document.querySelectorAll('.fuel-filter-btn').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-pressed', 'false');
                 });
                 btn.classList.add('active');
                 btn.setAttribute('aria-pressed', 'true');
-                currentFuelFilter = fuel;
-                const catId = categorySelect.value;
-                if (catId && isValidUUID(catId)) {
-                    fetchVehicles(catId, currentFuelFilter);
-                } else {
-                    fetchVehicles(null, currentFuelFilter);
-                }
+                currentFuelFilter = btn.dataset.fuel;
+                populateCategories();
             });
 
-            showAllClasses.addEventListener('change', function() {
-                applyFilters();
+            categorySelect.addEventListener('change', function() {
+                const catId = this.value;
+                if (isLoading) return;
+                isLoading = true;
+                fetchVariants(catId).finally(() => { isLoading = false; });
             });
 
-            variantSelect.addEventListener('change', function() {
-                const vid = this.value;
-                if (vid && isValidUUID(vid)) {
-                    const distance = parseFloat(distanceInput.value) || 0;
-                    loadVehicleAndCalculate(vid, distance);
-                } else {
-                    currentVehicle = null;
-                    clearResults();
-                }
-            });
+            showAllClasses.addEventListener('change', applyVariantFilter);
+
+            variantSelect.addEventListener('change', computeAndRender);
 
             distanceInput.addEventListener('input', function() {
                 const val = parseFloat(this.value);
-                if (val < 0) {
-                    distanceError.textContent = 'Distance cannot be negative';
-                    return;
-                } else {
-                    distanceError.textContent = '';
-                }
-                const vid = variantSelect.value;
-                if (vid && isValidUUID(vid) && val > 0) {
-                    loadVehicleAndCalculate(vid, val);
-                } else if (vid && isValidUUID(vid)) {
-                    loadVehicleAndCalculate(vid, 0);
-                }
+                distanceError.textContent = (val < 0) ? 'Distance cannot be negative' : '';
+                computeAndRender();
             });
 
-            const routes = [
-                { label: 'Nairobi → Mombasa', km: 485 },
-                { label: 'Nairobi → Kisumu', km: 355 },
-                { label: 'Nairobi → Nakuru', km: 160 },
-                { label: 'Nairobi → Eldoret', km: 315 },
-                { label: 'Mombasa → Malindi', km: 120 },
-                { label: 'Nairobi → Meru', km: 270 }
-            ];
-            routeChips.innerHTML = routes.map(r => 
-                `<button class="chip" data-km="${r.km}">${r.label} <span class="km-badge">${r.km}km</span></button>`
-            ).join('');
             routeChips.addEventListener('click', function(e) {
                 const chip = e.target.closest('.chip');
                 if (!chip) return;
@@ -1352,8 +1239,7 @@
             });
 
             calculateBtn.addEventListener('click', function() {
-                const vid = variantSelect.value;
-                if (!vid || !isValidUUID(vid)) {
+                if (!currentVariant()) {
                     showToast('Please select a valid vehicle', 'error');
                     return;
                 }
@@ -1366,7 +1252,7 @@
                     showToast('Please enter a distance greater than 0', 'error');
                     return;
                 }
-                loadVehicleAndCalculate(vid, dist);
+                computeAndRender();
             });
 
             document.getElementById('printBtn').addEventListener('click', function() {
@@ -1396,15 +1282,10 @@
 
             // ── Initial Load ──
             setStatus('● Connecting to backend...', true);
-            
-            fetchCategories()
+
+            Promise.all([fetchCategories(), fetchRoutes()])
                 .then(() => {
-                    if (categorySelect.value && isValidUUID(categorySelect.value)) {
-                        return fetchVehicles(categorySelect.value, currentFuelFilter);
-                    }
-                    return null;
-                })
-                .then(() => {
+                    populateCategories();
                     setStatus('● Connected to FastAPI', true);
                     console.log('✅ Application initialized successfully');
                     showToast('Connected to backend!', 'success');
