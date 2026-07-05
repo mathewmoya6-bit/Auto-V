@@ -1,25 +1,14 @@
-# # app/api/v1/api.py
-# =============================================================================
-# AUTO-V API - v1 router aggregator
-# =============================================================================
+# backend/app/api/v1/api.py
+# ============================================================
+# API Router - Register all endpoints
+# ============================================================
 
 from fastapi import APIRouter
-
-from app.api.v1.endpoints import categories, routes, vehicles
-
-api_router = APIRouter()
-api_router.include_router(categories.router, tags=["categories"])
-api_router.include_router(vehicles.router, tags=["vehicles"])
-api_router.include_router(routes.router, tags=["routes"])
-# =============================================================================
-# AUTO-V API - v1 router aggregator
-# =============================================================================
-
-from fastapi import APIRouter
-
-from app.api.v1.endpoints import categories, routes, vehicles
+from app.api.v1.endpoints import categories, vehicles, routes, calculate
 
 api_router = APIRouter()
-api_router.include_router(categories.router, tags=["categories"])
-api_router.include_router(vehicles.router, tags=["vehicles"])
-api_router.include_router(routes.router, tags=["routes"])
+
+api_router.include_router(categories.router, prefix="/categories", tags=["categories"])
+api_router.include_router(vehicles.router, prefix="/vehicles", tags=["vehicles"])
+api_router.include_router(routes.router, prefix="/routes", tags=["routes"])
+api_router.include_router(calculate.router, tags=["calculations"])  # Add this line
