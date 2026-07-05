@@ -1,4 +1,3 @@
-
 # app/models/user.py
 # =============================================================================
 # AUTO-V API - User Profile Model
@@ -56,3 +55,20 @@ class UserProfile(Base):
         to_dict() later without automatically exposing them here too.
         """
         return self.to_dict()
+
+
+# -----------------------------------------------------------------------------
+# Backward-compatible alias.
+#
+# Multiple endpoint files across this codebase (auth.py, valuations.py,
+# inspections.py, and possibly others) import this model as `User` instead
+# of `UserProfile`. Rather than hunt down and edit every call site (and risk
+# missing one, or having a fix reverted), this alias makes BOTH names valid
+# imports of the exact same class. `from app.models.user import User` and
+# `from app.models.user import UserProfile` are now equivalent.
+#
+# Do not remove this without first confirming (e.g. via
+# `grep -rn "app.models.user import" app/`) that nothing in the codebase
+# still imports `User`.
+# -----------------------------------------------------------------------------
+User = UserProfile
