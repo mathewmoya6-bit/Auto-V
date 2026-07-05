@@ -6,15 +6,14 @@
     <title>AUTO-V | Login</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
         /* ─── RESET & BASE ─── */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -304,6 +303,29 @@
         }
         .forgot-password a:hover { color: #eab308; }
 
+        /* ─── Toast ─── */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn 0.3s ease;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            font-family: 'Inter', sans-serif;
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-warning { background: #eab308; color: #000; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
         @media (max-width: 480px) {
             .login-container { padding: 32px 20px 28px; border-radius: 24px; margin: 12px; }
             .logo h1 { font-size: 26px; }
@@ -377,15 +399,18 @@
     <script>
         // ═══════════════════════════════════════════════════════════════
         // AUTO-V USER LOGIN — Production Ready
+        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
+            if (window.autoVLoginInitialized) return;
+            window.autoVLoginInitialized = true;
+
             // ─── PRODUCTION CONFIG ──────────────────────────────────────
-            const API_BASE = 'https://auto-v.onrender.com/api/v1';
-            const DASHBOARD_URL = '/dashboard';
-            const ADMIN_DASHBOARD = '/admin/dashboard';
+            const DASHBOARD_URL = '/dashboard.html';
+            const ADMIN_DASHBOARD = '/admin-dashboard.html';
 
             // ─── DOM REFS ───────────────────────────────────────────────
             const emailInput = document.getElementById('email');
@@ -393,71 +418,6 @@
             const loginBtn = document.getElementById('loginBtn');
             const messageBox = document.getElementById('messageBox');
             const loginForm = document.getElementById('loginForm');
-
-            // ─── API CLIENT WITH CORS SUPPORT ──────────────────────────
-            const api = {
-                baseURL: API_BASE,
-                token: null,
-
-                setToken(token) {
-                    this.token = token;
-                    localStorage.setItem('access_token', token);
-                },
-
-                getToken() {
-                    return this.token || localStorage.getItem('access_token');
-                },
-
-                async request(endpoint, options = {}) {
-                    const url = `${this.baseURL}${endpoint}`;
-                    const headers = {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...options.headers,
-                    };
-
-                    const token = this.getToken();
-                    if (token) {
-                        headers['Authorization'] = `Bearer ${token}`;
-                    }
-
-                    try {
-                        const response = await fetch(url, {
-                            ...options,
-                            headers,
-                            credentials: 'include',
-                            mode: 'cors',
-                        });
-
-                        if (!response.ok) {
-                            let errorMessage = `HTTP ${response.status}`;
-                            try {
-                                const errorData = await response.json();
-                                errorMessage = errorData.detail || errorData.message || errorMessage;
-                            } catch (e) {
-                                errorMessage = await response.text() || errorMessage;
-                            }
-                            throw new Error(errorMessage);
-                        }
-
-                        return response.json();
-                    } catch (error) {
-                        console.error('API request failed:', error);
-                        throw error;
-                    }
-                },
-
-                post(endpoint, data) {
-                    return this.request(endpoint, {
-                        method: 'POST',
-                        body: JSON.stringify(data),
-                    });
-                },
-
-                get(endpoint) {
-                    return this.request(endpoint, { method: 'GET' });
-                },
-            };
 
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
             function showMessage(text, type = 'error') {
@@ -475,6 +435,20 @@
                 clearTimeout(window._msgTimer);
             }
 
+            function showToast(msg, type = 'success') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(msg, type);
+                    return;
+                }
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = msg;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+            }
+
             // ─── VALIDATION ─────────────────────────────────────────────
             function isValidEmail(email) {
                 return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
@@ -490,11 +464,13 @@
             // ─── CHECK EXISTING SESSION ────────────────────────────────
             async function checkExistingSession() {
                 try {
-                    const token = localStorage.getItem('access_token');
-                    if (!token) return;
-
-                    api.setToken(token);
-                    const user = await api.get('/auth/me');
+                    if (!window.autoV) {
+                        console.warn('autoV not loaded, skipping session check');
+                        return;
+                    }
+                    
+                    const user = await window.autoV.getCurrentUser();
+                    if (!user) return;
 
                     if (user.role === 'admin' || user.role === 'super_admin') {
                         console.log('✅ Admin session valid — redirecting to admin');
@@ -505,7 +481,11 @@
                     }
                 } catch (error) {
                     console.log('Session expired or invalid');
-                    localStorage.removeItem('access_token');
+                    if (window.autoV) {
+                        window.autoV.clearAuthToken();
+                    } else {
+                        localStorage.removeItem('access_token');
+                    }
                 }
             }
 
@@ -534,25 +514,34 @@
                 setLoading(true);
 
                 try {
+                    // ─── Check if autoV is available ────────────────────
+                    if (!window.autoV || !window.autoV._initialized) {
+                        throw new Error('API client not loaded. Please refresh the page.');
+                    }
+
                     // ─── Step 1: Call Login Endpoint ────────────────────
                     console.log('🔐 Attempting login for:', email);
-                    const loginResponse = await api.post('/auth/login', {
-                        email: email,
-                        password: password
+                    
+                    const loginResponse = await window.autoV.apiRequest('/auth/login', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            email: email,
+                            password: password
+                        })
                     });
 
-                    console.log('✅ Login response:', loginResponse);
+                    console.log('✅ Login response received');
 
                     // ─── Step 2: Store Token ─────────────────────────────
                     if (loginResponse.access_token) {
-                        api.setToken(loginResponse.access_token);
+                        window.autoV.setAuthToken(loginResponse.access_token);
                         console.log('✅ Token stored successfully');
                     } else {
                         throw new Error('No access token received');
                     }
 
                     // ─── Step 3: Get User Info ──────────────────────────
-                    const user = await api.get('/auth/me');
+                    const user = await window.autoV.getCurrentUser();
                     console.log('✅ User info:', user);
 
                     // Store user info
@@ -568,6 +557,7 @@
                     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
 
                     showMessage('✅ Login successful! Redirecting...', 'success');
+                    window.autoV.showToast('✅ Login successful!', 'success');
 
                     setTimeout(() => {
                         if (isAdmin) {
@@ -595,7 +585,7 @@
                     } else if (errorMsg.toLowerCase().includes('not confirmed') || errorMsg.toLowerCase().includes('verify')) {
                         showMessage('📧 Please verify your email before logging in.', 'info');
                     } else if (errorMsg.includes('404')) {
-                        showMessage('🔍 API endpoint not found. Please check the backend URL.', 'error');
+                        showMessage('🔍 API endpoint not found. Please contact support.', 'error');
                     } else if (errorMsg.includes('500')) {
                         showMessage('⚠️ Server error. Please try again later.', 'error');
                     } else {
@@ -620,15 +610,46 @@
             });
 
             // ─── CHECK FOR EXISTING SESSION ON LOAD ────────────────────
-            checkExistingSession();
+            async function init() {
+                // Wait for autoV to be ready
+                if (window.autoV && !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
 
-            // ─── FOCUS EMAIL ────────────────────────────────────────────
-            setTimeout(() => emailInput.focus(), 150);
+                // Check if autoV is available
+                if (!window.autoV) {
+                    console.error('❌ autoV API client not loaded.');
+                    showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
+                    return;
+                }
 
-            console.log('🚀 AUTO-V User Login (Production)');
-            console.log(`📌 API Base: ${API_BASE}`);
-            console.log(`📌 Dashboard: ${DASHBOARD_URL}`);
-            console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
+                await checkExistingSession();
+
+                // Focus email field
+                setTimeout(() => emailInput.focus(), 150);
+
+                console.log('🚀 AUTO-V User Login (Production)');
+                console.log(`📌 API Base: ${window.autoV.API_BASE || 'https://auto-v.onrender.com/api/v1'}`);
+                console.log(`📌 Dashboard: ${DASHBOARD_URL}`);
+                console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
+            }
+
+            // ─── START ──────────────────────────────────────────────────
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
 
         })();
     </script>
