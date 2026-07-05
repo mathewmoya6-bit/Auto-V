@@ -16,7 +16,7 @@ from app.schemas.mileage import CategoryOut
 router = APIRouter()
 
 
-@router.get("/categories", response_model=List[CategoryOut])
+@router.get("", response_model=List[CategoryOut])
 async def list_categories(db: AsyncSession = Depends(get_db)):
     """All active vehicle categories, alphabetical."""
     stmt = (
