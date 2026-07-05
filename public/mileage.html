@@ -8,7 +8,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-    <!-- Supabase JS Client -->
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
+    <!-- Supabase JS Client (fallback) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
     </script>
 
@@ -1199,19 +1202,46 @@
             };
 
             // ============================================================
+            // CHECK AUTHENTICATION
+            // ============================================================
+            let currentUser = null;
+
+            async function checkAuth() {
+                try {
+                    if (window.autoV) {
+                        currentUser = await window.autoV.getCurrentUser();
+                        if (!currentUser) {
+                            console.warn('⚠️ User not authenticated');
+                            showToast('Please login to access mileage rates', 'warning');
+                            // Don't redirect, just show warning - user can still view
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Auth check failed:', error);
+                }
+            }
+
+            // ============================================================
             // INITIALIZE SUPABASE CLIENT
             // ============================================================
             let supabase = null;
             try {
-                supabase = window.supabase.createClient(CONFIG.SUPABASE.URL, CONFIG.SUPABASE.ANON_KEY, {
-                    auth: {
-                        autoRefreshToken: true,
-                        persistSession: true
-                    },
-                    db: {
-                        schema: 'public'
-                    }
-                });
+                // Try using autoV's Supabase client first
+                if (window.autoV) {
+                    supabase = window.autoV.getSupabaseClient();
+                }
+                // Fallback to direct Supabase
+                if (!supabase) {
+                    supabase = window.supabase.createClient(CONFIG.SUPABASE.URL, CONFIG.SUPABASE.ANON_KEY, {
+                        auth: {
+                            autoRefreshToken: true,
+                            persistSession: true
+                        },
+                        db: {
+                            schema: 'public'
+                        }
+                    });
+                }
                 console.log('✅ Supabase client initialized');
             } catch (error) {
                 console.error('❌ Failed to initialize Supabase:', error);
@@ -1287,6 +1317,10 @@
             }
 
             function showToast(message, type = 'info') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(message, type);
+                    return;
+                }
                 const existing = document.querySelector('.toast');
                 if (existing) existing.remove();
                 const toast = document.createElement('div');
@@ -1416,6 +1450,23 @@
             async function calculateViaFastAPI(variantId, distance) {
                 try {
                     console.log('📡 Calling FastAPI calculation...');
+                    
+                    // Use autoV if available
+                    if (window.autoV) {
+                        const result = await window.autoV.apiRequest('/calculate/mileage', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                variant_id: variantId,
+                                distance: distance,
+                                include_forecast: true
+                            })
+                        });
+                        console.log('✅ FastAPI calculation complete');
+                        calcMethod.textContent = 'FastAPI';
+                        return result;
+                    }
+
+                    // Fallback to direct fetch
                     const response = await fetch(`${CONFIG.FASTAPI.BASE_URL}/calculate/mileage`, {
                         method: 'POST',
                         headers: {
@@ -1692,6 +1743,9 @@
                 if (isInitialized) return;
                 isInitialized = true;
 
+                // Check authentication first
+                await checkAuth();
+
                 // Fuel filter
                 fuelFilterGroup.addEventListener('click', function(e) {
                     const btn = e.target.closest('.fuel-filter-btn');
@@ -1860,11 +1914,24 @@
                     // Check FastAPI health
                     try {
                         console.log('📡 Checking FastAPI health...');
-                        const healthCheck = await fetch(`${CONFIG.FASTAPI.BASE_URL}/health`, {
-                            method: 'GET',
-                            headers: { 'Accept': 'application/json' }
-                        });
-                        if (healthCheck.ok) {
+                        let healthOk = false;
+                        
+                        if (window.autoV) {
+                            try {
+                                const health = await window.autoV.apiRequest('/health');
+                                healthOk = true;
+                            } catch (e) {
+                                healthOk = false;
+                            }
+                        } else {
+                            const healthCheck = await fetch(`${CONFIG.FASTAPI.BASE_URL}/health`, {
+                                method: 'GET',
+                                headers: { 'Accept': 'application/json' }
+                            });
+                            healthOk = healthCheck.ok;
+                        }
+                        
+                        if (healthOk) {
                             useFastAPI = true;
                             setStatus('● Connected to Supabase + FastAPI', true);
                             showToast('✅ Connected to Supabase & FastAPI', 'success');
@@ -1889,17 +1956,22 @@
                     setStatus('⚠️ Supabase connection failed', false);
                     showToast('Could not connect to Supabase. Using fallback data.', 'error');
 
-                    // Fallback data
-                    categories = [
-                        { id: '11111111-1111-1111-1111-111111111111', name: 'Saloon Cars', fuel_type: 'Petrol' },
-                        { id: '22222222-2222-2222-2222-222222222222', name: 'SUVs & Crossovers', fuel_type: 'Diesel' },
-                        { id: '33333333-3333-3333-3333-333333333333', name: 'Pickups & Vans', fuel_type: 'Diesel' }
+                    // Fallback data with real UUIDs
+                    const fallbackCategories = [
+                        { id: '123e4567-e89b-12d3-a456-426614174001', name: 'Saloon Cars - Petrol', fuel_type: 'Petrol' },
+                        { id: '123e4567-e89b-12d3-a456-426614174002', name: 'Saloon Cars - Diesel', fuel_type: 'Diesel' },
+                        { id: '123e4567-e89b-12d3-a456-426614174003', name: 'SUVs & Crossovers', fuel_type: 'Diesel' },
+                        { id: '123e4567-e89b-12d3-a456-426614174004', name: 'Pickups & Vans', fuel_type: 'Diesel' }
                     ];
-                    routes = [
+                    const fallbackRoutes = [
                         { from_city: 'Nairobi', to_city: 'Mombasa', km: 485 },
                         { from_city: 'Nairobi', to_city: 'Kisumu', km: 355 },
-                        { from_city: 'Nairobi', to_city: 'Nakuru', km: 160 }
+                        { from_city: 'Nairobi', to_city: 'Nakuru', km: 160 },
+                        { from_city: 'Nairobi', to_city: 'Eldoret', km: 315 }
                     ];
+                    
+                    categories = fallbackCategories;
+                    routes = fallbackRoutes;
                     populateCategories();
                     renderRouteChips();
                 }
