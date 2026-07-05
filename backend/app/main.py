@@ -1,136 +1,30 @@
-# main.py
+# app/main.py
 # =============================================================================
-# AUTO-V API - Main Application Entry Point
+# AUTO-V API - FastAPI entrypoint
 # =============================================================================
 
-import logging
-import os
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.api import api_router
 from app.core.config import settings
-from app.core.database import init_db, close_db, is_database_configured, engine
-from app.api.v1.routes import auth, mileage
+from app.core.database import check_db_health, close_db
 
-# ─── Import ALL models to register them with SQLAlchemy ────────────
-# This is CRITICAL - all models must be imported so Base.metadata knows about them
-from app.models import Base  # Base is imported first
-from app.models.user import UserProfile
-from app.models.vehicle import Vehicle, VehicleImage, VINScan
-from app.models.mileage import VehicleCategory, VehicleVariant, Route, MileageClaim
-
-# ─── Setup Logging ──────────────────────────────────────────────────
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-
-# ─── Lifespan Manager ──────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Handle startup and shutdown events."""
-    # Startup
-    logger.info("=" * 60)
-    logger.info(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    logger.info(f"📌 Environment: {settings.ENV}")
-    logger.info(f"🔧 Debug mode: {settings.DEBUG}")
-    logger.info(f"🗄️  Database configured: {is_database_configured()}")
-    logger.info(f"🌐 CORS_ORIGINS: {settings.CORS_ORIGINS}")
-    logger.info("=" * 60)
-    
-    if is_database_configured():
-        try:
-            # Initialize database connection
-            await init_db()
-            logger.info("✅ Database initialized successfully")
-            
-            # ─── TABLE CREATION DISABLED ──────────────────────────────
-            # ⚠️  Automatic table creation is DISABLED for all environments
-            # Tables must be created manually using SQL scripts or migrations
-            logger.info("ℹ️  Automatic table creation is DISABLED")
-            logger.info("   Tables should be managed via SQL scripts or Alembic migrations")
-            logger.info("   Please ensure all required tables exist in the database")
-            
-            # ─── VERIFY TABLES EXIST ──────────────────────────────────
-            # Check if critical tables exist and log warnings if missing
-            async with engine.connect() as conn:
-                # Check for users table
-                result = await conn.execute(
-                    "SELECT COUNT(*) FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = 'users'"
-                )
-                user_table_count = result.scalar()
-                if user_table_count > 0:
-                    logger.info("✅ Verified: 'users' table exists")
-                else:
-                    logger.warning("⚠️  'users' table not found - authentication will fail")
-                
-                # Check for vehicle_categories table
-                result = await conn.execute(
-                    "SELECT COUNT(*) FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = 'vehicle_categories'"
-                )
-                cat_table_count = result.scalar()
-                if cat_table_count > 0:
-                    logger.info("✅ Verified: 'vehicle_categories' table exists")
-                else:
-                    logger.warning("⚠️  'vehicle_categories' table not found - mileage features will fail")
-                
-                # Check for vehicle_variants table
-                result = await conn.execute(
-                    "SELECT COUNT(*) FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = 'vehicle_variants'"
-                )
-                var_table_count = result.scalar()
-                if var_table_count > 0:
-                    logger.info("✅ Verified: 'vehicle_variants' table exists")
-                else:
-                    logger.warning("⚠️  'vehicle_variants' table not found - mileage features will fail")
-                
-                # Check for routes table
-                result = await conn.execute(
-                    "SELECT COUNT(*) FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = 'routes'"
-                )
-                route_table_count = result.scalar()
-                if route_table_count > 0:
-                    logger.info("✅ Verified: 'routes' table exists")
-                else:
-                    logger.warning("⚠️  'routes' table not found - quick routes feature will fail")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize database: {str(e)}")
-            # Don't raise - let the app continue but log the error
-            logger.warning("⚠️  Continuing with degraded functionality")
-    
+    # Tables are managed via mileage_schema.sql / migrations, not created here.
     yield
-    
-    # Shutdown
     await close_db()
-    logger.info("👋 Application shutdown complete")
 
-
-# ─── Create FastAPI App ────────────────────────────────────────────
 
 app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    description="Professional Vehicle Valuation Engine API",
-    docs_url="/docs" if settings.ENABLE_SWAGGER else None,
-    redoc_url="/redoc" if settings.ENABLE_SWAGGER else None,
-    openapi_url="/openapi.json" if settings.ENABLE_SWAGGER else None,
+    title="AUTO-V API",
+    version="3.1.0",
     lifespan=lifespan,
 )
-
-
-# ─── CORS Middleware ───────────────────────────────────────────────
 
 app.add_middleware(
     CORSMiddleware,
@@ -138,164 +32,17 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Response-Time"],
 )
 
-
-# ─── Register Routes ──────────────────────────────────────────────
-
-# Make sure the auth router exists before including it
-try:
-    app.include_router(auth.router, prefix=settings.API_V1_PREFIX, tags=["Authentication"])
-    logger.info("✅ Auth routes registered")
-except AttributeError:
-    logger.warning("⚠️  Auth router not available - skipping")
-
-app.include_router(mileage.router, prefix=settings.API_V1_PREFIX, tags=["Mileage"])
-logger.info("✅ Mileage routes registered")
-
-logger.info("✅ All routes registered successfully")
-
-
-# ─── Health & Root Endpoints ──────────────────────────────────────
-
-@app.get("/health")
-async def health_check():
-    db_status = "unknown"
-    tables_ok = False
-    try:
-        async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
-            db_status = "connected"
-            
-            # Check if critical tables exist
-            result = await conn.execute(
-                "SELECT COUNT(*) FROM information_schema.tables "
-                "WHERE table_schema = 'public' AND table_name = 'users'"
-            )
-            tables_ok = result.scalar() > 0
-    except Exception as e:
-        db_status = f"error: {str(e)}"
-    
-    return {
-        "status": "healthy" if (db_status == "connected" and tables_ok) else "degraded",
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "environment": settings.ENV,
-        "debug": settings.DEBUG,
-        "database": db_status,
-        "tables_exist": tables_ok,
-        "database_configured": is_database_configured(),
-        "timestamp": datetime.now().isoformat(),
-    }
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/")
 async def root():
-    return {
-        "message": f"Welcome to {settings.APP_NAME}",
-        "version": settings.APP_VERSION,
-        "environment": settings.ENV,
-        "docs": "/docs" if settings.ENABLE_SWAGGER else "disabled",
-        "health": "/health",
-        "api_prefix": settings.API_V1_PREFIX,
-    }
+    return {"service": "AUTO-V API", "version": "3.1.0", "docs": "/docs"}
 
 
-# ─── Debug Endpoint ──────────────────────────────────────────────
-
-@app.get("/debug/db")
-async def test_db():
-    """Test database connection and list tables."""
-    try:
-        async with engine.connect() as conn:
-            # Test connection
-            result = await conn.execute("SELECT 1")
-            db_connected = result.scalar() == 1
-            
-            # Get list of tables
-            tables = await conn.execute(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'public'"
-            )
-            table_list = [row[0] for row in tables.fetchall()]
-            
-            # Check for required tables
-            required_tables = ['users', 'vehicles', 'vehicle_categories', 'vehicle_variants', 'mileage_claims', 'routes']
-            table_status = {table: table in table_list for table in required_tables}
-            
-            # Get count of records in key tables
-            counts = {}
-            for table in required_tables:
-                if table in table_list:
-                    try:
-                        count_result = await conn.execute(f"SELECT COUNT(*) FROM {table}")
-                        counts[table] = count_result.scalar()
-                    except:
-                        counts[table] = "error"
-            
-            return {
-                "status": "✅ Connected!" if db_connected else "❌ Failed",
-                "database_url": settings.DATABASE_URL[:50] + "..." if settings.DATABASE_URL else None,
-                "tables": table_list,
-                "table_count": len(table_list),
-                "required_tables_present": all(table_status.values()),
-                "table_status": table_status,
-                "record_counts": counts,
-            }
-    except Exception as e:
-        return {
-            "status": "❌ Failed",
-            "error": str(e),
-            "database_configured": is_database_configured(),
-        }
-
-
-# ─── Model Registration Debug Endpoint ────────────────────────────
-
-@app.get("/debug/models")
-async def debug_models():
-    """Check which models are registered with SQLAlchemy."""
-    try:
-        # Get all mapped classes
-        mapper_registry = Base.metadata
-        tables = mapper_registry.tables.keys()
-        classes = {}
-        
-        # Get class names from tables
-        for table_name in tables:
-            # Find the class associated with this table
-            for cls in Base.__subclasses__():
-                if hasattr(cls, '__tablename__') and cls.__tablename__ == table_name:
-                    classes[table_name] = cls.__name__
-                    break
-            else:
-                classes[table_name] = "No class found"
-        
-        return {
-            "registered_tables": list(tables),
-            "table_count": len(tables),
-            "class_mapping": classes,
-            "all_subclasses": [cls.__name__ for cls in Base.__subclasses__()],
-        }
-    except Exception as e:
-        return {"status": "❌ Failed", "error": str(e)}
-
-
-# ─── Main Entry Point ──────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import uvicorn
-    
-    port = int(os.getenv("PORT", settings.PORT))
-    host = os.getenv("HOST", settings.HOST)
-    debug = settings.DEBUG
-    
-    uvicorn.run(
-        "main:app",
-        host=host,
-        port=port,
-        reload=debug,
-        log_level=settings.LOG_LEVEL.lower(),
-        workers=1,
-    )
+@app.get("/health")
+async def health():
+    db_ok = await check_db_health()
+    return {"status": "ok" if db_ok else "degraded", "database": db_ok}
