@@ -23,7 +23,7 @@ Base = declarative_base()
 
 def _build_database_url(raw_url: str) -> tuple[str, dict]:
     """Normalize a Postgres URL for async SQLAlchemy + asyncpg (Render/Supabase-safe)."""
-    url = raw_url.strip()
+    url = raw_url.strip().strip('"').strip("'")  # Remove quotes if present
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -108,25 +108,59 @@ async def get_db_context():
 
 
 async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created/verified")
+    """Initialize database tables - only creates tables if they don't exist."""
+    try:
+        async with engine.begin() as conn:
+            # Check if tables exist before creating
+            await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database tables created/verified")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
 
 
 async def close_db():
+    """Close database connections."""
     await engine.dispose()
     logger.info("Database connections closed")
 
 
 async def check_db_health() -> bool:
+    """Check database health by executing a simple query."""
     try:
         async with engine.connect() as conn:
+            # Always wrap raw SQL in text()
             await conn.execute(text("SELECT 1"))
+            # Also check if users table exists
+            result = await conn.execute(
+                text("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'")
+            )
+            count = result.scalar()
+            logger.info(f"Users table exists: {count > 0}")
         return True
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         return False
 
 
+async def check_table_exists(table_name: str) -> bool:
+    """Check if a specific table exists in the public schema."""
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = :table_name"
+                ),
+                {"table_name": table_name}
+            )
+            count = result.scalar()
+            return count > 0
+    except Exception as e:
+        logger.error(f"Failed to check if table {table_name} exists: {e}")
+        return False
+
+
 def is_database_configured() -> bool:
+    """Check if database is configured."""
     return settings.database_configured() and engine is not None
