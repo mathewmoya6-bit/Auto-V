@@ -16,7 +16,7 @@ from app.schemas.mileage import RouteOut
 router = APIRouter()
 
 
-@router.get("/routes", response_model=List[RouteOut])
+@router.get("", response_model=List[RouteOut])
 async def list_routes(db: AsyncSession = Depends(get_db)):
     stmt = (
         select(Route)
