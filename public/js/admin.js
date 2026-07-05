@@ -122,4 +122,99 @@
             ApiClient.showToast('Setting updated successfully', 'success');
             return result;
         } catch (error) {
-           
+            ApiClient.showToast('Failed to update setting: ' + error.message, 'error');
+            throw error;
+        }
+    }
+
+    async function updateFee(id, fee) {
+        try {
+            const result = await ApiClient.put(`/admin/fees/${id}`, { fee });
+            ApiClient.showToast('Fee updated successfully', 'success');
+            return result;
+        } catch (error) {
+            ApiClient.showToast('Failed to update fee: ' + error.message, 'error');
+            throw error;
+        }
+    }
+
+    // ─── EXPORT FUNCTIONS ──────────────────────────────────────────
+    function exportData(type) {
+        let data = [];
+        let headers = [];
+
+        switch (type) {
+            case 'users':
+                headers = ['ID', 'Name', 'Email', 'Role', 'Status', 'Joined'];
+                data = adminData.users.map(u => [
+                    u.id,
+                    u.full_name || 'N/A',
+                    u.email || 'N/A',
+                    u.role || 'user',
+                    u.is_active ? 'Active' : 'Inactive',
+                    formatDate(u.created_at)
+                ]);
+                break;
+            case 'requests':
+                headers = ['ID', 'User', 'Service', 'Amount', 'Status', 'Date'];
+                data = adminData.requests.map(r => [
+                    r.id,
+                    r.customer_name || r.user_email || 'Unknown',
+                    r.service_type || 'N/A',
+                    r.amount || 0,
+                    r.status || 'pending',
+                    formatDate(r.created_at)
+                ]);
+                break;
+            case 'payments':
+                headers = ['User', 'Amount', 'Method', 'Status', 'Date', 'Reference'];
+                data = adminData.payments.map(p => [
+                    p.user_name || p.user_email || 'Unknown',
+                    p.amount || 0,
+                    p.payment_method || 'M-Pesa',
+                    p.status || 'pending',
+                    formatDate(p.created_at),
+                    p.transaction_id || p.reference || '—'
+                ]);
+                break;
+            default:
+                return;
+        }
+
+        if (!data.length) {
+            ApiClient.showToast('No data to export', 'info');
+            return;
+        }
+
+        downloadCSV([headers, ...data], `auto_v_${type}_${Date.now()}.csv`);
+        ApiClient.showToast('Data exported successfully', 'success');
+    }
+
+    // ─── EXPOSE PUBLIC API ──────────────────────────────────────────
+    const Admin = {
+        loadAdminData,
+        loadStats,
+        getData: () => adminData,
+        createUser,
+        updateUser,
+        deleteUser,
+        createService,
+        updateService,
+        deleteService,
+        updateSetting,
+        updateFee,
+        exportData
+    };
+
+    // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
+    if (typeof window !== 'undefined') {
+        window.Admin = Admin;
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = Admin;
+    }
+
+    console.log('⚙️ Admin module initialized');
+
+})();
