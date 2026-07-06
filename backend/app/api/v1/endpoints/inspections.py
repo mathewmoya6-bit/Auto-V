@@ -1,41 +1,48 @@
-# backend/app/api/v1/endpoints/inspections.py
-# =============================================================================
-# Inspection Endpoints - CORRECTED
-# =============================================================================
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+from fastapi import APIRouter, HTTPException
+from typing import List
 from datetime import datetime
-import uuid
-import logging
+from app.schemas import (
+    InspectionRequest,
+    InspectionResponse,
+    InspectionUpdateRequest,
+    InspectionReport
+)
 
-from app.core.database import get_db
-from app.models.inspection import Inspection
-from app.models.vehicle import Vehicle
-from app.models.user import User  # ← CORRECT: User, not UserProfile
-from app.api.v1.endpoints.auth import get_current_user
-
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ... rest of the file remains the same ...
+@router.post("/inspections", response_model=InspectionResponse)
+async def create_inspection(request: InspectionRequest):
+    """
+    Create/schedule a new property inspection
+    """
+    # Your inspection creation logic here
+    return InspectionResponse(
+        inspection_id="ins_12345",
+        property_id=request.property_id,
+        inspection_type=request.inspection_type,
+        status="scheduled",
+        scheduled_date=request.scheduled_date,
+        scheduled_time=request.scheduled_time,
+        inspector_name=request.inspector_name,
+        inspector_company=request.inspector_company,
+        client_name=request.client_name,
+        client_email=request.client_email,
+        created_at=datetime.now(),
+        estimated_duration=request.duration_hours or 2.0
+    )
 
-@router.post("/inspections")
-async def create_inspection(
-    request: InspectionRequest,
-    current_user: User = Depends(get_current_user),  # ← CORRECT: User
-    db: AsyncSession = Depends(get_db)
-):
-    # ... uses User model ...
+@router.get("/inspections/{inspection_id}", response_model=InspectionResponse)
+async def get_inspection(inspection_id: str):
+    """
+    Get inspection details by ID
+    """
+    # Your logic here
     pass
 
-@router.get("/inspections")
-async def get_inspections(
-    current_user: User = Depends(get_current_user),  # ← CORRECT: User
-    db: AsyncSession = Depends(get_db)
-):
-    # ... uses User model ...
+@router.patch("/inspections/{inspection_id}", response_model=InspectionResponse)
+async def update_inspection(inspection_id: str, update: InspectionUpdateRequest):
+    """
+    Update an existing inspection
+    """
+    # Your logic here
     pass
