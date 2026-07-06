@@ -1,28 +1,21 @@
-# app/api/v1/endpoints/categories.py
-# =============================================================================
-# AUTO-V API - Vehicle categories (fuel_type lives here, NOT on variants)
-# =============================================================================
-
+from fastapi import APIRouter, HTTPException
 from typing import List
-
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.database import get_db
-from app.models.mileage import VehicleCategory
-from app.schemas.mileage import CategoryOut
+from app.schemas import CategoryOut, VariantOut
 
 router = APIRouter()
 
+@router.get("/categories", response_model=List[CategoryOut])
+async def get_categories():
+    """
+    Get all vehicle categories
+    """
+    # Your logic here
+    return []
 
-@router.get("", response_model=List[CategoryOut])
-async def list_categories(db: AsyncSession = Depends(get_db)):
-    """All active vehicle categories, alphabetical."""
-    stmt = (
-        select(VehicleCategory)
-        .where(VehicleCategory.is_active.is_(True))
-        .order_by(VehicleCategory.name)
-    )
-    result = await db.execute(stmt)
-    return result.scalars().all()
+@router.get("/variants", response_model=List[VariantOut])
+async def get_variants():
+    """
+    Get all vehicle variants
+    """
+    # Your logic here
+    return []
