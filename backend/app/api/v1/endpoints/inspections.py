@@ -1,21 +1,15 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
+from fastapi import APIRouter
 from datetime import datetime
-from app.schemas import (
+from app.schemas.inspection import (
     InspectionRequest,
     InspectionResponse,
-    InspectionUpdateRequest,
-    InspectionReport
+    InspectionUpdateRequest
 )
 
 router = APIRouter()
 
 @router.post("/inspections", response_model=InspectionResponse)
 async def create_inspection(request: InspectionRequest):
-    """
-    Create/schedule a new property inspection
-    """
-    # Your inspection creation logic here
     return InspectionResponse(
         inspection_id="ins_12345",
         property_id=request.property_id,
@@ -30,19 +24,3 @@ async def create_inspection(request: InspectionRequest):
         created_at=datetime.now(),
         estimated_duration=request.duration_hours or 2.0
     )
-
-@router.get("/inspections/{inspection_id}", response_model=InspectionResponse)
-async def get_inspection(inspection_id: str):
-    """
-    Get inspection details by ID
-    """
-    # Your logic here
-    pass
-
-@router.patch("/inspections/{inspection_id}", response_model=InspectionResponse)
-async def update_inspection(inspection_id: str, update: InspectionUpdateRequest):
-    """
-    Update an existing inspection
-    """
-    # Your logic here
-    pass
