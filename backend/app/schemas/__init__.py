@@ -1,8 +1,8 @@
 """
-Schemas Package
-Export all Pydantic models
+Schemas Package - Clean exports with no circular imports
 """
 
+# Valuation schemas
 from .valuation import (
     PropertyType,
     PropertyCondition,
@@ -18,6 +18,7 @@ from .valuation import (
     InstantValueResponse
 )
 
+# Inspection schemas
 from .inspection import (
     InspectionType,
     InspectionStatus,
@@ -31,6 +32,7 @@ from .inspection import (
     InspectionChecklist
 )
 
+# Instant Value schemas
 from .instant_value import (
     InstantValueBaseRequest,
     InstantValueLocationFactors,
@@ -46,6 +48,7 @@ from .instant_value import (
     DataSource
 )
 
+# Mileage schemas
 from .mileage import (
     CategoryOut,
     VariantOut,
@@ -59,6 +62,7 @@ from .mileage import (
 )
 
 __all__ = [
+    # Valuation
     'PropertyType',
     'PropertyCondition',
     'ValuationMethod',
@@ -71,6 +75,8 @@ __all__ = [
     'ValuationForecast',
     'ValuationResponse',
     'InstantValueResponse',
+    
+    # Inspection
     'InspectionType',
     'InspectionStatus',
     'InspectionSeverity',
@@ -81,6 +87,8 @@ __all__ = [
     'InspectionUpdateRequest',
     'InspectionResponse',
     'InspectionChecklist',
+    
+    # Instant Value
     'InstantValueBaseRequest',
     'InstantValueLocationFactors',
     'InstantValueRecentSale',
@@ -93,6 +101,8 @@ __all__ = [
     'InstantValueHistory',
     'InstantValueAccuracyMetrics',
     'DataSource',
+    
+    # Mileage
     'CategoryOut',
     'VariantOut',
     'RouteOut',
