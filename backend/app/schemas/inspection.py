@@ -5,7 +5,7 @@ Pydantic models for property inspection requests and responses
 
 from pydantic import BaseModel, Field, validator, EmailStr
 from typing import Optional, List, Dict, Any
-from datetime import datetime, date, time
+from datetime import datetime, date
 from enum import Enum
 
 
@@ -233,7 +233,7 @@ class InspectionResponse(BaseModel):
     estimated_duration: float = Field(..., ge=0)
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "inspection_id": "ins_12345",
                 "property_id": "prop_67890",
