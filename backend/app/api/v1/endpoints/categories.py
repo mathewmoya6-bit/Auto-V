@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
-from app.schemas import CategoryOut, VariantOut
+
+# Import directly from the specific schema modules
+from app.schemas.mileage import CategoryOut, VariantOut
 
 router = APIRouter()
 
