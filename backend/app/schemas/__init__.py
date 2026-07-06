@@ -47,6 +47,19 @@ from .instant_value import (
     DataSource
 )
 
+# Import mileage schemas
+from .mileage import (
+    CategoryOut,
+    VariantOut,
+    RouteOut,
+    MileageClaimOut,
+    MileageClaimCreate,
+    MileageClaimUpdate,
+    MileageClaimSummary,
+    VehicleRateOut,
+    MileageApprovalRequest
+)
+
 __all__ = [
     # Valuation
     'PropertyType',
@@ -86,5 +99,16 @@ __all__ = [
     'InstantValueBatchResponse',
     'InstantValueHistory',
     'InstantValueAccuracyMetrics',
-    'DataSource'
+    'DataSource',
+    
+    # Mileage
+    'CategoryOut',
+    'VariantOut',
+    'RouteOut',
+    'MileageClaimOut',
+    'MileageClaimCreate',
+    'MileageClaimUpdate',
+    'MileageClaimSummary',
+    'VehicleRateOut',
+    'MileageApprovalRequest'
 ]
