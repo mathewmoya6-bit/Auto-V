@@ -1,42 +1,29 @@
 # app/core/config.py
-# =============================================================================
-# AUTO-V API - Settings
-# =============================================================================
-
-from functools import lru_cache
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import os
+from typing import List
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # Supabase Postgres connection string, e.g.
-    # postgresql://postgres:<password>@<host>:5432/postgres
-    # or the pgbouncer/transaction-pooler URL Supabase gives you.
-    DATABASE_URL: str = ""
-
+    APP_NAME: str = "AUTO-V API"
+    APP_VERSION: str = "3.1.0"
+    ENV: str = "production"
     DEBUG: bool = False
+    PORT: int = 8000
+    
+    # Supabase
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    
+    # JWT (only for verification, not generation)
+    JWT_SECRET_KEY: str = "your-secret-key"
+    JWT_ALGORITHM: str = "HS256"
+    
+    # CORS
+    CORS_ORIGINS: List[str] = ["*"]
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
 
-    # JSON array in the env, e.g. CORS_ORIGINS=["https://auto-v.meipressgroup.com"]
-    CORS_ORIGINS: list[str] = ["*"]
-
-    # This app's real deployment has many more env vars than this minimal
-    # settings module declares (payment/webhook retry config, db pool sizing,
-    # session/cookie flags, maintenance mode, etc). Rather than redeclare
-    # every field here and risk drifting from the real app again, ignore
-    # anything this module doesn't explicitly care about instead of
-    # crashing the whole process on startup.
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    def database_configured(self) -> bool:
-        return bool(self.DATABASE_URL)
-
-
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
-
-
-settings = get_settings()
+settings = Settings()
