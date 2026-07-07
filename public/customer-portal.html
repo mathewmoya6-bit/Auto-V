@@ -6,8 +6,8 @@
     <title>AUTO-V | Customer Portal</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
     
-    <!-- Hybrid API Client - Single Source of Truth -->
-    <script src="/auto-v-api.js"></script>
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
@@ -261,32 +261,6 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ─── SERVICE STATUS ─── */
-        .service-status {
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        .service-status.info {
-            background: #1e3a5f;
-            color: #93c5fd;
-            border-left: 4px solid #3b82f6;
-            display: block;
-        }
-        .service-status.success {
-            background: #14532d;
-            color: #bbf7d0;
-            border-left: 4px solid #22c55e;
-            display: block;
-        }
-        .service-status.error {
-            background: #7f1d1d;
-            color: #fecaca;
-            border-left: 4px solid #ef4444;
-            display: block;
-        }
-
         /* ─── TOAST ─── */
         .toast {
             position: fixed;
@@ -303,6 +277,7 @@
         .toast-success { background: #22c55e; color: #000; }
         .toast-error { background: #ef4444; color: #fff; }
         .toast-warning { background: #eab308; color: #000; }
+        .toast-info { background: #3b82f6; color: #fff; }
         @keyframes slideIn {
             from { opacity: 0; transform: translateX(100px); }
             to { opacity: 1; transform: translateX(0); }
@@ -344,20 +319,12 @@
         <div id="step1" class="card step active">
             <h2 style="color:#eab308;margin-bottom:15px;">🔧 Choose a Service</h2>
             <p style="color:#94a3b8;margin-bottom:20px;">Select the service you need. Prices are dynamic and updated in real-time.</p>
-            <div id="serviceStatus" class="service-status info">
-                <span class="spinner" style="border-top-color:#eab308;"></span>
-                Loading services...
-            </div>
-            <div class="service-cards" id="serviceCards">
-                <div style="text-align:center;padding:30px;color:#94a3b8;">
-                    <div class="spinner" style="border-top-color:#eab308;"></div>
-                    Loading services...
-                </div>
-            </div>
+            <div id="serviceStatus" style="display:none;"></div>
+            <div class="service-cards" id="serviceCards"></div>
             <div id="selectedServiceMsg" style="text-align:center;margin-top:15px;color:#eab308;font-weight:500;min-height:30px;"></div>
             <div class="nav-buttons">
                 <button class="btn btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
-                <button class="btn btn-primary" onclick="confirmService()">Next →</button>
+                <button class="btn btn-primary" id="nextBtn" onclick="confirmService()">Next →</button>
             </div>
         </div>
 
@@ -443,16 +410,17 @@
     <script>
         // ═══════════════════════════════════════════════════════════════
         // AUTO-V CUSTOMER PORTAL — Production Ready
-        // Uses window.autoV (Supabase + FastAPI)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
-            if (window.autoVPortalInitialized) return;
-            window.autoVPortalInitialized = true;
+            // ─── Supabase Configuration ──────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
             // ─── STATE ──────────────────────────────────────────────────
+            let supabase = null;
             let selectedService = null;
             let serviceFee = 0;
             let vehicleDetails = {};
@@ -462,13 +430,13 @@
 
             // ─── SERVICE CONFIGURATION ──────────────────────────────────
             const SERVICE_MAP = {
-                'instant': { icon: '💡', name: 'Instant Value Check', badge: 'popular', page: 'instant-value.html' },
-                'valuation': { icon: '💰', name: 'Professional Valuation', badge: 'premium', page: 'valuation.html' },
-                'inspection': { icon: '🔍', name: 'Vehicle Inspection', badge: 'premium', page: 'inspection.html' },
-                'assessment': { icon: '⚠️', name: 'Risk Assessment', badge: 'new', page: 'assessment.html' },
-                'mileage': { icon: '📏', name: 'Mileage Rate Calculator', badge: 'popular', page: 'mileage.html' },
-                'fleet': { icon: '🚛', name: 'Fleet Management', badge: 'premium', page: 'fleet.html' },
-                'verification': { icon: '✅', name: 'Document Verification', badge: 'new', page: 'verification.html' }
+                'instant': { icon: '💡', name: 'Instant Value Check', badge: 'popular' },
+                'valuation': { icon: '💰', name: 'Professional Valuation', badge: 'premium' },
+                'inspection': { icon: '🔍', name: 'Vehicle Inspection', badge: 'premium' },
+                'assessment': { icon: '⚠️', name: 'Risk Assessment', badge: 'new' },
+                'mileage': { icon: '📏', name: 'Mileage Rate Calculator', badge: 'popular' },
+                'fleet': { icon: '🚛', name: 'Fleet Management', badge: 'premium' },
+                'verification': { icon: '✅', name: 'Document Verification', badge: 'new' }
             };
 
             const ROLE_SERVICES = {
@@ -476,6 +444,16 @@
                 'corporate': ['instant', 'mileage', 'fleet'],
                 'valuer': ['instant', 'mileage', 'valuation', 'inspection', 'assessment', 'fleet', 'verification'],
                 'admin': ['instant', 'mileage', 'valuation', 'inspection', 'assessment', 'fleet', 'verification']
+            };
+
+            const DEFAULT_FEES = {
+                'instant': 1500,
+                'mileage': 1000,
+                'valuation': 2500,
+                'inspection': 3500,
+                'assessment': 2000,
+                'fleet': 5000,
+                'verification': 750
             };
 
             // ─── DOM REFS ──────────────────────────────────────────────
@@ -492,22 +470,39 @@
             const paymentForm = $('paymentForm');
             const statusMessage = $('statusMessage');
             const payBtn = $('payBtn');
-            const serviceStatus = $('serviceStatus');
+            const nextBtn = $('nextBtn');
+
+            // ─── INIT SUPABASE ──────────────────────────────────────────
+            function initSupabase() {
+                try {
+                    if (typeof supabase === 'undefined') {
+                        console.warn('⚠️ Supabase library not loaded');
+                        return false;
+                    }
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        auth: {
+                            persistSession: true,
+                            autoRefreshToken: true,
+                            detectSessionInUrl: true
+                        }
+                    });
+                    console.log('✅ Supabase client initialized');
+                    return true;
+                } catch (error) {
+                    console.error('❌ Failed to initialize Supabase:', error);
+                    return false;
+                }
+            }
 
             // ─── HELPERS ────────────────────────────────────────────────
             function showToast(msg, type = 'success') {
-                if (window.autoV && window.autoV.showToast) {
-                    window.autoV.showToast(msg, type);
-                    return;
-                }
-                // Fallback
                 const existing = document.querySelector('.toast');
                 if (existing) existing.remove();
                 const t = document.createElement('div');
                 t.className = `toast toast-${type}`;
                 t.textContent = msg;
                 document.body.appendChild(t);
-                setTimeout(() => t.remove(), 3000);
+                setTimeout(() => t.remove(), 4000);
             }
 
             function showStep(step) {
@@ -528,8 +523,7 @@
                 return SERVICE_MAP[key] || { 
                     icon: '📄', 
                     name: key.charAt(0).toUpperCase() + key.slice(1), 
-                    badge: '',
-                    page: key + '.html' 
+                    badge: ''
                 };
             }
 
@@ -537,131 +531,75 @@
                 return getServiceDisplay(key).name;
             }
 
-            function getIcon(key) {
-                return getServiceDisplay(key).icon;
-            }
+            // ─── AUTH ────────────────────────────────────────────────────
+            async function checkAuth() {
+                if (!supabase) return null;
 
-            function getBadge(key) {
-                return getServiceDisplay(key).badge;
-            }
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
 
-            function getPage(key) {
-                return getServiceDisplay(key).page;
-            }
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
 
-            // ─── API HELPER ──────────────────────────────────────────────
-            async function apiRequest(endpoint, options = {}) {
-                if (window.autoV) {
-                    return window.autoV.apiRequest(endpoint, options);
+                    currentUser = user;
+                    $('userEmail').textContent = user.email;
+                    
+                    // Get role from metadata
+                    userRole = user.user_metadata?.role || 'individual';
+                    console.log('👤 User role:', userRole);
+                    
+                    return user;
+                } catch (error) {
+                    console.error('❌ Auth error:', error);
+                    window.location.href = 'login.html';
+                    return null;
                 }
-                // Fallback
-                const API_BASE = 'https://auto-v.onrender.com/api/v1';
-                const url = `${API_BASE}${endpoint}`;
-                const token = localStorage.getItem('access_token');
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    ...options.headers
-                };
-                if (token) {
-                    headers['Authorization'] = `Bearer ${token}`;
-                }
-                const response = await fetch(url, { ...options, headers });
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.detail || error.message || `HTTP ${response.status}`);
-                }
-                return response.json();
             }
 
-            // ─── LOAD FEES FROM API ─────────────────────────────────────
+            // ─── LOAD FEES ─────────────────────────────────────────────
             async function loadFees() {
                 try {
-                    serviceStatus.className = 'service-status info';
-                    serviceStatus.innerHTML = '<span class="spinner" style="border-top-color:#eab308;"></span> Loading services...';
-                    serviceStatus.style.display = 'block';
+                    // Try to get fees from Supabase table
+                    const { data, error } = await supabase
+                        .from('service_fees')
+                        .select('*');
 
-                    console.log('🔍 Fetching service fees from API...');
-
-                    let data;
-                    if (window.autoV) {
-                        data = await window.autoV.apiRequest('/services/fees');
-                    } else {
-                        data = await apiRequest('/services/fees');
-                    }
-                    
-                    console.log('✅ Raw data from API:', data);
+                    if (error) throw error;
 
                     if (data && data.length > 0) {
-                        serviceFees = {};
                         data.forEach(row => {
-                            const serviceKey = row.service_type || row.key || row.name;
-                            const amount = row.amount || row.fee || row.price || 0;
-                            serviceFees[serviceKey] = amount;
+                            serviceFees[row.service_type] = row.amount;
                         });
-                        console.log('✅ Parsed service fees:', serviceFees);
-                        serviceStatus.className = 'service-status success';
-                        serviceStatus.textContent = `✅ Loaded ${Object.keys(serviceFees).length} services`;
+                        console.log('✅ Loaded fees from Supabase:', serviceFees);
                     } else {
-                        console.warn('⚠️ No fees found in API, using defaults');
-                        serviceStatus.className = 'service-status info';
-                        serviceStatus.textContent = '⚠️ Using default service prices';
-                        serviceFees = {
-                            'instant': 1500,
-                            'mileage': 1000,
-                            'valuation': 2500,
-                            'inspection': 3500,
-                            'assessment': 2000,
-                            'fleet': 5000,
-                            'verification': 750
-                        };
+                        console.log('ℹ️ No fees in database, using defaults');
+                        serviceFees = { ...DEFAULT_FEES };
                     }
-
-                    renderServices();
-
-                    setTimeout(() => {
-                        serviceStatus.style.display = 'none';
-                    }, 3000);
-
-                    return serviceFees;
                 } catch (error) {
-                    console.error('❌ Error loading fees:', error);
-                    serviceStatus.className = 'service-status error';
-                    serviceStatus.textContent = `❌ Error loading services. Using defaults.`;
-                    
-                    serviceFees = {
-                        'instant': 1500,
-                        'mileage': 1000,
-                        'valuation': 2500,
-                        'inspection': 3500,
-                        'assessment': 2000,
-                        'fleet': 5000,
-                        'verification': 750
-                    };
-                    renderServices();
-
-                    setTimeout(() => {
-                        serviceStatus.style.display = 'none';
-                    }, 5000);
-
-                    return serviceFees;
+                    console.warn('⚠️ Error loading fees:', error.message);
+                    serviceFees = { ...DEFAULT_FEES };
                 }
+
+                renderServices();
             }
 
             // ─── RENDER SERVICES ────────────────────────────────────────
             function renderServices() {
                 const allowedServices = ROLE_SERVICES[userRole] || ['instant', 'mileage'];
-                console.log('🎯 Allowed services for role:', userRole, allowedServices);
-
                 const availableServices = Object.keys(serviceFees).filter(key => allowedServices.includes(key));
-                console.log('📋 Available services:', availableServices);
 
                 if (availableServices.length === 0) {
                     serviceCards.innerHTML = `
                         <div style="text-align:center;padding:30px;color:#94a3b8;grid-column:1/-1;">
                             <p style="font-size:18px;margin-bottom:10px;">🚫 No services available</p>
                             <p style="font-size:12px;">Role: ${userRole}</p>
-                            <button onclick="window.location.reload()" style="margin-top:15px;background:#eab308;color:#000;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:600;">🔄 Reload</button>
                         </div>
                     `;
                     return;
@@ -679,7 +617,7 @@
                     `;
                 }).join('');
 
-                // Select first service by default if none selected
+                // Auto-select first service
                 if (!selectedService && availableServices.length > 0) {
                     selectService(availableServices[0]);
                 }
@@ -694,18 +632,13 @@
                 serviceFee = serviceFees[key] || 0;
                 const display = getServiceDisplay(key);
                 selectedServiceMsg.textContent = `✅ Selected: ${display.name} - KES ${serviceFee.toLocaleString()}`;
+                nextBtn.disabled = false;
             };
 
             // ─── CONFIRM SERVICE ────────────────────────────────────────
             window.confirmService = function() {
                 if (!selectedService) {
                     showToast('Please select a service first.', 'warning');
-                    return;
-                }
-
-                // Redirect to service page if it's instant value check
-                if (selectedService === 'instant') {
-                    window.location.href = getPage(selectedService);
                     return;
                 }
 
@@ -725,73 +658,6 @@
 
                 $('step2Title').textContent = `📝 ${formatName(selectedService)} Details`;
                 showStep(2);
-            };
-
-            // ─── AUTH ────────────────────────────────────────────────────
-            async function checkAuth() {
-                try {
-                    if (window.autoV) {
-                        const user = await window.autoV.getCurrentUser();
-                        if (!user) {
-                            window.location.href = 'login.html';
-                            return null;
-                        }
-                        currentUser = user;
-                        $('userEmail').textContent = user.email;
-                        console.log('✅ Authenticated user:', user.email);
-                        return user;
-                    }
-                    // Fallback
-                    const token = localStorage.getItem('access_token');
-                    if (!token) {
-                        window.location.href = 'login.html';
-                        return null;
-                    }
-                    const user = await apiRequest('/auth/me');
-                    currentUser = user;
-                    $('userEmail').textContent = user.email;
-                    console.log('✅ Authenticated user:', user.email);
-                    return user;
-                } catch (error) {
-                    console.error('❌ Auth error:', error);
-                    if (error.message.includes('401')) {
-                        localStorage.removeItem('access_token');
-                        window.location.href = 'login.html';
-                    }
-                    return null;
-                }
-            }
-
-            async function getUserRole(userId) {
-                try {
-                    console.log('🔍 Fetching role for user:', userId);
-                    let data;
-                    if (window.autoV) {
-                        data = await window.autoV.apiRequest(`/users/${userId}/role`);
-                    } else {
-                        data = await apiRequest(`/users/${userId}/role`);
-                    }
-                    userRole = data?.role || 'individual';
-                    console.log('✅ User role:', userRole);
-                    return userRole;
-                } catch (error) {
-                    console.error('❌ Error getting role:', error);
-                    userRole = 'individual';
-                    return 'individual';
-                }
-            }
-
-            // ─── LOGOUT ──────────────────────────────────────────────────
-            window.logout = async function() {
-                if (window.autoV) {
-                    await window.autoV.logout();
-                    return;
-                }
-                try {
-                    await apiRequest('/auth/logout', { method: 'POST' });
-                } catch (e) {}
-                localStorage.removeItem('access_token');
-                window.location.href = 'login.html';
             };
 
             // ─── DETAILS FORM SUBMIT ────────────────────────────────────
@@ -837,14 +703,7 @@
                 statusBox.style.display = 'none';
 
                 try {
-                    const user = await checkAuth();
-                    if (!user) {
-                        btn.innerHTML = '💳 Pay Now';
-                        btn.disabled = false;
-                        return;
-                    }
-
-                    // Create service request via API
+                    // Create service request
                     const requestPayload = {
                         service_type: selectedService,
                         amount: serviceFee,
@@ -855,52 +714,41 @@
                         vehicle_year: vehicleDetails.year,
                         vehicle_mileage: vehicleDetails.mileage || 0,
                         vehicle_condition: vehicleDetails.condition || 'Good',
-                        payment_method: 'mpesa'
+                        payment_method: 'mpesa',
+                        user_id: currentUser.id,
+                        status: 'pending'
                     };
 
                     console.log('📝 Creating service request:', requestPayload);
 
-                    let request;
-                    if (window.autoV) {
-                        request = await window.autoV.apiRequest('/service-requests', {
-                            method: 'POST',
-                            body: JSON.stringify(requestPayload)
-                        });
-                    } else {
-                        request = await apiRequest('/service-requests', {
-                            method: 'POST',
-                            body: JSON.stringify(requestPayload)
-                        });
-                    }
+                    const { data: request, error } = await supabase
+                        .from('service_requests')
+                        .insert([requestPayload])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
 
                     console.log('✅ Service request created:', request);
 
-                    // Show processing
                     statusBox.className = 'status-box status-info';
                     statusBox.textContent = '⏳ Processing payment... Please wait.';
                     statusBox.style.display = 'block';
 
                     // Simulate payment processing
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await new Promise(resolve => setTimeout(resolve, 2500));
 
                     // Update payment status
-                    const updateData = {
-                        status: 'paid',
-                        payment_reference: `MPESA-${Date.now()}`
-                    };
-                    if (window.autoV) {
-                        await window.autoV.apiRequest(`/service-requests/${request.id}/payment`, {
-                            method: 'PUT',
-                            body: JSON.stringify(updateData)
-                        });
-                    } else {
-                        await apiRequest(`/service-requests/${request.id}/payment`, {
-                            method: 'PUT',
-                            body: JSON.stringify(updateData)
-                        });
-                    }
+                    const { error: updateError } = await supabase
+                        .from('service_requests')
+                        .update({ 
+                            status: 'paid',
+                            payment_reference: `MPESA-${Date.now()}`
+                        })
+                        .eq('id', request.id);
 
-                    // Success
+                    if (updateError) throw updateError;
+
                     statusBox.className = 'status-box status-success';
                     statusBox.textContent = '✅ Payment successful! Redirecting...';
                     statusBox.style.display = 'block';
@@ -909,10 +757,19 @@
 
                     showToast('✅ Payment successful!', 'success');
 
-                    // Redirect after 2 seconds
+                    // Redirect based on service type
                     setTimeout(() => {
-                        const page = getPage(selectedService);
-                        window.location.href = page + '?request_id=' + request.id;
+                        const servicePages = {
+                            'instant': 'instant-value.html',
+                            'valuation': 'valuation.html',
+                            'inspection': 'inspection.html',
+                            'assessment': 'assessment.html',
+                            'mileage': 'mileage.html',
+                            'fleet': 'fleet.html',
+                            'verification': 'verification.html'
+                        };
+                        const page = servicePages[selectedService] || 'dashboard.html';
+                        window.location.href = `${page}?request_id=${request.id}`;
                     }, 2000);
 
                 } catch (error) {
@@ -926,59 +783,45 @@
                 }
             };
 
-            // ─── LOGOUT BUTTON ──────────────────────────────────────────
-            document.getElementById('logoutBtn').addEventListener('click', window.logout);
-
-            // ─── INIT ────────────────────────────────────────────────────
-            async function init() {
-                console.log('🚗 AUTO-V Customer Portal - Initializing...');
-
-                // Wait for autoV to be ready
-                if (window.autoV && !window.autoV._initialized) {
-                    console.log('⏳ Waiting for autoV to initialize...');
-                    await new Promise(resolve => {
-                        const check = () => {
-                            if (window.autoV && window.autoV._initialized) {
-                                resolve();
-                            } else {
-                                setTimeout(check, 100);
-                            }
-                        };
-                        check();
-                    });
+            // ─── LOGOUT ──────────────────────────────────────────────────
+            async function handleLogout() {
+                if (supabase) {
+                    await supabase.auth.signOut();
                 }
-
-                try {
-                    const user = await checkAuth();
-                    if (!user) return;
-
-                    await getUserRole(user.id);
-                    console.log('👤 User role:', userRole);
-                    console.log('📧 User email:', user.email);
-
-                    await loadFees();
-
-                    showStep(1);
-                    console.log('✅ AUTO-V Customer Portal ready');
-
-                    if (window.autoV) {
-                        window.autoV.showToast('🚀 Welcome to AUTO-V Customer Portal', 'success');
-                    }
-                } catch (error) {
-                    console.error('❌ Init error:', error);
-                    showToast('Failed to initialize portal: ' + error.message, 'error');
-                }
+                window.location.href = 'login.html';
             }
+
+            // ─── EVENT LISTENERS ──────────────────────────────────────
+            document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 
             // ─── EXPOSE GLOBALLY ────────────────────────────────────────
             window.showStep = showStep;
             window.confirmService = confirmService;
             window.selectService = selectService;
-            window.logout = logout;
-            window.formatName = formatName;
-            window.getIcon = getIcon;
 
-            // ─── START ──────────────────────────────────────────────────
+            // ─── INIT ────────────────────────────────────────────────────
+            async function init() {
+                console.log('🚗 AUTO-V Customer Portal - Initializing...');
+
+                const initialized = initSupabase();
+                if (!initialized) {
+                    showToast('Failed to initialize authentication service.', 'error');
+                    return;
+                }
+
+                const user = await checkAuth();
+                if (!user) return;
+
+                await loadFees();
+                showStep(1);
+                nextBtn.disabled = true;
+
+                console.log('✅ AUTO-V Customer Portal ready');
+                console.log(`📌 Supabase: ${SUPABASE_URL}`);
+                console.log(`👤 User: ${user.email}`);
+                console.log(`🔑 Role: ${userRole}`);
+            }
+
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', init);
             } else {
