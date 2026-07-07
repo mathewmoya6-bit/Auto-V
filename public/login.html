@@ -24,7 +24,6 @@
             overflow-x: hidden;
         }
 
-        /* ─── AMBIENT BACKGROUND ─── */
         body::before {
             content: '';
             position: fixed;
@@ -77,18 +76,14 @@
             width: 100%;
             max-width: 440px;
             border: 1px solid rgba(234, 179, 8, 0.15);
-            box-shadow:
-                0 25px 60px -12px rgba(0, 0, 0, 0.6),
-                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.03);
             position: relative;
             z-index: 1;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .auth-container:hover {
-            box-shadow:
-                0 30px 70px -12px rgba(0, 0, 0, 0.7),
-                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            box-shadow: 0 30px 70px -12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }
 
         .logo { text-align: center; margin-bottom: 32px; }
@@ -291,7 +286,6 @@
         }
         .forgot-password a:hover { color: #eab308; }
 
-        /* ─── Toast ─── */
         .toast {
             position: fixed;
             bottom: 20px;
@@ -314,16 +308,6 @@
             to { opacity: 1; transform: translateX(0); }
         }
 
-        /* ─── Registration Fields ─── */
-        .register-fields {
-            display: none;
-            animation: slideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .register-fields.show {
-            display: block;
-        }
-
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -336,13 +320,8 @@
             margin-top: 4px;
         }
 
-        .password-hint .valid {
-            color: #22c55e;
-        }
-
-        .password-hint .invalid {
-            color: #ef4444;
-        }
+        .password-hint .valid { color: #22c55e; }
+        .password-hint .invalid { color: #ef4444; }
 
         .tab-switch {
             display: flex;
@@ -430,7 +409,7 @@
             </div>
 
             <div class="forgot-password">
-                <a onclick="showToast('Contact support to reset your password', 'info')">Forgot password?</a>
+                <a id="forgotPasswordLink">Forgot password?</a>
             </div>
 
             <button type="submit" class="auth-btn" id="loginBtn">
@@ -494,9 +473,8 @@
         </form>
 
         <div class="footer-links">
-            <a onclick="switchTab('login')" id="switchToLogin">← Back to Login</a>
-            <a onclick="switchTab('register')" id="switchToRegister">Create Account →</a>
-            <a href="#" onclick="showToast('Admin access requires special invitation', 'info')">🔒 Admin Login</a>
+            <a id="switchToLogin">← Back to Login</a>
+            <a id="switchToRegister">Create Account →</a>
         </div>
 
         <div class="security-badge">
@@ -525,6 +503,7 @@
             const registerTab = document.getElementById('registerTab');
             const switchToLogin = document.getElementById('switchToLogin');
             const switchToRegister = document.getElementById('switchToRegister');
+            const forgotPasswordLink = document.getElementById('forgotPasswordLink');
             const authSubtitle = document.getElementById('authSubtitle');
 
             const emailInput = document.getElementById('email');
@@ -545,8 +524,19 @@
             // ─── STATE ──────────────────────────────────────────────────
             let currentTab = 'login';
             let isSubmitting = false;
+            let abortController = null;
 
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
+            window.showToast = function(msg, type = 'success') {
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = msg;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+            };
+
             function showMessage(text, type = 'error') {
                 messageBox.textContent = text;
                 messageBox.className = `message ${type}-message`;
@@ -560,16 +550,6 @@
             function clearMessage() {
                 messageBox.style.display = 'none';
                 clearTimeout(window._msgTimer);
-            }
-
-            function showToast(msg, type = 'success') {
-                const existing = document.querySelector('.toast');
-                if (existing) existing.remove();
-                const toast = document.createElement('div');
-                toast.className = `toast toast-${type}`;
-                toast.textContent = msg;
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 4000);
             }
 
             // ─── VALIDATION ─────────────────────────────────────────────
@@ -601,16 +581,36 @@
 
             // ─── API CALLS ─────────────────────────────────────────────
             async function apiCall(endpoint, options = {}) {
+                // Cancel any pending request
+                if (abortController) {
+                    abortController.abort();
+                }
+                abortController = new AbortController();
+                
                 const url = `${API_BASE}${endpoint}`;
+                const timeout = 30000; // 30 seconds timeout
+                
                 try {
-                    const response = await fetch(url, {
-                        ...options,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            ...(options.headers || {})
-                        }
-                    });
+                    const response = await Promise.race([
+                        fetch(url, {
+                            ...options,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                ...(options.headers || {})
+                            },
+                            signal: abortController.signal
+                        }),
+                        new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Request timeout')), timeout)
+                        )
+                    ]);
+
+                    // Check if response is JSON
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        throw new Error(`Server returned ${contentType || 'unknown'} format. Expected JSON.`);
+                    }
 
                     const data = await response.json();
 
@@ -621,13 +621,18 @@
 
                     return data;
                 } catch (error) {
+                    if (error.name === 'AbortError') {
+                        throw new Error('Request cancelled');
+                    }
                     console.error(`❌ API call failed: ${endpoint}`, error);
                     throw error;
+                } finally {
+                    abortController = null;
                 }
             }
 
             // ─── TAB SWITCHING ──────────────────────────────────────────
-            function switchTab(tab) {
+            window.switchTab = function(tab) {
                 currentTab = tab;
                 clearMessage();
 
@@ -639,7 +644,6 @@
                     authSubtitle.textContent = 'Sign in to your account';
                     switchToLogin.style.display = 'none';
                     switchToRegister.style.display = 'inline';
-                    document.querySelector('.footer-links').querySelector('a:last-child').style.display = 'inline';
                 } else {
                     loginForm.style.display = 'none';
                     registerForm.style.display = 'block';
@@ -648,9 +652,8 @@
                     authSubtitle.textContent = 'Create your account';
                     switchToLogin.style.display = 'inline';
                     switchToRegister.style.display = 'none';
-                    document.querySelector('.footer-links').querySelector('a:last-child').style.display = 'none';
                 }
-            }
+            };
 
             // ─── SET LOADING STATE ─────────────────────────────────────
             function setLoading(btn, state, text) {
@@ -691,26 +694,29 @@
                         body: JSON.stringify({ email, password })
                     });
 
-                    // Store token
+                    // Store token (handle both formats)
                     if (response.access_token) {
                         localStorage.setItem('access_token', response.access_token);
+                    }
+                    if (response.refresh_token) {
                         localStorage.setItem('refresh_token', response.refresh_token);
                     }
 
-                    // Store user info
-                    if (response.user) {
+                    // Store user info (handle both formats)
+                    const userData = response.user || response;
+                    if (userData && userData.id) {
                         localStorage.setItem('autoV_user', JSON.stringify({
-                            id: response.user.id,
-                            email: response.user.email,
-                            role: response.user.role || 'user',
-                            full_name: response.user.full_name || email.split('@')[0]
+                            id: userData.id,
+                            email: userData.email || email,
+                            role: userData.role || 'user',
+                            full_name: userData.full_name || email.split('@')[0]
                         }));
                     }
 
                     showMessage('✅ Login successful! Redirecting...', 'success');
-                    showToast('✅ Welcome back!', 'success');
+                    window.showToast('✅ Welcome back!', 'success');
 
-                    const isAdmin = response.user?.role === 'admin' || response.user?.role === 'super_admin';
+                    const isAdmin = userData?.role === 'admin' || userData?.role === 'super_admin';
 
                     setTimeout(() => {
                         window.location.href = isAdmin ? ADMIN_DASHBOARD : DASHBOARD_URL;
@@ -719,10 +725,14 @@
                 } catch (error) {
                     console.error('Login error:', error);
                     const msg = error.message || 'Login failed';
-                    if (msg.includes('401') || msg.includes('Invalid credentials')) {
+                    if (msg.includes('401') || msg.includes('Invalid credentials') || msg.includes('invalid')) {
                         showMessage('❌ Invalid email or password. Please try again.', 'error');
-                    } else if (msg.includes('403')) {
+                    } else if (msg.includes('403') || msg.includes('disabled')) {
                         showMessage('⛔ Account is deactivated. Contact support.', 'error');
+                    } else if (msg.includes('verify') || msg.includes('confirmed')) {
+                        showMessage('📧 Please verify your email before logging in.', 'info');
+                    } else if (msg.includes('timeout')) {
+                        showMessage('⏳ Request timed out. Please check your connection.', 'error');
                     } else {
                         showMessage(`❌ ${msg}`, 'error');
                     }
@@ -781,11 +791,11 @@
                     });
 
                     showMessage('✅ Account created successfully! Please login.', 'success');
-                    showToast('✅ Account created! Please login.', 'success');
+                    window.showToast('✅ Account created! Please login.', 'success');
 
                     // Switch to login tab after 2 seconds
                     setTimeout(() => {
-                        switchTab('login');
+                        window.switchTab('login');
                         emailInput.value = email;
                         passwordInput.value = '';
                         setLoading(registerBtn, false, 'Create Account');
@@ -794,8 +804,10 @@
                 } catch (error) {
                     console.error('Registration error:', error);
                     const msg = error.message || 'Registration failed';
-                    if (msg.includes('already exists')) {
+                    if (msg.includes('already exists') || msg.includes('409')) {
                         showMessage('❌ User with this email already exists. Please login.', 'error');
+                    } else if (msg.includes('timeout')) {
+                        showMessage('⏳ Request timed out. Please check your connection.', 'error');
                     } else {
                         showMessage(`❌ ${msg}`, 'error');
                     }
@@ -813,21 +825,23 @@
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
 
-                    if (response && response.id) {
+                    const userData = response || {};
+                    if (userData && userData.id) {
                         localStorage.setItem('autoV_user', JSON.stringify({
-                            id: response.id,
-                            email: response.email,
-                            role: response.role || 'user',
-                            full_name: response.full_name || response.email.split('@')[0]
+                            id: userData.id,
+                            email: userData.email,
+                            role: userData.role || 'user',
+                            full_name: userData.full_name || userData.email?.split('@')[0] || 'User'
                         }));
 
-                        const isAdmin = response.role === 'admin' || response.role === 'super_admin';
+                        const isAdmin = userData.role === 'admin' || userData.role === 'super_admin';
                         window.location.href = isAdmin ? ADMIN_DASHBOARD : DASHBOARD_URL;
                     }
                 } catch (error) {
                     console.log('Session expired or invalid');
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('autoV_user');
                 }
             }
 
@@ -835,25 +849,19 @@
             loginForm.addEventListener('submit', handleLogin);
             registerForm.addEventListener('submit', handleRegister);
 
-            loginTab.addEventListener('click', () => switchTab('login'));
-            registerTab.addEventListener('click', () => switchTab('register'));
-            switchToLogin.addEventListener('click', () => switchTab('login'));
-            switchToRegister.addEventListener('click', () => switchTab('register'));
+            loginTab.addEventListener('click', () => window.switchTab('login'));
+            registerTab.addEventListener('click', () => window.switchTab('register'));
+            switchToLogin.addEventListener('click', () => window.switchTab('login'));
+            switchToRegister.addEventListener('click', () => window.switchTab('register'));
+            
+            forgotPasswordLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.showToast('Contact support to reset your password', 'info');
+            });
 
             // Password validation on input
             regPassword.addEventListener('input', function() {
                 updatePasswordHint(this.value);
-            });
-
-            // Enter key support
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    if (currentTab === 'login') {
-                        loginForm.dispatchEvent(new Event('submit'));
-                    } else {
-                        registerForm.dispatchEvent(new Event('submit'));
-                    }
-                }
             });
 
             // ─── INIT ──────────────────────────────────────────────────
@@ -862,7 +870,7 @@
                 await checkExistingSession();
 
                 // Set initial tab
-                switchTab('login');
+                window.switchTab('login');
 
                 // Focus email field
                 setTimeout(() => emailInput.focus(), 200);
