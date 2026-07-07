@@ -1,166 +1,84 @@
 # app/core/database.py
 # =============================================================================
-# AUTO-V API - Database Configuration (Supabase Postgres, async via asyncpg)
+# AUTO-V API - Database Core
 # =============================================================================
 
-import re
-import ssl
-import logging
-from uuid import uuid4
-from contextlib import asynccontextmanager
-
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+import os
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.pool import NullPool
+from sqlalchemy import text
 
-from app.core.config import settings
-
-logger = logging.getLogger(__name__)
-
+# Create Base for models
 Base = declarative_base()
 
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    # Convert postgresql:// to postgresql+asyncpg:// if needed
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-def _build_database_url(raw_url: str) -> tuple[str, dict]:
-    """Normalize a Postgres URL for async SQLAlchemy + asyncpg (Render/Supabase-safe)."""
-    url = raw_url.strip().strip('"').strip("'")  # Remove quotes if present
+engine = None
+async_session_maker = None
 
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-    if "sslmode" in url or "ssl=" in url:
-        url = re.sub(r"[?&]sslmode=[^&]*", "", url)
-        url = re.sub(r"[?&]ssl=[^&]*", "", url)
-        url = url.rstrip("?&")
-
-    # Encrypt without verifying the cert chain (Supabase's chain isn't
-    # always in the system trust store) -- equivalent to sslmode=require.
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-
-    # ── pgbouncer (transaction mode) + asyncpg prepared statements ──
-    # Disabling the cache alone isn't enough: asyncpg names prepared
-    # statements with a simple incrementing counter per connection
-    # object. Since pgbouncer can route different logical connections
-    # to the same physical backend, two connections can independently
-    # generate the same statement name (e.g. "__asyncpg_stmt_5__") and
-    # collide -> DuplicatePreparedStatementError, even on SQLAlchemy's
-    # own internal setup queries like `select pg_catalog.version()`.
-    # Fix: force globally-unique statement names via uuid4.
-    connect_args = {
-        "ssl": ssl_context,
-        "statement_cache_size": 0,
-        "prepared_statement_cache_size": 0,
-        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
-    }
-
-    return url, connect_args
-
-
-if not settings.database_configured():
-    logger.error("DATABASE_URL is not configured!")
-    raise RuntimeError(
-        "DATABASE_URL is not configured. Set it to your Supabase Postgres "
-        "connection string, e.g. postgresql://postgres:<password>@<host>:5432/postgres"
+if DATABASE_URL:
+    engine = create_async_engine(
+        DATABASE_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=3600,
     )
-
-DATABASE_URL, CONNECT_ARGS = _build_database_url(settings.DATABASE_URL)
-logger.info("Database URL configured (driver=asyncpg, password hidden)")
-
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=settings.DEBUG,
-    # NullPool: pgbouncer already pools connections. Letting SQLAlchemy
-    # ALSO hold a pool on top creates double-pooling -- SQLAlchemy keeps
-    # connections open/idle that pgbouncer then can't reassign to other
-    # requests. NullPool opens a fresh connection per operation and lets
-    # pgbouncer own the connection lifecycle, which is what SQLAlchemy's
-    # own docs recommend behind a pooler like this.
-    poolclass=NullPool,
-    connect_args=CONNECT_ARGS,
-)
-
-AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False)
-
-
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
-
-
-@asynccontextmanager
-async def get_db_context():
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-
-async def init_db():
-    """Initialize database tables - only creates tables if they don't exist."""
-    try:
-        async with engine.begin() as conn:
-            # Check if tables exist before creating
-            await conn.run_sync(Base.metadata.create_all)
-            logger.info("Database tables created/verified")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
-
-
-async def close_db():
-    """Close database connections."""
-    await engine.dispose()
-    logger.info("Database connections closed")
-
-
-async def check_db_health() -> bool:
-    """Check database health by executing a simple query."""
-    try:
-        async with engine.connect() as conn:
-            # Always wrap raw SQL in text()
-            await conn.execute(text("SELECT 1"))
-            # Also check if users table exists
-            result = await conn.execute(
-                text("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'")
-            )
-            count = result.scalar()
-            logger.info(f"Users table exists: {count > 0}")
-        return True
-    except Exception as e:
-        logger.error(f"Database health check failed: {e}")
-        return False
-
-
-async def check_table_exists(table_name: str) -> bool:
-    """Check if a specific table exists in the public schema."""
-    try:
-        async with engine.connect() as conn:
-            result = await conn.execute(
-                text(
-                    "SELECT COUNT(*) FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = :table_name"
-                ),
-                {"table_name": table_name}
-            )
-            count = result.scalar()
-            return count > 0
-    except Exception as e:
-        logger.error(f"Failed to check if table {table_name} exists: {e}")
-        return False
+    async_session_maker = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
 
 
 def is_database_configured() -> bool:
-    """Check if database is configured."""
-    return settings.database_configured() and engine is not None
+    """Check if database is configured"""
+    return DATABASE_URL is not None and engine is not None
+
+
+async def init_db():
+    """Initialize database connection"""
+    if engine is None:
+        return
+    
+    # Test connection
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+
+
+async def close_db():
+    """Close database connections"""
+    if engine is not None:
+        await engine.dispose()
+
+
+async def check_db_health() -> bool:
+    """Check database health"""
+    if engine is None:
+        return False
+    
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(text("SELECT 1"))
+            return result.scalar() == 1
+    except Exception:
+        return False
+
+
+async def get_db() -> AsyncSession:
+    """Get database session"""
+    if async_session_maker is None:
+        raise Exception("Database not configured")
+    
+    async with async_session_maker() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
