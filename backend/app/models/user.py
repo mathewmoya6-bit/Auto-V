@@ -2,15 +2,21 @@
 # =============================================================================
 # AUTO-V API - User Profile Model
 # =============================================================================
+
 import uuid
+from datetime import datetime
 from sqlalchemy import (
     Column, String, Boolean, DateTime, ForeignKey, Index, func,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
+
+
 class UserProfile(Base):
     __tablename__ = "users"
+
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
@@ -24,17 +30,21 @@ class UserProfile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login = Column(DateTime(timezone=True))
-    # Relationships (string references to avoid circular imports)
+
+    # Relationships
     vehicles = relationship("Vehicle", foreign_keys="Vehicle.user_id", back_populates="owner")
     mileage_claims = relationship("MileageClaim", foreign_keys="MileageClaim.user_id", back_populates="user")
     approved_mileage_claims = relationship("MileageClaim", foreign_keys="MileageClaim.approved_by", back_populates="approver")
     vin_scans = relationship("VINScan", foreign_keys="VINScan.user_id", back_populates="user")
+
     __table_args__ = (
         Index("idx_users_email", "email"),
         Index("idx_users_role", "role"),
         Index("idx_users_active", "is_active"),
     )
-    def to_dict(self) -> dict:
+
+    def to_public_dict(self) -> dict:
+        """Return public user data (no password hash)"""
         return {
             "id": str(self.id),
             "email": self.email,
@@ -46,29 +56,19 @@ class UserProfile(Base):
             "is_verified": self.is_verified,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
-    def to_public_dict(self) -> dict:
-        """
-        Safe-to-return-to-the-client version, used by auth endpoints
-        (register/login responses). Same fields as to_dict() today -
-        password_hash and supabase_user_id are already excluded there -
-        kept as a separate method so admin-only fields can be added to
-        to_dict() later without automatically exposing them here too.
-        """
-        return self.to_dict()
 
-
-# -----------------------------------------------------------------------------
-# Backward-compatible alias.
-#
-# Multiple endpoint files across this codebase (auth.py, valuations.py,
-# inspections.py, and possibly others) import this model as `User` instead
-# of `UserProfile`. Rather than hunt down and edit every call site (and risk
-# missing one, or having a fix reverted), this alias makes BOTH names valid
-# imports of the exact same class. `from app.models.user import User` and
-# `from app.models.user import UserProfile` are now equivalent.
-#
-# Do not remove this without first confirming (e.g. via
-# `grep -rn "app.models.user import" app/`) that nothing in the codebase
-# still imports `User`.
-# -----------------------------------------------------------------------------
-User = UserProfile
+    def to_dict(self) -> dict:
+        """Return all user data (for internal use)"""
+        return {
+            "id": str(self.id),
+            "email": self.email,
+            "full_name": self.full_name,
+            "phone": self.phone,
+            "role": self.role,
+            "company_name": self.company_name,
+            "is_active": self.is_active,
+            "is_verified": self.is_verified,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_login": self.last_login.isoformat() if self.last_login else None,
+        }
