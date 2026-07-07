@@ -152,3 +152,18 @@ class InstantValueResponse(BaseModel):
     cache_hit: bool = False
     last_sale_price: Optional[float] = None
     last_sale_date: Optional[date] = None
+
+
+# ── Names required by app/schemas/__init__.py ──────────────────────────
+
+class ValuationUpdate(BaseModel):
+    condition: Optional[PropertyCondition] = None
+    valuation_method: Optional[ValuationMethod] = None
+    include_comparables: Optional[bool] = None
+    include_trends: Optional[bool] = None
+    include_forecast: Optional[bool] = None
+
+
+ValuationCreate = ValuationRequest
+InstantValuationRequest = InstantValueRequest
+InstantValuationResponse = InstantValueResponse
