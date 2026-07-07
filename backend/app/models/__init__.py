@@ -3,9 +3,7 @@
 # AUTO-V API - Models Registry (Single Source of Truth)
 # =============================================================================
 
-from app.core.database import Base
-
-# Import all models in the correct order (dependencies first)
+# Import all models in the correct order
 from .user import UserProfile
 from .vehicle import Vehicle, VehicleImage, VINScan
 from .mileage import (
@@ -16,7 +14,6 @@ from .mileage import (
 )
 
 __all__ = [
-    "Base",
     "UserProfile",
     "Vehicle",
     "VehicleImage",
