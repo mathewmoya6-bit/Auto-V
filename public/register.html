@@ -7,6 +7,9 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         /* ─── RESET & BASE ─── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -508,15 +511,15 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V REGISTER — Supabase Auth
+        // AUTO-V REGISTER — Supabase Only
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
             // ─── Supabase Configuration ──────────────────────────────────
-            const SUPABASE_URL = 'https://your-project-id.supabase.co';
-            const SUPABASE_ANON_KEY = 'your-anon-key';
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
             // ─── DOM REFS ───────────────────────────────────────────────
             const form = document.getElementById('registerForm');
@@ -530,16 +533,18 @@
             const confirmPassword = document.getElementById('confirmPassword');
             const roleHidden = document.getElementById('role');
 
-            // ─── Supabase Client ────────────────────────────────────────
+            // ─── Initialize Supabase ────────────────────────────────────
             let supabaseClient = null;
 
-            function initSupabase() {
+            try {
                 if (typeof supabase !== 'undefined') {
                     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     console.log('✅ Supabase client initialized');
                 } else {
-                    console.warn('⚠️ Supabase library not loaded, using fallback');
+                    console.error('❌ Supabase library not loaded');
                 }
+            } catch (error) {
+                console.error('❌ Failed to initialize Supabase:', error);
             }
 
             // ─── ROLE SELECTION ──────────────────────────────────────────
@@ -642,6 +647,11 @@
                 e.preventDefault();
                 clearMessage();
 
+                if (!supabaseClient) {
+                    showMessage('❌ Authentication service not available. Please refresh.', 'error');
+                    return;
+                }
+
                 const name = fullName.value.trim();
                 const emailVal = email.value.trim();
                 const phoneVal = phone.value.trim();
@@ -679,104 +689,79 @@
 
                 try {
                     // ─── Register via Supabase ──────────────────────────
-                    let response;
-
-                    if (supabaseClient) {
-                        // Use Supabase client
-                        response = await supabaseClient.auth.signUp({
-                            email: emailVal,
-                            password: pwd,
-                            options: {
-                                data: {
-                                    full_name: name,
-                                    phone: phoneVal || null,
-                                    company: companyVal || null,
-                                    role: role
-                                }
-                            }
-                        });
-
-                        if (response.error) {
-                            throw new Error(response.error.message);
-                        }
-
-                        const { data: { user, session } } = response;
-
-                        if (user) {
-                            showMessage('✅ Account created successfully! Please check your email to verify.', 'success');
-                            showToast('✅ Account created! Please verify your email.', 'success');
-
-                            // Store session if auto-confirmed
-                            if (session) {
-                                localStorage.setItem('supabase_access_token', session.access_token);
-                                localStorage.setItem('supabase_refresh_token', session.refresh_token);
-                                
-                                localStorage.setItem('autoV_user', JSON.stringify({
-                                    id: user.id,
-                                    email: user.email,
-                                    full_name: name,
-                                    role: role,
-                                    phone: phoneVal || ''
-                                }));
-
-                                // Auto-login and redirect
-                                setTimeout(() => {
-                                    window.location.href = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
-                                }, 2000);
-                            } else {
-                                // Email verification required
-                                setTimeout(() => {
-                                    window.location.href = `login.html?registered=true&email=${encodeURIComponent(emailVal)}`;
-                                }, 3000);
-                            }
-                        }
-
-                    } else {
-                        // ─── Fallback: Call FastAPI backend ────────────
-                        const res = await fetch('https://auto-v.onrender.com/api/v1/auth/register', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                email: emailVal,
-                                password: pwd,
+                    const { data, error } = await supabaseClient.auth.signUp({
+                        email: emailVal,
+                        password: pwd,
+                        options: {
+                            data: {
                                 full_name: name,
                                 phone: phoneVal || null,
                                 company: companyVal || null,
                                 role: role
-                            })
-                        });
-
-                        if (!res.ok) {
-                            const error = await res.json();
-                            throw new Error(error.detail || 'Registration failed');
+                            }
                         }
+                    });
 
-                        const data = await res.json();
+                    if (error) {
+                        throw new Error(error.message);
+                    }
 
-                        showMessage('✅ Account created successfully! Redirecting...', 'success');
-                        showToast('✅ Account created! Please login.', 'success');
+                    const user = data?.user;
 
-                        if (data.access_token) {
-                            localStorage.setItem('access_token', data.access_token);
-                            window.location.href = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
-                        } else {
+                    if (user) {
+                        // Check if email confirmation is required
+                        const needsConfirmation = !user.email_confirmed_at;
+
+                        if (needsConfirmation) {
+                            showMessage('✅ Account created! Please check your email to verify.', 'success');
+                            showToast('📧 Please verify your email before logging in.', 'info');
+                            
                             setTimeout(() => {
                                 window.location.href = `login.html?registered=true&email=${encodeURIComponent(emailVal)}`;
+                            }, 4000);
+                        } else {
+                            // Auto-confirmed
+                            showMessage('✅ Account created successfully! Redirecting...', 'success');
+                            showToast('✅ Welcome to AUTO-V!', 'success');
+
+                            if (data?.session) {
+                                localStorage.setItem('supabase_access_token', data.session.access_token);
+                                localStorage.setItem('supabase_refresh_token', data.session.refresh_token);
+                            }
+
+                            localStorage.setItem('autoV_user', JSON.stringify({
+                                id: user.id,
+                                email: user.email,
+                                full_name: name,
+                                role: role,
+                                phone: phoneVal || '',
+                                company: companyVal || ''
+                            }));
+
+                            setTimeout(() => {
+                                window.location.href = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
                             }, 2000);
                         }
+                    } else {
+                        throw new Error('Registration failed - no user returned');
                     }
 
                 } catch (error) {
                     console.error('Registration error:', error);
                     const errorMsg = error.message || 'Registration failed';
 
-                    if (errorMsg.toLowerCase().includes('already registered')) {
+                    if (errorMsg.toLowerCase().includes('already registered') || 
+                        errorMsg.toLowerCase().includes('user already')) {
                         showMessage('❌ This email is already registered. Please login.', 'error');
                         showToast('Email already registered. Please login.', 'warning');
+                        setTimeout(() => {
+                            window.location.href = `login.html?email=${encodeURIComponent(emailVal)}`;
+                        }, 2000);
+                    } else if (errorMsg.toLowerCase().includes('password')) {
+                        showMessage('❌ Password must be at least 6 characters.', 'error');
+                        password.focus();
                     } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch')) {
                         showMessage('🌐 Network error. Please check your connection.', 'error');
-                    } else if (errorMsg.includes('500')) {
-                        showMessage('⚠️ Server error. Please try again later.', 'error');
                     } else {
                         showMessage(`❌ ${errorMsg}`, 'error');
                     }
@@ -794,32 +779,16 @@
 
             // ─── CHECK IF ALREADY LOGGED IN ─────────────────────────────
             async function checkExistingSession() {
+                if (!supabaseClient) return;
+
                 try {
-                    // Check Supabase session
-                    if (supabaseClient) {
-                        const { data: { session } } = await supabaseClient.auth.getSession();
-                        if (session) {
-                            const { data: { user } } = await supabaseClient.auth.getUser();
-                            if (user) {
-                                const role = user.user_metadata?.role || 'user';
-                                window.location.href = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
-                                return;
-                            }
+                    const { data: { session } } = await supabaseClient.auth.getSession();
+                    if (session) {
+                        const { data: { user } } = await supabaseClient.auth.getUser();
+                        if (user) {
+                            const role = user.user_metadata?.role || 'user';
+                            window.location.href = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
                         }
-                    }
-
-                    // Fallback: Check localStorage token
-                    const token = localStorage.getItem('access_token') || localStorage.getItem('supabase_access_token');
-                    if (!token) return;
-
-                    const res = await fetch('https://auto-v.onrender.com/api/v1/auth/me', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-
-                    if (res.ok) {
-                        const user = await res.json();
-                        const role = user.role || 'user';
-                        window.location.href = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
                     }
                 } catch (e) {
                     console.log('No existing session');
@@ -828,17 +797,12 @@
 
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
-                // Initialize Supabase
-                initSupabase();
-
-                // Check if user is already logged in
                 await checkExistingSession();
-
-                // Focus first field
                 setTimeout(() => fullName.focus(), 200);
 
-                console.log('🚀 AUTO-V Register (Supabase)');
+                console.log('🚀 AUTO-V Register (Supabase Only)');
                 console.log(`📌 Supabase URL: ${SUPABASE_URL}`);
+                console.log(`📌 Supabase Client: ${supabaseClient ? '✅ Initialized' : '❌ Not available'}`);
             }
 
             if (document.readyState === 'loading') {
