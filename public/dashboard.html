@@ -148,16 +148,6 @@
             font-family: inherit;
         }
         .service-card .btn:hover { background: #facc15; transform: scale(1.02); }
-        .service-card .btn-outline {
-            background: transparent;
-            border: 1px solid #475569;
-            color: #94a3b8;
-        }
-        .service-card .btn-outline:hover {
-            border-color: #eab308;
-            color: #eab308;
-            background: rgba(234, 179, 8, 0.08);
-        }
 
         /* ─── Sections ──────────────────────────────────────────────── */
         .section-block {
@@ -394,7 +384,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V USER DASHBOARD — Supabase Only
+        // AUTO-V USER DASHBOARD — With Customer Portal Navigation
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -403,6 +393,25 @@
             // ─── Supabase Configuration ──────────────────────────────────
             const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
             const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+
+            // ─── Service to Page Mapping ─────────────────────────────────
+            const SERVICE_PAGES = {
+                'instant': 'customer-portal.html?service=instant-value-check',
+                'mileage': 'customer-portal.html?service=mileage-rate',
+                'valuation': 'customer-portal.html?service=valuation',
+                'inspection': 'customer-portal.html?service=inspection',
+                'assessment': 'customer-portal.html?service=assessment',
+                'fleet': 'customer-portal.html?service=fleet'
+            };
+
+            const SERVICE_NAMES = {
+                'instant': 'Instant Value Check',
+                'mileage': 'Mileage Rate Report',
+                'valuation': 'Vehicle Valuation',
+                'inspection': 'Vehicle Inspection',
+                'assessment': 'Vehicle Assessment',
+                'fleet': 'Fleet Services'
+            };
 
             // ─── DOM REFS ───────────────────────────────────────────────
             const userName = document.getElementById('userName');
@@ -502,13 +511,9 @@
             // ─── LOAD DASHBOARD DATA ────────────────────────────────────
             async function loadDashboardData() {
                 try {
-                    // Load vehicles
                     await loadVehicles();
-                    // Load reports
                     await loadReports();
-                    // Load certificates
                     await loadCertificates();
-                    // Load summary stats
                     await loadSummaryStats();
                 } catch (error) {
                     console.warn('Dashboard data load error:', error);
@@ -527,7 +532,7 @@
                     ];
                     
                     if (!vehicles || vehicles.length === 0) {
-                        container.innerHTML = `<div class="empty-state">🚗 No vehicles registered. <a href="#" onclick="startService('add-vehicle')">Add your first vehicle</a></div>`;
+                        container.innerHTML = `<div class="empty-state">🚗 No vehicles registered. <a href="customer-portal.html?service=add-vehicle">Add your first vehicle</a></div>`;
                         return;
                     }
                     
@@ -540,6 +545,7 @@
                             <div class="actions">
                                 <button class="btn-sm" onclick="viewVehicle('${v.id}')">View</button>
                                 <button class="btn-sm" onclick="startService('valuation', '${v.id}')">Valuation</button>
+                                <button class="btn-sm" onclick="startService('inspection', '${v.id}')">Inspect</button>
                             </div>
                         </div>
                     `).join('');
@@ -562,7 +568,7 @@
                     ];
                     
                     if (!reports || reports.length === 0) {
-                        container.innerHTML = `<div class="empty-state">No reports generated yet. Start a service above.</div>`;
+                        container.innerHTML = `<div class="empty-state">No reports generated yet. <a href="customer-portal.html">Start a service</a></div>`;
                         return;
                     }
                     
@@ -633,27 +639,51 @@
                 }
             }
 
-            // ─── ACTION HANDLERS ────────────────────────────────────────
-            function startService(service, vehicleId = null) {
-                let url = `service.html?type=${service}`;
-                if (vehicleId) url += `&vehicle=${vehicleId}`;
-                window.location.href = url;
+            // ─── START SERVICE ──────────────────────────────────────────
+            function startService(serviceType, vehicleId = null) {
+                // Get the page URL for this service
+                let pageUrl = SERVICE_PAGES[serviceType];
+                
+                if (!pageUrl) {
+                    showToast('Service not found: ' + serviceType, 'error');
+                    return;
+                }
+
+                // If vehicle ID is provided, add it to the URL
+                if (vehicleId) {
+                    pageUrl += `&vehicle=${vehicleId}`;
+                }
+
+                // Get service name for logging
+                const serviceName = SERVICE_NAMES[serviceType] || serviceType;
+                
+                console.log(`🚀 Starting service: ${serviceName}`);
+                console.log(`📌 Redirecting to: ${pageUrl}`);
+                
+                // Show toast notification
+                showToast(`🔄 Loading ${serviceName}...`, 'info');
+                
+                // Navigate to customer portal
+                setTimeout(() => {
+                    window.location.href = pageUrl;
+                }, 300);
             }
 
+            // ─── VIEW FUNCTIONS ─────────────────────────────────────────
             function viewVehicle(vehicleId) {
-                window.location.href = `vehicle.html?id=${vehicleId}`;
+                window.location.href = `customer-portal.html?service=vehicle-details&vehicle=${vehicleId}`;
             }
 
             function viewReport(reportId) {
-                window.location.href = `report.html?id=${reportId}`;
+                window.location.href = `customer-portal.html?service=view-report&report=${reportId}`;
             }
 
             function downloadCertificate(certId) {
-                window.location.href = `certificate-download.html?id=${certId}`;
+                window.location.href = `customer-portal.html?service=download-certificate&cert=${certId}`;
             }
 
             function viewAll(section) {
-                window.location.href = `${section}.html`;
+                window.location.href = `customer-portal.html?service=${section}`;
             }
 
             function showNotifications() {
@@ -661,7 +691,7 @@
             }
 
             function goToProfile() {
-                window.location.href = 'profile.html';
+                window.location.href = 'customer-portal.html?service=profile';
             }
 
             // ─── LOGOUT ──────────────────────────────────────────────────
@@ -694,6 +724,7 @@
                     await checkSession();
                     console.log('🚀 AUTO-V User Dashboard');
                     console.log(`📌 Supabase: ${SUPABASE_URL}`);
+                    console.log('📌 Services available:', Object.keys(SERVICE_PAGES).length);
                 }
             }
 
