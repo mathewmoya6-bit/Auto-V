@@ -1,94 +1,79 @@
 # app/api/v1/routes/vehicles.py
 # =============================================================================
-# AUTO-V API - Vehicle & VIN Routes
+# AUTO-V API - Vehicle Routes
 # =============================================================================
 
-import logging
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Optional, List
 
-from app.core.database import get_db
-from app.models.vehicle import Vehicle, VINScan
-from app.api.v1.routes.auth import get_current_user
-from app.models.user import UserProfile
+from app.services.vehicle_service import VehicleService
+from app.schemas.vehicle import (
+    VehicleCreate,
+    VehicleUpdate,
+    VehicleResponse,
+)
 
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
+router = APIRouter(tags=["Vehicles"])
+service = VehicleService()
 
 
-class VehicleCreateRequest(BaseModel):
-    vin: str
-    registration_number: Optional[str] = None
-    make: str
-    model: str
-    year: int
-    vehicle_type: Optional[str] = "Car"
-    odometer: Optional[int] = None
-    condition: Optional[str] = None
-
-
-@router.post("", status_code=status.HTTP_201_CREATED)
-async def create_vehicle(
-    payload: VehicleCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: UserProfile = Depends(get_current_user),
-):
-    existing = await db.execute(select(Vehicle).where(Vehicle.vin == payload.vin))
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A vehicle with this VIN already exists")
-
-    vehicle = Vehicle(user_id=current_user.id, **payload.model_dump())
-    db.add(vehicle)
+@router.get("/", response_model=List[VehicleResponse])
+async def get_vehicles(user_id: Optional[str] = Query(None)):
+    """Get all vehicles."""
     try:
-        await db.commit()
-        await db.refresh(vehicle)
+        return service.get_vehicles(user_id)
     except Exception as e:
-        await db.rollback()
-        logger.error(f"Failed to create vehicle: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create vehicle")
-
-    return vehicle.to_dict()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@router.get("")
-async def list_my_vehicles(
-    db: AsyncSession = Depends(get_db),
-    current_user: UserProfile = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(Vehicle).where(Vehicle.user_id == current_user.id).order_by(Vehicle.created_at.desc())
-    )
-    return [v.to_dict() for v in result.scalars().all()]
+@router.get("/{vehicle_id}", response_model=VehicleResponse)
+async def get_vehicle(vehicle_id: str):
+    """Get a single vehicle by ID."""
+    try:
+        vehicle = service.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+        return vehicle
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@router.get("/{vehicle_id}")
-async def get_vehicle(vehicle_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Vehicle).where(Vehicle.id == vehicle_id))
-    vehicle = result.scalar_one_or_none()
-    if vehicle is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
-    return vehicle.to_dict()
+@router.post("/", response_model=VehicleResponse, status_code=status.HTTP_201_CREATED)
+async def create_vehicle(data: VehicleCreate):
+    """Create a new vehicle."""
+    try:
+        return service.create_vehicle(data)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@router.get("/vin/{vin}")
-async def get_vehicle_by_vin(vin: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Vehicle).where(Vehicle.vin == vin))
-    vehicle = result.scalar_one_or_none()
-    if vehicle is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No vehicle found for this VIN")
-    return vehicle.to_dict()
+@router.put("/{vehicle_id}", response_model=VehicleResponse)
+async def update_vehicle(vehicle_id: str, data: VehicleUpdate):
+    """Update a vehicle."""
+    try:
+        vehicle = service.update_vehicle(vehicle_id, data)
+        if not vehicle:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+        return vehicle
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@router.get("/vin-scans/history")
-async def list_vin_scans(
-    db: AsyncSession = Depends(get_db),
-    current_user: UserProfile = Depends(get_current_user),
-):
-    result = await db.execute(
-        select(VINScan).where(VINScan.user_id == current_user.id).order_by(VINScan.created_at.desc())
-    )
-    return [s.to_dict() for s in result.scalars().all()]
+@router.delete("/{vehicle_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_vehicle(vehicle_id: str):
+    """Delete a vehicle."""
+    try:
+        deleted = service.delete_vehicle(vehicle_id)
+        if not deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+__all__ = ["router"]
