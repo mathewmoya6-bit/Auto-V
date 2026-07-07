@@ -4,12 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>AUTO-V | Admin Login</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
-    
-    <!-- Hybrid API Client - Single Source of Truth -->
-    <script src="/auto-v-api.js"></script>
-    
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🔐%3C/text%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
         /* ─── RESET & BASE ─── */
@@ -70,7 +69,7 @@
             100% { transform: translate(40px, 30px) scale(1.2); }
         }
 
-        .login-container {
+        .admin-login-container {
             background: rgba(15, 23, 42, 0.92);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -78,15 +77,21 @@
             padding: 48px 40px 36px;
             width: 100%;
             max-width: 440px;
-            border: 1px solid rgba(234, 179, 8, 0.15);
-            box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            border: 2px solid rgba(234, 179, 8, 0.3);
+            box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.6), 
+                        0 0 40px rgba(234, 179, 8, 0.05),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.03);
             position: relative;
             z-index: 1;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
-        .login-container:hover {
-            box-shadow: 0 30px 70px -12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        .admin-login-container::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: 33px;
+            background: linear-gradient(135deg, rgba(234, 179, 8, 0.2), transparent 50%, rgba(234, 179, 8, 0.2));
+            z-index: -1;
         }
 
         .logo { text-align: center; margin-bottom: 32px; }
@@ -108,20 +113,30 @@
             color: transparent;
         }
 
-        .logo .subtitle { color: #94a3b8; font-size: 14px; font-weight: 400; margin-top: 4px; }
+        .logo .subtitle { 
+            color: #94a3b8; 
+            font-size: 14px; 
+            font-weight: 400; 
+            margin-top: 4px;
+        }
+
+        .logo .subtitle .shield {
+            color: #eab308;
+            font-weight: 600;
+        }
 
         .admin-badge {
             display: inline-block;
-            background: rgba(234, 179, 8, 0.15);
+            background: rgba(234, 179, 8, 0.12);
             color: #eab308;
-            padding: 4px 16px;
-            border-radius: 20px;
             font-size: 10px;
             font-weight: 700;
-            margin-top: 10px;
-            letter-spacing: 0.8px;
             text-transform: uppercase;
+            letter-spacing: 0.12em;
+            padding: 4px 16px;
+            border-radius: 20px;
             border: 1px solid rgba(234, 179, 8, 0.15);
+            margin-bottom: 4px;
         }
 
         .message {
@@ -140,9 +155,26 @@
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        .error-message { background: rgba(127, 29, 29, 0.8); color: #fecaca; border-left: 4px solid #ef4444; backdrop-filter: blur(4px); }
-        .success-message { background: rgba(20, 83, 45, 0.8); color: #bbf7d0; border-left: 4px solid #22c55e; backdrop-filter: blur(4px); }
-        .info-message { background: rgba(30, 41, 59, 0.8); color: #fcd34d; border-left: 4px solid #eab308; backdrop-filter: blur(4px); }
+        .error-message {
+            background: rgba(127, 29, 29, 0.8);
+            color: #fecaca;
+            border-left: 4px solid #ef4444;
+            backdrop-filter: blur(4px);
+        }
+
+        .success-message {
+            background: rgba(20, 83, 45, 0.8);
+            color: #bbf7d0;
+            border-left: 4px solid #22c55e;
+            backdrop-filter: blur(4px);
+        }
+
+        .info-message {
+            background: rgba(30, 41, 59, 0.8);
+            color: #fcd34d;
+            border-left: 4px solid #eab308;
+            backdrop-filter: blur(4px);
+        }
 
         .form-group { margin-bottom: 20px; }
 
@@ -154,6 +186,11 @@
             font-size: 12px;
             text-transform: uppercase;
             letter-spacing: 0.6px;
+        }
+
+        label .required {
+            color: #ef4444;
+            margin-left: 2px;
         }
 
         .input-wrapper { position: relative; }
@@ -210,7 +247,14 @@
         }
 
         .login-btn:active:not(:disabled) { transform: translateY(0px) scale(0.98); }
-        .login-btn:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .login-btn:disabled {
+            background: #334155;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
 
         .login-btn .spinner {
             display: inline-block;
@@ -237,19 +281,13 @@
             gap: 12px;
         }
 
-        .footer-links a { color: #64748b; text-decoration: none; font-size: 13px; transition: color 0.2s; }
-        .footer-links a:hover { color: #eab308; }
-
-        .mpesa-info {
-            text-align: center;
-            padding-top: 18px;
-            font-size: 11px;
-            color: #475569;
-            line-height: 1.7;
+        .footer-links a {
+            color: #64748b;
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.2s;
         }
-
-        .mpesa-info strong { color: #22c55e; font-size: 13px; }
-        .mpesa-info .highlight { color: #eab308; }
+        .footer-links a:hover { color: #eab308; }
 
         .security-badge {
             display: flex;
@@ -263,41 +301,49 @@
 
         .security-badge svg { width: 14px; height: 14px; fill: #22c55e; }
 
-        /* ─── Toast for API Client ─── */
         .toast {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            padding: 10px 20px;
+            padding: 12px 24px;
             border-radius: 8px;
             z-index: 9999;
             font-weight: 500;
             animation: slideIn 0.3s ease;
-            max-width: 380px;
-            font-size: 14px;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            font-family: 'Inter', sans-serif;
         }
         .toast-success { background: #22c55e; color: #000; }
         .toast-error { background: #ef4444; color: #fff; }
-        .toast-info { background: #3b82f6; color: #fff; }
         .toast-warning { background: #eab308; color: #000; }
-
+        .toast-info { background: #3b82f6; color: #fff; }
         @keyframes slideIn {
-            from { opacity: 0; transform: translateX(80px); }
+            from { opacity: 0; transform: translateX(100px); }
             to { opacity: 1; transform: translateX(0); }
         }
 
+        .security-note {
+            text-align: center;
+            font-size: 11px;
+            color: #475569;
+            margin-top: 12px;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+
+        .security-note .icon {
+            color: #eab308;
+        }
+
         @media (max-width: 480px) {
-            .login-container { padding: 32px 20px 28px; border-radius: 24px; margin: 12px; }
+            .admin-login-container { padding: 32px 20px 28px; border-radius: 24px; margin: 12px; }
             .logo h1 { font-size: 26px; }
             .logo-icon { font-size: 38px; }
             .input-wrapper input { padding: 13px 16px; font-size: 14px; }
             .login-btn { padding: 14px; font-size: 15px; }
             .footer-links { flex-direction: column; text-align: center; }
-        }
-
-        @media (max-width: 380px) {
-            .login-container { padding: 24px 16px 20px; }
-            .logo h1 { font-size: 22px; }
         }
     </style>
 </head>
@@ -306,72 +352,85 @@
     <div class="glow-orb"></div>
     <div class="glow-orb-bottom"></div>
 
-    <div class="login-container" role="main" aria-label="Admin Login">
+    <div class="admin-login-container" role="main" aria-label="Admin Login">
 
         <div class="logo">
-            <span class="logo-icon">🚗</span>
+            <span class="logo-icon">🔐</span>
+            <div class="admin-badge">🔒 Admin Access</div>
             <h1>AUTO‑V</h1>
-            <p class="subtitle">Administrator Portal</p>
-            <span class="admin-badge">🔒 Admin Access</span>
+            <p class="subtitle"><span class="shield">⚡</span> Administrator Login</p>
         </div>
 
         <div id="messageBox" class="message" role="alert" aria-live="polite"></div>
 
-        <form id="loginForm" autocomplete="off" novalidate>
+        <form id="adminLoginForm" autocomplete="off" novalidate>
             <div class="form-group">
-                <label for="email">📧 Email Address</label>
+                <label for="email">📧 Admin Email <span class="required">*</span></label>
                 <div class="input-wrapper">
-                    <input type="email" id="email" placeholder="admin@autov.co.ke" autocomplete="email" required>
+                    <input type="email" id="email" placeholder="admin@example.com" autocomplete="email" required>
                 </div>
             </div>
 
             <div class="form-group">
-                <label for="password">🔒 Password</label>
+                <label for="password">🔒 Admin Password <span class="required">*</span></label>
                 <div class="input-wrapper">
                     <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
                 </div>
             </div>
 
+            <div class="security-note">
+                <span class="icon">🛡️</span> This is a secure admin portal. Only authorized personnel with admin privileges can access.
+            </div>
+
             <button type="submit" class="login-btn" id="loginBtn">
-                Admin Login
+                🔐 Sign In as Admin
             </button>
         </form>
 
         <div class="footer-links">
             <a href="login.html">← User Login</a>
-            <a href="#" onclick="event.preventDefault(); showMessage('Contact support@autov.co.ke for access.', 'info');">Need Help?</a>
-        </div>
-
-        <div class="mpesa-info">
-            💳 M‑Pesa Paybill: <strong>4095377</strong> &nbsp;|&nbsp; Account: <strong>AUTO‑V</strong><br>
-            <span style="font-size:10px;">Valuations: <span class="highlight">KES 2,500</span> &nbsp;·&nbsp; Inspections: <span class="highlight">KES 3,500</span></span>
+            <a href="register.html">Create Account</a>
+            <a href="index.html">🏠 Home</a>
         </div>
 
         <div class="security-badge">
             <svg viewBox="0 0 24 24"><path d="M12 1C8.676 1 5.5 2.5 3.5 4.5 2 6 1 8.5 1 11c0 6 4.5 11 11 12 6.5-1 11-6 11-12 0-2.5-1-5-2.5-6.5C18.5 2.5 15.324 1 12 1zm0 19c-4.5-1-8-4.5-9-9 0-2 1-4 2-5 1.5-1.5 4-2.5 7-2.5s5.5 1 7 2.5c1 1 2 3 2 5-1 4.5-4.5 8-9 9zm0-14c-1.5 0-2.5 1-2.5 2.5S10.5 11 12 11s2.5-1 2.5-2.5S13.5 6 12 6zm0 8c-2 0-3.5 1.5-3.5 3.5h7c0-2-1.5-3.5-3.5-3.5z"/></svg>
-            <span>256‑bit SSL · Secure Login</span>
+            <span>256‑bit SSL · Secure Admin Portal</span>
         </div>
     </div>
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V ADMIN LOGIN — Production Ready
-        // Uses window.autoV (Supabase + FastAPI)
+        // AUTO-V ADMIN LOGIN — Supabase Only
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
             'use strict';
 
-            // ─── PRODUCTION CONFIG ──────────────────────────────────────
-            const ADMIN_DASHBOARD = '/admin-dashboard.html';
-            const USER_DASHBOARD = '/dashboard.html';
+            // ─── Supabase Configuration ──────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
             // ─── DOM REFS ───────────────────────────────────────────────
+            const loginForm = document.getElementById('adminLoginForm');
+            const loginBtn = document.getElementById('loginBtn');
             const emailInput = document.getElementById('email');
             const passwordInput = document.getElementById('password');
-            const loginBtn = document.getElementById('loginBtn');
             const messageBox = document.getElementById('messageBox');
-            const loginForm = document.getElementById('loginForm');
+
+            // ─── Initialize Supabase ────────────────────────────────────
+            let supabaseClient = null;
+
+            try {
+                if (typeof supabase !== 'undefined') {
+                    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    console.log('✅ Supabase client initialized');
+                } else {
+                    console.error('❌ Supabase library not loaded');
+                }
+            } catch (error) {
+                console.error('❌ Failed to initialize Supabase:', error);
+            }
 
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
             function showMessage(text, type = 'error') {
@@ -381,12 +440,22 @@
                 clearTimeout(window._msgTimer);
                 window._msgTimer = setTimeout(() => {
                     messageBox.style.display = 'none';
-                }, 6000);
+                }, 8000);
             }
 
             function clearMessage() {
                 messageBox.style.display = 'none';
                 clearTimeout(window._msgTimer);
+            }
+
+            function showToast(msg, type = 'success') {
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = msg;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
             }
 
             // ─── VALIDATION ─────────────────────────────────────────────
@@ -398,152 +467,140 @@
                 loginBtn.disabled = state;
                 loginBtn.innerHTML = state ?
                     '<span class="spinner"></span> Authenticating...' :
-                    'Admin Login';
+                    '🔐 Sign In as Admin';
             }
 
-            // ─── CHECK EXISTING SESSION ────────────────────────────────
-            async function checkExistingSession() {
-                try {
-                    // Use autoV to check session
-                    if (!window.autoV) {
-                        console.warn('autoV not loaded, using fallback');
-                        return;
-                    }
-
-                    const user = await window.autoV.getCurrentUser();
-                    if (!user) return;
-
-                    if (user.role === 'admin' || user.role === 'super_admin') {
-                        console.log('✅ Admin session valid — redirecting');
-                        window.location.href = ADMIN_DASHBOARD;
-                    } else {
-                        console.log('👤 User is not admin — redirecting to user dashboard');
-                        window.location.href = USER_DASHBOARD;
-                    }
-                } catch (error) {
-                    console.log('Session expired or invalid');
-                    if (window.autoV) {
-                        window.autoV.clearAuthToken();
-                    } else {
-                        localStorage.removeItem('access_token');
-                    }
-                }
-            }
-
-            // ─── LOGIN HANDLER ──────────────────────────────────────────
-            async function handleLogin(e) {
+            // ─── ADMIN LOGIN HANDLER ──────────────────────────────────
+            async function handleAdminLogin(e) {
                 e.preventDefault();
                 clearMessage();
+
+                if (!supabaseClient) {
+                    showMessage('❌ Authentication service not available. Please refresh.', 'error');
+                    return;
+                }
 
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
 
-                // ─── Validation ─────────────────────────────────────────
                 if (!email || !password) {
-                    showMessage('Please enter both email and password.', 'error');
-                    if (!email) emailInput.focus();
-                    else passwordInput.focus();
+                    showMessage('Please enter both admin email and password.', 'error');
                     return;
                 }
 
                 if (!isValidEmail(email)) {
                     showMessage('Please enter a valid email address.', 'error');
-                    emailInput.focus();
                     return;
                 }
 
                 setLoading(true);
 
                 try {
-                    // ─── Check if autoV is available ────────────────────
-                    if (!window.autoV || !window.autoV._initialized) {
-                        throw new Error('API client not loaded. Please refresh the page.');
-                    }
-
-                    // ─── Step 1: Call Login Endpoint ────────────────────
-                    console.log('🔐 Attempting admin login for:', email);
-                    
-                    const loginResponse = await window.autoV.apiRequest('/auth/login', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            email: email,
-                            password: password
-                        })
+                    // ─── Login via Supabase ─────────────────────────────
+                    const { data, error } = await supabaseClient.auth.signInWithPassword({
+                        email: email,
+                        password: password
                     });
 
-                    console.log('✅ Login response received');
-
-                    // ─── Step 2: Store Token ─────────────────────────────
-                    if (loginResponse.access_token) {
-                        window.autoV.setAuthToken(loginResponse.access_token);
-                        console.log('✅ Token stored successfully');
-                    } else {
-                        throw new Error('No access token received');
+                    if (error) {
+                        throw new Error(error.message);
                     }
 
-                    // ─── Step 3: Get User Info ──────────────────────────
-                    const user = await window.autoV.getCurrentUser();
-                    console.log('✅ User info:', user);
+                    const { user, session } = data;
 
-                    // ─── Step 4: Check Admin Role ───────────────────────
-                    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
-
-                    // Store user info
-                    localStorage.setItem('autoV_user', JSON.stringify({
-                        id: user.id,
-                        email: user.email,
-                        role: user.role,
-                        isAdmin: isAdmin,
-                        verifiedAt: new Date().toISOString()
-                    }));
-
-                    // ─── Step 5: Redirect ──────────────────────────────
-                    if (isAdmin) {
-                        showMessage('✅ Admin login successful! Redirecting...', 'success');
-                        setTimeout(() => {
-                            window.location.href = ADMIN_DASHBOARD;
-                        }, 1000);
-                    } else {
-                        showMessage('⛔ Admin privileges required. Redirecting to user dashboard...', 'info');
-                        setTimeout(() => {
-                            window.location.href = USER_DASHBOARD;
-                        }, 1500);
+                    // ─── Check if user has admin role ──────────────────
+                    const userRole = user?.user_metadata?.role || 'user';
+                    
+                    if (userRole !== 'admin' && userRole !== 'super_admin') {
+                        // Not an admin - sign out and show error
+                        await supabaseClient.auth.signOut();
+                        throw new Error('Access denied. Admin privileges required.');
                     }
+
+                    // ─── Store session ──────────────────────────────────
+                    if (session) {
+                        localStorage.setItem('supabase_access_token', session.access_token);
+                        localStorage.setItem('supabase_refresh_token', session.refresh_token);
+                    }
+
+                    if (user) {
+                        localStorage.setItem('autoV_user', JSON.stringify({
+                            id: user.id,
+                            email: user.email,
+                            full_name: user.user_metadata?.full_name || email.split('@')[0],
+                            role: userRole,
+                            phone: user.user_metadata?.phone || '',
+                            company: user.user_metadata?.company || ''
+                        }));
+                    }
+
+                    showMessage('✅ Admin login successful! Redirecting...', 'success');
+                    showToast('🔐 Welcome Admin!', 'success');
+
+                    setTimeout(() => {
+                        window.location.href = '/admin-dashboard.html';
+                    }, 1000);
 
                 } catch (error) {
-                    console.error('Login error:', error);
+                    console.error('Admin login error:', error);
+                    const errorMsg = error.message || 'Login failed';
 
-                    // ─── Handle specific error cases ─────────────────────
-                    const errorMsg = error.message || 'Unknown error';
-
-                    if (errorMsg.includes('401') || errorMsg.toLowerCase().includes('invalid credentials')) {
+                    if (errorMsg.includes('Invalid login credentials')) {
                         showMessage('❌ Invalid email or password. Please try again.', 'error');
-                    } else if (errorMsg.includes('403') || errorMsg.toLowerCase().includes('access denied')) {
-                        showMessage('⛔ Access denied. Admin privileges required.', 'error');
-                    } else if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('too many')) {
-                        showMessage('⏳ Too many login attempts. Please wait a moment.', 'error');
-                    } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch') || errorMsg.includes('CORS')) {
-                        showMessage('🌐 Network error. Cannot reach the server. Please check your connection.', 'error');
-                    } else if (errorMsg.includes('404')) {
-                        showMessage('🔍 API endpoint not found. Please contact support.', 'error');
-                    } else if (errorMsg.includes('500')) {
-                        showMessage('⚠️ Server error. Please try again later.', 'error');
                     } else if (errorMsg.includes('Email not confirmed')) {
                         showMessage('📧 Please verify your email before logging in.', 'info');
+                    } else if (errorMsg.includes('Admin privileges required') || errorMsg.includes('Access denied')) {
+                        showMessage('⛔ Access denied. Admin privileges required.', 'error');
+                        showToast('⛔ Admin access only', 'error');
+                    } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch')) {
+                        showMessage('🌐 Network error. Please check your connection.', 'error');
                     } else {
-                        showMessage(`❌ Login failed: ${errorMsg}`, 'error');
+                        showMessage(`❌ ${errorMsg}`, 'error');
                     }
 
                     setLoading(false);
                 }
             }
 
+            // ─── CHECK EXISTING SESSION ────────────────────────────────
+            async function checkExistingSession() {
+                if (!supabaseClient) return;
+
+                try {
+                    const { data: { session } } = await supabaseClient.auth.getSession();
+                    if (session) {
+                        const { data: { user } } = await supabaseClient.auth.getUser();
+                        if (user) {
+                            const role = user.user_metadata?.role || 'user';
+                            if (role === 'admin' || role === 'super_admin') {
+                                window.location.href = '/admin-dashboard.html';
+                            } else {
+                                // User is logged in but not admin - redirect to user dashboard
+                                await supabaseClient.auth.signOut();
+                                localStorage.removeItem('supabase_access_token');
+                                localStorage.removeItem('supabase_refresh_token');
+                                localStorage.removeItem('autoV_user');
+                                showToast('Redirecting to user login...', 'info');
+                                setTimeout(() => {
+                                    window.location.href = '/login.html';
+                                }, 1500);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.log('No existing session');
+                    localStorage.removeItem('supabase_access_token');
+                    localStorage.removeItem('supabase_refresh_token');
+                    localStorage.removeItem('autoV_user');
+                }
+            }
+
             // ─── EVENT LISTENERS ──────────────────────────────────────
-            loginForm.addEventListener('submit', handleLogin);
+            loginForm.addEventListener('submit', handleAdminLogin);
+
             emailInput.addEventListener('focus', clearMessage);
             passwordInput.addEventListener('focus', clearMessage);
 
-            // Enter key on password field
             passwordInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
@@ -551,43 +608,16 @@
                 }
             });
 
-            // ─── CHECK FOR EXISTING SESSION ON LOAD ────────────────────
+            // ─── INIT ──────────────────────────────────────────────────
             async function init() {
-                // Wait for autoV to be ready
-                if (window.autoV && !window.autoV._initialized) {
-                    console.log('⏳ Waiting for autoV to initialize...');
-                    await new Promise(resolve => {
-                        const check = () => {
-                            if (window.autoV && window.autoV._initialized) {
-                                resolve();
-                            } else {
-                                setTimeout(check, 100);
-                            }
-                        };
-                        check();
-                    });
-                }
-
-                // Check if autoV is available
-                if (!window.autoV) {
-                    console.error('❌ autoV API client not loaded.');
-                    showMessage('⚠️ API client not loaded. Please refresh the page.', 'error');
-                    return;
-                }
-
                 await checkExistingSession();
+                setTimeout(() => emailInput.focus(), 200);
 
-                // Focus email field
-                setTimeout(() => emailInput.focus(), 150);
-
-                console.log('🚀 AUTO-V Admin Login');
-                console.log(`📌 API Base: ${window.autoV.API_BASE || 'https://auto-v.onrender.com/api/v1'}`);
-                console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD}`);
-                console.log(`📌 User Dashboard: ${USER_DASHBOARD}`);
-                console.log(`📌 Origin: ${window.location.origin}`);
+                console.log('🚀 AUTO-V Admin Login (Supabase)');
+                console.log(`📌 Supabase URL: ${SUPABASE_URL}`);
+                console.log(`📌 Supabase Client: ${supabaseClient ? '✅ Initialized' : '❌ Not available'}`);
             }
 
-            // ─── START ──────────────────────────────────────────────────
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', init);
             } else {
