@@ -7,9 +7,6 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Supabase JS Library -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <style>
         /* ─── RESET & BASE ─── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -344,7 +341,7 @@
             </div>
 
             <div class="forgot-password">
-                <a id="forgotPasswordLink">Forgot password?</a>
+                <a href="#" id="forgotPasswordLink">Forgot password?</a>
             </div>
 
             <button type="submit" class="login-btn" id="loginBtn">
@@ -365,7 +362,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V LOGIN — Supabase Only (Fixed Redirect Loop)
+        // AUTO-V LOGIN — Supabase Only (Fully Fixed)
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -385,18 +382,26 @@
 
             // ─── State ──────────────────────────────────────────────────
             let supabaseClient = null;
-            let isRedirecting = false;
+            let isSubmitting = false;
 
             // ─── Initialize Supabase ────────────────────────────────────
             try {
-                if (typeof supabase !== 'undefined') {
-                    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                    console.log('✅ Supabase client initialized');
-                } else {
-                    console.error('❌ Supabase library not loaded');
+                // Check if Supabase library is loaded
+                if (typeof supabase === 'undefined') {
+                    throw new Error('Supabase library failed to load. Please refresh the page.');
                 }
+
+                // Check if we have the required configuration
+                if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+                    throw new Error('Supabase configuration is missing.');
+                }
+
+                supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('✅ Supabase client initialized');
+
             } catch (error) {
                 console.error('❌ Failed to initialize Supabase:', error);
+                showMessage('❌ ' + error.message, 'error');
             }
 
             // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
@@ -435,12 +440,52 @@
                 loginBtn.innerHTML = state ?
                     '<span class="spinner"></span> Signing in...' :
                     'Sign In';
+                isSubmitting = state;
+            }
+
+            // ─── AUTH STATE LISTENER ──────────────────────────────────
+            function setupAuthListener() {
+                if (!supabaseClient) return;
+
+                supabaseClient.auth.onAuthStateChange((event, session) => {
+                    console.log('🔐 Auth event:', event);
+
+                    if (event === 'SIGNED_IN' && session) {
+                        console.log('✅ User signed in:', session.user.email);
+                        
+                        // Get user role from metadata or profile
+                        const role = session.user?.user_metadata?.role || 'user';
+                        const redirectTo = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
+                        
+                        // Store user info (only profile data, not tokens)
+                        localStorage.setItem('autoV_user', JSON.stringify({
+                            id: session.user.id,
+                            email: session.user.email,
+                            full_name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+                            role: role,
+                            phone: session.user.user_metadata?.phone || '',
+                            company: session.user.user_metadata?.company || ''
+                        }));
+
+                        // Redirect after a short delay
+                        setTimeout(() => {
+                            window.location.href = redirectTo;
+                        }, 500);
+                    }
+
+                    if (event === 'SIGNED_OUT') {
+                        console.log('👋 User signed out');
+                        localStorage.removeItem('autoV_user');
+                    }
+
+                    if (event === 'USER_UPDATED') {
+                        console.log('📝 User updated');
+                    }
+                });
             }
 
             // ─── CHECK EXISTING SESSION ────────────────────────────────
             async function checkExistingSession() {
-                if (isRedirecting) return;
-                
                 if (!supabaseClient) {
                     console.log('⚠️ Supabase client not available');
                     return;
@@ -450,46 +495,46 @@
                     const { data: { session } } = await supabaseClient.auth.getSession();
                     
                     if (session) {
-                        const { data: { user } } = await supabaseClient.auth.getUser();
+                        console.log('✅ Existing session found for:', session.user.email);
                         
-                        if (user) {
-                            console.log('✅ Session found for user:', user.email);
-                            
-                            const role = user.user_metadata?.role || 'user';
-                            const redirectTo = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
-                            
-                            // Check if the dashboard exists before redirecting
-                            try {
-                                const response = await fetch(redirectTo, { method: 'HEAD' });
-                                if (response.ok) {
-                                    isRedirecting = true;
-                                    window.location.href = redirectTo;
-                                } else {
-                                    // Dashboard doesn't exist, clear session and stay on login
-                                    console.warn('⚠️ Dashboard not found, clearing session');
-                                    await supabaseClient.auth.signOut();
-                                    localStorage.removeItem('supabase_access_token');
-                                    localStorage.removeItem('supabase_refresh_token');
-                                    localStorage.removeItem('autoV_user');
-                                }
-                            } catch (fetchError) {
-                                console.warn('⚠️ Dashboard check failed, staying on login');
-                            }
+                        // Check if email is verified
+                        if (!session.user.email_confirmed_at) {
+                            console.log('⚠️ Email not verified, signing out');
+                            await supabaseClient.auth.signOut();
+                            showMessage('📧 Please verify your email before logging in.', 'info');
+                            return;
                         }
+
+                        const role = session.user?.user_metadata?.role || 'user';
+                        const redirectTo = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
+                        
+                        // Store user info
+                        localStorage.setItem('autoV_user', JSON.stringify({
+                            id: session.user.id,
+                            email: session.user.email,
+                            full_name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+                            role: role,
+                            phone: session.user.user_metadata?.phone || '',
+                            company: session.user.user_metadata?.company || ''
+                        }));
+
+                        // Redirect to dashboard
+                        window.location.href = redirectTo;
                     } else {
                         console.log('ℹ️ No active session found');
                     }
                 } catch (error) {
-                    console.log('ℹ️ No valid session:', error.message);
-                    localStorage.removeItem('supabase_access_token');
-                    localStorage.removeItem('supabase_refresh_token');
-                    localStorage.removeItem('autoV_user');
+                    console.log('ℹ️ Error checking session:', error.message);
                 }
             }
 
             // ─── LOGIN HANDLER ──────────────────────────────────────────
             async function handleLogin(e) {
                 e.preventDefault();
+
+                // Prevent multiple submissions
+                if (isSubmitting || loginBtn.disabled) return;
+
                 clearMessage();
 
                 if (!supabaseClient) {
@@ -519,53 +564,31 @@
                     });
 
                     if (error) {
-                        throw new Error(error.message);
+                        // Handle specific error types
+                        if (error.status === 400) {
+                            throw new Error('Invalid email or password format.');
+                        } else if (error.status === 401) {
+                            throw new Error('Invalid login credentials. Please try again.');
+                        } else if (error.status === 429) {
+                            throw new Error('Too many login attempts. Please wait a moment.');
+                        } else {
+                            throw new Error(error.message);
+                        }
                     }
 
                     const { user, session } = data;
 
-                    if (session) {
-                        localStorage.setItem('supabase_access_token', session.access_token);
-                        localStorage.setItem('supabase_refresh_token', session.refresh_token);
+                    // Check if email is verified
+                    if (!user.email_confirmed_at) {
+                        showMessage('📧 Please verify your email before logging in.', 'info');
+                        setLoading(false);
+                        return;
                     }
 
-                    if (user) {
-                        localStorage.setItem('autoV_user', JSON.stringify({
-                            id: user.id,
-                            email: user.email,
-                            full_name: user.user_metadata?.full_name || email.split('@')[0],
-                            role: user.user_metadata?.role || 'user',
-                            phone: user.user_metadata?.phone || '',
-                            company: user.user_metadata?.company || ''
-                        }));
-                    }
-
-                    showMessage('✅ Login successful! Redirecting...', 'success');
+                    showMessage('✅ Login successful!', 'success');
                     showToast('✅ Welcome back!', 'success');
 
-                    const role = user?.user_metadata?.role || 'user';
-                    const redirectTo = role === 'admin' ? '/admin-dashboard.html' : '/dashboard.html';
-
-                    isRedirecting = true;
-                    
-                    // Check if destination exists before redirecting
-                    try {
-                        const response = await fetch(redirectTo, { method: 'HEAD' });
-                        if (response.ok) {
-                            setTimeout(() => {
-                                window.location.href = redirectTo;
-                            }, 1000);
-                        } else {
-                            showMessage('⚠️ Dashboard not found. Please contact support.', 'warning');
-                            setLoading(false);
-                            isRedirecting = false;
-                        }
-                    } catch (fetchError) {
-                        // If fetch fails, try redirect anyway
-                        setTimeout(() => {
-                            window.location.href = redirectTo;
-                        }, 1000);
-                    }
+                    // Auth state listener will handle redirect
 
                 } catch (error) {
                     console.error('Login error:', error);
@@ -577,6 +600,8 @@
                         showMessage('📧 Please verify your email before logging in.', 'info');
                     } else if (errorMsg.includes('Network') || errorMsg.includes('Failed to fetch')) {
                         showMessage('🌐 Network error. Please check your connection.', 'error');
+                    } else if (errorMsg.includes('timeout')) {
+                        showMessage('⏳ Request timed out. Please try again.', 'error');
                     } else {
                         showMessage(`❌ ${errorMsg}`, 'error');
                     }
@@ -604,8 +629,14 @@
                     return;
                 }
 
+                // Get the current URL for redirect
+                const currentUrl = window.location.origin;
+                const redirectTo = `${currentUrl}/reset-password.html`;
+
                 try {
-                    const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+                    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                        redirectTo: redirectTo
+                    });
                     
                     if (error) {
                         throw new Error(error.message);
@@ -629,16 +660,15 @@
             emailInput.addEventListener('focus', clearMessage);
             passwordInput.addEventListener('focus', clearMessage);
 
-            passwordInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    loginForm.dispatchEvent(new Event('submit'));
-                }
-            });
-
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
+                // Setup auth state listener first
+                setupAuthListener();
+
+                // Check for existing session
                 await checkExistingSession();
+
+                // Focus email field
                 setTimeout(() => emailInput.focus(), 200);
 
                 console.log('🚀 AUTO-V Login (Supabase Only)');
@@ -646,6 +676,7 @@
                 console.log(`📌 Supabase Client: ${supabaseClient ? '✅ Initialized' : '❌ Not available'}`);
             }
 
+            // Start the app
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', init);
             } else {
