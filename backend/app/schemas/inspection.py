@@ -174,3 +174,9 @@ class InspectionChecklist(BaseModel):
     version: str = "1.0"
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: Optional[datetime] = None
+
+
+# ── Names required by app/schemas/__init__.py ──────────────────────────
+
+InspectionCreate = InspectionRequest
+InspectionUpdate = InspectionUpdateRequest
