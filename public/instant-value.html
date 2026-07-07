@@ -6,7 +6,10 @@
     <title>AUTO-V | Instant Value Check</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     
-    <!-- Hybrid API Client - Single Source of Truth -->
+    <!-- ─── Supabase JS for Auth ────────────────────────────────── -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- ─── FastAPI Client ────────────────────────────────────────── -->
     <script src="/auto-v-api.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js">
@@ -889,8 +892,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V INSTANT VALUE CHECK — Hybrid Architecture
-        // Uses window.autoV (Supabase + FastAPI)
+        // AUTO-V INSTANT VALUE CHECK — Supabase Auth + FastAPI Logic
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -898,6 +900,10 @@
 
             if (window.autoVInstantCheckInitialized) return;
             window.autoVInstantCheckInitialized = true;
+
+            // ─── Supabase Configuration ──────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
 
             // ─── MODEL MAPPING ──────────────────────────────────────────
             let MODEL_MAP = {};
@@ -919,6 +925,11 @@
                 'Passenger': '🛺', 'Cargo': '🛺', 'Auto': '🛺'
             };
 
+            // ─── State ──────────────────────────────────────────────────
+            let supabase = null;
+            let currentUser = null;
+            let serviceFee = 500;
+
             // ─── DOM ELEMENTS ──────────────────────────────────────────
             const vehicleTypeSelect = document.getElementById('vehicleType');
             const makeSelect = document.getElementById('make');
@@ -937,6 +948,55 @@
             const previewIcon = document.getElementById('previewIcon');
             const previewTitle = document.getElementById('previewTitle');
             const previewSubtitle = document.getElementById('previewSubtitle');
+
+            // ─── INIT SUPABASE ──────────────────────────────────────────
+            function initSupabase() {
+                try {
+                    if (typeof supabase === 'undefined') {
+                        console.warn('⚠️ Supabase library not loaded');
+                        return false;
+                    }
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        auth: {
+                            persistSession: true,
+                            autoRefreshToken: true,
+                            detectSessionInUrl: true
+                        }
+                    });
+                    console.log('✅ Supabase client initialized');
+                    return true;
+                } catch (error) {
+                    console.error('❌ Failed to initialize Supabase:', error);
+                    return false;
+                }
+            }
+
+            // ─── CHECK AUTH ────────────────────────────────────────────
+            async function checkAuth() {
+                if (!supabase) return null;
+
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
+
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                        window.location.href = 'login.html';
+                        return null;
+                    }
+
+                    currentUser = user;
+                    console.log('✅ Authenticated user:', user.email);
+                    return user;
+                } catch (error) {
+                    console.error('❌ Auth error:', error);
+                    window.location.href = 'login.html';
+                    return null;
+                }
+            }
 
             // ─── TOM SELECT ──────────────────────────────────────────
             let tomMake, tomModel, tomLocation;
@@ -1101,11 +1161,11 @@
                 try {
                     if (!window.autoV) throw new Error('API client not available');
                     const data = await window.autoV.apiRequest('/settings/instant_fee');
-                    const fee = parseInt(data.setting_value) || 500;
-                    serviceFeeDisplay.textContent = `KES ${fee.toLocaleString()}`;
-                    return fee;
+                    serviceFee = parseInt(data.setting_value) || 500;
+                    serviceFeeDisplay.textContent = `KES ${serviceFee.toLocaleString()}`;
+                    return serviceFee;
                 } catch (error) {
-                    console.error('Error fetching service fee:', error);
+                    console.warn('⚠️ Error fetching service fee:', error);
                     serviceFeeDisplay.textContent = 'KES 500';
                     return 500;
                 }
@@ -1389,6 +1449,12 @@
                     return;
                 }
 
+                // Check if user is authenticated via Supabase
+                if (!currentUser) {
+                    const user = await checkAuth();
+                    if (!user) return;
+                }
+
                 if (!validateAll()) {
                     statusBox.className = 'status-box status-error';
                     statusBox.textContent = '❌ Please fix the highlighted fields before continuing.';
@@ -1425,17 +1491,15 @@
                 updateLoadingStep(1);
 
                 try {
-                    const user = await window.autoV.getCurrentUser();
-                    if (!user) throw new Error('User not authenticated');
-
                     let step = 1;
                     const stepInterval = setInterval(() => {
                         step++;
                         if (step <= 5) updateLoadingStep(step);
                     }, 1200);
 
+                    // ─── Step 1: Save valuation via FastAPI ────────────
                     const valuationData = {
-                        user_id: user.id,
+                        user_id: currentUser.id,
                         make: formData.make,
                         model: formData.model,
                         year: formData.year,
@@ -1458,10 +1522,11 @@
                         body: JSON.stringify(valuationData)
                     });
 
+                    // ─── Step 2: Get AI valuation via FastAPI ──────────
                     const result = await window.autoV.apiRequest('/valuations/instant', {
                         method: 'POST',
                         body: JSON.stringify({
-                            user_id: user.id,
+                            user_id: currentUser.id,
                             vehicle: {
                                 type: formData.vehicleType,
                                 make: formData.make,
@@ -1487,6 +1552,7 @@
                     clearInterval(stepInterval);
                     updateLoadingStep(5);
 
+                    // ─── Step 3: Update valuation with result ──────────
                     await window.autoV.apiRequest(`/valuations/${savedValuation.id}`, {
                         method: 'PUT',
                         body: JSON.stringify({
@@ -1529,8 +1595,22 @@
 
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
+                console.log('🚗 AUTO-V Instant Value Check - Initializing...');
+
+                // ─── Step 1: Initialize Supabase ──────────────────────
+                const initialized = initSupabase();
+                if (!initialized) {
+                    showToast('Failed to initialize authentication service.', 'error');
+                    return;
+                }
+
+                // ─── Step 2: Check Authentication ──────────────────────
+                const user = await checkAuth();
+                if (!user) return;
+
+                // ─── Step 3: Wait for FastAPI client ──────────────────
                 if (!window.autoV || !window.autoV._initialized) {
-                    console.log('⏳ Waiting for autoV to initialize...');
+                    console.log('⏳ Waiting for autoV (FastAPI client) to initialize...');
                     await new Promise(resolve => {
                         const check = () => {
                             if (window.autoV && window.autoV._initialized) {
@@ -1543,24 +1623,10 @@
                     });
                 }
 
-                if (!window.autoV) {
-                    console.error('❌ autoV API client not loaded.');
-                    return;
-                }
-
+                // ─── Step 4: Initialize UI ─────────────────────────────
                 initTomSelect();
                 vehicleTypeSelect.value = 'Car';
                 await loadVehicleData();
-
-                try {
-                    const user = await window.autoV.getCurrentUser();
-                    console.log('✅ Authenticated user:', user.email);
-                } catch (error) {
-                    if (error.message.includes('401')) {
-                        window.location.href = 'login.html';
-                    }
-                }
-
                 loadDraft();
                 await fetchServiceFee();
                 updateProgress();
@@ -1568,7 +1634,9 @@
                 const currentYear = new Date().getFullYear();
                 document.getElementById('year').max = currentYear;
 
-                console.log('🚗 AUTO-V Instant Value Check loaded successfully with Hybrid Architecture!');
+                console.log('✅ AUTO-V Instant Value Check loaded successfully!');
+                console.log(`📌 Supabase Auth: ✅ Connected (${user.email})`);
+                console.log(`📌 FastAPI Client: ${window.autoV ? '✅ Connected' : '❌ Not available'}`);
                 
                 if (window.autoV) {
                     window.autoV.showToast('🚗 Instant Value Check ready', 'success');
