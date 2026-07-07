@@ -1,35 +1,129 @@
-# backend/app/models/__init__.py
+# app/models/__init__.py
 # =============================================================================
-# AUTO-V API - Models Registry (Single Source of Truth)
+# AUTO-V API - Models Package (Pydantic Schemas)
 # =============================================================================
 
-# Use absolute package paths instead of relative dots (.)
-from app.models.user import UserProfile
-from app.models.vehicle import Vehicle, VehicleImage, VINScan
-from app.models.valuation import Valuation
-from app.models.inspection import Inspection
-from app.models.certificate import Certificate
-from app.models.fleet import Fleet
-from app.models.payment import Payment
-from app.models.mileage import (
-    VehicleCategory,
-    VehicleVariant,
-    Route,
-    MileageClaim,
+"""
+Pydantic models for AUTO-V API.
+
+All models are Pydantic schemas for validation and serialization.
+Data persistence is handled via Supabase directly.
+"""
+
+from app.schemas.auth import (
+    UserCreate,
+    UserLogin,
+    TokenResponse,
+    UserResponse,
+)
+from app.schemas.user import UserProfile, UserUpdate
+from app.schemas.vehicle import (
+    VehicleCreate,
+    VehicleUpdate,
+    VehicleResponse,
+    VehicleImage,
+    VehicleImageCreate,
+    VINScan,
+    VINScanCreate,
+    VINScanResponse,
+)
+from app.schemas.mileage import (
+    VehicleCategoryCreate,
+    VehicleCategoryResponse,
+    VehicleVariantCreate,
+    VehicleVariantResponse,
+    RouteCreate,
+    RouteResponse,
+    MileageClaimCreate,
+    MileageClaimResponse,
+)
+from app.schemas.valuation import (
+    ValuationCreate,
+    ValuationUpdate,
+    ValuationResponse,
+    InstantValuationRequest,
+    InstantValuationResponse,
+)
+from app.schemas.inspection import (
+    InspectionCreate,
+    InspectionUpdate,
+    InspectionResponse,
+)
+from app.schemas.fleet import (
+    FleetCreate,
+    FleetUpdate,
+    FleetResponse,
+)
+from app.schemas.certificate import (
+    CertificateCreate,
+    CertificateUpdate,
+    CertificateResponse,
+)
+from app.schemas.payment import (
+    PaymentCreate,
+    PaymentUpdate,
+    PaymentResponse,
+    MpesaPaymentRequest,
+    MpesaPaymentResponse,
 )
 
 __all__ = [
+    # Auth
+    "UserCreate",
+    "UserLogin",
+    "TokenResponse",
+    "UserResponse",
+    
+    # User
     "UserProfile",
-    "Vehicle",
+    "UserUpdate",
+    
+    # Vehicle
+    "VehicleCreate",
+    "VehicleUpdate",
+    "VehicleResponse",
     "VehicleImage",
+    "VehicleImageCreate",
     "VINScan",
-    "Valuation",
-    "Inspection",
-    "Certificate",
-    "Fleet",
-    "Payment",
-    "VehicleCategory",
-    "VehicleVariant",
-    "Route",
-    "MileageClaim",
+    "VINScanCreate",
+    "VINScanResponse",
+    
+    # Mileage
+    "VehicleCategoryCreate",
+    "VehicleCategoryResponse",
+    "VehicleVariantCreate",
+    "VehicleVariantResponse",
+    "RouteCreate",
+    "RouteResponse",
+    "MileageClaimCreate",
+    "MileageClaimResponse",
+    
+    # Valuation
+    "ValuationCreate",
+    "ValuationUpdate",
+    "ValuationResponse",
+    "InstantValuationRequest",
+    "InstantValuationResponse",
+    
+    # Inspection
+    "InspectionCreate",
+    "InspectionUpdate",
+    "InspectionResponse",
+    
+    # Fleet
+    "FleetCreate",
+    "FleetUpdate",
+    "FleetResponse",
+    
+    # Certificate
+    "CertificateCreate",
+    "CertificateUpdate",
+    "CertificateResponse",
+    
+    # Payment
+    "PaymentCreate",
+    "PaymentUpdate",
+    "PaymentResponse",
+    "MpesaPaymentRequest",
+    "MpesaPaymentResponse",
 ]
