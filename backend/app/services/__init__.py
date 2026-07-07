@@ -1,11 +1,26 @@
-# app/__init__.py
-"""AUTO-V Professional Valuation Engine - Backend Application"""
+# app/services/__init__.py
+# =============================================================================
+# AUTO-V API - Services Package
+# =============================================================================
 
-__version__ = "2.0.0"
-__app_name__ = "AUTO-V API"
+from app.services.supabase_service import SupabaseService
+from app.services.auth_service import AuthService
+from app.services.mileage_service import MileageService
+from app.services.vehicle_service import VehicleService
+from app.services.valuation_service import ValuationService
+from app.services.inspection_service import InspectionService
+from app.services.fleet_service import FleetService
+from app.services.certificate_service import CertificateService
+from app.services.payment_service import PaymentService
 
-from app.core.config import settings
-from app.core.logging import setup_logging
-
-# Setup logging on import
-setup_logging()
+__all__ = [
+    "SupabaseService",
+    "AuthService",
+    "MileageService",
+    "VehicleService",
+    "ValuationService",
+    "InspectionService",
+    "FleetService",
+    "CertificateService",
+    "PaymentService",
+]
