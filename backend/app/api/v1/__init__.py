@@ -1,24 +1,9 @@
-# app/api/v1/routes/__init__.py
+# app/api/v1/__init__.py
 # =============================================================================
-# AUTO-V API - Routes Package
+# AUTO-V API - Version 1 Routes
 # =============================================================================
 
-from . import auth
-from . import mileage
-# from . import vehicles
-# from . import inspections
-# from . import valuations
-# from . import fleets
-# from . import certificates
-# from . import payments
+# Don't import auth here - let api.py handle all imports
+# This file should be minimal
 
-__all__ = [
-    "auth",
-    "mileage",
-    # "vehicles",
-    # "inspections",
-    # "valuations",
-    # "fleets",
-    # "certificates",
-    # "payments",
-]
+__all__ = []
