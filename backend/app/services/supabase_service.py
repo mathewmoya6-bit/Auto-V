@@ -1,85 +1,92 @@
 # app/services/supabase_service.py
 # =============================================================================
-# AUTO-V API - Supabase Service
+# AUTO-V API - Supabase Auth Service
 # =============================================================================
+import os
+from typing import Optional
 
-import logging
-from typing import Optional, Dict, Any, List
-from supabase import Client
+from supabase import create_client, Client
 
-from app.core.database import get_supabase, get_admin_client
+# NOTE: verify these env var names against your actual Render/​.env config.
+# Common alternatives: SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY.
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
 
-logger = logging.getLogger(__name__)
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError(
+        "Missing SUPABASE_URL or SUPABASE_KEY environment variables. "
+        "Check your Render environment settings."
+    )
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-class SupabaseService:
-    """Base service for Supabase operations."""
-    
-    def __init__(self, use_admin: bool = False):
-        self.client: Client = get_admin_client() if use_admin else get_supabase()
-        self.use_admin = use_admin
-    
-    def _get_table(self, table_name: str):
-        """Get a table reference."""
-        return self.client.table(table_name)
-    
-    def select(self, table: str, columns: str = "*", filters: Optional[Dict] = None) -> List[Dict]:
-        """Select records from a table."""
-        try:
-            query = self._get_table(table).select(columns)
-            if filters:
-                for key, value in filters.items():
-                    query = query.eq(key, value)
-            result = query.execute()
-            return result.data
-        except Exception as e:
-            logger.error(f"Select error on {table}: {e}")
-            raise
-    
-    def select_one(self, table: str, filters: Dict, columns: str = "*") -> Optional[Dict]:
-        """Select a single record from a table."""
-        try:
-            query = self._get_table(table).select(columns)
-            for key, value in filters.items():
-                query = query.eq(key, value)
-            result = query.single().execute()
-            return result.data
-        except Exception as e:
-            logger.error(f"Select one error on {table}: {e}")
+async def sign_up_user(email: str, password: str, metadata: Optional[dict] = None) -> dict:
+    """
+    Register a new user via Supabase Auth.
+    Returns: {"success": bool, "user": dict | None, "error": str | None}
+    """
+    try:
+        response = supabase.auth.sign_up(
+            {
+                "email": email,
+                "password": password,
+                "options": {"data": metadata or {}},
+            }
+        )
+        if response.user is None:
+            return {"success": False, "error": "Registration failed", "user": None}
+
+        return {
+            "success": True,
+            "user": {
+                "id": response.user.id,
+                "email": response.user.email,
+                **(metadata or {}),
+            },
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "user": None}
+
+
+async def sign_in_user(email: str, password: str) -> dict:
+    """
+    Sign in an existing user via Supabase Auth.
+    Returns: {"success": bool, "user": dict | None, "session": dict | None}
+    """
+    try:
+        response = supabase.auth.sign_in_with_password(
+            {"email": email, "password": password}
+        )
+        if response.user is None or response.session is None:
+            return {"success": False, "error": "Invalid credentials", "user": None, "session": None}
+
+        return {
+            "success": True,
+            "user": {
+                "id": response.user.id,
+                "email": response.user.email,
+            },
+            "session": {
+                "access_token": response.session.access_token,
+                "refresh_token": response.session.refresh_token,
+            },
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "user": None, "session": None}
+
+
+async def get_user_by_token(token: str) -> Optional[dict]:
+    """
+    Validate a bearer token and return the associated user, or None if invalid.
+    """
+    try:
+        response = supabase.auth.get_user(token)
+        if response.user is None:
             return None
-    
-    def insert(self, table: str, data: Dict) -> Dict:
-        """Insert a record into a table."""
-        try:
-            result = self._get_table(table).insert(data).execute()
-            return result.data[0] if result.data else None
-        except Exception as e:
-            logger.error(f"Insert error on {table}: {e}")
-            raise
-    
-    def update(self, table: str, data: Dict, filters: Dict) -> Dict:
-        """Update records in a table."""
-        try:
-            query = self._get_table(table).update(data)
-            for key, value in filters.items():
-                query = query.eq(key, value)
-            result = query.execute()
-            return result.data[0] if result.data else None
-        except Exception as e:
-            logger.error(f"Update error on {table}: {e}")
-            raise
-    
-    def delete(self, table: str, filters: Dict) -> bool:
-        """Delete records from a table."""
-        try:
-            query = self._get_table(table).delete()
-            for key, value in filters.items():
-                query = query.eq(key, value)
-            query.execute()
-            return True
-        except Exception as e:
-            logger.error(f"Delete error on {table}: {e}")
-            raise
-
-
-__all__ = ["SupabaseService"]
+        return {
+            "id": response.user.id,
+            "email": response.user.email,
+        }
+    except Exception:
+        return None
