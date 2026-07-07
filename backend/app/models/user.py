@@ -1,50 +1,35 @@
 # app/models/user.py
 # =============================================================================
-# AUTO-V API - User Profile Model
+# AUTO-V API - User Profile Model (Pydantic Native)
 # =============================================================================
 
 import uuid
 from datetime import datetime
-from sqlalchemy import (
-    Column, String, Boolean, DateTime, ForeignKey, Index, func,
-)
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import relationship
+from typing import Optional
+from pydantic import BaseModel, EmailStr, Field
 
-from app.core.database import Base
+class UserProfile(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    email: EmailStr
+    password_hash: Optional[str] = None  # Optional if Supabase Auth handles passwords
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    role: str = "user"
+    company_name: Optional[str] = None
+    is_active: bool = True
+    is_verified: bool = False
+    supabase_user_id: str  # Critical link to Supabase Auth uid
 
+    # Use timezone-aware or UTC datetimes
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_login: Optional[datetime] = None
 
-class UserProfile(Base):
-    __tablename__ = "users"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), nullable=False, unique=True, index=True)
-    password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(255))
-    phone = Column(String(50))
-    role = Column(String(50), nullable=False, default="user")
-    company_name = Column(String(255))
-    is_active = Column(Boolean, nullable=False, default=True)
-    is_verified = Column(Boolean, nullable=False, default=False)
-    supabase_user_id = Column(String(255))
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    last_login = Column(DateTime(timezone=True))
-
-    # Relationships
-    vehicles = relationship("Vehicle", foreign_keys="Vehicle.user_id", back_populates="owner")
-    mileage_claims = relationship("MileageClaim", foreign_keys="MileageClaim.user_id", back_populates="user")
-    approved_mileage_claims = relationship("MileageClaim", foreign_keys="MileageClaim.approved_by", back_populates="approver")
-    vin_scans = relationship("VINScan", foreign_keys="VINScan.user_id", back_populates="user")
-
-    __table_args__ = (
-        Index("idx_users_email", "email"),
-        Index("idx_users_role", "role"),
-        Index("idx_users_active", "is_active"),
-    )
+    class Config:
+        from_attributes = True
 
     def to_public_dict(self) -> dict:
-        """Return public user data (no password hash)"""
+        """Return public user data"""
         return {
             "id": str(self.id),
             "email": self.email,
@@ -55,20 +40,4 @@ class UserProfile(Base):
             "is_active": self.is_active,
             "is_verified": self.is_verified,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
-    def to_dict(self) -> dict:
-        """Return all user data (for internal use)"""
-        return {
-            "id": str(self.id),
-            "email": self.email,
-            "full_name": self.full_name,
-            "phone": self.phone,
-            "role": self.role,
-            "company_name": self.company_name,
-            "is_active": self.is_active,
-            "is_verified": self.is_verified,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "last_login": self.last_login.isoformat() if self.last_login else None,
         }
