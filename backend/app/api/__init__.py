@@ -3,12 +3,6 @@
 # AUTO-V API - API Package
 # =============================================================================
 
-"""
-API package containing all versioned API routers.
-"""
+from app.api.v1.api import api_router
 
-from app.api.v1 import api_router
-
-__all__ = [
-    "api_router",
-]
+__all__ = ["api_router"]
