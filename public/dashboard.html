@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Admin Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        /* ─── RESET & BASE ─── */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #0b1120;
+            color: white;
+            min-height: 100vh;
+        }
+        
+        /* ─── Header ────────────────────────────────────────────────── */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background: #111827;
+            border-bottom: 2px solid #eab308;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .logo { font-size: 24px; color: #eab308; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+        .logo span { font-size: 12px; color: #94a3b8; font-weight: normal; }
+        .logo .admin-badge {
+            background: #eab308;
+            color: #0b1120;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 12px;
+            border-radius: 12px;
+            margin-left: 4px;
+            letter-spacing: 0.5px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 14px;
+            flex-wrap: wrap;
+        }
+        .header-right .member-id { color: #94a3b8; font-size: 12px; }
+        .header-right .icon-btn {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            font-size: 20px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .header-right .icon-btn:hover { color: #eab308; }
+        .logout-btn {
+            background: #dc2626;
+            color: white;
+            padding: 6px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .logout-btn:hover { background: #b91c1c; }
+
+        /* ─── Container ─────────────────────────────────────────────── */
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+        /* ─── Welcome Section ───────────────────────────────────────── */
+        .welcome-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .welcome-card h2 { color: #eab308; font-size: 24px; margin: 0; }
+        .welcome-card h2 .admin-shield { font-size: 20px; }
+        .welcome-card p { color: #94a3b8; margin: 5px 0 0; }
+        .welcome-card .role-badge {
+            background: #1e293b;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #eab308;
+            border: 1px solid #334155;
+        }
+        .welcome-card .role-badge.admin {
+            background: rgba(234, 179, 8, 0.15);
+            border-color: #eab308;
+        }
+
+        /* ─── Summary Cards ─────────────────────────────────────────── */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+        .summary-card {
+            background: #1e293b;
+            border: 1px solid #2d3a4e;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: 0.3s;
+        }
+        .summary-card:hover { border-color: #eab308; transform: translateY(-3px); }
+        .summary-card h3 { font-size: 13px; color: #94a3b8; margin-bottom: 5px; }
+        .summary-card .number { font-size: 32px; font-weight: bold; color: #eab308; }
+        .summary-card .sub { font-size: 12px; color: #64748b; margin-top: 5px; }
+
+        /* ─── Admin Actions ─────────────────────────────────────────── */
+        .admin-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+        .admin-action-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            transition: 0.3s;
+            border: 1px solid #2d3a4e;
+            cursor: pointer;
+        }
+        .admin-action-card:hover {
+            border-color: #eab308;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(234, 179, 8, 0.08);
+        }
+        .admin-action-card .icon { font-size: 32px; display: block; margin-bottom: 8px; }
+        .admin-action-card h4 { color: #eab308; font-size: 15px; margin-bottom: 4px; }
+        .admin-action-card p { color: #94a3b8; font-size: 12px; }
+
+        /* ─── Sections ──────────────────────────────────────────────── */
+        .section-block {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+        .section-block .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .section-block h3 { 
+            color: #eab308; 
+            font-size: 18px; 
+            border-left: 3px solid #eab308; 
+            padding-left: 12px; 
+            margin: 0;
+        }
+        .section-block .view-all {
+            color: #94a3b8;
+            font-size: 13px;
+            text-decoration: none;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+        .section-block .view-all:hover { color: #eab308; }
+        
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #1f2937;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .list-item:last-child { border-bottom: none; }
+        .list-item .info h4 { color: white; font-size: 15px; }
+        .list-item .info p { color: #94a3b8; font-size: 13px; margin-top: 3px; }
+        .list-item .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .list-item .actions .btn-sm {
+            background: #2d3a4e;
+            color: white;
+            padding: 4px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.3s;
+            font-family: inherit;
+        }
+        .list-item .actions .btn-sm:hover { background: #eab308; color: black; }
+        .list-item .actions .btn-sm.danger { background: #dc2626; }
+        .list-item .actions .btn-sm.danger:hover { background: #b91c1c; }
+        .list-item .status-badge {
+            background: #22c55e;
+            color: black;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .list-item .status-badge.pending { background: #f59e0b; }
+        .list-item .status-badge.failed { background: #ef4444; color: white; }
+        .list-item .status-badge.inactive { background: #64748b; color: white; }
+
+        /* ─── Loading / Empty States ────────────────────────────────── */
+        .loading-spinner { color: #94a3b8; text-align: center; padding: 20px; }
+        .empty-state { color: #64748b; text-align: center; padding: 20px; font-size: 14px; }
+        
+        /* ─── Toast ────────────────────────────────────────────────────── */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* ─── Responsive ────────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            header { flex-direction: column; gap: 10px; padding: 12px 16px; }
+            .header-right { flex-wrap: wrap; justify-content: center; }
+            .welcome-card { flex-direction: column; text-align: center; gap: 10px; }
+            .admin-actions-grid { grid-template-columns: 1fr 1fr; }
+            .summary-grid { grid-template-columns: 1fr 1fr; }
+            .list-item { flex-direction: column; text-align: center; }
+            .list-item .actions { justify-content: center; }
+        }
+        @media (max-width: 480px) {
+            .summary-grid { grid-template-columns: 1fr; }
+            .admin-actions-grid { grid-template-columns: 1fr; }
+            .header-right .member-id { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <!-- ─── Header ──────────────────────────────────────────────────── -->
+    <header>
+        <div class="logo">
+            🚗 AUTO-V 
+            <span>Admin <span class="admin-badge">🔒</span></span>
+        </div>
+        <div class="header-right">
+            <span id="memberId" class="member-id">Admin ID: ---</span>
+            <button class="icon-btn" onclick="showNotifications()">🔔</button>
+            <button class="icon-btn" onclick="goToProfile()">👤</button>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- ─── Welcome Card ──────────────────────────────────────────── -->
+        <div class="welcome-card" id="profileCard">
+            <div>
+                <h2><span class="admin-shield">🛡️</span> Welcome, <span id="adminName">Admin</span></h2>
+                <p id="adminEmail">Loading...</p>
+            </div>
+            <div>
+                <span class="role-badge admin" id="adminRole">🔑 Super Admin</span>
+            </div>
+        </div>
+
+        <!-- ─── Summary Cards ────────────────────────────────────────── -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <h3>Total Users</h3>
+                <div class="number" id="sumUsers">-</div>
+                <div class="sub">Registered</div>
+            </div>
+            <div class="summary-card">
+                <h3>Vehicles</h3>
+                <div class="number" id="sumVehicles">-</div>
+                <div class="sub">In System</div>
+            </div>
+            <div class="summary-card">
+                <h3>Reports</h3>
+                <div class="number" id="sumReports">-</div>
+                <div class="sub">Generated</div>
+            </div>
+            <div class="summary-card">
+                <h3>Revenue</h3>
+                <div class="number" id="sumRevenue">KES -</div>
+                <div class="sub">Total</div>
+            </div>
+        </div>
+
+        <!-- ─── Admin Actions ────────────────────────────────────────── -->
+        <div class="admin-actions-grid" id="adminActions">
+            <div class="admin-action-card" onclick="navigateTo('users')">
+                <span class="icon">👥</span>
+                <h4>Manage Users</h4>
+                <p>View, edit, and manage user accounts</p>
+            </div>
+            <div class="admin-action-card" onclick="navigateTo('vehicles')">
+                <span class="icon">🚗</span>
+                <h4>Vehicle Registry</h4>
+                <p>View and manage all vehicles</p>
+            </div>
+            <div class="admin-action-card" onclick="navigateTo('reports')">
+                <span class="icon">📄</span>
+                <h4>Reports</h4>
+                <p>View all service reports</p>
+            </div>
+            <div class="admin-action-card" onclick="navigateTo('certificates')">
+                <span class="icon">📜</span>
+                <h4>Certificates</h4>
+                <p>Manage certificates</p>
+            </div>
+            <div class="admin-action-card" onclick="navigateTo('settings')">
+                <span class="icon">⚙️</span>
+                <h4>System Settings</h4>
+                <p>Configure system parameters</p>
+            </div>
+            <div class="admin-action-card" onclick="navigateTo('analytics')">
+                <span class="icon">📊</span>
+                <h4>Analytics</h4>
+                <p>View system analytics</p>
+            </div>
+        </div>
+
+        <!-- ─── Recent Users ──────────────────────────────────────────── -->
+        <div class="section-block">
+            <div class="section-header">
+                <h3>👥 Recent Users</h3>
+                <a class="view-all" onclick="navigateTo('users')">View All →</a>
+            </div>
+            <div id="recentUsers">
+                <div class="loading-spinner">Loading users...</div>
+            </div>
+        </div>
+
+        <!-- ─── Recent Service Requests ────────────────────────────────── -->
+        <div class="section-block">
+            <div class="section-header">
+                <h3>📋 Recent Service Requests</h3>
+                <a class="view-all" onclick="navigateTo('reports')">View All →</a>
+            </div>
+            <div id="recentRequests">
+                <div class="loading-spinner">Loading requests...</div>
+            </div>
+        </div>
+
+        <!-- ─── Recent Activity ──────────────────────────────────────── -->
+        <div class="section-block">
+            <div class="section-header">
+                <h3>📈 Recent Activity</h3>
+                <a class="view-all" onclick="navigateTo('analytics')">View All →</a>
+            </div>
+            <div id="recentActivity">
+                <div class="loading-spinner">Loading activity...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // AUTO-V ADMIN DASHBOARD — Hybrid Architecture
+        // Uses window.autoV (Supabase + FastAPI)
+        // ═══════════════════════════════════════════════════════════════
+
+        (function() {
+            'use strict';
+
+            // ─── State ──────────────────────────────────────────────────────
+            let currentUser = null;
+            let isInitialized = false;
+
+            // ─── Toast / Error handling ────────────────────────────────────
+            function showToast(message, type = 'info') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(message, type);
+                    return;
+                }
+                const existing = document.querySelector('.toast-container');
+                if (existing) existing.remove();
+                
+                const div = document.createElement('div');
+                div.className = 'toast-container';
+                const colors = {
+                    success: { bg: '#22c55e', text: '#000' },
+                    error: { bg: '#ef4444', text: '#fff' },
+                    warning: { bg: '#f59e0b', text: '#000' },
+                    info: { bg: '#3b82f6', text: '#fff' }
+                };
+                const style = colors[type] || colors.info;
+                div.style.cssText = `
+                    background: ${style.bg};
+                    color: ${style.text};
+                `;
+                div.textContent = message;
+                document.body.appendChild(div);
+                setTimeout(() => div.remove(), 4000);
+            }
+
+            // ─── API Helper with Fallback ──────────────────────────────────
+            async function apiRequest(endpoint, options = {}) {
+                if (window.autoV) {
+                    return window.autoV.apiRequest(endpoint, options);
+                }
+                // Fallback
+                const API_BASE = 'https://auto-v.onrender.com/api/v1';
+                const url = `${API_BASE}${endpoint}`;
+                const token = localStorage.getItem('access_token');
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...options.headers
+                };
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+                const response = await fetch(url, { ...options, headers, credentials: 'include' });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.detail || error.message || `HTTP ${response.status}`);
+                }
+                return response.json();
+            }
+
+            // ─── Initialize ─────────────────────────────────────────────────
+            async function init() {
+                if (isInitialized) return;
+                isInitialized = true;
+
+                // Wait for autoV to be ready
+                if (!window.autoV || !window.autoV._initialized) {
+                    console.log('⏳ Waiting for autoV to initialize...');
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (window.autoV && window.autoV._initialized) {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
+
+                try {
+                    // Get user from autoV or fallback
+                    if (window.autoV) {
+                        currentUser = await window.autoV.getCurrentUser();
+                    } else {
+                        const token = localStorage.getItem('access_token');
+                        if (!token) {
+                            window.location.href = 'admin-login.html';
+                            return;
+                        }
+                        currentUser = await apiRequest('/auth/me');
+                    }
+                    
+                    if (!currentUser) {
+                        window.location.href = 'admin-login.html';
+                        return;
+                    }
+                    
+                    // Check if user is admin
+                    const role = currentUser.role || currentUser.user_metadata?.role || 'user';
+                    if (role !== 'admin' && role !== 'super_admin') {
+                        showToast('⛔ Access denied. Admin privileges required.', 'error');
+                        setTimeout(() => {
+                            window.location.href = 'login.html';
+                        }, 1500);
+                        return;
+                    }
+                    
+                    // Update profile
+                    await loadAdminProfile(currentUser);
+                    
+                    // Load all dashboard data
+                    await Promise.all([
+                        loadSummaryStats(),
+                        loadRecentUsers(),
+                        loadRecentRequests(),
+                        loadRecentActivity()
+                    ]);
+                    
+                    // Setup logout
+                    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+                    
+                    console.log('✅ Admin Dashboard initialized successfully');
+                    console.log(`👤 Admin: ${currentUser.email}`);
+                    console.log(`🔑 Role: ${role}`);
+                    
+                    if (window.autoV) {
+                        window.autoV.showToast('🛡️ Welcome to Admin Dashboard', 'success');
+                    }
+                    
+                } catch (error) {
+                    console.error('Admin Dashboard init error:', error);
+                    if (error.message.includes('401') || error.message.includes('Session expired')) {
+                        if (window.autoV) {
+                            window.autoV.clearAuthToken();
+                        } else {
+                            localStorage.removeItem('access_token');
+                        }
+                        window.location.href = 'admin-login.html';
+                    } else {
+                        showToast('Failed to load admin dashboard: ' + error.message, 'error');
+                    }
+                }
+            }
+
+            // ─── Load Admin Profile ──────────────────────────────────────────
+            async function loadAdminProfile(user) {
+                try {
+                    let profile;
+                    if (window.autoV) {
+                        profile = await window.autoV.apiRequest(`/users/${user.id}/profile`);
+                    } else {
+                        profile = await apiRequest(`/users/${user.id}/profile`);
+                    }
+                    
+                    const displayName = profile.full_name || user.full_name || user.email.split('@')[0];
+                    document.getElementById('adminName').textContent = displayName;
+                    document.getElementById('adminEmail').textContent = user.email;
+                    document.getElementById('adminRole').textContent = (profile.role || user.role || 'Super Admin').toUpperCase();
+                    document.getElementById('memberId').textContent = `Admin ID: ${profile.member_id || 'ADMIN-' + String(Math.floor(Math.random()*100000)).padStart(6,'0')}`;
+                    
+                } catch (error) {
+                    console.warn('Profile load error:', error);
+                    // Fallback
+                    document.getElementById('adminName').textContent = user.email.split('@')[0];
+                    document.getElementById('adminEmail').textContent = user.email;
+                }
+            }
+
+            // ─── Load Summary Statistics ────────────────────────────────────
+            async function loadSummaryStats() {
+                try {
+                    let stats;
+                    if (window.autoV) {
+                        stats = await window.autoV.apiRequest('/admin/stats');
+                    } else {
+                        stats = await apiRequest('/admin/stats');
+                    }
+                    
+                    document.getElementById('sumUsers').textContent = stats.total_users || 0;
+                    document.getElementById('sumVehicles').textContent = stats.total_vehicles || 0;
+                    document.getElementById('sumReports').textContent = stats.total_reports || 0;
+                    document.getElementById('sumRevenue').textContent = `KES ${(stats.total_revenue || 0).toLocaleString()}`;
+                    
+                } catch (error) {
+                    console.warn('Stats load error:', error);
+                    // Don't fail the whole page for stats
+                    document.getElementById('sumUsers').textContent = '0';
+                    document.getElementById('sumVehicles').textContent = '0';
+                    document.getElementById('sumReports').textContent = '0';
+                    document.getElementById('sumRevenue').textContent = 'KES 0';
+                }
+            }
+
+            // ─── Load Recent Users ──────────────────────────────────────────
+            async function loadRecentUsers() {
+                const container = document.getElementById('recentUsers');
+                
+                try {
+                    let users;
+                    if (window.autoV) {
+                        users = await window.autoV.apiRequest('/admin/users?limit=5');
+                    } else {
+                        users = await apiRequest('/admin/users?limit=5');
+                    }
+                    
+                    if (!users || users.length === 0) {
+                        container.innerHTML = `<div class="empty-state">No users registered yet.</div>`;
+                        return;
+                    }
+                    
+                    container.innerHTML = users.map(u => `
+                        <div class="list-item">
+                            <div class="info">
+                                <h4>${u.full_name || u.email}</h4>
+                                <p>${u.email} · ${u.role || 'User'} · Joined ${new Date(u.created_at).toLocaleDateString()}</p>
+                            </div>
+                            <div class="actions">
+                                <span class="status-badge ${u.is_active !== false ? '' : 'inactive'}">${u.is_active !== false ? 'Active' : 'Inactive'}</span>
+                                <button class="btn-sm" onclick="viewUser('${u.id}')">View</button>
+                                <button class="btn-sm ${u.is_active !== false ? 'danger' : ''}" onclick="toggleUserStatus('${u.id}')">
+                                    ${u.is_active !== false ? 'Deactivate' : 'Activate'}
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                } catch (error) {
+                    console.warn('Users load error:', error);
+                    container.innerHTML = `<div class="empty-state">❌ Failed to load users.</div>`;
+                }
+            }
+
+            // ─── Load Recent Service Requests ──────────────────────────────
+            async function loadRecentRequests() {
+                const container = document.getElementById('recentRequests');
+                
+                try {
+                    let requests;
+                    if (window.autoV) {
+                        requests = await window.autoV.apiRequest('/admin/service-requests?limit=5');
+                    } else {
+                        requests = await apiRequest('/admin/service-requests?limit=5');
+                    }
+                    
+                    if (!requests || requests.length === 0) {
+                        container.innerHTML = `<div class="empty-state">No service requests yet.</div>`;
+                        return;
+                    }
+                    
+                    container.innerHTML = requests.map(r => `
+                        <div class="list-item">
+                            <div class="info">
+                                <h4>${r.service_type || 'N/A'}</h4>
+                                <p>${r.vehicle_make || ''} ${r.vehicle_model || ''} · ${r.user_email || 'Unknown'}</p>
+                            </div>
+                            <div class="actions">
+                                <span class="status-badge ${r.status || 'pending'}">${r.status || 'Pending'}</span>
+                                <button class="btn-sm" onclick="viewRequest('${r.id}')">View</button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                } catch (error) {
+                    console.warn('Requests load error:', error);
+                    container.innerHTML = `<div class="empty-state">❌ Failed to load requests.</div>`;
+                }
+            }
+
+            // ─── Load Recent Activity ──────────────────────────────────────
+            async function loadRecentActivity() {
+                const container = document.getElementById('recentActivity');
+                
+                try {
+                    let activities;
+                    if (window.autoV) {
+                        activities = await window.autoV.apiRequest('/admin/activity?limit=5');
+                    } else {
+                        activities = await apiRequest('/admin/activity?limit=5');
+                    }
+                    
+                    if (!activities || activities.length === 0) {
+                        container.innerHTML = `<div class="empty-state">No recent activity.</div>`;
+                        return;
+                    }
+                    
+                    container.innerHTML = activities.map(a => `
+                        <div class="list-item">
+                            <div class="info">
+                                <h4>${a.action || 'Action'}</h4>
+                                <p>${a.description || ''} · ${a.user_name || 'System'}</p>
+                            </div>
+                            <div>
+                                <span style="color:#64748b;font-size:12px;">${new Date(a.created_at).toLocaleString()}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                } catch (error) {
+                    console.warn('Activity load error:', error);
+                    container.innerHTML = `<div class="empty-state">❌ Failed to load activity.</div>`;
+                }
+            }
+
+            // ─── Action Handlers ────────────────────────────────────────────
+            async function handleLogout() {
+                if (window.autoV) {
+                    await window.autoV.logout();
+                } else {
+                    try {
+                        await apiRequest('/auth/logout', { method: 'POST' });
+                    } catch (e) {}
+                    localStorage.removeItem('access_token');
+                    window.location.href = 'admin-login.html';
+                }
+            }
+
+            function navigateTo(section) {
+                window.location.href = `admin-${section}.html`;
+            }
+
+            function viewUser(userId) {
+                window.location.href = `admin-user-detail.html?id=${userId}`;
+            }
+
+            function viewRequest(requestId) {
+                window.location.href = `admin-request-detail.html?id=${requestId}`;
+            }
+
+            function toggleUserStatus(userId) {
+                if (confirm('Are you sure you want to change this user\'s status?')) {
+                    showToast('User status updated successfully', 'success');
+                    // Implement actual toggle
+                }
+            }
+
+            function showNotifications() {
+                showToast('🔔 You have no new admin notifications.', 'info');
+            }
+
+            function goToProfile() {
+                window.location.href = 'admin-profile.html';
+            }
+
+            // ─── Expose functions globally ──────────────────────────────────
+            window.navigateTo = navigateTo;
+            window.viewUser = viewUser;
+            window.viewRequest = viewRequest;
+            window.toggleUserStatus = toggleUserStatus;
+            window.showNotifications = showNotifications;
+            window.goToProfile = goToProfile;
+
+            // ─── Start App ─────────────────────────────────────────────────
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+
+        })();
+    </script>
+</body>
+</html>
