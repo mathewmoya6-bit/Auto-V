@@ -1,15 +1,21 @@
 """
 Mileage Schemas - NO circular imports
 """
-
 from datetime import date, datetime
 from typing import Dict, Optional
 from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class CategoryOut(BaseModel):
+# ─── Vehicle Category ───────────────────────────────────────────────
+
+class VehicleCategoryCreate(BaseModel):
+    name: str
+    fuel_type: Optional[str] = None
+    is_active: bool = True
+
+
+class VehicleCategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     name: str
@@ -17,7 +23,29 @@ class CategoryOut(BaseModel):
     is_active: bool = True
 
 
-class VariantOut(BaseModel):
+# Backward-compatible alias for the original name
+CategoryOut = VehicleCategoryResponse
+
+
+# ─── Vehicle Variant ─────────────────────────────────────────────────
+
+class VehicleVariantCreate(BaseModel):
+    category_id: UUID
+    label: str
+    fixed_per_km: float
+    operating_per_km: float
+    total_per_km: float
+    initial_cost: float
+    year1: float
+    year2: float
+    year3: float
+    year4: float
+    year5: float
+    components: Dict[str, float] = {}
+    is_active: bool = True
+
+
+class VehicleVariantResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     category_id: UUID
@@ -35,7 +63,19 @@ class VariantOut(BaseModel):
     is_active: bool = True
 
 
-class RouteOut(BaseModel):
+VariantOut = VehicleVariantResponse
+
+
+# ─── Route ────────────────────────────────────────────────────────────
+
+class RouteCreate(BaseModel):
+    from_city: str
+    to_city: str
+    km: float
+    is_active: bool = True
+
+
+class RouteResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     from_city: str
@@ -44,7 +84,12 @@ class RouteOut(BaseModel):
     is_active: bool = True
 
 
-class MileageClaimOut(BaseModel):
+RouteOut = RouteResponse
+
+
+# ─── Mileage Claim ────────────────────────────────────────────────────
+
+class MileageClaimResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     user_id: UUID
@@ -64,6 +109,9 @@ class MileageClaimOut(BaseModel):
     approved_by: Optional[UUID] = None
     approved_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+
+
+MileageClaimOut = MileageClaimResponse
 
 
 class MileageClaimCreate(BaseModel):
