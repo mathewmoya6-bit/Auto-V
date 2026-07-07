@@ -1,17 +1,17 @@
-# app/models/__init__.py
+# backend/app/models/__init__.py
 # =============================================================================
 # AUTO-V API - Models Registry (Single Source of Truth)
 # =============================================================================
 
-# Import all models in the correct order
-from .user import UserProfile
-from .vehicle import Vehicle, VehicleImage, VINScan
-from .valuation import Valuation
-from .inspection import Inspection
-from .certificate import Certificate
-from .fleet import Fleet
-from .payment import Payment
-from .mileage import (
+# Use absolute package paths instead of relative dots (.)
+from app.models.user import UserProfile
+from app.models.vehicle import Vehicle, VehicleImage, VINScan
+from app.models.valuation import Valuation
+from app.models.inspection import Inspection
+from app.models.certificate import Certificate
+from app.models.fleet import Fleet
+from app.models.payment import Payment
+from app.models.mileage import (
     VehicleCategory,
     VehicleVariant,
     Route,
