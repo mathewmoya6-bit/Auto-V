@@ -2,10 +2,8 @@
 # =============================================================================
 # AUTO-V API - Vehicle Routes
 # =============================================================================
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Optional, List
-
 from app.services.vehicle_service import VehicleService
 from app.schemas.vehicle import (
     VehicleCreate,
@@ -15,6 +13,46 @@ from app.schemas.vehicle import (
 
 router = APIRouter(tags=["Vehicles"])
 service = VehicleService()
+
+
+# ─── IMPORTANT: /models must be declared BEFORE /{vehicle_id} ──────────
+# Otherwise a request to /vehicles/models gets matched as
+# GET /vehicles/{vehicle_id} with vehicle_id="models" instead.
+
+@router.get("/models")
+async def get_vehicle_models():
+    """
+    Return the list of known make/model pairs for populating the
+    Instant Value Check dropdown.
+
+    NOTE: this is a placeholder dataset. Replace with a real query once
+    there's a proper vehicle catalog table/service backing this.
+    """
+    catalog = [
+        {"make": "Toyota", "model": "Corolla"},
+        {"make": "Toyota", "model": "Axio"},
+        {"make": "Toyota", "model": "Camry"},
+        {"make": "Toyota", "model": "RAV4"},
+        {"make": "Toyota", "model": "Hilux"},
+        {"make": "Toyota", "model": "Land Cruiser"},
+        {"make": "Honda", "model": "Civic"},
+        {"make": "Honda", "model": "Accord"},
+        {"make": "Honda", "model": "CR-V"},
+        {"make": "Honda", "model": "Fit"},
+        {"make": "Nissan", "model": "X-Trail"},
+        {"make": "Nissan", "model": "Patrol"},
+        {"make": "Nissan", "model": "Note"},
+        {"make": "Nissan", "model": "Qashqai"},
+        {"make": "BMW", "model": "X5"},
+        {"make": "BMW", "model": "3 Series"},
+        {"make": "BMW", "model": "5 Series"},
+        {"make": "BMW", "model": "7 Series"},
+        {"make": "Mercedes", "model": "C-Class"},
+        {"make": "Mercedes", "model": "E-Class"},
+        {"make": "Mercedes", "model": "GLC"},
+        {"make": "Mercedes", "model": "GLE"},
+    ]
+    return catalog
 
 
 @router.get("/", response_model=List[VehicleResponse])
