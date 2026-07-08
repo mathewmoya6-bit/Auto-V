@@ -10,10 +10,24 @@ from functools import lru_cache
 
 from supabase import create_client, Client
 from fastapi import HTTPException, status
+from sqlalchemy.orm import declarative_base
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# ─── SQLAlchemy Declarative Base ────────────────────────────────────
+# Provides the Base class for ORM models (e.g. app/models/inspection.py).
+#
+# NOTE: this only provides the Base class so ORM model definitions can be
+# imported without error. There is currently no SQLAlchemy engine/session
+# wired up anywhere in this codebase — only the Supabase REST client below.
+# Any route that actually tries to query/persist a Base subclass (like
+# Inspection) via a real SQLAlchemy session will fail until an engine and
+# session factory are added (typically using DATABASE_URL, which also
+# doesn't exist yet in app/core/config.py's Settings).
+Base = declarative_base()
+
 
 # ─── Client Container ─────────────────────────────────────────────────
 
@@ -129,6 +143,7 @@ def get_db_admin() -> Generator[Client, None, None]:
 
 
 __all__ = [
+    "Base",
     "init_supabase",
     "get_supabase",
     "get_admin_client",
