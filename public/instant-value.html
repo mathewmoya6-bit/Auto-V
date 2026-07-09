@@ -972,6 +972,12 @@
             }
 
             // ─── CHECK AUTH ────────────────────────────────────────────
+            // IMPORTANT: this bridges the Supabase session token into
+            // auto-v-api.js's accessToken via window.autoV.setAuthToken().
+            // Without this, every apiRequest() call made from this page
+            // (loadVehicleData, valuations, etc.) is sent with NO
+            // Authorization header, even for a logged-in user — that's
+            // what was causing "Missing bearer token" 401s.
             async function checkAuth() {
                 if (!supabase) return null;
 
@@ -989,6 +995,16 @@
                     }
 
                     currentUser = user;
+
+                    // ─── Bridge the token so auto-v-api.js can use it ───
+                    if (window.autoV && window.autoV.setAuthToken && session.access_token) {
+                        window.autoV.setAuthToken(session.access_token);
+                        console.log('✅ Bearer token bridged to autoV');
+                    } else {
+                        console.warn('⚠️ window.autoV not ready yet — token NOT bridged. ' +
+                            'API calls made before autoV loads will be missing auth.');
+                    }
+
                     console.log('✅ Authenticated user:', user.email);
                     return user;
                 } catch (error) {
@@ -1161,7 +1177,9 @@
                 try {
                     if (!window.autoV) throw new Error('API client not available');
                     const data = await window.autoV.apiRequest('/settings/instant_fee');
-                    serviceFee = parseInt(data.setting_value) || 500;
+                    // settings.py returns { fee, currency } — fall back to
+                    // setting_value for backward compatibility if present.
+                    serviceFee = parseInt(data.fee ?? data.setting_value, 10) || 500;
                     serviceFeeDisplay.textContent = `KES ${serviceFee.toLocaleString()}`;
                     return serviceFee;
                 } catch (error) {
@@ -1594,21 +1612,22 @@
             });
 
             // ─── INIT ──────────────────────────────────────────────────
+            // NOTE: order changed from the original — we now wait for
+            // window.autoV to be ready BEFORE calling checkAuth(), so
+            // that checkAuth() can reliably call window.autoV.setAuthToken().
+            // Calling checkAuth() before autoV exists was the root cause
+            // of the "Missing bearer token" 401s.
             async function init() {
                 console.log('🚗 AUTO-V Instant Value Check - Initializing...');
 
                 // ─── Step 1: Initialize Supabase ──────────────────────
                 const initialized = initSupabase();
                 if (!initialized) {
-                    showToast('Failed to initialize authentication service.', 'error');
+                    if (window.autoV) window.autoV.showToast('Failed to initialize authentication service.', 'error');
                     return;
                 }
 
-                // ─── Step 2: Check Authentication ──────────────────────
-                const user = await checkAuth();
-                if (!user) return;
-
-                // ─── Step 3: Wait for FastAPI client ──────────────────
+                // ─── Step 2: Wait for FastAPI client (auto-v-api.js) ──
                 if (!window.autoV || !window.autoV._initialized) {
                     console.log('⏳ Waiting for autoV (FastAPI client) to initialize...');
                     await new Promise(resolve => {
@@ -1622,6 +1641,10 @@
                         check();
                     });
                 }
+
+                // ─── Step 3: Check Authentication (now bridges token) ─
+                const user = await checkAuth();
+                if (!user) return;
 
                 // ─── Step 4: Initialize UI ─────────────────────────────
                 initTomSelect();
