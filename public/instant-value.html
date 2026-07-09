@@ -901,10 +901,6 @@
             if (window.autoVInstantCheckInitialized) return;
             window.autoVInstantCheckInitialized = true;
 
-            // ─── Supabase Configuration ──────────────────────────────────
-            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
-            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
-
             // ─── MODEL MAPPING ──────────────────────────────────────────
             let MODEL_MAP = {};
             const ENGINE_CAPACITIES = {
@@ -926,7 +922,6 @@
             };
 
             // ─── State ──────────────────────────────────────────────────
-            let supabase = null;
             let currentUser = null;
             let serviceFee = 500;
 
@@ -949,62 +944,31 @@
             const previewTitle = document.getElementById('previewTitle');
             const previewSubtitle = document.getElementById('previewSubtitle');
 
-            // ─── INIT SUPABASE ──────────────────────────────────────────
-            function initSupabase() {
-                try {
-                    if (typeof supabase === 'undefined') {
-                        console.warn('⚠️ Supabase library not loaded');
-                        return false;
-                    }
-                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-                        auth: {
-                            persistSession: true,
-                            autoRefreshToken: true,
-                            detectSessionInUrl: true
-                        }
-                    });
-                    console.log('✅ Supabase client initialized');
-                    return true;
-                } catch (error) {
-                    console.error('❌ Failed to initialize Supabase:', error);
-                    return false;
-                }
-            }
-
             // ─── CHECK AUTH ────────────────────────────────────────────
-            // IMPORTANT: this bridges the Supabase session token into
-            // auto-v-api.js's accessToken via window.autoV.setAuthToken().
-            // Without this, every apiRequest() call made from this page
-            // (loadVehicleData, valuations, etc.) is sent with NO
-            // Authorization header, even for a logged-in user — that's
-            // what was causing "Missing bearer token" 401s.
+            // NOTE: this backend issues and verifies its OWN JWTs (see
+            // app/core/security.py) — separate from Supabase Auth's tokens.
+            // A Supabase session.access_token is a real, validly-signed JWT,
+            // but it's signed with SUPABASE's key, not this app's
+            // settings.secret_key, so the backend correctly rejects it as
+            // "Invalid or expired token" if sent as the bearer token.
+            //
+            // The correct check is the app's OWN auth state: whatever token
+            // auto-v-api.js already has loaded from localStorage (set at
+            // login time via window.autoV.setAuthToken() on the login page).
+            // window.autoV.getCurrentUser() validates that token against
+            // /auth/me and returns the user if it's still valid — this is
+            // the same pattern mileage.html already uses successfully.
             async function checkAuth() {
-                if (!supabase) return null;
+                if (!window.autoV) return null;
 
                 try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (!session) {
-                        window.location.href = 'login.html';
-                        return null;
-                    }
-
-                    const { data: { user } } = await supabase.auth.getUser();
+                    const user = await window.autoV.getCurrentUser();
                     if (!user) {
                         window.location.href = 'login.html';
                         return null;
                     }
 
                     currentUser = user;
-
-                    // ─── Bridge the token so auto-v-api.js can use it ───
-                    if (window.autoV && window.autoV.setAuthToken && session.access_token) {
-                        window.autoV.setAuthToken(session.access_token);
-                        console.log('✅ Bearer token bridged to autoV');
-                    } else {
-                        console.warn('⚠️ window.autoV not ready yet — token NOT bridged. ' +
-                            'API calls made before autoV loads will be missing auth.');
-                    }
-
                     console.log('✅ Authenticated user:', user.email);
                     return user;
                 } catch (error) {
@@ -1620,14 +1584,7 @@
             async function init() {
                 console.log('🚗 AUTO-V Instant Value Check - Initializing...');
 
-                // ─── Step 1: Initialize Supabase ──────────────────────
-                const initialized = initSupabase();
-                if (!initialized) {
-                    if (window.autoV) window.autoV.showToast('Failed to initialize authentication service.', 'error');
-                    return;
-                }
-
-                // ─── Step 2: Wait for FastAPI client (auto-v-api.js) ──
+                // ─── Step 1: Wait for FastAPI client (auto-v-api.js) ──
                 if (!window.autoV || !window.autoV._initialized) {
                     console.log('⏳ Waiting for autoV (FastAPI client) to initialize...');
                     await new Promise(resolve => {
@@ -1642,11 +1599,11 @@
                     });
                 }
 
-                // ─── Step 3: Check Authentication (now bridges token) ─
+                // ─── Step 2: Check Authentication ──────────────────────
                 const user = await checkAuth();
                 if (!user) return;
 
-                // ─── Step 4: Initialize UI ─────────────────────────────
+                // ─── Step 3: Initialize UI ─────────────────────────────
                 initTomSelect();
                 vehicleTypeSelect.value = 'Car';
                 await loadVehicleData();
