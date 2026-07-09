@@ -12,7 +12,10 @@
             ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ'
         },
         FASTAPI: {
-            BASE_URL: 'https://auto-v.onrender.com/api/v1'
+            // Base for all versioned endpoints (auth, calculate, etc.)
+            BASE_URL: 'https://auto-v.onrender.com/api/v1',
+            // Root of the deployed service — health lives here, NOT under /api/v1
+            ROOT_URL: 'https://auto-v.onrender.com'
         }
     };
 
@@ -67,6 +70,23 @@
         } catch (error) {
             console.error('API request failed:', error);
             throw error;
+        }
+    }
+
+    // ─── HEALTH CHECK (root, not versioned) ────────────────────
+    // The backend mounts /health at the app root, NOT under /api/v1,
+    // unlike auth/calculate which are mounted under /api/v1.
+    async function checkHealth() {
+        const url = `${CONFIG.FASTAPI.ROOT_URL}/health`;
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+            return response.ok;
+        } catch (error) {
+            console.warn('Health check failed:', error);
+            return false;
         }
     }
 
@@ -152,6 +172,7 @@
 
         // API Methods
         apiRequest: apiRequest,
+        checkHealth: checkHealth,
         getSupabaseClient: getSupabaseClient,
 
         // Auth
@@ -173,6 +194,7 @@
 
     console.log('🚀 AUTO-V API Client initialized');
     console.log(`📌 API Base: ${CONFIG.FASTAPI.BASE_URL}`);
+    console.log(`📌 Health URL: ${CONFIG.FASTAPI.ROOT_URL}/health`);
     console.log(`📌 Supabase: ${CONFIG.SUPABASE.URL}`);
 
 })();
