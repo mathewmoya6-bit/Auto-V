@@ -6,11 +6,13 @@
     <title>AUTO-V | Login</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    
+
     <!-- ─── Supabase JS ────────────────────────────────────────────── -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-    </script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- ─── FastAPI Client (must load before login script runs) ───── -->
+    <script src="/auto-v-api.js"></script>
+
     <style>
         /* ─── RESET & BASE ─── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -366,7 +368,10 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V LOGIN — Production-Ready (10/10)
+        // AUTO-V LOGIN — Production-Ready
+        // Signs in against Supabase (for session/email verification state)
+        // AND against the FastAPI backend's own /auth/login (for the bearer
+        // token every other API call depends on).
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -433,20 +438,23 @@
             }
 
             // ─── CHECK SESSION & REDIRECT ──────────────────────────────
+            // Only redirect if BOTH a Supabase session AND a FastAPI bearer
+            // token already exist — otherwise a half-logged-in visitor would
+            // get bounced to the dashboard and immediately hit 401s there.
             async function checkSessionAndRedirect() {
                 if (!supabase) return false;
 
                 try {
                     const { data: { session } } = await supabase.auth.getSession();
+                    const hasApiToken = !!localStorage.getItem('access_token');
 
-                    if (session) {
-                        const role = session.user?.app_metadata?.role || 
-                                   session.user?.user_metadata?.role || 
+                    if (session && hasApiToken) {
+                        const role = session.user?.app_metadata?.role ||
+                                   session.user?.user_metadata?.role ||
                                    'user';
-                        
+
                         const redirectTo = role === 'admin' ? ADMIN_DASHBOARD_URL : DASHBOARD_URL;
-                        
-                        // Use replace() to prevent back button to login
+
                         window.location.replace(redirectTo);
                         return true;
                     }
@@ -463,13 +471,16 @@
             async function handleLogin(e) {
                 e.preventDefault();
 
-                // Prevent double submission
                 if (isSubmitting || btn.disabled) return;
                 clearMessage();
 
-                // Ensure Supabase is initialized
                 if (!supabase) {
                     if (!initSupabase()) return;
+                }
+
+                if (!window.autoV || !window.autoV._initialized) {
+                    showMessage('❌ API client failed to load. Please refresh the page.', 'error');
+                    return;
                 }
 
                 const email = emailInput.value.trim();
@@ -497,7 +508,7 @@
                 );
 
                 try {
-                    // ─── Attempt Login ──────────────────────────────────
+                    // ─── Step 1: Sign in with Supabase ──────────────────
                     const loginPromise = supabase.auth.signInWithPassword({
                         email: email,
                         password: password
@@ -518,9 +529,28 @@
                         return;
                     }
 
+                    // ─── Step 2: Log in against the FastAPI backend ────
+                    // This is what every other page's apiRequest() calls
+                    // depend on — without this, all API calls fail with
+                    // "Missing bearer token" / "Invalid or expired token".
+                    try {
+                        await window.autoV.login(email, password);
+                    } catch (apiError) {
+                        console.error('FastAPI login failed:', apiError);
+                        showMessage(
+                            '❌ Backend login failed: ' + (apiError.message || 'Unknown error') +
+                            '. Your account may not be fully set up — please contact support if this persists.',
+                            'error'
+                        );
+                        btn.disabled = false;
+                        btn.innerHTML = 'Sign In';
+                        isSubmitting = false;
+                        return;
+                    }
+
                     // ─── Get Role from app_metadata (more secure) ──────
-                    const role = user?.app_metadata?.role || 
-                               user?.user_metadata?.role || 
+                    const role = user?.app_metadata?.role ||
+                               user?.user_metadata?.role ||
                                'user';
 
                     const redirectTo = role === 'admin' ? ADMIN_DASHBOARD_URL : DASHBOARD_URL;
@@ -528,8 +558,6 @@
                     // ─── Success ────────────────────────────────────────
                     showMessage('✅ Login successful!', 'success');
 
-                    // ─── Redirect ──────────────────────────────────────
-                    // Use replace() to prevent back button to login
                     setTimeout(() => {
                         window.location.replace(redirectTo);
                     }, 500);
@@ -537,7 +565,6 @@
                 } catch (error) {
                     console.error('Login error:', error);
 
-                    // ─── Error Handling ─────────────────────────────────
                     const errorMsg = error.message || 'Login failed';
 
                     switch (true) {
@@ -557,7 +584,6 @@
                             showMessage(`❌ ${errorMsg}`, 'error');
                     }
 
-                    // ─── Reset Button ──────────────────────────────────
                     btn.disabled = false;
                     btn.innerHTML = 'Sign In';
                     isSubmitting = false;
@@ -584,7 +610,7 @@
 
                 try {
                     const redirectTo = `${window.location.origin}/reset-password.html`;
-                    
+
                     const { error } = await supabase.auth.resetPasswordForEmail(email, {
                         redirectTo: redirectTo
                     });
@@ -606,23 +632,19 @@
                 handlePasswordReset();
             });
 
-            // Clear message when user starts typing
             emailInput.addEventListener('focus', clearMessage);
             passwordInput.addEventListener('focus', clearMessage);
 
             // ─── INIT ──────────────────────────────────────────────────
             async function init() {
-                // 1. Initialize Supabase
                 const initialized = initSupabase();
 
                 if (initialized) {
-                    // 2. Check if already logged in
                     const hasSession = await checkSessionAndRedirect();
 
-                    // 3. If no session, show login form
                     if (!hasSession) {
                         setTimeout(() => emailInput.focus(), 200);
-                        console.log('🚀 AUTO-V Login (10/10 Production Ready)');
+                        console.log('🚀 AUTO-V Login');
                         console.log(`📌 Supabase: ${SUPABASE_URL}`);
                         console.log(`📌 Dashboard: ${DASHBOARD_URL}`);
                         console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD_URL}`);
@@ -630,7 +652,6 @@
                 }
             }
 
-            // Start when DOM is ready
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', init);
             } else {
