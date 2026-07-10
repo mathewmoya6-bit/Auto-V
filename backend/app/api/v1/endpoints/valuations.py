@@ -1,45 +1,48 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
-from datetime import datetime
-
-# Import directly from the specific schema modules to avoid circular imports
-from app.schemas.valuation import (
-    ValuationRequest,
-    ValuationResponse,
-    InstantValueRequest,
-    InstantValueResponse
-)
+from fastapi import APIRouter, HTTPException, Depends
+from app.services.valuation_service import ValuationService
+from app.schemas.valuation import ValuationRequest, ValuationResponse
+from app.core.security import get_current_active_user
 
 router = APIRouter()
+valuation_service = ValuationService()
 
-@router.post("/valuations", response_model=ValuationResponse)
-async def create_valuation(request: ValuationRequest):
-    """
-    Create a detailed property valuation
-    """
-    return ValuationResponse(
-        property_id=request.property_id,
-        estimated_value=450000,
-        estimated_value_range_low=425000,
-        estimated_value_range_high=475000,
-        confidence_score=87.5,
-        valuation_method=request.valuation_method
-    )
 
-@router.post("/instant-value", response_model=InstantValueResponse)
-async def get_instant_value(request: InstantValueRequest):
-    """
-    Get an instant property value estimate
-    """
-    return InstantValueResponse(
-        property_id=request.property_id,
-        instant_value=450000,
-        value_range={"min": 425000, "max": 475000},
-        confidence_level=87.5,
-        estimated_at=datetime.now(),
-        price_per_sqft=250,
-        vs_zip_median=1.05,
-        vs_city_median=0.92,
-        market_trend="up",
-        data_source="Automated Valuation Model"
-    )
+@router.post("/valuation/calculate", response_model=ValuationResponse)
+async def calculate_valuation(
+    request: ValuationRequest,
+    current_user = Depends(get_current_active_user)
+):
+    """Calculate vehicle valuation based on various factors"""
+    try:
+        valuation = await valuation_service.calculate_valuation(request)
+        return valuation
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/vehicles/{vehicle_id}/valuation")
+async def get_vehicle_valuation(
+    vehicle_id: str,
+    current_user = Depends(get_current_active_user)
+):
+    """Get current valuation for a specific vehicle"""
+    try:
+        valuation = await valuation_service.get_vehicle_valuation(vehicle_id)
+        if not valuation:
+            raise HTTPException(status_code=404, detail="Valuation not found")
+        return valuation
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/valuation/history/{vehicle_id}")
+async def get_valuation_history(
+    vehicle_id: str,
+    current_user = Depends(get_current_active_user)
+):
+    """Get valuation history for a vehicle"""
+    try:
+        history = await valuation_service.get_valuation_history(vehicle_id)
+        return history
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
