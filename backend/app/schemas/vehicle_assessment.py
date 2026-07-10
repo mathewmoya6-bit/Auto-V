@@ -59,34 +59,10 @@ class InvestmentRecommendation(BaseModel):
 
 
 # ==========================================================
-# Create Assessment
-# ==========================================================
-
-class AssessmentCreate(BaseModel):
-    make: str
-    model: str
-    year: int
-    mileage: int
-    condition: str
-    location: str
-
-
-# ==========================================================
-# Update Assessment
-# ==========================================================
-
-class AssessmentUpdate(BaseModel):
-    mileage: Optional[int] = None
-    condition: Optional[str] = None
-    location: Optional[str] = None
-
-
-# ==========================================================
 # Vehicle Assessment Request
 # ==========================================================
 
 class VehicleAssessmentRequest(BaseModel):
-
     type: str = "Car"
 
     make: str
@@ -109,7 +85,6 @@ class VehicleAssessmentRequest(BaseModel):
     body_condition: Optional[str] = None
     interior_condition: Optional[str] = None
     mechanical_condition: Optional[str] = None
-
     tire_condition: Optional[str] = "Good"
 
     price: Optional[float] = None
@@ -117,28 +92,72 @@ class VehicleAssessmentRequest(BaseModel):
 
 
 # ==========================================================
-# Vehicle Assessment Response
+# Compatibility
+# ==========================================================
+
+class AssessmentCreate(VehicleAssessmentRequest):
+    pass
+
+
+class AssessmentUpdate(BaseModel):
+    type: Optional[str] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    mileage: Optional[int] = None
+    condition: Optional[str] = None
+    accident_history: Optional[str] = None
+    location: Optional[str] = None
+    previous_owners: Optional[int] = None
+    fuel_type: Optional[str] = None
+    transmission: Optional[str] = None
+    body_type: Optional[str] = None
+    engine_capacity: Optional[int] = None
+    service_history: Optional[bool] = None
+    body_condition: Optional[str] = None
+    interior_condition: Optional[str] = None
+    mechanical_condition: Optional[str] = None
+    tire_condition: Optional[str] = None
+    price: Optional[float] = None
+    usage_type: Optional[str] = None
+
+
+# ==========================================================
+# Response
 # ==========================================================
 
 class VehicleAssessmentResponse(BaseModel):
-
     market_value: float
-
     condition_assessment: ConditionAssessment
-
     maintenance_cost: float
-
     depreciation_forecast: List[DepreciationForecastItem]
-
     investment_recommendation: InvestmentRecommendation
 
     assessment_id: str
-
     user_id: Optional[str] = None
-
     vehicle_details: Optional[Dict[str, Any]] = None
-
     generated_at: str
+
+
+class AssessmentResponse(VehicleAssessmentResponse):
+    pass
+
+
+# ==========================================================
+# List Item
+# ==========================================================
+
+class VehicleAssessmentListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    make: str
+    model: str
+    year: int
+    mileage: int
+    condition: str
+    market_value: float
+    created_at: datetime
 
 
 # ==========================================================
@@ -146,11 +165,9 @@ class VehicleAssessmentResponse(BaseModel):
 # ==========================================================
 
 class AssessmentHistoryResponse(BaseModel):
-
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-
     user_id: str
 
     make: str
@@ -168,7 +185,6 @@ class AssessmentHistoryResponse(BaseModel):
     condition_rating: str
 
     maintenance_cost: float
-
     investment_rating: str
 
     assessment_data: Dict[str, Any]
@@ -177,27 +193,21 @@ class AssessmentHistoryResponse(BaseModel):
 
 
 # ==========================================================
-# Stats
+# Statistics
 # ==========================================================
 
 class AssessmentStats(BaseModel):
-
     total_assessments: int
-
     average_value: float
-
     average_condition_score: float
-
     average_maintenance_cost: float
 
     highest_value: float
-
     lowest_value: float
 
     last_30_days: int
 
     investment_ratings: Dict[str, int]
-
     condition_ratings: Dict[str, int]
 
 
@@ -217,7 +227,7 @@ class BulkAssessmentResponse(BaseModel):
 
 
 # ==========================================================
-# Compare
+# Comparison
 # ==========================================================
 
 class AssessmentComparisonRequest(BaseModel):
@@ -229,51 +239,3 @@ class AssessmentComparisonResponse(BaseModel):
     comparison: Dict[str, Any]
     user_id: Optional[str] = None
     calculated_at: str
-    from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
-from uuid import UUID
-from datetime import datetime
-
-
-# --------------------------------------------------
-# Compatibility Schemas
-# --------------------------------------------------
-
-class AssessmentCreate(VehicleAssessmentRequest):
-    """Create Assessment"""
-    pass
-
-
-class AssessmentUpdate(BaseModel):
-    make: Optional[str] = None
-    model: Optional[str] = None
-    year: Optional[int] = None
-    mileage: Optional[int] = None
-    condition: Optional[str] = None
-    accident_history: Optional[str] = None
-    location: Optional[str] = None
-    previous_owners: Optional[int] = None
-    fuel_type: Optional[str] = None
-    transmission: Optional[str] = None
-    body_type: Optional[str] = None
-    engine_capacity: Optional[int] = None
-    service_history: Optional[bool] = None
-    price: Optional[float] = None
-
-
-class AssessmentResponse(VehicleAssessmentResponse):
-    """Alias for compatibility"""
-    pass
-
-
-class VehicleAssessmentListItem(BaseModel):
-    id: UUID
-    make: str
-    model: str
-    year: int
-    mileage: int
-    condition: str
-    market_value: float
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
