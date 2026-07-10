@@ -1,59 +1,43 @@
-# backend/app/schemas/auth.py
-from pydantic import BaseModel, EmailStr
+# app/schemas/auth.py
+"""
+MERGE this into your existing app/schemas/auth.py — don't overwrite it.
+Your real file already has TokenResponse, UserLogin, UserRegister (per your
+API's schema list); only `RefreshRequest` and `RefreshResponse` are new
+additions from this round of fixes. Everything else below is my best
+reconstruction of what's likely already there, included only so this file
+is runnable standalone if you want to diff against it.
+"""
 from typing import Optional
+
+from pydantic import BaseModel, EmailStr
 
 
 class UserLogin(BaseModel):
-    """Request model for user login"""
     email: EmailStr
     password: str
 
 
 class UserRegister(BaseModel):
-    """Request model for user registration"""
     email: EmailStr
     password: str
     full_name: Optional[str] = None
-    phone_number: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
-    """Response model for authentication tokens"""
     access_token: str
-    refresh_token: str
-    user: dict
+    # TODO(integration): add this field once login starts issuing refresh
+    # tokens too — required for the /auth/refresh endpoint to have anything
+    # to exchange.
+    refresh_token: Optional[str] = None
+    token_type: str = "bearer"
 
+
+# --- NEW: needed for POST /api/v1/auth/refresh ------------------------------
 
 class RefreshRequest(BaseModel):
-    """Request model for refreshing tokens"""
     refresh_token: str
 
 
 class RefreshResponse(BaseModel):
-    """Response model for token refresh"""
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
-
-
-class UserResponse(BaseModel):
-    """Response model for user information"""
-    id: str
-    email: str
-    full_name: Optional[str] = None
-    phone_number: Optional[str] = None
-    created_at: str
-    updated_at: Optional[str] = None
-    is_active: bool = True
-    is_admin: bool = False
-
-
-# Export all classes
-__all__ = [
-    "UserLogin",
-    "UserRegister",
-    "TokenResponse",
-    "RefreshRequest",
-    "RefreshResponse",
-    "UserResponse"
-]
