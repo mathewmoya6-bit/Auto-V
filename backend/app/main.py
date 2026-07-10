@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.project_name,
-    version="1.0.0",
+    version=settings.app_version,
     debug=settings.debug,
 )
 
@@ -57,4 +57,5 @@ from app.api.v1.api import api_router  # noqa: E402
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
-logger.info(f"{settings.project_name} started in {settings.environment} mode")
+# Fixed: Changed settings.environment to settings.env
+logger.info("%s started in %s mode", settings.project_name, settings.env)
