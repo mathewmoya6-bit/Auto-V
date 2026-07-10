@@ -6,8 +6,8 @@
 Single shared Supabase client instances.
 
 - `supabase_anon`: uses the anon key, respects Row Level Security (RLS).
-  Use this for auth operations (sign in/up/out) so Supabase's own
-  auth rules apply exactly as they would from a client app.
+  Use this for auth operations (sign in/up/out, token refresh) so
+  Supabase's own auth rules apply exactly as they would from a client app.
 
 - `supabase_admin`: uses the service role key, bypasses RLS.
   Use this ONLY for trusted server-side operations (writes, admin
