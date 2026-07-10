@@ -774,6 +774,8 @@
                         <option value="Nandi">Nandi</option>
                         <option value="Kakamega">Kakamega</option>
                         <option value="Vihiga">Vihiga</option>
+                        <option value="Siaya">Siaya</option>
+                        <option value="Bomet">Bomet</option>
                         <option value="Other">Other</option>
                     </select>
                 </div>
@@ -945,19 +947,6 @@
             const previewSubtitle = document.getElementById('previewSubtitle');
 
             // ─── CHECK AUTH ────────────────────────────────────────────
-            // NOTE: this backend issues and verifies its OWN JWTs (see
-            // app/core/security.py) — separate from Supabase Auth's tokens.
-            // A Supabase session.access_token is a real, validly-signed JWT,
-            // but it's signed with SUPABASE's key, not this app's
-            // settings.secret_key, so the backend correctly rejects it as
-            // "Invalid or expired token" if sent as the bearer token.
-            //
-            // The correct check is the app's OWN auth state: whatever token
-            // auto-v-api.js already has loaded from localStorage (set at
-            // login time via window.autoV.setAuthToken() on the login page).
-            // window.autoV.getCurrentUser() validates that token against
-            // /auth/me and returns the user if it's still valid — this is
-            // the same pattern mileage.html already uses successfully.
             async function checkAuth() {
                 if (!window.autoV) return null;
 
@@ -1141,8 +1130,6 @@
                 try {
                     if (!window.autoV) throw new Error('API client not available');
                     const data = await window.autoV.apiRequest('/settings/instant_fee');
-                    // settings.py returns { fee, currency } — fall back to
-                    // setting_value for backward compatibility if present.
                     serviceFee = parseInt(data.fee ?? data.setting_value, 10) || 500;
                     serviceFeeDisplay.textContent = `KES ${serviceFee.toLocaleString()}`;
                     return serviceFee;
@@ -1275,8 +1262,8 @@
             // ─── SHOW RESULT WITH ANIMATION ──────────────────────────
             function showResult(data) {
                 const marketValue = data.market_value || 0;
-                const rangeMin = Math.round(marketValue * 0.88);
-                const rangeMax = Math.round(marketValue * 1.05);
+                const rangeMin = data.range_low || Math.round(marketValue * 0.88);
+                const rangeMax = data.range_high || Math.round(marketValue * 1.05);
                 const confidence = data.confidence_score || 87;
 
                 const el = document.getElementById('resultMarketValue');
@@ -1307,7 +1294,7 @@
                     hour: '2-digit',
                     minute: '2-digit'
                 });
-                document.getElementById('resultCert').textContent = `AUTO-VAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+                document.getElementById('resultCert').textContent = data.certificate_number || `AUTO-VAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
                 const confidenceFill = document.getElementById('confidenceFill');
                 confidenceFill.style.width = '0%';
@@ -1431,7 +1418,7 @@
                     return;
                 }
 
-                // Check if user is authenticated via Supabase
+                // Check if user is authenticated
                 if (!currentUser) {
                     const user = await checkAuth();
                     if (!user) return;
@@ -1479,7 +1466,7 @@
                         if (step <= 5) updateLoadingStep(step);
                     }, 1200);
 
-                    // ─── Step 1: Save valuation via FastAPI ────────────
+                    // ─── Step 1: Create valuation record ──────────────
                     const valuationData = {
                         user_id: currentUser.id,
                         make: formData.make,
@@ -1504,7 +1491,7 @@
                         body: JSON.stringify(valuationData)
                     });
 
-                    // ─── Step 2: Get AI valuation via FastAPI ──────────
+                    // ─── Step 2: Get AI valuation ──────────────────────
                     const result = await window.autoV.apiRequest('/valuations/instant', {
                         method: 'POST',
                         body: JSON.stringify({
@@ -1576,15 +1563,10 @@
             });
 
             // ─── INIT ──────────────────────────────────────────────────
-            // NOTE: order changed from the original — we now wait for
-            // window.autoV to be ready BEFORE calling checkAuth(), so
-            // that checkAuth() can reliably call window.autoV.setAuthToken().
-            // Calling checkAuth() before autoV exists was the root cause
-            // of the "Missing bearer token" 401s.
             async function init() {
                 console.log('🚗 AUTO-V Instant Value Check - Initializing...');
 
-                // ─── Step 1: Wait for FastAPI client (auto-v-api.js) ──
+                // Wait for FastAPI client
                 if (!window.autoV || !window.autoV._initialized) {
                     console.log('⏳ Waiting for autoV (FastAPI client) to initialize...');
                     await new Promise(resolve => {
@@ -1599,11 +1581,11 @@
                     });
                 }
 
-                // ─── Step 2: Check Authentication ──────────────────────
+                // Check Authentication
                 const user = await checkAuth();
                 if (!user) return;
 
-                // ─── Step 3: Initialize UI ─────────────────────────────
+                // Initialize UI
                 initTomSelect();
                 vehicleTypeSelect.value = 'Car';
                 await loadVehicleData();
