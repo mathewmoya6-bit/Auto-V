@@ -4,6 +4,7 @@ from .auth import (
     UserRegister,
     TokenResponse,
     RefreshRequest,
+    RefreshResponse,
     UserResponse
 )
 from .user import UserProfile
@@ -30,6 +31,7 @@ __all__ = [
     "UserRegister",
     "TokenResponse",
     "RefreshRequest",
+    "RefreshResponse",
     "UserResponse",
     
     # User
