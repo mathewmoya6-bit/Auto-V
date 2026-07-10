@@ -1068,4 +1068,43 @@ async def admin_get_assessment_stats(
                 "total_assessments": 0,
                 "average_value": 0,
                 "average_condition_score": 0,
-               
+                "total_users": 0,
+                "investment_ratings": {
+                    "Strong Buy": 0,
+                    "Buy": 0,
+                    "Hold": 0,
+                    "Caution": 0,
+                    "Avoid": 0
+                }
+            }
+        
+        total = len(data)
+        values = [v.get("market_value", 0) for v in data if v.get("market_value")]
+        condition_scores = [v.get("condition_score", 0) for v in data if v.get("condition_score")]
+        
+        # Get unique users
+        users = set(v.get("user_id") for v in data if v.get("user_id"))
+        
+        # Count investment ratings
+        investment_ratings = {
+            "Strong Buy": 0,
+            "Buy": 0,
+            "Hold": 0,
+            "Caution": 0,
+            "Avoid": 0
+        }
+        for v in data:
+            rating = v.get("investment_rating")
+            if rating in investment_ratings:
+                investment_ratings[rating] += 1
+        
+        return {
+            "total_assessments": total,
+            "average_value": round(sum(values) / len(values), 2) if values else 0,
+            "average_condition_score": round(sum(condition_scores) / len(condition_scores), 2) if condition_scores else 0,
+            "total_users": len(users),
+            "investment_ratings": investment_ratings
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
