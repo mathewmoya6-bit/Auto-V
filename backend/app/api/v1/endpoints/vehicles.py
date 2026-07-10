@@ -12,7 +12,43 @@ from app.core.security import get_current_user, get_current_active_user
 router = APIRouter()
 
 
-@router.get("/vehicles", response_model=List[VehicleResponse])
+@router.get("/models")
+async def list_vehicle_models():
+    """Get all vehicle makes and models for dropdowns"""
+    try:
+        result = (
+            supabase
+            .table("vehicles")
+            .select("make, model")
+            .execute()
+        )
+        
+        # Build unique make-model pairs
+        models = []
+        seen = set()
+        for item in result.data:
+            key = f"{item['make']}|{item['model']}"
+            if key not in seen:
+                seen.add(key)
+                models.append({
+                    "make": item["make"],
+                    "model": item["model"]
+                })
+        
+        return models
+    except Exception as e:
+        # Return fallback data if table doesn't exist
+        return [
+            {"make": "Toyota", "model": "Corolla"},
+            {"make": "Toyota", "model": "Camry"},
+            {"make": "Honda", "model": "Civic"},
+            {"make": "Nissan", "model": "X-Trail"},
+            {"make": "BMW", "model": "X5"},
+            {"make": "Mercedes", "model": "C-Class"}
+        ]
+
+
+@router.get("/", response_model=List[VehicleResponse])
 async def get_my_vehicles(
     current_user = Depends(get_current_active_user),
     status: Optional[str] = None
@@ -35,7 +71,7 @@ async def get_my_vehicles(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/vehicles", response_model=VehicleResponse)
+@router.post("/", response_model=VehicleResponse)
 async def create_vehicle(
     vehicle: VehicleCreate,
     current_user = Depends(get_current_active_user)
@@ -56,7 +92,7 @@ async def create_vehicle(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/vehicles/{vehicle_id}", response_model=VehicleDetailResponse)
+@router.get("/{vehicle_id}", response_model=VehicleDetailResponse)
 async def get_vehicle(
     vehicle_id: str,
     current_user = Depends(get_current_active_user)
@@ -85,7 +121,7 @@ async def get_vehicle(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/vehicles/{vehicle_id}", response_model=VehicleResponse)
+@router.put("/{vehicle_id}", response_model=VehicleResponse)
 async def update_vehicle(
     vehicle_id: str,
     vehicle_update: VehicleUpdate,
@@ -120,7 +156,7 @@ async def update_vehicle(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/vehicles/{vehicle_id}")
+@router.delete("/{vehicle_id}")
 async def delete_vehicle(
     vehicle_id: str,
     current_user = Depends(get_current_active_user)
