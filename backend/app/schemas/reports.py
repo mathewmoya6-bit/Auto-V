@@ -53,7 +53,7 @@ class ReportRequest(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     vehicle_id: Optional[str] = None
-    report_format: str = "json"  # json, pdf, csv
+    report_format: str = "json"
 
 
 class ReportResponse(BaseModel):
