@@ -1,60 +1,20 @@
-# app/core/deps.py
-# =============================================================================
-# AUTO-V API - Shared Dependencies
-# =============================================================================
-"""
-Reusable FastAPI dependencies. `get_current_user` is what every protected
-route should depend on — it validates the bearer token against Supabase
-and returns the authenticated user, or raises 401.
-"""
-import logging
-
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from app.core.supabase_client import supabase_anon
-
-logger = logging.getLogger(__name__)
-
-bearer_scheme = HTTPBearer(auto_error=False)
+from typing import Optional
+from fastapi import Depends
+from supabase import Client
+from app.core.database import get_supabase, get_admin_client
+from app.core.security import get_current_user
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-):
-    """
-    Validates the Authorization: Bearer <token> header against Supabase
-    and returns the Supabase user object. Use as a route dependency:
+def get_supabase_client() -> Client:
+    """Dependency for Supabase client"""
+    return get_supabase()
 
-        @router.get("/protected")
-        async def protected_route(user = Depends(get_current_user)):
-            ...
-    """
-    if credentials is None or not credentials.credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
-    token = credentials.credentials
+def get_admin_client_dep() -> Client:
+    """Dependency for admin client"""
+    return get_admin_client()
 
-    try:
-        result = supabase_anon.auth.get_user(token)
-    except Exception as exc:
-        logger.warning(f"Token validation failed: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
-    user = result.user if result else None
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return user
+# Optional: Get current user ID helper
+async def get_current_user_id(current_user = Depends(get_current_user)):
+    return current_user.id
