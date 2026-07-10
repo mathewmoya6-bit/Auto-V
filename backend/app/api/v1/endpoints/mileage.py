@@ -101,7 +101,7 @@ async def add_mileage_entry(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/mileage/latest")
+@router.get("/latest", response_model=List[MileageEntryResponse])
 async def get_latest_mileage_entries(
     limit: int = 10,
     current_user = Depends(get_current_active_user)
