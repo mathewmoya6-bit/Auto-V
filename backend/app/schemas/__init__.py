@@ -9,8 +9,9 @@ from .users import (
 from .vehicle_assessment import (
     AssessmentCreate,
     AssessmentUpdate,
-    VehicleAssessmentRequest,
+    AssessmentResponse,
     VehicleAssessmentResponse,
+    VehicleAssessmentListItem,
     AssessmentHistoryResponse,
     AssessmentStats,
     BulkAssessmentRequest,
@@ -26,12 +27,16 @@ __all__ = [
 
     "AssessmentCreate",
     "AssessmentUpdate",
-    "VehicleAssessmentRequest",
+    "AssessmentResponse",
     "VehicleAssessmentResponse",
+    "VehicleAssessmentListItem",
+
     "AssessmentHistoryResponse",
     "AssessmentStats",
+
     "BulkAssessmentRequest",
     "BulkAssessmentResponse",
+
     "AssessmentComparisonRequest",
     "AssessmentComparisonResponse",
 ]
