@@ -1,5 +1,5 @@
 from .auth import *
-from .user import UserProfile
+from .users import UserProfile
 
 __all__ = [
     "UserProfile",
