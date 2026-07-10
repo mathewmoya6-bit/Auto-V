@@ -23,5 +23,5 @@ __all__ = [
     "payments_router",
     "inspections_router",
     "reports_router",
-    "settings_router"
+    "settings_router",
 ]
