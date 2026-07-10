@@ -1,20 +1,6 @@
-# app/api/v1/endpoints/vehicle_assessments.py
-"""
-Vehicle Assessments routes.
-
-All routes require auth and should verify the caller owns/can access
-`vehicle_id` (same pattern your Vehicles/Inspections modules presumably
-already use — swap in your real ownership check).
-
-TODO(integration): adjust imports to your real project layout:
-  - app.api.deps.get_db
-  - app.api.deps.get_current_user
-  - your existing "assert_vehicle_owned_by_user" style dependency/helper
-"""
 from uuid import UUID
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.vehicle_assessment import (
     AssessmentCreate,
@@ -29,83 +15,130 @@ from app.schemas.vehicle_assessment import (
     AssessmentComparisonRequest,
     AssessmentComparisonResponse,
 )
-)
+
 from app.services import vehicle_assessment_service as service
 
-# from app.api.deps import get_db, get_current_user
-
-router = APIRouter()
+router = APIRouter(
+    prefix="/vehicle-assessments",
+    tags=["Vehicle Assessments"],
+)
 
 
 @router.post(
-    "/vehicles/{vehicle_id}/assessments",
+    "/{vehicle_id}",
     response_model=VehicleAssessmentResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=["Vehicle Assessments"],
 )
 async def create_vehicle_assessment(
     vehicle_id: UUID,
-    payload: AssessmentCreate = AssessmentCreate(),
-    # db=Depends(get_db),
-    # current_user=Depends(get_current_user),
+    payload: AssessmentCreate,
 ):
-    """Generate a new composite assessment for a vehicle (inspection + valuation + mileage)."""
-    # TODO(integration): verify current_user owns vehicle_id, else 403/404
-    return await service.create_assessment(db=None, vehicle_id=vehicle_id, payload=payload)
+    """Create a vehicle assessment."""
+    return await service.create_assessment(
+        vehicle_id=vehicle_id,
+        payload=payload,
+    )
 
 
 @router.get(
-    "/vehicles/{vehicle_id}/assessments",
+    "/{vehicle_id}",
     response_model=list[VehicleAssessmentListItem],
-    tags=["Vehicle Assessments"],
 )
-async def get_vehicle_assessments(
+async def list_vehicle_assessments(
     vehicle_id: UUID,
-    # db=Depends(get_db),
-    # current_user=Depends(get_current_user),
 ):
-    """List all assessments generated for a vehicle, most recent first."""
-    return await service.list_assessments(db=None, vehicle_id=vehicle_id)
+    """List assessments for a vehicle."""
+    return await service.list_assessments(
+        vehicle_id=vehicle_id,
+    )
 
 
 @router.get(
-    "/assessments/{assessment_id}",
+    "/assessment/{assessment_id}",
     response_model=VehicleAssessmentResponse,
-    tags=["Vehicle Assessments"],
 )
-async def get_assessment(
+async def get_vehicle_assessment(
     assessment_id: UUID,
-    # db=Depends(get_db),
-    # current_user=Depends(get_current_user),
 ):
-    """Retrieve a single assessment by id."""
-    assessment = await service.get_assessment(db=None, assessment_id=assessment_id)
+    """Retrieve one assessment."""
+    assessment = await service.get_assessment(
+        assessment_id=assessment_id,
+    )
+
     if assessment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
     return assessment
 
 
-@router.get(
-    "/assessments/{assessment_id}/report",
-    response_model=VehicleAssessmentReport,
-    tags=["Vehicle Assessments"],
+@router.put(
+    "/assessment/{assessment_id}",
+    response_model=VehicleAssessmentResponse,
 )
-async def get_assessment_report(
+async def update_vehicle_assessment(
     assessment_id: UUID,
-    # db=Depends(get_db),
-    # current_user=Depends(get_current_user),
+    payload: AssessmentUpdate,
 ):
-    """Return a narrative, export-friendly view of an assessment."""
-    assessment = await service.get_assessment(db=None, assessment_id=assessment_id)
-    if assessment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found")
+    """Update an assessment."""
+    assessment = await service.update_assessment(
+        assessment_id=assessment_id,
+        payload=payload,
+    )
 
-    headline = (
-        f"Vehicle scores {assessment.overall_score}/100 "
-        f"(Grade {assessment.condition_grade.value})"
+    if assessment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
+    return assessment
+
+
+@router.delete(
+    "/assessment/{assessment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_vehicle_assessment(
+    assessment_id: UUID,
+):
+    """Delete an assessment."""
+    deleted = await service.delete_assessment(
+        assessment_id=assessment_id,
     )
-    return VehicleAssessmentReport(
-        assessment=assessment,
-        headline=headline,
-        generated_at=datetime.now(timezone.utc),
-    )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
+
+@router.post(
+    "/bulk",
+    response_model=BulkAssessmentResponse,
+)
+async def bulk_assessment(
+    payload: BulkAssessmentRequest,
+):
+    return await service.bulk_assessment(payload)
+
+
+@router.post(
+    "/compare",
+    response_model=AssessmentComparisonResponse,
+)
+async def compare_assessments(
+    payload: AssessmentComparisonRequest,
+):
+    return await service.compare_assessments(payload)
+
+
+@router.get(
+    "/stats",
+    response_model=AssessmentStats,
+)
+async def assessment_stats():
+    return await service.get_stats()
