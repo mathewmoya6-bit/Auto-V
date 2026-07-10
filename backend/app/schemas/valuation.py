@@ -1,27 +1,41 @@
+# app/schemas/valuation.py
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+from uuid import UUID
 from datetime import datetime
 
 
-class ValuationCreate(BaseModel):
+class ValuationRequest(BaseModel):
+    """Request model for creating a valuation"""
     make: str
     model: str
     year: int
-    engine_capacity: Optional[int] = None
-    fuel_type: Optional[str] = None
-    transmission: Optional[str] = None
-    body_type: Optional[str] = None
-    body_color: Optional[str] = None
+    mileage: int
+    condition: str = "Good"
+    accident_history: str = "None"
+    location: str = "Other"
+    previous_owners: int = 1
+    usage_type: str = "Personal"
+    fuel_type: str = "Petrol"
+    transmission: str = "Manual"
+    body_type: str = "Sedan"
+    engine_capacity: int = 1500
+    service_history: bool = False
+
+
+class ValuationCreate(BaseModel):
+    """Model for creating a valuation record"""
+    vehicle_id: UUID
     mileage: int
     condition: str
     accident_history: str
     location: str
-    previous_owners: int = 0
-    usage_type: str = "Personal"
-    phone: str
+    previous_owners: int
+    usage_type: str
 
 
 class ValuationUpdate(BaseModel):
+    """Model for updating a valuation"""
     market_value: Optional[float] = None
     confidence_score: Optional[int] = None
     certificate_number: Optional[str] = None
@@ -30,89 +44,84 @@ class ValuationUpdate(BaseModel):
 
 
 class ValuationResponse(BaseModel):
-    id: str
-    user_id: str
+    """Response model for valuation"""
+    id: UUID
+    user_id: UUID
+    vehicle_id: UUID
     make: str
     model: str
     year: int
-    engine_capacity: Optional[int] = None
-    fuel_type: Optional[str] = None
-    transmission: Optional[str] = None
-    body_type: Optional[str] = None
-    body_color: Optional[str] = None
     mileage: int
     condition: str
     accident_history: str
     location: str
     previous_owners: int
     usage_type: str
-    phone: str
-    market_value: Optional[float] = None
-    confidence_score: Optional[int] = None
-    certificate_number: Optional[str] = None
+    market_value: float
+    confidence_score: int
+    certificate_number: str
     status: str
+    factors: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
 
-class InstantValuationRequest(BaseModel):
-    user_id: Optional[str] = None
-    vehicle: Dict[str, Any]
-    phone: str
-    valuation_id: Optional[str] = None
+class ValuationHistory(BaseModel):
+    """Model for valuation history"""
+    id: UUID
+    vehicle_id: UUID
+    market_value: float
+    confidence_score: int
+    created_at: datetime
 
 
-class InstantValuationResponse(BaseModel):
+class ValuationStats(BaseModel):
+    """Statistics for valuations"""
+    total_valuations: int
+    average_value: float
+    average_confidence: float
+    highest_value: float
+    lowest_value: float
+    last_30_days: int
+
+
+class InstantValueRequest(BaseModel):
+    """Request for instant valuation"""
+    type: str = "Car"
+    make: str
+    model: str
+    year: int
+    mileage: int
+    condition: str = "Good"
+    accident_history: str = "None"
+    location: str = "Other"
+    previous_owners: int = 1
+    fuel_type: str = "Petrol"
+    transmission: str = "Manual"
+    body_type: str = "Sedan"
+    engine_capacity: int = 1500
+    service_history: bool = False
+
+
+class InstantValueResponse(BaseModel):
+    """Response for instant valuation"""
     market_value: float
     range_low: float
     range_high: float
     confidence_score: int
     certificate_number: str
     factors: Dict[str, Any]
-    valuation_id: Optional[str] = None
     created_at: str
 
 
-# ─── Assessment Schemas ────────────────────────────────────────────
-
-class AssessmentFactor(BaseModel):
-    category: str
-    score: int
-    status: str
-
-
-class ConditionAssessment(BaseModel):
-    overall_rating: str
-    score: int
-    color: str
-    details: List[AssessmentFactor]
-
-
-class DepreciationForecastItem(BaseModel):
-    year: str
-    projected_value: float
-    depreciation: float
-    percentage: float
-
-
-class InvestmentRecommendation(BaseModel):
-    rating: str
-    color: str
-    score: int
-    recommendations: List[str]
-
-
-class VehicleAssessmentRequest(BaseModel):
-    vehicle: Dict[str, Any]
-    price: Optional[float] = None
-    valuation_id: Optional[str] = None
-
-
-class VehicleAssessmentResponse(BaseModel):
-    market_value: float
-    condition_assessment: ConditionAssessment
-    maintenance_cost: float
-    depreciation_forecast: List[DepreciationForecastItem]
-    investment_recommendation: InvestmentRecommendation
-    valuation_id: Optional[str] = None
-    generated_at: str
+# __all__ export
+__all__ = [
+    "ValuationRequest",
+    "ValuationCreate",
+    "ValuationUpdate",
+    "ValuationResponse",
+    "ValuationHistory",
+    "ValuationStats",
+    "InstantValueRequest",
+    "InstantValueResponse"
+]
