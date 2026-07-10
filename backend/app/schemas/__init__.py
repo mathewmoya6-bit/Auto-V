@@ -1,5 +1,5 @@
-from .auth import UserLogin, UserRegister, TokenResponse, UserResponse
-from .users import UserBase, UserCreate, UserUpdate
+from .auth import UserLogin, UserRegister, TokenResponse
+from .users import UserBase, UserCreate, UserUpdate, UserResponse
 from .vehicles import VehicleBase, VehicleCreate, VehicleUpdate, VehicleResponse, VehicleDetailResponse
 from .mileage import VehicleCategoryBase, VehicleCategoryCreate, VehicleCategoryResponse
 from .mileage import MileageEntryBase, MileageEntryCreate, MileageEntryResponse
@@ -13,10 +13,10 @@ from .reports import (
 
 __all__ = [
     # Auth
-    "UserLogin", "UserRegister", "TokenResponse", "UserResponse",
+    "UserLogin", "UserRegister", "TokenResponse",
     
     # Users
-    "UserBase", "UserCreate", "UserUpdate",
+    "UserBase", "UserCreate", "UserUpdate", "UserResponse",
     
     # Vehicles
     "VehicleBase", "VehicleCreate", "VehicleUpdate", "VehicleResponse", "VehicleDetailResponse",
