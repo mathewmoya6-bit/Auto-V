@@ -4,7 +4,7 @@ from datetime import datetime
 import uuid
 import random
 from app.core.database import supabase, admin
-from app.schemas.valuations import (
+from app.schemas.valuation import (
     ValuationCreate,
     ValuationUpdate,
     ValuationResponse,
@@ -33,7 +33,7 @@ async def create_valuation(
         
         result = (
             admin
-            .table("valuations")
+            .table("valuation")
             .insert(valuation_data)
             .execute()
         )
@@ -77,7 +77,7 @@ async def get_valuation_history(
     try:
         result = (
             supabase
-            .table("valuations")
+            .table("valuation")
             .select("*")
             .eq("user_id", current_user.id)
             .order("created_at", desc=True)
@@ -98,7 +98,7 @@ async def get_valuation(
     try:
         result = (
             supabase
-            .table("valuations")
+            .table("valuation")
             .select("*")
             .eq("id", valuation_id)
             .execute()
@@ -129,7 +129,7 @@ async def update_valuation(
         # Check ownership
         check = (
             supabase
-            .table("valuations")
+            .table("valuation")
             .select("user_id")
             .eq("id", valuation_id)
             .execute()
@@ -146,7 +146,7 @@ async def update_valuation(
         
         result = (
             admin
-            .table("valuations")
+            .table("valuation")
             .update(update_data)
             .eq("id", valuation_id)
             .execute()
