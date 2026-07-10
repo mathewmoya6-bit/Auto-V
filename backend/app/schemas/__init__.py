@@ -1,40 +1,53 @@
-from .auth import UserLogin, UserRegister, TokenResponse
-from .users import UserBase, UserCreate, UserUpdate, UserResponse
-from .vehicles import VehicleBase, VehicleCreate, VehicleUpdate, VehicleResponse, VehicleDetailResponse
-from .mileage import VehicleCategoryBase, VehicleCategoryCreate, VehicleCategoryResponse
-from .mileage import MileageEntryBase, MileageEntryCreate, MileageEntryResponse
-from .valuation import ValuationRequest, ValuationResponse, ValuationHistory
-from .payments import PaymentRequest, PaymentResponse, PaymentStatus
-from .inspections import InspectionBase, InspectionCreate, InspectionUpdate, InspectionResponse, InspectionReport
-from .reports import (
-    ReportBase, ValuationReport, MileageReport, InspectionReportSummary,
-    ComprehensiveVehicleReport, ReportRequest, ReportResponse
+# app/schemas/__init__.py
+from .auth import (
+    UserLogin,
+    UserRegister,
+    TokenResponse,
+    RefreshRequest,
+    UserResponse
+)
+from .user import UserProfile
+from .valuation import (
+    ValuationRequest,
+    ValuationCreate,
+    ValuationUpdate,
+    ValuationResponse,
+    ValuationHistory,
+    ValuationStats,
+    InstantValueRequest,
+    InstantValueResponse
+)
+from .vehicle import (
+    VehicleCreate,
+    VehicleUpdate,
+    VehicleResponse,
+    VehicleDetailResponse
 )
 
 __all__ = [
     # Auth
-    "UserLogin", "UserRegister", "TokenResponse",
+    "UserLogin",
+    "UserRegister",
+    "TokenResponse",
+    "RefreshRequest",
+    "UserResponse",
     
-    # Users
-    "UserBase", "UserCreate", "UserUpdate", "UserResponse",
-    
-    # Vehicles
-    "VehicleBase", "VehicleCreate", "VehicleUpdate", "VehicleResponse", "VehicleDetailResponse",
-    
-    # Mileage
-    "VehicleCategoryBase", "VehicleCategoryCreate", "VehicleCategoryResponse",
-    "MileageEntryBase", "MileageEntryCreate", "MileageEntryResponse",
+    # User
+    "UserProfile",
     
     # Valuation
-    "ValuationRequest", "ValuationResponse", "ValuationHistory",
+    "ValuationRequest",
+    "ValuationCreate",
+    "ValuationUpdate",
+    "ValuationResponse",
+    "ValuationHistory",
+    "ValuationStats",
+    "InstantValueRequest",
+    "InstantValueResponse",
     
-    # Payments
-    "PaymentRequest", "PaymentResponse", "PaymentStatus",
-    
-    # Inspections
-    "InspectionBase", "InspectionCreate", "InspectionUpdate", "InspectionResponse", "InspectionReport",
-    
-    # Reports
-    "ReportBase", "ValuationReport", "MileageReport", "InspectionReportSummary",
-    "ComprehensiveVehicleReport", "ReportRequest", "ReportResponse"
+    # Vehicle
+    "VehicleCreate",
+    "VehicleUpdate",
+    "VehicleResponse",
+    "VehicleDetailResponse"
 ]
