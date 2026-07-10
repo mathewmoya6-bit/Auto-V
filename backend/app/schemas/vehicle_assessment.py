@@ -229,3 +229,51 @@ class AssessmentComparisonResponse(BaseModel):
     comparison: Dict[str, Any]
     user_id: Optional[str] = None
     calculated_at: str
+    from pydantic import BaseModel, ConfigDict
+from typing import Optional, List, Dict, Any
+from uuid import UUID
+from datetime import datetime
+
+
+# --------------------------------------------------
+# Compatibility Schemas
+# --------------------------------------------------
+
+class AssessmentCreate(VehicleAssessmentRequest):
+    """Create Assessment"""
+    pass
+
+
+class AssessmentUpdate(BaseModel):
+    make: Optional[str] = None
+    model: Optional[str] = None
+    year: Optional[int] = None
+    mileage: Optional[int] = None
+    condition: Optional[str] = None
+    accident_history: Optional[str] = None
+    location: Optional[str] = None
+    previous_owners: Optional[int] = None
+    fuel_type: Optional[str] = None
+    transmission: Optional[str] = None
+    body_type: Optional[str] = None
+    engine_capacity: Optional[int] = None
+    service_history: Optional[bool] = None
+    price: Optional[float] = None
+
+
+class AssessmentResponse(VehicleAssessmentResponse):
+    """Alias for compatibility"""
+    pass
+
+
+class VehicleAssessmentListItem(BaseModel):
+    id: UUID
+    make: str
+    model: str
+    year: int
+    mileage: int
+    condition: str
+    market_value: float
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
