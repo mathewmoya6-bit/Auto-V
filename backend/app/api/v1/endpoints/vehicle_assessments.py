@@ -18,9 +18,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.schemas.vehicle_assessment import (
     AssessmentCreate,
+    AssessmentUpdate,
+    AssessmentResponse,
     VehicleAssessmentResponse,
     VehicleAssessmentListItem,
-    VehicleAssessmentReport,
+    AssessmentHistoryResponse,
+    AssessmentStats,
+    BulkAssessmentRequest,
+    BulkAssessmentResponse,
+    AssessmentComparisonRequest,
+    AssessmentComparisonResponse,
+)
 )
 from app.services import vehicle_assessment_service as service
 
