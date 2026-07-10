@@ -20,9 +20,7 @@ class VehicleCategoryResponse(VehicleCategoryBase):
 
 
 class MileageEntryBase(BaseModel):
-    vehicle_id: str
     current_mileage: float
-    previous_mileage: Optional[float] = None
     recorded_date: datetime
 
 
@@ -32,4 +30,6 @@ class MileageEntryCreate(MileageEntryBase):
 
 class MileageEntryResponse(MileageEntryBase):
     id: int
+    vehicle_id: str
+    previous_mileage: Optional[float] = None
     created_at: datetime
