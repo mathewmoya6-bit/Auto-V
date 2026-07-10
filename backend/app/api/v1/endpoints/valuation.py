@@ -1,20 +1,32 @@
+# app/api/v1/endpoints/valuation.py
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
 from datetime import datetime
 import uuid
 import random
 from app.core.database import supabase, admin
+from app.core.security import get_current_active_user
+
+# Correct imports from proper schemas
 from app.schemas.valuation import (
     ValuationCreate,
     ValuationUpdate,
     ValuationResponse,
-    InstantValuationRequest,
-    InstantValuationResponse,
+)
+
+from app.schemas.instant_value import (
+    InstantValueRequest,
+    InstantValueResponse,
+)
+
+from app.schemas.vehicle_assessment import (
     VehicleAssessmentRequest,
     VehicleAssessmentResponse,
-    AssessmentFactor
+    ConditionAssessment,
+    AssessmentFactor,
+    DepreciationForecastItem,
+    InvestmentRecommendation
 )
-from app.core.security import get_current_active_user
 
 router = APIRouter(tags=["Valuations"])
 
@@ -30,10 +42,11 @@ async def create_valuation(
         valuation_data["user_id"] = current_user.id
         valuation_data["status"] = "pending"
         valuation_data["created_at"] = datetime.now().isoformat()
+        valuation_data["id"] = str(uuid.uuid4())
         
         result = (
             admin
-            .table("valuation")
+            .table("valuations")
             .insert(valuation_data)
             .execute()
         )
@@ -77,7 +90,7 @@ async def get_valuation_history(
     try:
         result = (
             supabase
-            .table("valuation")
+            .table("valuations")
             .select("*")
             .eq("user_id", current_user.id)
             .order("created_at", desc=True)
@@ -85,6 +98,52 @@ async def get_valuation_history(
             .execute()
         )
         return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats", response_model=dict)
+async def get_valuation_stats(
+    current_user = Depends(get_current_active_user)
+):
+    """Get statistics about user's valuations"""
+    try:
+        result = (
+            supabase
+            .table("valuations")
+            .select("market_value, confidence_score, created_at")
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+        
+        data = result.data
+        
+        if not data:
+            return {
+                "total_valuations": 0,
+                "average_value": 0,
+                "average_confidence": 0,
+                "highest_value": 0,
+                "lowest_value": 0,
+                "last_30_days": 0
+            }
+        
+        values = [v.get("market_value", 0) for v in data if v.get("market_value")]
+        confidences = [v.get("confidence_score", 0) for v in data if v.get("confidence_score")]
+        
+        # Count last 30 days
+        thirty_days_ago = datetime.now().timestamp() - (30 * 24 * 60 * 60)
+        last_30_days = sum(1 for v in data if v.get("created_at") and 
+                          datetime.fromisoformat(v["created_at"]).timestamp() > thirty_days_ago)
+        
+        return {
+            "total_valuations": len(data),
+            "average_value": round(sum(values) / len(values), 2) if values else 0,
+            "average_confidence": round(sum(confidences) / len(confidences), 2) if confidences else 0,
+            "highest_value": max(values) if values else 0,
+            "lowest_value": min(values) if values else 0,
+            "last_30_days": last_30_days
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -98,7 +157,7 @@ async def get_valuation(
     try:
         result = (
             supabase
-            .table("valuation")
+            .table("valuations")
             .select("*")
             .eq("id", valuation_id)
             .execute()
@@ -129,7 +188,7 @@ async def update_valuation(
         # Check ownership
         check = (
             supabase
-            .table("valuation")
+            .table("valuations")
             .select("user_id")
             .eq("id", valuation_id)
             .execute()
@@ -146,7 +205,7 @@ async def update_valuation(
         
         result = (
             admin
-            .table("valuation")
+            .table("valuations")
             .update(update_data)
             .eq("id", valuation_id)
             .execute()
@@ -160,9 +219,44 @@ async def update_valuation(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/instant", response_model=InstantValuationResponse)
+@router.delete("/{valuation_id}", status_code=204)
+async def delete_valuation(
+    valuation_id: str,
+    current_user = Depends(get_current_active_user)
+):
+    """Delete a valuation record"""
+    try:
+        # Check ownership
+        check = (
+            supabase
+            .table("valuations")
+            .select("user_id")
+            .eq("id", valuation_id)
+            .execute()
+        )
+        
+        if not check.data:
+            raise HTTPException(status_code=404, detail="Valuation not found")
+        
+        if check.data[0]["user_id"] != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this valuation")
+        
+        result = (
+            admin
+            .table("valuations")
+            .delete()
+            .eq("id", valuation_id)
+            .execute()
+        )
+        
+        return None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/instant", response_model=InstantValueResponse)
 async def instant_valuation(
-    request: InstantValuationRequest,
+    request: InstantValueRequest,  # Changed from InstantValuationRequest
     current_user = Depends(get_current_active_user)
 ):
     """
@@ -171,7 +265,11 @@ async def instant_valuation(
     No service fee is charged here - payment is handled separately
     """
     try:
-        vehicle = request.vehicle
+        # Generate valuation ID first
+        valuation_id = str(uuid.uuid4())
+        
+        # Convert request to dict
+        vehicle = request.model_dump()  # Changed from request.vehicle
         
         # Calculate base value based on vehicle type and year
         current_year = datetime.now().year
@@ -296,13 +394,13 @@ async def instant_valuation(
                 "owners_factor": round(owners_factor, 2),
                 "location_factor": round(location_factor, 2)
             },
-            "valuation_id": request.valuation_id,
+            "valuation_id": valuation_id,  # Changed from request.valuation_id
             "created_at": datetime.now().isoformat()
         }
         
         # Save the instant valuation to database
         valuation_record = {
-            "id": request.valuation_id or str(uuid.uuid4()),
+            "id": valuation_id,  # Changed from request.valuation_id or str(uuid.uuid4())
             "user_id": current_user.id,
             "make": vehicle.get("make"),
             "model": vehicle.get("model"),
@@ -354,6 +452,9 @@ async def assess_vehicle(
     - Investment recommendation
     """
     try:
+        # Generate assessment ID
+        assessment_id = str(uuid.uuid4())
+        
         vehicle = request.vehicle
         
         # ─── Market Value Calculation ──────────────────────────────
@@ -627,9 +728,37 @@ async def assess_vehicle(
                 "score": recommendation_score,
                 "recommendations": recommendations[:5]  # Top 5 recommendations
             },
-            "valuation_id": request.valuation_id,
+            "valuation_id": assessment_id,  # Changed from request.valuation_id
             "generated_at": datetime.now().isoformat()
         }
+        
+        # Save assessment to database
+        assessment_record = {
+            "id": assessment_id,
+            "user_id": current_user.id,
+            "make": vehicle.get("make"),
+            "model": vehicle.get("model"),
+            "year": vehicle.get("year"),
+            "mileage": vehicle.get("mileage"),
+            "condition": vehicle.get("condition"),
+            "location": vehicle.get("location"),
+            "market_value": market_value,
+            "condition_score": condition_score,
+            "condition_rating": overall_condition,
+            "maintenance_cost": maintenance_cost,
+            "investment_rating": investment_rating,
+            "assessment_data": response,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Save to database
+        (
+            admin
+            .table("vehicle_assessments")
+            .upsert(assessment_record)
+            .execute()
+        )
         
         return response
         
