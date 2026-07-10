@@ -5,7 +5,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 
 from app.core.security import get_current_admin_user, get_current_user
 from app.schemas.inspection import (
@@ -17,7 +17,7 @@ from app.schemas.inspection import (
 from app.schemas.user import UserProfile
 from app.services.inspection_service import InspectionService
 
-router = APIRouter(prefix="/inspections", tags=["inspections"])
+router = APIRouter(tags=["Inspections"])
 
 
 def get_inspection_service() -> InspectionService:
@@ -30,6 +30,7 @@ async def create_inspection(
     current_user: UserProfile = Depends(get_current_user),
     service: InspectionService = Depends(get_inspection_service),
 ):
+    """Create a new vehicle inspection"""
     return await service.create_inspection(UUID(current_user.id), payload)
 
 
@@ -38,7 +39,18 @@ async def list_inspections(
     current_user: UserProfile = Depends(get_current_user),
     service: InspectionService = Depends(get_inspection_service),
 ):
+    """Get all inspections for the current user"""
     return await service.list_inspections(UUID(current_user.id))
+
+
+@router.get("/vehicles/{vehicle_id}/inspections", response_model=List[InspectionResponse])
+async def get_vehicle_inspections(
+    vehicle_id: UUID,
+    current_user: UserProfile = Depends(get_current_user),
+    service: InspectionService = Depends(get_inspection_service),
+):
+    """Get all inspections for a specific vehicle"""
+    return await service.get_vehicle_inspections(vehicle_id, UUID(current_user.id))
 
 
 @router.get("/{inspection_id}", response_model=InspectionResponse)
@@ -47,6 +59,7 @@ async def get_inspection(
     current_user: UserProfile = Depends(get_current_user),
     service: InspectionService = Depends(get_inspection_service),
 ):
+    """Get a specific inspection by ID"""
     is_admin = current_user.role == "admin"
     return await service.get_inspection(inspection_id, UUID(current_user.id), is_admin)
 
@@ -58,6 +71,7 @@ async def update_inspection(
     current_user: UserProfile = Depends(get_current_user),
     service: InspectionService = Depends(get_inspection_service),
 ):
+    """Update an inspection"""
     is_admin = current_user.role == "admin"
     return await service.update_inspection(inspection_id, UUID(current_user.id), payload, is_admin)
 
@@ -69,7 +83,7 @@ async def complete_inspection(
     current_admin: UserProfile = Depends(get_current_admin_user),
     service: InspectionService = Depends(get_inspection_service),
 ):
-    """Inspector/admin submits final checklist results."""
+    """Inspector/admin submits final checklist results"""
     return await service.complete_inspection(inspection_id, UUID(current_admin.id), payload)
 
 
@@ -79,5 +93,6 @@ async def delete_inspection(
     current_user: UserProfile = Depends(get_current_user),
     service: InspectionService = Depends(get_inspection_service),
 ):
+    """Delete an inspection"""
     is_admin = current_user.role == "admin"
     await service.delete_inspection(inspection_id, UUID(current_user.id), is_admin)
