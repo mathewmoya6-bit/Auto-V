@@ -6,7 +6,7 @@ from app.core.security import get_current_user
 router = APIRouter()
 
 
-@router.post("/auth/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse)
 async def login(user_data: UserLogin):
     """Login user with email and password"""
     try:
@@ -24,7 +24,7 @@ async def login(user_data: UserLogin):
         raise HTTPException(status_code=401, detail=str(e))
 
 
-@router.post("/auth/register", response_model=TokenResponse)
+@router.post("/register", response_model=TokenResponse)
 async def register(user_data: UserRegister):
     """Register new user"""
     try:
@@ -50,7 +50,7 @@ async def register(user_data: UserRegister):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/auth/logout")
+@router.post("/logout")
 async def logout(current_user = Depends(get_current_user)):
     """Logout current user"""
     try:
@@ -60,7 +60,7 @@ async def logout(current_user = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/auth/me")
+@router.get("/me")
 async def get_current_user_info(current_user = Depends(get_current_user)):
     """Get current user info"""
     return current_user
