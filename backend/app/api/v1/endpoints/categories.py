@@ -7,7 +7,7 @@ from app.core.security import get_current_user
 router = APIRouter()
 
 
-@router.get("/categories", response_model=List[VehicleCategoryResponse])
+@router.get("/", response_model=List[VehicleCategoryResponse])
 async def get_categories():
     """Get all vehicle categories"""
     try:
@@ -23,7 +23,7 @@ async def get_categories():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/categories", response_model=VehicleCategoryResponse)
+@router.post("/", response_model=VehicleCategoryResponse)
 async def create_category(
     category: VehicleCategoryCreate,
     current_user = Depends(get_current_user)
@@ -41,7 +41,7 @@ async def create_category(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/categories/{category_id}", response_model=VehicleCategoryResponse)
+@router.put("/{category_id}", response_model=VehicleCategoryResponse)
 async def update_category(
     category_id: int,
     category: VehicleCategoryCreate,
@@ -63,7 +63,7 @@ async def update_category(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/categories/{category_id}")
+@router.delete("/{category_id}")
 async def delete_category(
     category_id: int,
     current_user = Depends(get_current_user)
