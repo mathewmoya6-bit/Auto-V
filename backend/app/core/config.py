@@ -11,7 +11,6 @@ clear AttributeError instead of a silent None.
 """
 from functools import lru_cache
 from typing import List
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,7 +40,14 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
 
     # ─── CORS ────────────────────────────────────────────────────
-    cors_origins: List[str] = ["*"]
+    # NOTE: must be explicit origins, not "*" — allow_credentials=True in
+    # main.py means browsers will reject a wildcard origin outright.
+    # Override in production via the CORS_ORIGINS env var, e.g.:
+    #   CORS_ORIGINS=["https://auto-v.meipressgroup.com"]
+    cors_origins: List[str] = [
+        "https://auto-v.meipressgroup.com",
+        "http://localhost:3000",
+    ]
 
     # ─── M-Pesa ──────────────────────────────────────────────────
     mpesa_consumer_key: str = ""
