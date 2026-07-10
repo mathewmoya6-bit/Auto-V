@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO-V Certificate Verification</title>
+    
+    <!-- Hybrid API Client - Single Source of Truth -->
+    <script src="/auto-v-api.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+
+        .logo {
+            font-size: 36px;
+            font-weight: bold;
+            color: #eab308;
+            margin-bottom: 10px;
+        }
+
+        .logo span {
+            font-size: 12px;
+            color: #888;
+            display: block;
+        }
+
+        .card {
+            background: #111;
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid #333;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+
+        h2 {
+            color: #eab308;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ccc;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 14px;
+            background: #1a1a1a;
+            color: white;
+            border: 1px solid #333;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #eab308;
+            box-shadow: 0 0 5px rgba(234, 179, 8, 0.3);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #eab308;
+            color: black;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #ca8a04;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 12px;
+            display: none;
+        }
+
+        .result.valid {
+            display: block;
+            background: linear-gradient(135deg, #14532d 0%, #1a5c35 100%);
+            border: 1px solid #22c55e;
+        }
+
+        .result.invalid {
+            display: block;
+            background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+            border: 1px solid #ef4444;
+        }
+
+        .result-header {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .result-details {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .detail-label {
+            font-weight: bold;
+            color: #ccc;
+        }
+
+        .detail-value {
+            color: white;
+            text-align: right;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-active {
+            background: #22c55e;
+            color: black;
+        }
+
+        .status-expired {
+            background: #dc2626;
+            color: white;
+        }
+
+        .qr-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .back-link a {
+            color: #eab308;
+            text-decoration: none;
+        }
+
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #eab308;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn .3s ease;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-warning { background: #eab308; color: #000; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        @keyframes slideIn { from { opacity:0; transform:translateX(100px); } to { opacity:1; transform:translateX(0); } }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 20px;
+            }
+            .detail-row {
+                flex-direction: column;
+            }
+            .detail-value {
+                text-align: left;
+                margin-top: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="logo">
+            🔍 AUTO-V
+            <span>Certificate Verification System</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Verify Vehicle Certificate</h2>
+        <p style="text-align: center; color: #888; margin-bottom: 20px;">
+            Enter the verification code from the certificate QR code
+        </p>
+
+        <div class="input-group">
+            <label>Verification Code</label>
+            <input type="text" id="verificationCode" placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000">
+            <div class="error" id="codeError">Please enter a valid verification code</div>
+        </div>
+
+        <div class="input-group">
+            <label>Or Scan QR Code</label>
+            <div class="qr-code">
+                <button type="button" onclick="scanQRFromFile()">📷 Upload QR Code Image</button>
+                <input type="file" id="qrImage" accept="image/*" style="display: none;" onchange="decodeQRCode(this)">
+            </div>
+        </div>
+
+        <button onclick="verifyCertificate()" id="verifyBtn">
+            Verify Certificate
+        </button>
+
+        <div class="back-link">
+            <a href="dashboard.html">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <!-- Verification Result -->
+    <div id="result" class="result">
+        <div class="result-header" id="resultHeader"></div>
+        <div class="result-details" id="resultDetails"></div>
+        <div id="resultActions"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    // ─── Toast helper ──────────────────────────────────────────────
+    function showToast(message, type = 'success') {
+        if (window.autoV && window.autoV.showToast) {
+            window.autoV.showToast(message, type);
+            return;
+        }
+        const existing = document.querySelector('.toast');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.className = `toast toast-${type}`;
+        div.textContent = message;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 3500);
+    }
+
+    // ─── VERIFY CERTIFICATE ──────────────────────────────────────────
+    async function verifyCertificate() {
+        const codeInput = document.getElementById('verificationCode');
+        const code = codeInput.value.trim();
+        const codeError = document.getElementById('codeError');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const resultDiv = document.getElementById('result');
+        
+        // Reset
+        codeError.style.display = 'none';
+        resultDiv.className = 'result';
+        resultDiv.style.display = 'none';
+        
+        if (!code) {
+            codeError.style.display = 'block';
+            codeInput.focus();
+            return;
+        }
+        
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = '<span class="spinner"></span> Verifying...';
+        
+        try {
+            // Use autoV for verification
+            const certificate = await window.autoV.apiRequest(`/certificates/verify/${encodeURIComponent(code)}`, {
+                method: 'GET'
+            });
+
+            // Check validity
+            const now = new Date();
+            const validUntil = new Date(certificate.valid_until);
+            const isValid = validUntil > now;
+            
+            // Show result
+            if (isValid) {
+                showValidResult(certificate);
+                showToast('✅ Certificate verified successfully!', 'success');
+            } else {
+                showExpiredResult(certificate);
+                showToast('⚠️ Certificate has expired', 'warning');
+            }
+            
+        } catch (error) {
+            console.error('Verification error:', error);
+            
+            if (error.message.includes('404')) {
+                showInvalidResult('Certificate Not Found', 'The verification code you entered is invalid. Please check and try again.');
+            } else if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+                showInvalidResult('Network Error', 'Unable to connect to the verification server. Please check your connection.');
+            } else {
+                showInvalidResult('Verification Error', error.message || 'An error occurred while verifying. Please try again.');
+            }
+        } finally {
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = 'Verify Certificate';
+        }
+    }
+
+    // ─── SHOW VALID RESULT ──────────────────────────────────────────
+    function showValidResult(certificate) {
+        const resultDiv = document.getElementById('result');
+        const resultHeader = document.getElementById('resultHeader');
+        const resultDetails = document.getElementById('resultDetails');
+        const resultActions = document.getElementById('resultActions');
+        
+        resultDiv.className = 'result valid';
+        resultHeader.innerHTML = '✅ VALID CERTIFICATE';
+        
+        const vehicle = certificate.vehicle || {};
+        
+        resultDetails.innerHTML = `
+            <div class="detail-row">
+                <span class="detail-label">Certificate Number:</span>
+                <span class="detail-value">${certificate.certificate_number || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Certificate Type:</span>
+                <span class="detail-value">${certificate.certificate_type || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Vehicle Registration:</span>
+                <span class="detail-value">${vehicle.registration_number || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Make & Model:</span>
+                <span class="detail-value">${vehicle.make || 'N/A'} ${vehicle.model || ''}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Year:</span>
+                <span class="detail-value">${vehicle.year || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">VIN / Chassis:</span>
+                <span class="detail-value">${vehicle.vin || 'Not Provided'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Issue Date:</span>
+                <span class="detail-value">${new Date(certificate.issued_at).toLocaleDateString()}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Valid Until:</span>
+                <span class="detail-value">${new Date(certificate.valid_until).toLocaleDateString()}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Status:</span>
+                <span class="detail-value"><span class="status-badge status-active">ACTIVE</span></span>
+            </div>
+        `;
+        
+        resultActions.innerHTML = `
+            <button onclick="window.print()" style="background:#333; margin-top:10px;">🖨️ Print Verification</button>
+        `;
+        
+        resultDiv.style.display = 'block';
+        resultDiv.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ─── SHOW EXPIRED RESULT ──────────────────────────────────────────
+    function showExpiredResult(certificate) {
+        const resultDiv = document.getElementById('result');
+        const resultHeader = document.getElementById('resultHeader');
+        const resultDetails = document.getElementById('resultDetails');
+        
+        resultDiv.className = 'result invalid';
+        resultHeader.innerHTML = '⚠️ EXPIRED CERTIFICATE';
+        
+        const vehicle = certificate.vehicle || {};
+        
+        resultDetails.innerHTML = `
+            <div class="detail-row">
+                <span class="detail-label">Certificate Number:</span>
+                <span class="detail-value">${certificate.certificate_number || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Certificate Type:</span>
+                <span class="detail-value">${certificate.certificate_type || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Vehicle:</span>
+                <span class="detail-value">${vehicle.registration_number || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Issue Date:</span>
+                <span class="detail-value">${new Date(certificate.issued_at).toLocaleDateString()}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Expired On:</span>
+                <span class="detail-value">${new Date(certificate.valid_until).toLocaleDateString()}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Status:</span>
+                <span class="detail-value"><span class="status-badge status-expired">EXPIRED</span></span>
+            </div>
+            <p style="margin-top: 15px; text-align: center;">This certificate is no longer valid. Please renew to get a current certificate.</p>
+        `;
+        
+        resultDiv.style.display = 'block';
+    }
+
+    // ─── SHOW INVALID RESULT ──────────────────────────────────────────
+    function showInvalidResult(title, message) {
+        const resultDiv = document.getElementById('result');
+        const resultHeader = document.getElementById('resultHeader');
+        const resultDetails = document.getElementById('resultDetails');
+        
+        resultDiv.className = 'result invalid';
+        resultHeader.innerHTML = `❌ ${title}`;
+        resultDetails.innerHTML = `<p style="text-align: center;">${message}</p>`;
+        resultDiv.style.display = 'block';
+    }
+
+    // ─── SCAN QR CODE FROM FILE ──────────────────────────────────────
+    function scanQRFromFile() {
+        document.getElementById('qrImage').click();
+    }
+
+    // ─── DECODE QR CODE ──────────────────────────────────────────────
+    async function decodeQRCode(input) {
+        const file = input.files[0];
+        if (!file) return;
+        
+        const verifyBtn = document.getElementById('verifyBtn');
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = '<span class="spinner"></span> Scanning QR Code...';
+        
+        try {
+            // Read QR code using the backend API via autoV
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Get token from autoV
+            const token = window.autoV.getAuthToken();
+            
+            const response = await fetch(`${window.autoV.API_BASE}/certificates/scan-qr`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || 'Failed to scan QR code');
+            }
+            
+            const data = await response.json();
+            
+            if (data.code) {
+                document.getElementById('verificationCode').value = data.code;
+                verifyCertificate();
+            } else if (data.error) {
+                showToast('Could not read QR code: ' + data.error, 'error');
+                document.getElementById('verificationCode').focus();
+            }
+            
+        } catch (error) {
+            console.error('QR scan error:', error);
+            showToast('Could not read QR code. Please enter the code manually.', 'error');
+            document.getElementById('verificationCode').focus();
+        } finally {
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = 'Verify Certificate';
+            // Reset file input
+            input.value = '';
+        }
+    }
+
+    // ─── CHECK URL PARAMS FOR AUTO-VERIFICATION ──────────────────────
+    function checkUrlParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const cert = urlParams.get('cert');
+        
+        if (code) {
+            document.getElementById('verificationCode').value = code;
+            setTimeout(verifyCertificate, 500);
+        } else if (cert) {
+            document.getElementById('verificationCode').value = cert;
+            setTimeout(verifyCertificate, 500);
+        }
+    }
+
+    // ─── INITIALIZE ──────────────────────────────────────────────────
+    async function init() {
+        // Wait for autoV to be ready
+        if (!window.autoV || !window.autoV._initialized) {
+            console.log('⏳ Waiting for autoV to initialize...');
+            await new Promise(resolve => {
+                const check = () => {
+                    if (window.autoV && window.autoV._initialized) {
+                        resolve();
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                };
+                check();
+            });
+        }
+
+        // Check for URL params
+        checkUrlParams();
+        
+        // Add enter key support
+        document.getElementById('verificationCode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                verifyCertificate();
+            }
+        });
+        
+        console.log('🚀 AUTO-V Verification page initialized');
+        console.log(`🔗 Backend API: ${window.autoV.API_BASE}`);
+    }
+
+    // Make functions global for inline onclick handlers
+    window.verifyCertificate = verifyCertificate;
+    window.scanQRFromFile = scanQRFromFile;
+    window.decodeQRCode = decodeQRCode;
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+})();
+</script>
+
+</body>
+</html>

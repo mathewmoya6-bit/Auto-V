@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AUTO-V | Login</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- ─── Supabase JS ────────────────────────────────────────────── -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- ─── FastAPI Client (must load before login script runs) ───── -->
+    <script src="/auto-v-api.js"></script>
+
+    <style>
+        /* ─── RESET & BASE ─── */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #0a0c15;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(234, 179, 8, 0.07) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 50%, rgba(234, 179, 8, 0.05) 0%, transparent 60%),
+                radial-gradient(ellipse at 50% 100%, rgba(34, 197, 94, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .glow-orb {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(234, 179, 8, 0.06), transparent 70%);
+            top: -200px;
+            right: -200px;
+            pointer-events: none;
+            animation: floatGlow 20s ease-in-out infinite alternate;
+            z-index: 0;
+        }
+
+        .glow-orb-bottom {
+            position: fixed;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(34, 197, 94, 0.04), transparent 70%);
+            bottom: -150px;
+            left: -150px;
+            pointer-events: none;
+            animation: floatGlow 25s ease-in-out infinite alternate-reverse;
+            z-index: 0;
+        }
+
+        @keyframes floatGlow {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(40px, 30px) scale(1.2); }
+        }
+
+        .login-container {
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 32px;
+            padding: 48px 40px 36px;
+            width: 100%;
+            max-width: 440px;
+            border: 1px solid rgba(234, 179, 8, 0.15);
+            box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            position: relative;
+            z-index: 1;
+        }
+
+        .logo { text-align: center; margin-bottom: 32px; }
+
+        .logo-icon {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 8px;
+            filter: drop-shadow(0 4px 12px rgba(234, 179, 8, 0.2));
+        }
+
+        .logo h1 {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #eab308, #facc15);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .logo .subtitle { color: #94a3b8; font-size: 14px; font-weight: 400; margin-top: 4px; }
+
+        .message {
+            padding: 14px 18px;
+            border-radius: 14px;
+            margin-bottom: 24px;
+            display: none;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            animation: slideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .error-message {
+            background: rgba(127, 29, 29, 0.8);
+            color: #fecaca;
+            border-left: 4px solid #ef4444;
+            backdrop-filter: blur(4px);
+        }
+
+        .success-message {
+            background: rgba(20, 83, 45, 0.8);
+            color: #bbf7d0;
+            border-left: 4px solid #22c55e;
+            backdrop-filter: blur(4px);
+        }
+
+        .info-message {
+            background: rgba(30, 41, 59, 0.8);
+            color: #fcd34d;
+            border-left: 4px solid #eab308;
+            backdrop-filter: blur(4px);
+        }
+
+        .form-group { margin-bottom: 20px; }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #94a3b8;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        label .required {
+            color: #ef4444;
+            margin-left: 2px;
+        }
+
+        .input-wrapper { position: relative; }
+
+        .input-wrapper input {
+            width: 100%;
+            padding: 14px 18px;
+            background: #0a0f1c;
+            border: 2px solid #1e293b;
+            border-radius: 14px;
+            color: #f1f5f9;
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+
+        .input-wrapper input:focus {
+            outline: none;
+            border-color: #eab308;
+            box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.1);
+            background: #0f172a;
+        }
+
+        .input-wrapper input::placeholder { color: #475569; font-weight: 400; }
+
+        .login-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #eab308, #facc15);
+            color: #0a0c15;
+            border: none;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-top: 8px;
+            font-family: inherit;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 40%, rgba(255, 255, 255, 0.15) 100%);
+            pointer-events: none;
+        }
+
+        .login-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px -8px rgba(234, 179, 8, 0.35);
+        }
+
+        .login-btn:active:not(:disabled) { transform: translateY(0px) scale(0.98); }
+
+        .login-btn:disabled {
+            background: #334155;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .login-btn .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(10, 12, 21, 0.2);
+            border-radius: 50%;
+            border-top-color: #0a0c15;
+            animation: spin 0.6s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .footer-links {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #1e293b;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .footer-links a {
+            color: #64748b;
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.2s;
+        }
+        .footer-links a:hover { color: #eab308; }
+
+        .forgot-password {
+            text-align: right;
+            margin-top: -12px;
+            margin-bottom: 12px;
+        }
+
+        .forgot-password a {
+            color: #64748b;
+            font-size: 12px;
+            text-decoration: none;
+            transition: color 0.2s;
+            cursor: pointer;
+        }
+        .forgot-password a:hover { color: #eab308; }
+
+        .security-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #475569;
+            margin-top: 14px;
+        }
+
+        .security-badge svg { width: 14px; height: 14px; fill: #22c55e; }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 500;
+            animation: slideIn 0.3s ease;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            font-family: 'Inter', sans-serif;
+        }
+        .toast-success { background: #22c55e; color: #000; }
+        .toast-error { background: #ef4444; color: #fff; }
+        .toast-warning { background: #eab308; color: #000; }
+        .toast-info { background: #3b82f6; color: #fff; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @media (max-width: 480px) {
+            .login-container { padding: 32px 20px 28px; border-radius: 24px; margin: 12px; }
+            .logo h1 { font-size: 26px; }
+            .logo-icon { font-size: 38px; }
+            .input-wrapper input { padding: 13px 16px; font-size: 14px; }
+            .login-btn { padding: 14px; font-size: 15px; }
+            .footer-links { flex-direction: column; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glow-orb"></div>
+    <div class="glow-orb-bottom"></div>
+
+    <div class="login-container" role="main" aria-label="Login">
+
+        <div class="logo">
+            <span class="logo-icon">🚗</span>
+            <h1>AUTO‑V</h1>
+            <p class="subtitle">Sign in to your account</p>
+        </div>
+
+        <div id="messageBox" class="message" role="alert" aria-live="polite"></div>
+
+        <form id="loginForm" autocomplete="off" novalidate>
+            <div class="form-group">
+                <label for="email">📧 Email Address <span class="required">*</span></label>
+                <div class="input-wrapper">
+                    <input type="email" id="email" placeholder="you@example.com" autocomplete="email" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password">🔒 Password <span class="required">*</span></label>
+                <div class="input-wrapper">
+                    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+                </div>
+            </div>
+
+            <div class="forgot-password">
+                <a href="#" id="forgotPasswordLink">Forgot password?</a>
+            </div>
+
+            <button type="submit" class="login-btn" id="loginBtn">
+                Sign In
+            </button>
+        </form>
+
+        <div class="footer-links">
+            <a href="register.html">Create Account →</a>
+            <a href="index.html">🏠 Home</a>
+        </div>
+
+        <div class="security-badge">
+            <svg viewBox="0 0 24 24"><path d="M12 1C8.676 1 5.5 2.5 3.5 4.5 2 6 1 8.5 1 11c0 6 4.5 11 11 12 6.5-1 11-6 11-12 0-2.5-1-5-2.5-6.5C18.5 2.5 15.324 1 12 1zm0 19c-4.5-1-8-4.5-9-9 0-2 1-4 2-5 1.5-1.5 4-2.5 7-2.5s5.5 1 7 2.5c1 1 2 3 2 5-1 4.5-4.5 8-9 9zm0-14c-1.5 0-2.5 1-2.5 2.5S10.5 11 12 11s2.5-1 2.5-2.5S13.5 6 12 6zm0 8c-2 0-3.5 1.5-3.5 3.5h7c0-2-1.5-3.5-3.5-3.5z"/></svg>
+            <span>256‑bit SSL · Secure Login</span>
+        </div>
+    </div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // AUTO-V LOGIN — Production-Ready
+        // Signs in against Supabase (for session/email verification state)
+        // AND against the FastAPI backend's own /auth/login (for the bearer
+        // token every other API call depends on).
+        // ═══════════════════════════════════════════════════════════════
+
+        (function() {
+            'use strict';
+
+            // ─── CONFIGURATION ──────────────────────────────────────────
+            const SUPABASE_URL = 'https://tsvejnzxrxrrecgquxbq.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdmVqbnp4cnhycmVjZ3F1eGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODczNjgsImV4cCI6MjA5Njc2MzM2OH0.PCEppwafuPatBoWh4OnhzgHv6fA9uF5-bWW9mmf2VoQ';
+
+            const DASHBOARD_URL = 'dashboard.html';
+            const ADMIN_DASHBOARD_URL = 'admin-dashboard.html';
+
+            // ─── DOM REFS ───────────────────────────────────────────────
+            const form = document.getElementById('loginForm');
+            const btn = document.getElementById('loginBtn');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const forgotLink = document.getElementById('forgotPasswordLink');
+            const messageBox = document.getElementById('messageBox');
+
+            // ─── STATE ──────────────────────────────────────────────────
+            let supabase = null;
+            let isSubmitting = false;
+
+            // ─── MESSAGE FUNCTIONS ─────────────────────────────────────
+            function showMessage(text, type = 'error') {
+                messageBox.textContent = text;
+                messageBox.className = `message ${type}-message`;
+                messageBox.style.display = 'block';
+                clearTimeout(window._msgTimer);
+                window._msgTimer = setTimeout(() => {
+                    messageBox.style.display = 'none';
+                }, 6000);
+            }
+
+            function clearMessage() {
+                messageBox.style.display = 'none';
+                clearTimeout(window._msgTimer);
+            }
+
+            // ─── INIT SUPABASE ──────────────────────────────────────────
+            function initSupabase() {
+                try {
+                    if (typeof supabase === 'undefined') {
+                        throw new Error('Supabase library failed to load. Please refresh.');
+                    }
+
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        auth: {
+                            persistSession: true,
+                            autoRefreshToken: true,
+                            detectSessionInUrl: true
+                        }
+                    });
+
+                    console.log('✅ Supabase client initialized');
+                    return true;
+
+                } catch (error) {
+                    console.error('❌ Supabase init error:', error);
+                    showMessage('❌ ' + error.message, 'error');
+                    return false;
+                }
+            }
+
+            // ─── CHECK SESSION & REDIRECT ──────────────────────────────
+            // Only redirect if BOTH a Supabase session AND a FastAPI bearer
+            // token already exist — otherwise a half-logged-in visitor would
+            // get bounced to the dashboard and immediately hit 401s there.
+            async function checkSessionAndRedirect() {
+                if (!supabase) return false;
+
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const hasApiToken = !!localStorage.getItem('access_token');
+
+                    if (session && hasApiToken) {
+                        const role = session.user?.app_metadata?.role ||
+                                   session.user?.user_metadata?.role ||
+                                   'user';
+
+                        const redirectTo = role === 'admin' ? ADMIN_DASHBOARD_URL : DASHBOARD_URL;
+
+                        window.location.replace(redirectTo);
+                        return true;
+                    }
+
+                    return false;
+
+                } catch (error) {
+                    console.log('ℹ️ No active session:', error.message);
+                    return false;
+                }
+            }
+
+            // ─── LOGIN HANDLER ──────────────────────────────────────────
+            async function handleLogin(e) {
+                e.preventDefault();
+
+                if (isSubmitting || btn.disabled) return;
+                clearMessage();
+
+                if (!supabase) {
+                    if (!initSupabase()) return;
+                }
+
+                if (!window.autoV || !window.autoV._initialized) {
+                    showMessage('❌ API client failed to load. Please refresh the page.', 'error');
+                    return;
+                }
+
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
+
+                // ─── Validation ─────────────────────────────────────────
+                if (!email || !password) {
+                    showMessage('Please enter both email and password.', 'error');
+                    return;
+                }
+
+                if (!/^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email)) {
+                    showMessage('Please enter a valid email address.', 'error');
+                    return;
+                }
+
+                // ─── Start Loading ──────────────────────────────────────
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span> Signing in...';
+                isSubmitting = true;
+
+                // ─── Request Timeout (15 seconds) ──────────────────────
+                const timeout = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Request timeout')), 15000)
+                );
+
+                try {
+                    // ─── Step 1: Sign in with Supabase ──────────────────
+                    const loginPromise = supabase.auth.signInWithPassword({
+                        email: email,
+                        password: password
+                    });
+
+                    const { data, error } = await Promise.race([loginPromise, timeout]);
+
+                    if (error) throw error;
+
+                    const { user } = data;
+
+                    // ─── Email Verification Check ──────────────────────
+                    if (!user.email_confirmed_at) {
+                        showMessage('📧 Please verify your email before logging in.', 'info');
+                        btn.disabled = false;
+                        btn.innerHTML = 'Sign In';
+                        isSubmitting = false;
+                        return;
+                    }
+
+                    // ─── Step 2: Log in against the FastAPI backend ────
+                    // This is what every other page's apiRequest() calls
+                    // depend on — without this, all API calls fail with
+                    // "Missing bearer token" / "Invalid or expired token".
+                    try {
+                        await window.autoV.login(email, password);
+                    } catch (apiError) {
+                        console.error('FastAPI login failed:', apiError);
+                        showMessage(
+                            '❌ Backend login failed: ' + (apiError.message || 'Unknown error') +
+                            '. Your account may not be fully set up — please contact support if this persists.',
+                            'error'
+                        );
+                        btn.disabled = false;
+                        btn.innerHTML = 'Sign In';
+                        isSubmitting = false;
+                        return;
+                    }
+
+                    // ─── Get Role from app_metadata (more secure) ──────
+                    const role = user?.app_metadata?.role ||
+                               user?.user_metadata?.role ||
+                               'user';
+
+                    const redirectTo = role === 'admin' ? ADMIN_DASHBOARD_URL : DASHBOARD_URL;
+
+                    // ─── Success ────────────────────────────────────────
+                    showMessage('✅ Login successful!', 'success');
+
+                    setTimeout(() => {
+                        window.location.replace(redirectTo);
+                    }, 500);
+
+                } catch (error) {
+                    console.error('Login error:', error);
+
+                    const errorMsg = error.message || 'Login failed';
+
+                    switch (true) {
+                        case errorMsg.includes('Invalid login credentials'):
+                            showMessage('❌ Invalid email or password. Please try again.', 'error');
+                            break;
+                        case errorMsg.includes('Email not confirmed'):
+                            showMessage('📧 Please verify your email before logging in.', 'info');
+                            break;
+                        case errorMsg.includes('Network') || errorMsg.includes('Failed to fetch'):
+                            showMessage('🌐 Network error. Please check your connection.', 'error');
+                            break;
+                        case errorMsg.includes('timeout'):
+                            showMessage('⏳ Request timed out. Please try again.', 'error');
+                            break;
+                        default:
+                            showMessage(`❌ ${errorMsg}`, 'error');
+                    }
+
+                    btn.disabled = false;
+                    btn.innerHTML = 'Sign In';
+                    isSubmitting = false;
+                }
+            }
+
+            // ─── PASSWORD RESET ─────────────────────────────────────────
+            async function handlePasswordReset() {
+                if (!supabase) {
+                    if (!initSupabase()) return;
+                }
+
+                const email = emailInput.value.trim();
+                if (!email) {
+                    showMessage('Please enter your email address first.', 'info');
+                    emailInput.focus();
+                    return;
+                }
+
+                if (!/^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email)) {
+                    showMessage('Please enter a valid email address.', 'error');
+                    return;
+                }
+
+                try {
+                    const redirectTo = `${window.location.origin}/reset-password.html`;
+
+                    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                        redirectTo: redirectTo
+                    });
+
+                    if (error) throw error;
+
+                    showMessage('✅ Password reset email sent! Check your inbox.', 'success');
+
+                } catch (error) {
+                    showMessage(`❌ ${error.message || 'Password reset failed'}`, 'error');
+                }
+            }
+
+            // ─── EVENT LISTENERS ──────────────────────────────────────
+            form.addEventListener('submit', handleLogin);
+
+            forgotLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                handlePasswordReset();
+            });
+
+            emailInput.addEventListener('focus', clearMessage);
+            passwordInput.addEventListener('focus', clearMessage);
+
+            // ─── INIT ──────────────────────────────────────────────────
+            async function init() {
+                const initialized = initSupabase();
+
+                if (initialized) {
+                    const hasSession = await checkSessionAndRedirect();
+
+                    if (!hasSession) {
+                        setTimeout(() => emailInput.focus(), 200);
+                        console.log('🚀 AUTO-V Login');
+                        console.log(`📌 Supabase: ${SUPABASE_URL}`);
+                        console.log(`📌 Dashboard: ${DASHBOARD_URL}`);
+                        console.log(`📌 Admin Dashboard: ${ADMIN_DASHBOARD_URL}`);
+                    }
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+
+        })();
+    </script>
+</body>
+</html>

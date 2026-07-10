@@ -1,0 +1,2195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AUTO-V | Africa's Vehicle Intelligence Platform</title>
+    <meta name="description" content="AI-powered vehicle valuation, inspection, fleet analytics, and verification platform trusted across Africa." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23eab308' rx='20'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='%23000'%3E🚗%3C/text%3E%3C/svg%3E" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- ─── Built-in API Client (no external dependency) ─── -->
+    <script>
+        // =============================================================================
+        // AUTO-V API Client - Built-in (no external file needed)
+        // =============================================================================
+        (function() {
+            'use strict';
+
+            if (window.autoVInitialized) {
+                console.log('✅ AUTO-V API already initialized, skipping...');
+                return;
+            }
+            window.autoVInitialized = true;
+
+            const API_BASE = 'https://auto-v.onrender.com/api/v1';
+
+            class APIClient {
+                constructor(baseURL) {
+                    this.baseURL = baseURL;
+                    this.token = null;
+                }
+
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('access_token', token);
+                }
+
+                getToken() {
+                    return this.token || localStorage.getItem('access_token');
+                }
+
+                clearToken() {
+                    this.token = null;
+                    localStorage.removeItem('access_token');
+                }
+
+                async request(endpoint, options = {}) {
+                    const url = `${this.baseURL}${endpoint}`;
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...options.headers,
+                    };
+
+                    const token = this.getToken();
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+
+                    try {
+                        const response = await fetch(url, {
+                            ...options,
+                            headers,
+                            credentials: 'include',
+                            mode: 'cors',
+                        });
+
+                        if (!response.ok) {
+                            let errorMessage = `HTTP ${response.status}`;
+                            try {
+                                const errorData = await response.json();
+                                errorMessage = errorData.detail || errorData.message || errorMessage;
+                            } catch (e) {
+                                errorMessage = await response.text() || errorMessage;
+                            }
+                            throw new Error(errorMessage);
+                        }
+
+                        return response.json();
+                    } catch (error) {
+                        console.error('API request failed:', error);
+                        throw error;
+                    }
+                }
+
+                get(endpoint) {
+                    return this.request(endpoint, { method: 'GET' });
+                }
+
+                post(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                    });
+                }
+
+                put(endpoint, data) {
+                    return this.request(endpoint, {
+                        method: 'PUT',
+                        body: JSON.stringify(data),
+                    });
+                }
+
+                delete(endpoint) {
+                    return this.request(endpoint, { method: 'DELETE' });
+                }
+            }
+
+            // ─── Error Handler ──────────────────────────────────────────
+            if (typeof window.ErrorHandler === 'undefined') {
+                window.ErrorHandler = {
+                    showToast: function(message, type = 'info', duration = 5000) {
+                        const existing = document.querySelector('.toast-container');
+                        if (existing) existing.remove();
+
+                        const div = document.createElement('div');
+                        div.className = 'toast-container';
+                        div.style.cssText = `
+                            position: fixed;
+                            bottom: 24px;
+                            right: 24px;
+                            padding: 14px 24px;
+                            border-radius: 12px;
+                            z-index: 9999;
+                            font-weight: 500;
+                            animation: slideIn 0.3s ease;
+                            max-width: 420px;
+                            font-size: 14px;
+                            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+                            font-family: 'Inter', system-ui, sans-serif;
+                            background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+                            color: ${type === 'error' ? '#fff' : '#000'};
+                            border-left: 4px solid ${type === 'error' ? '#dc2626' : type === 'success' ? '#16a34a' : type === 'warning' ? '#d97706' : '#2563eb'};
+                        `;
+                        div.textContent = message;
+                        document.body.appendChild(div);
+
+                        setTimeout(() => {
+                            if (div.parentNode) div.remove();
+                        }, duration);
+                    },
+
+                    handle: function(error, context = 'Unknown') {
+                        console.error(`❌ Error in ${context}:`, error);
+                        let message = error.message || 'An unexpected error occurred';
+                        this.showToast(message, 'error');
+                        return message;
+                    }
+                };
+            }
+
+            if (typeof window.api === 'undefined') {
+                window.api = new APIClient(API_BASE);
+            }
+
+            if (!document.querySelector('#toast-styles')) {
+                const style = document.createElement('style');
+                style.id = 'toast-styles';
+                style.textContent = `
+                    @keyframes slideIn {
+                        from { opacity: 0; transform: translateX(80px); }
+                        to { opacity: 1; transform: translateX(0); }
+                    }
+                    .toast-container {
+                        animation: slideIn 0.3s ease-out;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            console.log('✅ API Client initialized (built-in)');
+            console.log(`🔗 Backend API: ${API_BASE}`);
+        })();
+    </script>
+
+    <style>
+        /* ─── RESET & ROOT ─── */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --gold: #eab308;
+            --gold-light: #facc15;
+            --gold-glow: rgba(234, 179, 8, 0.25);
+            --bg-deep: #06080f;
+            --bg-card: #0d111f;
+            --bg-card-hover: #161d2f;
+            --bg-glass: rgba(13, 17, 31, 0.72);
+            --text-primary: #f8fafc;
+            --text-secondary: #c8d0dc;
+            --text-muted: #7a879e;
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-glow: rgba(234, 179, 8, 0.18);
+            --emerald: #10b981;
+            --blue: #3b82f6;
+            --orange: #f59e0b;
+            --red: #ef4444;
+            --radius: 20px;
+            --radius-sm: 12px;
+            --transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(234, 179, 8, 0.04);
+            --shadow-glow: 0 0 60px rgba(234, 179, 8, 0.05);
+        }
+        html {
+            scroll-behavior: smooth;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-deep);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--gold);
+            border-radius: 10px;
+        }
+
+        .glass {
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 32px;
+        }
+
+        /* ─── TOP NAV ─── */
+        .top-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 40px;
+            background: rgba(6, 8, 15, 0.94);
+            backdrop-filter: blur(14px);
+            border-bottom: 1px solid rgba(234, 179, 8, 0.06);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: -0.5px;
+        }
+        .logo svg {
+            width: 32px;
+            height: 32px;
+            stroke: var(--gold);
+            fill: none;
+            stroke-width: 2.5;
+        }
+        .nav-links {
+            display: flex;
+            gap: 4px;
+            list-style: none;
+        }
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: 40px;
+            transition: var(--transition);
+        }
+        .nav-links a:hover {
+            color: var(--text-primary);
+            background: rgba(234, 179, 8, 0.08);
+        }
+        .nav-right {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .btn-outline {
+            padding: 10px 24px;
+            border-radius: 40px;
+            background: transparent;
+            color: var(--gold);
+            border: 1.5px solid var(--gold);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-outline:hover {
+            background: var(--gold);
+            color: var(--bg-deep);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 24px var(--gold-glow);
+        }
+        .btn-gold {
+            padding: 10px 28px;
+            border-radius: 40px;
+            background: linear-gradient(135deg, var(--gold), var(--gold-light));
+            color: var(--bg-deep);
+            border: none;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-gold:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 30px var(--gold-glow);
+        }
+        .btn-gold.dashboard-btn {
+            background: linear-gradient(135deg, var(--emerald), #059669);
+        }
+        .btn-gold.dashboard-btn:hover {
+            box-shadow: 0 4px 30px rgba(16, 185, 129, 0.3);
+        }
+        .nav-mobile-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .user-avatar-small {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--gold);
+            color: var(--bg-deep);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .user-avatar-small:hover {
+            transform: scale(1.05);
+        }
+
+        /* ─── HERO SPLIT ─── */
+        .hero-split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 88vh;
+            padding: 40px 0 60px;
+            gap: 48px;
+            align-items: center;
+        }
+        .hero-left {
+            display: flex;
+            flex-direction: column;
+            gap: 28px;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 16px 6px 8px;
+            border-radius: 40px;
+            background: rgba(234, 179, 8, 0.08);
+            border: 1px solid rgba(234, 179, 8, 0.12);
+            color: var(--gold);
+            font-size: 13px;
+            font-weight: 500;
+            width: fit-content;
+        }
+        .hero-badge span {
+            background: var(--gold);
+            color: var(--bg-deep);
+            padding: 2px 12px;
+            border-radius: 30px;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .hero-title {
+            font-size: 60px;
+            font-weight: 900;
+            line-height: 1.05;
+            letter-spacing: -2px;
+        }
+        .hero-title .highlight {
+            background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .hero-tagline {
+            display: flex;
+            gap: 28px;
+            flex-wrap: wrap;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .hero-tagline span {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .hero-tagline svg {
+            stroke: var(--gold);
+            width: 20px;
+            height: 20px;
+        }
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .btn-hero-primary {
+            padding: 16px 40px;
+            border-radius: 60px;
+            background: linear-gradient(135deg, var(--gold), var(--gold-light));
+            color: var(--bg-deep);
+            border: none;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 30px var(--gold-glow);
+        }
+        .btn-hero-primary:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 8px 50px rgba(234, 179, 8, 0.3);
+        }
+        .btn-hero-secondary {
+            padding: 16px 40px;
+            border-radius: 60px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn-hero-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-3px);
+        }
+        .hero-trust {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            padding-top: 8px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        .hero-trust .stars {
+            color: var(--gold);
+            letter-spacing: 2px;
+        }
+
+        /* ─── RIGHT: DASHBOARD + FLOATING CARDS ─── */
+        .hero-right {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .dashboard-preview {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-subtle);
+            padding: 28px 24px;
+            box-shadow: var(--shadow-card), var(--shadow-glow);
+        }
+        .dash-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .dash-header h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .dash-header .live {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--emerald);
+        }
+        .dash-header .live .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--emerald);
+            animation: pulse-dot 1.8s infinite;
+        }
+        @keyframes pulse-dot {
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.4;
+                transform: scale(0.7);
+            }
+        }
+        .dash-vehicle {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .dash-vehicle .avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: rgba(234, 179, 8, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }
+        .dash-vehicle .info h3 {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .dash-vehicle .info p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        .dash-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .metric-card {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        .metric-card .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .metric-card .value {
+            font-size: 22px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+        .metric-card .value .trend-up {
+            color: var(--emerald);
+            font-size: 14px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .metric-card .value .trend-down {
+            color: var(--red);
+            font-size: 14px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .metric-card .sub {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .dash-qr {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .dash-qr .qr-code {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+        .dash-qr .qr-code svg {
+            stroke: var(--gold);
+            width: 28px;
+            height: 28px;
+        }
+
+        /* Floating cards */
+        .floating-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        .float-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            border: 1px solid var(--border-subtle);
+            text-align: center;
+            transition: var(--transition);
+        }
+        .float-card:hover {
+            border-color: var(--border-glow);
+            transform: translateY(-4px);
+        }
+        .float-card .label {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .float-card .number {
+            font-size: 24px;
+            font-weight: 800;
+            margin-top: 2px;
+        }
+        .float-card .number .currency {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        .float-card .change {
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .float-card .change.up {
+            color: var(--emerald);
+        }
+        .float-card .change.down {
+            color: var(--red);
+        }
+
+        /* ─── QUICK TOOLS ─── */
+        .quick-tools {
+            padding: 20px 0 50px;
+        }
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .tool-chip {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: var(--transition);
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 14px;
+            text-decoration: none;
+        }
+        .tool-chip:hover {
+            border-color: var(--border-glow);
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+            transform: translateY(-2px);
+        }
+        .tool-chip svg {
+            stroke: var(--gold);
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+        .search-bar-wrap {
+            background: var(--bg-card);
+            border-radius: 60px;
+            padding: 6px 6px 6px 24px;
+            border: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 780px;
+            margin: 24px auto 0;
+            transition: var(--transition);
+        }
+        .search-bar-wrap:focus-within {
+            border-color: var(--gold);
+            box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.06);
+        }
+        .search-bar-wrap input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 16px;
+            padding: 14px 0;
+            outline: none;
+            font-family: 'Inter', sans-serif;
+            min-width: 140px;
+        }
+        .search-bar-wrap input::placeholder {
+            color: var(--text-muted);
+        }
+        .search-bar-wrap .btn-search {
+            padding: 12px 28px;
+            border-radius: 40px;
+            background: linear-gradient(135deg, var(--gold), var(--gold-light));
+            color: var(--bg-deep);
+            border: none;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            text-decoration: none;
+        }
+        .search-bar-wrap .btn-search:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 24px var(--gold-glow);
+        }
+
+        /* ─── SECTION HEADER ─── */
+        .section-header {
+            text-align: center;
+            max-width: 640px;
+            margin: 0 auto 48px;
+        }
+        .section-header .badge {
+            display: inline-block;
+            padding: 4px 16px;
+            background: rgba(234, 179, 8, 0.1);
+            color: var(--gold);
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+        .section-header h2 {
+            font-size: 40px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+        .section-header h2 span {
+            background: linear-gradient(135deg, var(--gold), var(--gold-light));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .section-header p {
+            color: var(--text-secondary);
+            font-size: 18px;
+            margin-top: 12px;
+            line-height: 1.6;
+        }
+
+        /* ─── TRUST BAR ─── */
+        .trust-bar {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            padding: 40px 0 20px;
+        }
+        .trust-item {
+            text-align: center;
+            padding: 16px;
+        }
+        .trust-item .number {
+            font-size: 36px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--gold), var(--gold-light));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .trust-item .label {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        /* ─── PRODUCTS ─── */
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            padding: 20px 0 50px;
+        }
+        .product-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 24px 20px;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            text-decoration: none;
+            color: inherit;
+        }
+        .product-card:hover {
+            border-color: var(--border-glow);
+            transform: translateY(-4px);
+            background: var(--bg-card-hover);
+        }
+        .product-card .icon-wrap {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: rgba(234, 179, 8, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .product-card .icon-wrap svg {
+            stroke: var(--gold);
+            width: 26px;
+            height: 26px;
+        }
+        .product-card h4 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .product-card p {
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+            flex-grow: 1;
+        }
+        .product-card .cta-link {
+            color: var(--gold);
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: var(--transition);
+        }
+        .product-card .cta-link:hover {
+            gap: 12px;
+        }
+
+        /* ─── HOW IT WORKS ─── */
+        .steps-timeline {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            padding: 20px 0 50px;
+            align-items: start;
+        }
+        .step-node {
+            text-align: center;
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            padding: 20px 12px;
+            border: 1px solid var(--border-subtle);
+            transition: var(--transition);
+            position: relative;
+        }
+        .step-node:hover {
+            border-color: var(--border-glow);
+            transform: translateY(-4px);
+        }
+        .step-node .num {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(234, 179, 8, 0.12);
+            color: var(--gold);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 16px;
+            margin: 0 auto 10px;
+        }
+        .step-node h4 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .step-node p {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* ─── LIVE REPORT PREVIEW ─── */
+        .report-preview {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-subtle);
+            padding: 32px 28px;
+            max-width: 780px;
+            margin: 0 auto 40px;
+        }
+        .report-preview .report-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .report-preview .report-header h3 {
+            font-size: 22px;
+        }
+        .report-preview .report-header .conf-badge {
+            background: rgba(234, 179, 8, 0.1);
+            color: var(--gold);
+            padding: 4px 16px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .report-preview .report-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            padding: 16px 0;
+            border-top: 1px solid var(--border-subtle);
+            border-bottom: 1px solid var(--border-subtle);
+            margin: 12px 0 20px;
+        }
+        .report-preview .report-grid .item .label {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .report-preview .report-grid .item .val {
+            font-weight: 600;
+        }
+        .report-preview .report-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* ─── INDUSTRIES ─── */
+        .industries-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 16px;
+            padding: 20px 0 40px;
+        }
+        .industry-chip {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            text-align: center;
+            transition: var(--transition);
+            cursor: default;
+        }
+        .industry-chip:hover {
+            border-color: var(--border-glow);
+            transform: translateY(-3px);
+        }
+        .industry-chip .name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .industry-chip .desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* ─── AI ENGINE ─── */
+        .ai-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            padding: 20px 0 40px;
+        }
+        .ai-chip {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 14px 18px;
+            text-align: center;
+            font-weight: 500;
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: var(--transition);
+        }
+        .ai-chip:hover {
+            border-color: var(--border-glow);
+            color: var(--text-primary);
+            transform: translateY(-2px);
+        }
+
+        /* ─── WHY AUTO-V ─── */
+        .why-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            padding: 20px 0 40px;
+        }
+        .why-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-secondary);
+            font-size: 15px;
+            font-weight: 500;
+        }
+        .why-item svg {
+            stroke: var(--emerald);
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        /* ─── TESTIMONIALS ─── */
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            padding: 20px 0 40px;
+        }
+        .testimonial-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            padding: 28px 24px;
+            border: 1px solid var(--border-subtle);
+        }
+        .testimonial-card .stars {
+            color: var(--gold);
+            font-size: 18px;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+        .testimonial-card blockquote {
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        .testimonial-card .author {
+            margin-top: 12px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .testimonial-card .role {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        /* ─── PARTNERS ─── */
+        .partners-scroll {
+            display: flex;
+            gap: 48px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 20px 0 40px;
+            filter: grayscale(1) brightness(0.5);
+            opacity: 0.6;
+        }
+        .partners-scroll span {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* ─── PRICING ─── */
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            padding: 20px 0 40px;
+        }
+        .pricing-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 32px 28px;
+            border: 1px solid var(--border-subtle);
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+        }
+        .pricing-card:hover {
+            border-color: var(--border-glow);
+            transform: translateY(-4px);
+        }
+        .pricing-card.featured {
+            border-color: var(--gold);
+            background: linear-gradient(135deg, #0d111f 0%, #161d2f 100%);
+            box-shadow: var(--shadow-glow);
+        }
+        .pricing-card .plan-name {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .pricing-card .plan-price {
+            font-size: 44px;
+            font-weight: 900;
+            margin: 12px 0;
+        }
+        .pricing-card .plan-price small {
+            font-size: 16px;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+        .pricing-card .plan-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .pricing-card ul {
+            list-style: none;
+            flex-grow: 1;
+        }
+        .pricing-card ul li {
+            padding: 8px 0;
+            color: var(--text-secondary);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        .pricing-card ul li:last-child {
+            border-bottom: none;
+        }
+        .pricing-card ul li .check {
+            color: var(--emerald);
+            font-weight: 700;
+        }
+        .pricing-card .btn-pricing {
+            margin-top: 20px;
+            padding: 14px;
+            border-radius: 40px;
+            background: var(--gold);
+            color: var(--bg-deep);
+            border: none;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: var(--transition);
+            text-align: center;
+            text-decoration: none;
+        }
+        .pricing-card .btn-pricing:hover {
+            background: var(--gold-light);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 24px var(--gold-glow);
+        }
+        .pricing-card .btn-pricing.outline {
+            background: transparent;
+            color: var(--gold);
+            border: 1.5px solid var(--gold);
+        }
+        .pricing-card .btn-pricing.outline:hover {
+            background: var(--gold);
+            color: var(--bg-deep);
+        }
+
+        /* ─── FAQ ─── */
+        .faq-grid {
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 20px 0 40px;
+        }
+        .faq-item {
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 18px 0;
+        }
+        .faq-item .question {
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .faq-item .question:hover {
+            color: var(--gold);
+        }
+        .faq-item .answer {
+            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 1.6;
+            padding-top: 8px;
+            display: none;
+        }
+        .faq-item.open .answer {
+            display: block;
+        }
+
+        /* ─── FOOTER ─── */
+        .footer {
+            background: var(--bg-card);
+            border-top: 1px solid var(--border-subtle);
+            padding: 48px 40px 32px;
+            margin-top: 40px;
+        }
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+            gap: 40px;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+        .footer-brand p {
+            color: var(--text-muted);
+            font-size: 14px;
+            max-width: 280px;
+            margin-top: 12px;
+            line-height: 1.6;
+        }
+        .footer-col h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+        .footer-col a {
+            display: block;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 4px 0;
+            transition: var(--transition);
+        }
+        .footer-col a:hover {
+            color: var(--gold);
+        }
+        .footer-bottom {
+            border-top: 1px solid var(--border-subtle);
+            padding-top: 24px;
+            margin-top: 32px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* ─── RESPONSIVE ─── */
+        @media (max-width: 1024px) {
+            .hero-split {
+                grid-template-columns: 1fr;
+                min-height: auto;
+                padding: 32px 0;
+            }
+            .hero-title {
+                font-size: 44px;
+            }
+            .floating-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .steps-timeline {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .trust-bar {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .testimonials-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .pricing-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .footer-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 16px;
+            }
+            .top-nav {
+                padding: 12px 16px;
+                flex-wrap: wrap;
+            }
+            .nav-links {
+                display: none;
+            }
+            .nav-mobile-toggle {
+                display: block;
+            }
+            .hero-title {
+                font-size: 34px;
+            }
+            .hero-tagline {
+                gap: 16px;
+                font-size: 15px;
+            }
+            .hero-actions {
+                flex-direction: column;
+                width: 100%;
+            }
+            .hero-actions a {
+                justify-content: center;
+                width: 100%;
+            }
+            .dashboard-preview {
+                padding: 18px;
+            }
+            .dash-metrics {
+                grid-template-columns: 1fr 1fr;
+            }
+            .floating-cards {
+                grid-template-columns: 1fr 1fr;
+            }
+            .search-bar-wrap {
+                border-radius: 20px;
+                padding: 12px;
+                flex-direction: column;
+                background: var(--bg-card);
+            }
+            .search-bar-wrap input {
+                width: 100%;
+                padding: 12px 0;
+            }
+            .search-bar-wrap .btn-search {
+                width: 100%;
+                justify-content: center;
+                padding: 14px;
+            }
+            .steps-timeline {
+                grid-template-columns: 1fr 1fr;
+            }
+            .trust-bar {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .trust-item .number {
+                font-size: 28px;
+            }
+            .testimonials-grid {
+                grid-template-columns: 1fr;
+            }
+            .pricing-grid {
+                grid-template-columns: 1fr;
+                max-width: 400px;
+                margin: 0 auto;
+            }
+            .section-header h2 {
+                font-size: 30px;
+            }
+            .products-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .report-preview .report-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .footer-grid {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+            .partners-scroll {
+                gap: 24px;
+            }
+            .partners-scroll span {
+                font-size: 14px;
+            }
+            .tools-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+        @media (max-width: 480px) {
+            .hero-title {
+                font-size: 28px;
+            }
+            .floating-cards {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .float-card .number {
+                font-size: 18px;
+            }
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+            .steps-timeline {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .step-node {
+                padding: 14px 8px;
+            }
+            .step-node .num {
+                width: 30px;
+                height: 30px;
+                font-size: 14px;
+            }
+            .step-node h4 {
+                font-size: 13px;
+            }
+            .dash-metrics {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .metric-card {
+                padding: 10px 12px;
+            }
+            .metric-card .value {
+                font-size: 18px;
+            }
+            .tools-grid {
+                grid-template-columns: 1fr;
+            }
+            .report-preview .report-grid {
+                grid-template-columns: 1fr;
+            }
+            .trust-bar {
+                grid-template-columns: 1fr 1fr;
+            }
+            .industries-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== TOP NAV ===== -->
+    <nav class="top-nav" role="navigation">
+        <div class="nav-left">
+            <a href="index.html" class="logo"><i data-lucide="car"></i> AUTO-V</a>
+            <ul class="nav-links">
+                <li><a href="#products">Products</a></li>
+                <li><a href="#solutions">Solutions</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+                <li><a href="/api/docs">API</a></li>
+                <li><a href="#resources">Resources</a></li>
+                <li><a href="#about">About</a></li>
+            </ul>
+        </div>
+        <div class="nav-right" id="navRight">
+            <!-- Dynamically populated -->
+        </div>
+    </nav>
+
+    <!-- ===== HERO SPLIT ===== -->
+    <section class="container">
+        <div class="hero-split">
+            <div class="hero-left">
+                <div class="hero-badge">
+                    <span>AI 3.0</span> 98.4% accuracy
+                </div>
+                <h1 class="hero-title">
+                    Africa's Most Advanced<br />
+                    <span class="highlight">Vehicle Intelligence</span> Platform
+                </h1>
+                <div class="hero-tagline">
+                    <span><i data-lucide="check-circle"></i> Value</span>
+                    <span><i data-lucide="check-circle"></i> Inspect</span>
+                    <span><i data-lucide="check-circle"></i> Verify</span>
+                    <span><i data-lucide="check-circle"></i> Manage</span>
+                </div>
+                <div class="hero-actions">
+                    <a href="instant-value.html" class="btn-hero-primary">
+                        <i data-lucide="search"></i> Value My Vehicle
+                    </a>
+                    <a href="#demo" class="btn-hero-secondary" onclick="event.preventDefault(); showDemo();">
+                        <i data-lucide="play-circle"></i> Watch Demo
+                    </a>
+                </div>
+                <div class="hero-trust">
+                    <span class="stars">★★★★★</span>
+                    Trusted by Government · Banks · Insurance · Fleet · Corporate
+                </div>
+            </div>
+            <div class="hero-right">
+                <!-- Dashboard -->
+                <div class="dashboard-preview">
+                    <div class="dash-header">
+                        <h4>Live Market Dashboard</h4>
+                        <span class="live"><span class="dot"></span> Live</span>
+                    </div>
+                    <div class="dash-vehicle">
+                        <div class="avatar">🚗</div>
+                        <div class="info">
+                            <h3>Toyota Prado TX</h3>
+                            <p>2023 · 28,000 km · Nairobi</p>
+                        </div>
+                    </div>
+                    <div class="dash-metrics">
+                        <div class="metric-card">
+                            <div class="label">Market Value</div>
+                            <div class="value">KES 5.86M</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="label">AI Confidence</div>
+                            <div class="value">98.4%</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="label">Mileage Rate</div>
+                            <div class="value">KES 61 <span class="sub">/km</span></div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="label">Market Trend</div>
+                            <div class="value" style="color:var(--emerald);">Rising <span class="trend-up">↑</span></div>
+                        </div>
+                    </div>
+                    <div class="dash-qr">
+                        <div class="qr-code">
+                            <i data-lucide="qr-code"></i> QR Verified Report
+                        </div>
+                        <span style="color:var(--text-muted);font-size:13px;">Updated: 2 min ago</span>
+                    </div>
+                </div>
+                <!-- Floating Cards -->
+                <div class="floating-cards">
+                    <div class="float-card">
+                        <div class="label">Vehicle Value</div>
+                        <div class="number">KES 4.28M</div>
+                        <div class="change up">↑ 2.4%</div>
+                    </div>
+                    <div class="float-card">
+                        <div class="label">Inspection</div>
+                        <div class="number">98<span style="font-size:16px;color:var(--text-muted);">%</span></div>
+                        <div class="change up">↑ 1.2%</div>
+                    </div>
+                    <div class="float-card">
+                        <div class="label">Fuel Cost</div>
+                        <div class="number">KES 18.4 <span class="currency">/km</span></div>
+                        <div class="change down">↓ 0.8%</div>
+                    </div>
+                    <div class="float-card">
+                        <div class="label">Depreciation</div>
+                        <div class="number" style="color:var(--orange);">-5.2%</div>
+                        <div class="change down">↓ 0.3%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== TRUST BAR (Animated Stats) ===== -->
+    <section class="container">
+        <div class="trust-bar" id="trustBar">
+            <div class="trust-item"><div class="number" id="stat1">0</div><div class="label">Vehicles Processed</div></div>
+            <div class="trust-item"><div class="number" id="stat2">0</div><div class="label">Assets Valued (KES)</div></div>
+            <div class="trust-item"><div class="number" id="stat3">0%</div><div class="label">AI Accuracy</div></div>
+            <div class="trust-item"><div class="number" id="stat4">0</div><div class="label">Countries</div></div>
+            <div class="trust-item"><div class="number" id="stat5">0%</div><div class="label">Platform Uptime</div></div>
+        </div>
+    </section>
+
+    <!-- ===== QUICK TOOLS ===== -->
+    <section class="quick-tools" id="search">
+        <div class="container">
+            <div class="search-bar-wrap">
+                <input type="text" id="searchInput" placeholder="Search Registration, VIN, or QR Code" />
+                <a href="#" class="btn-search" onclick="event.preventDefault(); handleSearch();">
+                    <i data-lucide="search"></i> Search
+                </a>
+            </div>
+            <div class="tools-grid">
+                <a href="vin-decoder.html" class="tool-chip"><i data-lucide="scan"></i> VIN Decoder</a>
+                <a href="mileage-calculator.html" class="tool-chip"><i data-lucide="trending-up"></i> Mileage Calculator</a>
+                <a href="fuel-calculator.html" class="tool-chip"><i data-lucide="fuel"></i> Fuel Cost Estimator</a>
+                <a href="verify-report.html" class="tool-chip"><i data-lucide="qr-code"></i> Verify Report</a>
+                <a href="cost-of-ownership.html" class="tool-chip"><i data-lucide="dollar-sign"></i> Cost of Ownership</a>
+                <a href="depreciation-calculator.html" class="tool-chip"><i data-lucide="line-chart"></i> Depreciation Calculator</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== WHY AUTO-V ===== -->
+    <section style="padding:20px 0;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Why AUTO-V</span>
+                <h2>Built for <span>Enterprise &amp; Government</span></h2>
+            </div>
+            <div class="why-grid">
+                <div class="why-item"><i data-lucide="zap"></i> AI Powered</div>
+                <div class="why-item"><i data-lucide="file-check"></i> Court-ready Reports</div>
+                <div class="why-item"><i data-lucide="qr-code"></i> QR Verification</div>
+                <div class="why-item"><i data-lucide="shield"></i> Fraud Detection</div>
+                <div class="why-item"><i data-lucide="code"></i> Enterprise API</div>
+                <div class="why-item"><i data-lucide="building"></i> Government Ready</div>
+                <div class="why-item"><i data-lucide="banknote"></i> Insurance Ready</div>
+                <div class="why-item"><i data-lucide="cloud"></i> Cloud Based</div>
+                <div class="why-item"><i data-lucide="smartphone"></i> Mobile Friendly</div>
+                <div class="why-item"><i data-lucide="bar-chart-3"></i> Real-time Analytics</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== PRODUCTS ===== -->
+    <section id="products" style="padding:40px 0 20px;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Products</span>
+                <h2>Complete Vehicle <span>Intelligence Suite</span></h2>
+                <p>Enterprise-grade tools for valuation, inspection, fleet, and verification.</p>
+            </div>
+            <div class="products-grid">
+                <a href="instant-value.html" class="product-card">
+                    <div class="icon-wrap"><i data-lucide="bar-chart-3"></i></div>
+                    <h4>AI Vehicle Valuation</h4>
+                    <p>Instant market value, residual value, depreciation, and confidence score.</p>
+                    <span class="cta-link">Launch →</span>
+                </a>
+                <a href="inspection.html" class="product-card">
+                    <div class="icon-wrap"><i data-lucide="clipboard-check"></i></div>
+                    <h4>Inspection</h4>
+                    <p>Comprehensive vehicle inspection with AI damage analysis and photo capture.</p>
+                    <span class="cta-link">Launch →</span>
+                </a>
+                <a href="fleet-management.html" class="product-card">
+                    <div class="icon-wrap"><i data-lucide="truck"></i></div>
+                    <h4>Fleet Management</h4>
+                    <p>Real-time fleet analytics, mileage tracking, and ROI dashboards.</p>
+                    <span class="cta-link">Launch →</span>
+                </a>
+                <a href="report-generator.html" class="product-card">
+                    <div class="icon-wrap"><i data-lucide="file-text"></i></div>
+                    <h4>Report Generator</h4>
+                    <p>Court-ready PDF reports with QR verification and digital signatures.</p>
+                    <span class="cta-link">Launch →</span>
+                </a>
+                <a href="vin-decoder.html" class="product-card">
+                    <div class="icon-wrap"><i data-lucide="scan"></i></div>
+                    <h4>VIN Decoder</h4>
+                    <p>Decode any VIN for vehicle specifications, history, and ownership.</p>
+                    <span class="cta-link">Launch →</span>
+                </a>
+                <a href="residual-value.html" class="product-card">
+                    <div class="icon-wrap"><i data-lucide="line-chart"></i></div>
+                    <h4>Residual Value Engine</h4>
+                    <p>AI-powered residual value forecasting for financial planning.</p>
+                    <span class="cta-link">Launch →</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== HOW IT WORKS ===== -->
+    <section style="padding:20px 0 40px;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Process</span>
+                <h2>How <span>It Works</span></h2>
+            </div>
+            <div class="steps-timeline">
+                <div class="step-node"><div class="num">1</div><h4>Enter Vehicle</h4><p>Reg or VIN</p></div>
+                <div class="step-node"><div class="num">2</div><h4>AI Analysis</h4><p>Market &amp; condition</p></div>
+                <div class="step-node"><div class="num">3</div><h4>Inspection</h4><p>Visual &amp; mechanical</p></div>
+                <div class="step-node"><div class="num">4</div><h4>Report Generation</h4><p>Comprehensive PDF</p></div>
+                <div class="step-node"><div class="num">5</div><h4>QR Verification</h4><p>Tamper-proof</p></div>
+                <div class="step-node"><div class="num">6</div><h4>Download</h4><p>Share &amp; export</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== LIVE REPORT PREVIEW ===== -->
+    <section style="padding:20px 0 40px;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Preview</span>
+                <h2>Live <span>Valuation Report</span></h2>
+            </div>
+            <div class="report-preview">
+                <div class="report-header">
+                    <h3>Vehicle Valuation Report</h3>
+                    <span class="conf-badge">98.4% Confidence</span>
+                </div>
+                <p style="color:var(--text-muted);font-size:14px;margin-bottom:8px;">Toyota Prado TX · 2023 · KES 5,860,000</p>
+                <div class="report-grid">
+                    <div class="item"><div class="label">Owner</div><div class="val">John M.</div></div>
+                    <div class="item"><div class="label">Damage Analysis</div><div class="val" style="color:var(--emerald);">Low (8%)</div></div>
+                    <div class="item"><div class="label">QR Code</div><div class="val"><i data-lucide="qr-code" style="stroke:var(--gold);width:28px;"></i></div></div>
+                </div>
+                <div class="report-actions">
+                    <button class="btn-gold" style="padding:12px 28px;font-size:14px;" onclick="handleDownloadReport()">
+                        <i data-lucide="download"></i> Download PDF
+                    </button>
+                    <button class="btn-outline" style="padding:12px 28px;font-size:14px;" onclick="handleShareReport()">
+                        <i data-lucide="share-2"></i> Share Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== AI ENGINE ===== -->
+    <section style="padding:20px 0;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">AI Engine</span>
+                <h2>Powered by <span>Advanced AI</span></h2>
+                <p>Our proprietary AI engine drives every aspect of vehicle intelligence.</p>
+            </div>
+            <div class="ai-grid">
+                <div class="ai-chip">🧠 AI Market Engine</div>
+                <div class="ai-chip">📊 Vehicle Intelligence</div>
+                <div class="ai-chip">📉 Residual Value</div>
+                <div class="ai-chip">🚛 Fleet Analytics</div>
+                <div class="ai-chip">📏 Mileage Engine</div>
+                <div class="ai-chip">⛽ Fuel Analytics</div>
+                <div class="ai-chip">📉 Depreciation Engine</div>
+                <div class="ai-chip">🛡️ Risk Assessment</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== INDUSTRIES ===== -->
+    <section style="padding:40px 0 20px;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Built For</span>
+                <h2>Trusted by <span>Industry Leaders</span></h2>
+            </div>
+            <div class="industries-grid">
+                <div class="industry-chip"><div class="name">🏛️ Government</div><div class="desc">Procurement &amp; regulatory</div></div>
+                <div class="industry-chip"><div class="name">🛡️ Insurance</div><div class="desc">Underwriting &amp; claims</div></div>
+                <div class="industry-chip"><div class="name">🏦 Banks</div><div class="desc">Asset-backed lending</div></div>
+                <div class="industry-chip"><div class="name">🚛 Fleet</div><div class="desc">Operations &amp; ROI</div></div>
+                <div class="industry-chip"><div class="name">🏢 Corporate</div><div class="desc">Company vehicles</div></div>
+                <div class="industry-chip"><div class="name">🚗 Dealers</div><div class="desc">Inventory &amp; pricing</div></div>
+                <div class="industry-chip"><div class="name">🔨 Auction</div><div class="desc">Valuation &amp; verification</div></div>
+                <div class="industry-chip"><div class="name">👤 Individuals</div><div class="desc">Personal vehicle intelligence</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== TESTIMONIALS ===== -->
+    <section style="padding:40px 0 20px;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Testimonials</span>
+                <h2>What Our <span>Clients Say</span></h2>
+            </div>
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <div class="stars">★★★★★</div>
+                    <blockquote>"AUTO-V transformed our underwriting process. Accurate valuations in seconds."</blockquote>
+                    <div class="author">Grace W.</div>
+                    <div class="role">Insurance Company, Kenya</div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">★★★★★</div>
+                    <blockquote>"Fleet analytics gave us real-time visibility across 500+ vehicles. Game changer."</blockquote>
+                    <div class="author">Michael O.</div>
+                    <div class="role">Fleet Manager, Tanzania</div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">★★★★★</div>
+                    <blockquote>"Government procurement now relies on AUTO-V for fair market valuations."</blockquote>
+                    <div class="author">Dr. Amina K.</div>
+                    <div class="role">Government Officer, Uganda</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== PARTNERS ===== -->
+    <section style="padding:20px 0;">
+        <div class="container">
+            <div class="partners-scroll">
+                <span>Government of Kenya</span>
+                <span>APA Insurance</span>
+                <span>KCB Bank</span>
+                <span>CFAO Motors</span>
+                <span>DT Dobie</span>
+                <span>Kenya Revenue</span>
+                <span>Nationwide</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== PRICING ===== -->
+    <section id="pricing" style="padding:40px 0;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Pricing</span>
+                <h2>Flexible <span>Plans</span></h2>
+                <p>Choose the plan that fits your vehicle intelligence needs.</p>
+            </div>
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="plan-name">Pay As You Go</div>
+                    <div class="plan-price">KES 500</div>
+                    <div class="plan-desc">Per valuation. No subscription.</div>
+                    <ul>
+                        <li><span class="check">✓</span> Instant Value Check</li>
+                        <li><span class="check">✓</span> Single Valuation</li>
+                        <li><span class="check">✓</span> Digital Certificate</li>
+                        <li><span class="check">✓</span> Email Support</li>
+                    </ul>
+                    <a href="register.html" class="btn-pricing outline">Get Started</a>
+                </div>
+                <div class="pricing-card featured">
+                    <div class="plan-name">Professional</div>
+                    <div class="plan-price">KES 2,500 <small>/month</small></div>
+                    <div class="plan-desc">For professionals and small fleets.</div>
+                    <ul>
+                        <li><span class="check">✓</span> 10 Valuations/Inspections</li>
+                        <li><span class="check">✓</span> Unlimited Mileage Reports</li>
+                        <li><span class="check">✓</span> Fleet Analytics Dashboard</li>
+                        <li><span class="check">✓</span> Priority Support</li>
+                        <li><span class="check">✓</span> API Access</li>
+                    </ul>
+                    <a href="register.html" class="btn-pricing">Start Free Trial</a>
+                </div>
+                <div class="pricing-card">
+                    <div class="plan-name">Enterprise</div>
+                    <div class="plan-price">Custom</div>
+                    <div class="plan-desc">Tailored for large organisations.</div>
+                    <ul>
+                        <li><span class="check">✓</span> Unlimited Everything</li>
+                        <li><span class="check">✓</span> Dedicated Account Manager</li>
+                        <li><span class="check">✓</span> Custom Integration</li>
+                        <li><span class="check">✓</span> SLA Guarantee</li>
+                        <li><span class="check">✓</span> On-site Training</li>
+                    </ul>
+                    <a href="contact.html" class="btn-pricing outline">Contact Sales</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FAQ ===== -->
+    <section style="padding:20px 0 40px;">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">FAQ</span>
+                <h2>Frequently <span>Asked Questions</span></h2>
+            </div>
+            <div class="faq-grid">
+                <div class="faq-item open">
+                    <div class="question">What is AUTO-V? <span>−</span></div>
+                    <div class="answer">AUTO-V is Africa's leading AI-powered vehicle intelligence platform, providing valuation, inspection, fleet analytics, and verification services.</div>
+                </div>
+                <div class="faq-item">
+                    <div class="question">How accurate is the AI valuation? <span>+</span></div>
+                    <div class="answer">Our AI achieves 98.4% accuracy, validated against thousands of actual vehicle transactions across Africa.</div>
+                </div>
+                <div class="faq-item">
+                    <div class="question">Is AUTO-V suitable for government use? <span>+</span></div>
+                    <div class="answer">Yes. AUTO-V is used by government agencies for asset valuation, procurement, and regulatory compliance, with court-ready reports.</div>
+                </div>
+                <div class="faq-item">
+                    <div class="question">Do you offer API integration? <span>+</span></div>
+                    <div class="answer">Yes. Our REST API allows seamless integration with your existing systems. Contact our team for documentation.</div>
+                </div>
+                <div class="faq-item">
+                    <div class="question">How does QR verification work? <span>+</span></div>
+                    <div class="answer">Each report includes a unique QR code that can be scanned to verify authenticity and view the original report online.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <a href="index.html" class="logo" style="font-size:24px;"><i data-lucide="car"></i> AUTO-V</a>
+                <p>AI-powered vehicle intelligence platform trusted by governments, banks, insurers, and fleets across Africa.</p>
+            </div>
+            <div class="footer-col">
+                <h4>Products</h4>
+                <a href="instant-value.html">Valuation</a>
+                <a href="inspection.html">Inspection</a>
+                <a href="fleet-management.html">Fleet</a>
+                <a href="mileage-calculator.html">Mileage</a>
+                <a href="verify-report.html">Verification</a>
+            </div>
+            <div class="footer-col">
+                <h4>Company</h4>
+                <a href="#about">About</a>
+                <a href="#careers">Careers</a>
+                <a href="#blog">Blog</a>
+                <a href="#contact">Contact</a>
+            </div>
+            <div class="footer-col">
+                <h4>Resources</h4>
+                <a href="/api/docs">API</a>
+                <a href="#developers">Developers</a>
+                <a href="#support">Support</a>
+                <a href="#docs">Documentation</a>
+            </div>
+            <div class="footer-col">
+                <h4>Legal</h4>
+                <a href="#privacy">Privacy</a>
+                <a href="#terms">Terms</a>
+                <a href="#security">Security</a>
+                <a href="#gdpr">GDPR</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            © 2026 AUTO-V – Africa's Vehicle Intelligence Platform. All rights reserved.
+        </div>
+    </footer>
+
+    <!-- ===== SCRIPTS ===== -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // ─── Check if API client exists ──────────────────────────
+            if (typeof api === 'undefined') {
+                console.warn('API client not loaded - using fallback mode');
+                window.api = {
+                    get: () => Promise.reject(new Error('API not available')),
+                    post: () => Promise.reject(new Error('API not available')),
+                    setToken: () => {},
+                    getToken: () => null,
+                    clearToken: () => {}
+                };
+                if (typeof ErrorHandler === 'undefined') {
+                    window.ErrorHandler = {
+                        showToast: function(msg, type) {
+                            alert(msg);
+                        }
+                    };
+                }
+            }
+
+            // ─── Auth-aware Navigation ────────────────────────────────
+            updateNavigation();
+
+            // ─── Lucide Icons ──────────────────────────────────────────
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+
+            // ─── Animated Counters ──────────────────────────────────
+            const counters = [
+                { id: 'stat1', target: 127840, suffix: '+' },
+                { id: 'stat2', target: 54, prefix: 'KES ', suffix: 'B' },
+                { id: 'stat3', target: 98.4, suffix: '%', decimal: true },
+                { id: 'stat4', target: 24, suffix: '+' },
+                { id: 'stat5', target: 99.98, suffix: '%', decimal: true }
+            ];
+
+            function animateCounter(el, target, prefix = '', suffix = '', decimal = false) {
+                let current = 0;
+                const duration = 2200;
+                const steps = 60;
+                const increment = target / steps;
+                let step = 0;
+                const timer = setInterval(() => {
+                    step++;
+                    if (step >= steps) {
+                        current = target;
+                        clearInterval(timer);
+                    } else {
+                        current += increment;
+                    }
+                    if (decimal) {
+                        el.textContent = prefix + current.toFixed(1) + suffix;
+                    } else {
+                        el.textContent = prefix + Math.floor(current).toLocaleString() + suffix;
+                    }
+                }, duration / steps);
+            }
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const id = entry.target.id;
+                        const counter = counters.find(c => c.id === id);
+                        if (counter) {
+                            animateCounter(
+                                entry.target,
+                                counter.target,
+                                counter.prefix || '',
+                                counter.suffix || '',
+                                counter.decimal || false
+                            );
+                            observer.unobserve(entry.target);
+                        }
+                    }
+                });
+            }, { threshold: 0.3 });
+
+            counters.forEach(c => {
+                const el = document.getElementById(c.id);
+                if (el) observer.observe(el);
+            });
+
+            // ─── FAQ Toggle ──────────────────────────────────────────
+            document.querySelectorAll('.faq-item .question').forEach(q => {
+                q.addEventListener('click', function() {
+                    const item = this.closest('.faq-item');
+                    const answer = item.querySelector('.answer');
+                    const symbol = this.querySelector('span');
+                    if (item.classList.contains('open')) {
+                        item.classList.remove('open');
+                        symbol.textContent = '+';
+                    } else {
+                        document.querySelectorAll('.faq-item').forEach(f => f.classList.remove('open'));
+                        document.querySelectorAll('.faq-item .question span').forEach(s => s.textContent = '+');
+                        item.classList.add('open');
+                        symbol.textContent = '−';
+                    }
+                });
+            });
+
+            // ─── Mobile Nav Toggle ──────────────────────────────────
+            const mobileToggle = document.querySelector('.nav-mobile-toggle');
+            const navLinks = document.querySelector('.nav-links');
+            if (mobileToggle && navLinks) {
+                mobileToggle.addEventListener('click', function() {
+                    if (navLinks.style.display === 'flex') {
+                        navLinks.style.display = 'none';
+                    } else {
+                        navLinks.style.display = 'flex';
+                        navLinks.style.flexDirection = 'column';
+                        navLinks.style.position = 'absolute';
+                        navLinks.style.top = '70px';
+                        navLinks.style.left = '0';
+                        navLinks.style.width = '100%';
+                        navLinks.style.background = 'var(--bg-deep)';
+                        navLinks.style.padding = '20px';
+                        navLinks.style.borderBottom = '1px solid var(--border-subtle)';
+                        navLinks.style.gap = '4px';
+                        navLinks.style.zIndex = '999';
+                    }
+                });
+            }
+
+            // ─── Search Handler ──────────────────────────────────────
+            window.handleSearch = function() {
+                const input = document.getElementById('searchInput');
+                const query = input.value.trim();
+                if (query) {
+                    window.location.href = `/search-results.html?q=${encodeURIComponent(query)}`;
+                } else {
+                    if (window.ErrorHandler) {
+                        window.ErrorHandler.showToast('Please enter a registration, VIN, or QR code', 'warning');
+                    } else {
+                        alert('Please enter a registration, VIN, or QR code');
+                    }
+                }
+            };
+
+            // Enter key on search
+            document.getElementById('searchInput')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    window.handleSearch();
+                }
+            });
+
+            // ─── Report Actions ──────────────────────────────────────
+            window.handleDownloadReport = function() {
+                if (isLoggedIn()) {
+                    window.location.href = '/dashboard.html?action=download-report';
+                } else {
+                    if (window.ErrorHandler) {
+                        window.ErrorHandler.showToast('Please login to download reports', 'warning');
+                    }
+                    window.location.href = '/login.html?redirect=/dashboard.html';
+                }
+            };
+
+            window.handleShareReport = function() {
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'AUTO-V Vehicle Valuation Report',
+                        text: 'Check out this vehicle valuation report from AUTO-V',
+                        url: window.location.href
+                    }).catch(() => {});
+                } else {
+                    navigator.clipboard.writeText(window.location.href).then(() => {
+                        if (window.ErrorHandler) {
+                            window.ErrorHandler.showToast('Link copied to clipboard!', 'success');
+                        }
+                    }).catch(() => {
+                        if (window.ErrorHandler) {
+                            window.ErrorHandler.showToast('Share: ' + window.location.href, 'info');
+                        }
+                    });
+                }
+            };
+
+            // ─── Demo Video ──────────────────────────────────────────
+            window.showDemo = function() {
+                if (window.ErrorHandler) {
+                    window.ErrorHandler.showToast('🎬 Demo video coming soon!', 'info');
+                } else {
+                    alert('🎬 Demo video coming soon!');
+                }
+            };
+        });
+
+        // ─── Auth Functions ────────────────────────────────────────────
+
+        function isLoggedIn() {
+            return !!localStorage.getItem('access_token');
+        }
+
+        function getUserInitials() {
+            try {
+                const token = localStorage.getItem('access_token');
+                if (!token) return '?';
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const email = payload.email || payload.sub || '';
+                return email.charAt(0).toUpperCase() || '?';
+            } catch {
+                return '?';
+            }
+        }
+
+        async function updateNavigation() {
+            const navRight = document.getElementById('navRight');
+            if (!navRight) return;
+            
+            if (isLoggedIn()) {
+                navRight.innerHTML = `
+                    <a href="dashboard.html" class="btn-gold dashboard-btn">
+                        <i data-lucide="layout-dashboard"></i> Dashboard
+                    </a>
+                    <div class="user-avatar-small" onclick="window.location.href='profile.html'" title="My Profile">
+                        ${getUserInitials()}
+                    </div>
+                `;
+            } else {
+                navRight.innerHTML = `
+                    <a href="login.html" class="btn-outline">Login</a>
+                    <a href="register.html" class="btn-gold">Start Free</a>
+                    <button class="nav-mobile-toggle" aria-label="Toggle menu">☰</button>
+                `;
+            }
+
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        window.isLoggedIn = isLoggedIn;
+        window.getUserInitials = getUserInitials;
+        window.updateNavigation = updateNavigation;
+        window.handleSearch = window.handleSearch || function() {};
+        window.handleDownloadReport = window.handleDownloadReport || function() {};
+        window.handleShareReport = window.handleShareReport || function() {};
+        window.showDemo = window.showDemo || function() {};
+
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'access_token') {
+                updateNavigation();
+            }
+        });
+
+        setInterval(updateNavigation, 30000);
+    </script>
+
+</body>
+</html>
