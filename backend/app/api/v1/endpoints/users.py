@@ -7,7 +7,7 @@ from app.core.security import get_current_user
 router = APIRouter()
 
 
-@router.get("/users/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse)
 async def get_my_profile(current_user = Depends(get_current_user)):
     """Get current user's profile"""
     try:
@@ -25,7 +25,7 @@ async def get_my_profile(current_user = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/users/me", response_model=UserResponse)
+@router.put("/me", response_model=UserResponse)
 async def update_my_profile(
     user_update: UserUpdate,
     current_user = Depends(get_current_user)
@@ -46,8 +46,12 @@ async def update_my_profile(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/users", response_model=List[UserResponse])
-async def get_all_users(current_user = Depends(get_current_user)):
+@router.get("/", response_model=List[UserResponse])
+async def get_all_users(
+    current_user = Depends(get_current_user),
+    limit: int = 50,
+    offset: int = 0
+):
     """Get all users (admin only)"""
     try:
         result = (
@@ -55,6 +59,7 @@ async def get_all_users(current_user = Depends(get_current_user)):
             .table("users")
             .select("*")
             .order("created_at")
+            .range(offset, offset + limit - 1)
             .execute()
         )
         return result.data
@@ -62,7 +67,7 @@ async def get_all_users(current_user = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/users/{user_id}", response_model=UserResponse)
+@router.get("/{user_id}", response_model=UserResponse)
 async def get_user_by_id(
     user_id: str,
     current_user = Depends(get_current_user)
