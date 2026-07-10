@@ -1,4 +1,4 @@
-# app/schemas/user.py
+# app/schemas/users.py
 """
 MERGE this into your existing user schemas file — don't overwrite it.
 
