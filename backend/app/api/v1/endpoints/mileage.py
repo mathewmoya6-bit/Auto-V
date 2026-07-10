@@ -1,142 +1,136 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-from datetime import datetime, date
-from uuid import UUID
-from app.schemas.mileage import (
-    CategoryOut,
-    VariantOut,
-    RouteOut,
-    MileageClaimOut,
-    MileageClaimCreate,
-    MileageClaimUpdate,
-    MileageClaimSummary,
-    VehicleRateOut,
-    MileageApprovalRequest
-)
+from app.core.database import supabase, admin
+from app.schemas.mileage import MileageEntryCreate, MileageEntryResponse
+from app.services.mileage_service import MileageService
+from app.core.security import get_current_active_user
 
 router = APIRouter()
+mileage_service = MileageService()
 
-@router.get("/categories", response_model=List[CategoryOut])
-async def get_mileage_categories():
-    return []
 
-@router.get("/variants", response_model=List[VariantOut])
-async def get_mileage_variants():
-    return []
+@router.get("/vehicles/{vehicle_id}/mileage", response_model=List[MileageEntryResponse])
+async def get_vehicle_mileage(
+    vehicle_id: str,
+    current_user = Depends(get_current_active_user)
+):
+    """Get mileage history for a vehicle"""
+    try:
+        # Verify vehicle ownership
+        vehicle = (
+            supabase
+            .table("vehicles")
+            .select("user_id")
+            .eq("id", vehicle_id)
+            .execute()
+        )
+        
+        if not vehicle.data:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+            
+        if vehicle.data[0]["user_id"] != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        result = (
+            supabase
+            .table("mileage_entries")
+            .select("*")
+            .eq("vehicle_id", vehicle_id)
+            .order("recorded_date", desc=True)
+            .execute()
+        )
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/routes", response_model=List[RouteOut])
-async def get_mileage_routes():
-    return []
 
-@router.post("/claims", response_model=MileageClaimOut)
-async def create_mileage_claim(claim: MileageClaimCreate):
-    return MileageClaimOut(
-        id=UUID("12345678-1234-1234-1234-123456789012"),
-        user_id=UUID("12345678-1234-1234-1234-123456789012"),
-        vehicle_id=None,
-        trip_date=claim.trip_date,
-        start_location=claim.start_location,
-        end_location=claim.end_location,
-        distance_km=claim.distance_km,
-        vehicle_category=claim.vehicle_category,
-        rate_per_km=claim.rate_per_km,
-        claim_amount=claim.distance_km * claim.rate_per_km,
-        purpose=claim.purpose,
-        notes=claim.notes,
-        odometer_start=claim.odometer_start,
-        odometer_end=claim.odometer_end,
-        status="pending",
-        approved_by=None,
-        approved_at=None,
-        created_at=datetime.now()
-    )
+@router.post("/vehicles/{vehicle_id}/mileage", response_model=MileageEntryResponse)
+async def add_mileage_entry(
+    vehicle_id: str,
+    entry: MileageEntryCreate,
+    current_user = Depends(get_current_active_user)
+):
+    """Add a mileage entry for a vehicle"""
+    try:
+        # Verify vehicle ownership
+        vehicle = (
+            supabase
+            .table("vehicles")
+            .select("user_id, current_mileage")
+            .eq("id", vehicle_id)
+            .execute()
+        )
+        
+        if not vehicle.data:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+            
+        if vehicle.data[0]["user_id"] != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Validate mileage entry
+        current_mileage = vehicle.data[0].get("current_mileage", 0)
+        if entry.current_mileage <= current_mileage:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Current mileage must be greater than previous ({current_mileage})"
+            )
+        
+        entry_data = entry.model_dump()
+        entry_data["vehicle_id"] = vehicle_id
+        entry_data["previous_mileage"] = current_mileage
+        
+        # Insert mileage entry
+        result = (
+            admin
+            .table("mileage_entries")
+            .insert(entry_data)
+            .execute()
+        )
+        
+        # Update vehicle's current mileage
+        (
+            admin
+            .table("vehicles")
+            .update({"current_mileage": entry.current_mileage})
+            .eq("id", vehicle_id)
+            .execute()
+        )
+        
+        return result.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/claims", response_model=List[MileageClaimOut])
-async def get_mileage_claims():
-    return []
 
-@router.get("/claims/{claim_id}", response_model=MileageClaimOut)
-async def get_mileage_claim(claim_id: UUID):
-    return MileageClaimOut(
-        id=claim_id,
-        user_id=UUID("12345678-1234-1234-1234-123456789012"),
-        vehicle_id=None,
-        trip_date=date.today(),
-        start_location="Start",
-        end_location="End",
-        distance_km=100.0,
-        vehicle_category="Sedan",
-        rate_per_km=2.50,
-        claim_amount=250.0,
-        purpose="Business",
-        notes="Test claim",
-        odometer_start=1000,
-        odometer_end=1100,
-        status="pending",
-        approved_by=None,
-        approved_at=None,
-        created_at=datetime.now()
-    )
-
-@router.patch("/claims/{claim_id}", response_model=MileageClaimOut)
-async def update_mileage_claim(claim_id: UUID, update: MileageClaimUpdate):
-    return MileageClaimOut(
-        id=claim_id,
-        user_id=UUID("12345678-1234-1234-1234-123456789012"),
-        vehicle_id=None,
-        trip_date=date.today(),
-        start_location="Start",
-        end_location="End",
-        distance_km=100.0,
-        vehicle_category="Sedan",
-        rate_per_km=2.50,
-        claim_amount=250.0,
-        purpose="Business",
-        notes="Updated claim",
-        odometer_start=1000,
-        odometer_end=1100,
-        status="pending",
-        approved_by=None,
-        approved_at=None,
-        created_at=datetime.now()
-    )
-
-@router.post("/claims/approve", response_model=MileageClaimOut)
-async def approve_mileage_claim(approval: MileageApprovalRequest):
-    return MileageClaimOut(
-        id=approval.claim_id,
-        user_id=UUID("12345678-1234-1234-1234-123456789012"),
-        vehicle_id=None,
-        trip_date=date.today(),
-        start_location="Start",
-        end_location="End",
-        distance_km=100.0,
-        vehicle_category="Sedan",
-        rate_per_km=2.50,
-        claim_amount=250.0,
-        purpose="Business",
-        notes="Approved claim",
-        odometer_start=1000,
-        odometer_end=1100,
-        status="approved" if approval.approve else "rejected",
-        approved_by=approval.approved_by,
-        approved_at=datetime.now(),
-        created_at=datetime.now()
-    )
-
-@router.get("/claims/summary", response_model=MileageClaimSummary)
-async def get_mileage_summary():
-    return MileageClaimSummary(
-        total_claims=10,
-        total_distance_km=1000.0,
-        total_claim_amount=2500.0,
-        pending_claims=3,
-        approved_claims=5,
-        rejected_claims=2,
-        period_start=date.today().replace(day=1),
-        period_end=date.today()
-    )
-
-@router.get("/rates", response_model=List[VehicleRateOut])
-async def get_vehicle_rates():
-    return []
+@router.get("/mileage/latest")
+async def get_latest_mileage_entries(
+    limit: int = 10,
+    current_user = Depends(get_current_active_user)
+):
+    """Get latest mileage entries across all user's vehicles"""
+    try:
+        # Get all user's vehicles
+        vehicles = (
+            supabase
+            .table("vehicles")
+            .select("id")
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+        
+        vehicle_ids = [v["id"] for v in vehicles.data]
+        
+        if not vehicle_ids:
+            return []
+        
+        result = (
+            supabase
+            .table("mileage_entries")
+            .select("*, vehicles(*)")
+            .in_("vehicle_id", vehicle_ids)
+            .order("recorded_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
