@@ -649,7 +649,6 @@
                 </div>
 
                 <div style="margin-top:16px;">
-                    <button type="button" class="btn btn-primary" id="autoFillBtn">🔍 Auto-fill from VIN</button>
                     <button type="button" class="btn btn-secondary" id="nextStep1Btn" style="float:right;">Next →</button>
                 </div>
             </div>
@@ -788,7 +787,7 @@
                 </div>
 
                 <!-- ─── INSPECTION CHECKLIST ─── -->
-                <div id="inspectionChecklistSection" style="display:none;margin-top:24px;">
+                <div id="inspectionChecklistSection" style="display:block;margin-top:24px;">
                     <h3 style="color:#eab308;margin-bottom:12px;">📋 Inspection Checklist</h3>
                     <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">Complete the inspection checklist for this vehicle.</p>
 
@@ -974,8 +973,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V ASSESSMENT — Hybrid Architecture
-        // Uses window.autoV (Supabase + FastAPI)
+        // AUTO-V ASSESSMENT — ALIGNED WITH API DOCS
+        // Endpoints: /api/v1/vehicle-assessments/...
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -1111,6 +1110,7 @@
                 documents: []
             };
             let assessmentResult = null;
+            let createdVehicleId = null;
 
             // ─── HELPERS ────────────────────────────────────────────────
             function showToast(msg, type = 'success') {
@@ -1310,11 +1310,8 @@
             // ─── TOGGLE SECTIONS ────────────────────────────────────────
             function toggleSections(type) {
                 const damageSection = document.getElementById('damageMappingSection');
-                const inspectionSection = document.getElementById('inspectionChecklistSection');
-
                 const showDamage = ['accident', 'insurance_claim', 'salvage', 'theft_recovery'].includes(type);
                 damageSection.style.display = showDamage ? 'block' : 'none';
-                inspectionSection.style.display = 'block';
             }
 
             // ─── DAMAGE MAPPING ─────────────────────────────────────────
@@ -1337,7 +1334,7 @@
                 selectedPanels.forEach(panel => {
                     damageMarks.push({
                         panel: panel.dataset.panel,
-                        damageType: damageType,
+                        damage_type: damageType,
                         severity: severity
                     });
                     panel.classList.remove('selected');
@@ -1351,7 +1348,7 @@
                 const container = document.getElementById('damageItems');
                 container.innerHTML = damageMarks.map((d, i) =>
                     `<span class="badge badge-blue" style="cursor:pointer;" onclick="removeDamageMark(${i})">
-                        ${d.panel}: ${d.damageType.replace('_',' ').toUpperCase()} (${d.severity}) ✕
+                        ${d.panel}: ${d.damage_type.replace('_',' ').toUpperCase()} (${d.severity}) ✕
                     </span>`
                 ).join('');
             }
@@ -1432,49 +1429,22 @@
             setupUploadZone('damageUpload', 'damageInput', 'damagePreview', 'damage');
             setupUploadZone('docUpload', 'docInput', 'docPreview', 'documents');
 
-            // ─── AUTO-FILL FROM VIN ────────────────────────────────────
-            document.getElementById('autoFillBtn').addEventListener('click', async function() {
-                const vin = document.getElementById('vehicleVin').value.trim();
-                if (!vin || vin.length !== 17) {
-                    showMessage('Please enter a valid 17-character VIN', 'error');
-                    return;
-                }
-
-                showLoading(true);
-                try {
-                    const result = await window.autoV.apiRequest('/vehicles/decode-vin', {
-                        method: 'POST',
-                        body: JSON.stringify({ vin })
-                    });
-
-                    if (result.success && result.data) {
-                        const data = result.data.vehicle || result.data;
-                        document.getElementById('vehicleMake').value = data.make || '';
-                        document.getElementById('vehicleMake').dispatchEvent(new Event('change'));
-                        setTimeout(() => {
-                            document.getElementById('vehicleModel').value = data.model || '';
-                        }, 100);
-                        document.getElementById('vehicleYear').value = data.year || '';
-                        document.getElementById('vehicleBody').value = data.body_type || 'Sedan';
-                        document.getElementById('fuelType').value = data.fuel_type || 'Petrol';
-                        document.getElementById('engineCapacity').value = data.engine_cc || '';
-                        showToast(`✅ Vehicle found: ${data.make} ${data.model}`, 'success');
-                    } else {
-                        showMessage('Vehicle not found. Please fill details manually.', 'info');
-                    }
-                } catch (error) {
-                    showMessage('Error: ' + error.message, 'error');
-                } finally {
-                    showLoading(false);
-                }
-            });
-
             // ─── SUBMIT ASSESSMENT ─────────────────────────────────────
+            // ALIGNED WITH API DOCS: 
+            // POST /api/v1/vehicle-assessments/vehicle-assessments/{vehicle_id}
             document.getElementById('submitBtn').addEventListener('click', async function() {
                 const make = document.getElementById('vehicleMake').value;
                 const model = document.getElementById('vehicleModel').value;
-                const year = document.getElementById('vehicleYear').value;
+                const year = parseInt(document.getElementById('vehicleYear').value);
                 const reg = document.getElementById('vehicleReg').value.trim();
+                const vin = document.getElementById('vehicleVin').value.trim().toUpperCase();
+                const odometer = parseInt(document.getElementById('vehicleOdometer').value) || 0;
+                const bodyType = document.getElementById('vehicleBody').value;
+                const fuelType = document.getElementById('fuelType').value;
+                const transmission = document.getElementById('transmission').value;
+                const engineCapacity = parseInt(document.getElementById('engineCapacity').value) || 0;
+                const color = document.getElementById('vehicleColor').value;
+                const marketValue = parseInt(document.getElementById('marketValue').value) || 0;
 
                 if (!make || !model || !year || !reg) {
                     showMessage('Please fill all required vehicle details', 'error');
@@ -1504,6 +1474,50 @@
                     document.getElementById('userAvatar').textContent = (user.email || 'A')[0].toUpperCase();
                     document.getElementById('userName').textContent = user.full_name || user.email;
 
+                    // ─── STEP 1: Create Vehicle ───────────────────────────
+                    // POST /api/v1/vehicles/
+                    const vehiclePayload = {
+                        reg: reg,
+                        vin: vin,
+                        make: make,
+                        model: model,
+                        year: year,
+                        body_type: bodyType,
+                        odometer: odometer,
+                        fuel_type: fuelType,
+                        transmission: transmission,
+                        engine_capacity: engineCapacity,
+                        color: color,
+                        market_value: marketValue
+                    };
+
+                    let vehicleId;
+                    try {
+                        const vehicleResult = await window.autoV.apiRequest('/vehicles/', {
+                            method: 'POST',
+                            body: JSON.stringify(vehiclePayload)
+                        });
+                        vehicleId = vehicleResult.data?.id || vehicleResult.id;
+                        createdVehicleId = vehicleId;
+                        showToast('✅ Vehicle created successfully', 'success');
+                    } catch (vehicleError) {
+                        // If vehicle already exists, try to find it
+                        try {
+                            const vehicles = await window.autoV.apiRequest(`/vehicles/?reg=${reg}`);
+                            if (vehicles.data && vehicles.data.length > 0) {
+                                vehicleId = vehicles.data[0].id;
+                                createdVehicleId = vehicleId;
+                                showToast('✅ Existing vehicle found', 'info');
+                            } else {
+                                throw vehicleError;
+                            }
+                        } catch (e) {
+                            showToast('⚠️ Could not create/find vehicle', 'warning');
+                            vehicleId = 'temp_' + Date.now();
+                        }
+                    }
+
+                    // ─── STEP 2: Collect Assessment Data ───────────────────
                     const typeData = ASSESSMENT_TYPES[selectedAssessmentType];
                     const assessmentData = {};
                     if (typeData?.fields) {
@@ -1527,21 +1541,10 @@
                         });
                     });
 
-                    const payload = {
-                        vehicle: {
-                            reg: reg,
-                            vin: document.getElementById('vehicleVin').value.trim().toUpperCase(),
-                            make: make,
-                            model: model,
-                            year: parseInt(year),
-                            body_type: document.getElementById('vehicleBody').value,
-                            odometer: parseInt(document.getElementById('vehicleOdometer').value) || 0,
-                            market_value: parseInt(document.getElementById('marketValue').value) || 0,
-                            fuel_type: document.getElementById('fuelType').value,
-                            transmission: document.getElementById('transmission').value,
-                            engine_capacity: parseInt(document.getElementById('engineCapacity').value) || 0,
-                            color: document.getElementById('vehicleColor').value
-                        },
+                    // ─── STEP 3: Create Assessment ──────────────────────────
+                    // POST /api/v1/vehicle-assessments/vehicle-assessments/{vehicle_id}
+                    const assessmentPayload = {
+                        vehicle_id: vehicleId,
                         assessment_type: selectedAssessmentType,
                         inspector: {
                             name: inspectorName,
@@ -1552,47 +1555,39 @@
                         },
                         damage_marks: damageMarks,
                         checklist: checklist,
-                        image_count: {
-                            exterior: uploadedFiles.exterior.length,
-                            interior: uploadedFiles.interior.length,
-                            mechanical: uploadedFiles.mechanical.length,
-                            damage: uploadedFiles.damage.length,
-                            documents: uploadedFiles.documents.length
+                        images: {
+                            exterior: uploadedFiles.exterior.map(f => f.name),
+                            interior: uploadedFiles.interior.map(f => f.name),
+                            mechanical: uploadedFiles.mechanical.map(f => f.name),
+                            damage: uploadedFiles.damage.map(f => f.name),
+                            documents: uploadedFiles.documents.map(f => f.name)
                         },
-                        ...assessmentData
+                        ...assessmentData,
+                        // Include vehicle details for the assessment
+                        vehicle_details: {
+                            reg: reg,
+                            make: make,
+                            model: model,
+                            year: year,
+                            odometer: odometer,
+                            market_value: marketValue
+                        }
                     };
 
-                    const result = await window.autoV.apiRequest('/assessments/create', {
+                    const result = await window.autoV.apiRequest(`/vehicle-assessments/vehicle-assessments/${vehicleId}`, {
                         method: 'POST',
-                        body: JSON.stringify(payload)
-                    });
-
-                    const requestData = {
-                        service_type: 'assessment',
-                        registration_number: reg,
-                        make: make,
-                        model: model,
-                        year: parseInt(year),
-                        odometer: parseInt(document.getElementById('vehicleOdometer').value) || 0,
-                        amount: typeData?.price || 3000,
-                        payment_status: 'paid',
-                        status: 'completed',
-                        purpose: selectedAssessmentType,
-                        result: result.data || result
-                    };
-
-                    await window.autoV.apiRequest('/service-requests', {
-                        method: 'POST',
-                        body: JSON.stringify(requestData)
+                        body: JSON.stringify(assessmentPayload)
                     });
 
                     assessmentResult = result.data || result;
+
+                    // ─── STEP 4: Display Results ────────────────────────────
                     displayResults(assessmentResult);
                     showToast('✅ Assessment completed successfully!', 'success');
 
                 } catch (error) {
                     console.error('Assessment error:', error);
-                    showMessage('Error: ' + error.message, 'error');
+                    showMessage('Error: ' + (error.message || 'An error occurred'), 'error');
                 } finally {
                     showLoading(false);
                 }
@@ -1633,9 +1628,10 @@
                         ${result.claim_valid !== undefined ? `
                             <div class="item"><span class="label">Claim Valid</span><span class="value ${result.claim_valid ? 'green' : 'red'}">${result.claim_valid ? '✅ Valid' : '❌ Invalid'}</span></div>
                         ` : ''}
-                        <div class="item"><span class="label">Assessment ID</span><span class="value" style="font-family:monospace;font-size:12px;color:#eab308;">${result.assessment_id || result.id || 'N/A'}</span></div>
+                        <div class="item"><span class="label">Assessment ID</span><span class="value" style="font-family:monospace;font-size:12px;color:#eab308;">${result.assessment_id || result.id || result.assessment?.id || 'N/A'}</span></div>
+                        <div class="item"><span class="label">Vehicle</span><span class="value">${result.vehicle?.make || document.getElementById('vehicleMake').value} ${result.vehicle?.model || document.getElementById('vehicleModel').value}</span></div>
                         <div class="item"><span class="label">Inspector</span><span class="value">${result.inspector?.name || document.getElementById('inspectorName').value || 'N/A'}</span></div>
-                        <div class="item"><span class="label">Generated</span><span class="value">${new Date(result.generated_at || result.created_at || Date.now()).toLocaleString()}</span></div>
+                        <div class="item"><span class="label">Generated</span><span class="value">${new Date(result.generated_at || result.created_at || result.assessment?.created_at || Date.now()).toLocaleString()}</span></div>
                     </div>
                     <div style="margin-top:20px; padding:15px; background:#14532d; border-radius:12px;">
                         <p style="color:#22c55e; font-weight:600;">✅ Assessment Complete</p>
@@ -1669,6 +1665,7 @@
                         .header { border-bottom: 2px solid #eab308; padding-bottom: 10px; margin-bottom: 20px; }
                         .header h1 { color: #eab308; }
                         .footer { margin-top: 30px; border-top: 1px solid #ccc; padding-top: 15px; font-size: 12px; color: #999; text-align: center; }
+                        .badge-methodology { background: #f0f0f0; padding: 4px 12px; border-radius: 20px; display: inline-block; margin: 5px; }
                     </style>
                     </head>
                     <body>
@@ -1679,6 +1676,7 @@
                         ${content.innerHTML}
                         <div class="footer">
                             <p>This report is electronically generated and signed.</p>
+                            <p>Report ID: ${assessmentResult.assessment_id || assessmentResult.id || 'N/A'}</p>
                         </div>
                     </body></html>
                 `);
