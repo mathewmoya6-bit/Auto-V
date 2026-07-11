@@ -14,38 +14,48 @@ router = APIRouter()
 
 @router.get("/models")
 async def list_vehicle_models():
-    """Get all vehicle makes and models for dropdowns"""
-    try:
-        result = (
-            supabase
-            .table("vehicles")
-            .select("make, model")
-            .execute()
-        )
-        
-        # Build unique make-model pairs
-        models = []
-        seen = set()
-        for item in result.data:
-            key = f"{item['make']}|{item['model']}"
+    """
+    Get all known vehicle makes and models for dropdowns/autocomplete.
+
+    Pulled from two sources and merged:
+    - `vehicles`: user-registered vehicle records (Vehicles module)
+    - `valuations`: every completed Instant Value / Valuation submission
+
+    The `vehicles` table alone is not a reliable source here — most people
+    using Instant Value never register a Vehicle record at all, they only
+    ever create rows in `valuations`. Without also reading `valuations`,
+    this endpoint would stay empty indefinitely for real users.
+    """
+    seen = set()
+    models: list[dict] = []
+
+    def _add_from(rows):
+        for item in rows:
+            make = (item.get("make") or "").strip()
+            model = (item.get("model") or "").strip()
+            if not make or not model:
+                continue
+            key = f"{make}|{model}"
             if key not in seen:
                 seen.add(key)
-                models.append({
-                    "make": item["make"],
-                    "model": item["model"]
-                })
-        
-        return models
+                models.append({"make": make, "model": model})
+
+    try:
+        vehicles_result = supabase.table("vehicles").select("make, model").execute()
+        _add_from(vehicles_result.data or [])
     except Exception as e:
-        # Return fallback data if table doesn't exist
-        return [
-            {"make": "Toyota", "model": "Corolla"},
-            {"make": "Toyota", "model": "Camry"},
-            {"make": "Honda", "model": "Civic"},
-            {"make": "Nissan", "model": "X-Trail"},
-            {"make": "BMW", "model": "X5"},
-            {"make": "Mercedes", "model": "C-Class"}
-        ]
+        raise HTTPException(status_code=500, detail=f"Failed to fetch vehicle models: {e}")
+
+    try:
+        valuations_result = supabase.table("valuations").select("make, model").execute()
+        _add_from(valuations_result.data or [])
+    except Exception as e:
+        # Don't fail the whole request if only this second source has an
+        # issue (e.g. table not migrated yet on an older deployment) - the
+        # vehicles-table data above is still valid and useful on its own.
+        pass
+
+    return models
 
 
 @router.get("/", response_model=List[VehicleResponse])
