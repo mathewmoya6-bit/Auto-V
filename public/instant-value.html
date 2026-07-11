@@ -700,20 +700,12 @@
                 </div>
             </div>
 
-            <div class="price-banner" style="background: linear-gradient(135deg, #1e293b, #0f172a); border-left: 4px solid #22c55e; padding: 14px 20px; border-radius: 10px; margin: 16px 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <span style="color: #94a3b8; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px;">
-                    <span style="color: #22c55e;">✅</span> Service Fee
-                </span>
-                <span style="color: #22c55e; font-size: 24px; font-weight: 700;" id="serviceFeeDisplay">KES --</span>
-                <span style="font-size: 11px; color: #64748b; width: 100%; text-align: right;">⏱️ Average processing time: ~15 seconds</span>
-            </div>
-
             <div class="form-group">
                 <label>M-Pesa Phone Number <span class="required">*</span></label>
                 <input type="tel" id="mpesaPhone" placeholder="0712345678" required>
                 <div class="error-text" id="phoneError">Please enter a valid phone number</div>
                 <small style="color: #64748b; font-size: 11px; display: block; margin-top: 4px;">
-                    Enter the M-Pesa number you'll pay from
+                    Enter your M-Pesa phone number
                 </small>
             </div>
 
@@ -813,7 +805,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V INSTANT VALUE CHECK
+        // AUTO-V INSTANT VALUE CHECK — CLEAN VERSION
+        // Only calls /instant-value/calculate endpoint
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -822,10 +815,7 @@
             if (window.autoVInstantCheckInitialized) return;
             window.autoVInstantCheckInitialized = true;
 
-            // ─── STATIC REFERENCE DATA (UI structure, not vehicle inventory) ──
-            // Real make/model data comes from the API (loadVehicleData). These
-            // lists only decide what makes are offered per vehicle type and what
-            // engine/body-type options to show - they are not a vehicle catalog.
+            // ─── STATIC REFERENCE DATA ──────────────────────────────
             const MAKES_BY_TYPE = {
                 'Car': ['Toyota', 'Nissan', 'BMW', 'Mercedes', 'Honda', 'Mazda', 'Volkswagen',
                         'Mitsubishi', 'Subaru', 'Ford', 'Chevrolet', 'Jeep', 'Land Rover',
@@ -860,8 +850,7 @@
 
             // ─── State ──────────────────────────────────────────────────
             let currentUser = null;
-            let serviceFee = null;
-            let MODEL_MAP = {}; // populated from the real vehicles API - never fabricated
+            let MODEL_MAP = {};
 
             // ─── DOM ELEMENTS ──────────────────────────────────────────
             const vehicleTypeSelect = document.getElementById('vehicleType');
@@ -869,7 +858,6 @@
             const modelSelect = document.getElementById('model');
             const engineCapacitySelect = document.getElementById('engineCapacity');
             const bodyTypeSelect = document.getElementById('bodyType');
-            const serviceFeeDisplay = document.getElementById('serviceFeeDisplay');
             const form = document.getElementById('instantForm');
             const submitBtn = document.getElementById('submitBtn');
             const statusBox = document.getElementById('statusBox');
@@ -905,17 +893,25 @@
 
             function initTomSelect() {
                 tomMake = new TomSelect('#make', {
-                    create: false, // makes come from a fixed reference list, not free text
+                    create: false,
                     placeholder: 'Select make...',
                     maxItems: 1,
                 });
 
                 tomModel = new TomSelect('#model', {
-                    create: true, // model catalog is real-data-driven and may be incomplete;
+                    create: true,
                     createFilter: function(input) { return input.trim().length >= 1; },
                     createOnBlur: true,
                     placeholder: 'Select or type model...',
                     maxItems: 1,
+                    // Ensure user-typed values are captured
+                    onItemAdd: function(value) {
+                        if (this.control_input) {
+                            this.control_input.value = '';
+                        }
+                        updateVehiclePreview();
+                        updateProgress();
+                    }
                 });
 
                 tomLocation = new TomSelect('#location', {
@@ -927,11 +923,7 @@
                 });
             }
 
-            // ─── UPDATE MAKE DROPDOWN (per vehicle type) ─────────────
-            // Rebuilt per vehicle type instead of using static optgroups, so the
-            // same make name (e.g. "Honda" appears for both Car and Bike) never
-            // collides as a duplicate <option value>, which silently breaks
-            // TomSelect (it keys options by value).
+            // ─── UPDATE MAKE DROPDOWN ─────────────────────────────
             function updateMakeDropdown(preserveValue) {
                 const type = vehicleTypeSelect.value;
                 const makes = MAKES_BY_TYPE[type] || [];
@@ -966,10 +958,6 @@
             }
 
             // ─── UPDATE MODEL DROPDOWN ──────────────────────────────
-            // Only ever shows models that actually came back from the API for
-            // this make. If there are none yet, the field stays empty and
-            // relies on TomSelect's "create" mode for free-text entry - we do
-            // not inject a fabricated model list.
             function updateModelDropdown() {
                 const selectedMake = makeSelect.value;
                 const models = MODEL_MAP[selectedMake] || [];
@@ -1094,28 +1082,7 @@
                 else stepLabel.textContent = 'Step 4: Ready for Valuation!';
             }
 
-            // ─── FETCH SERVICE FEE FROM API ──────────────────────────
-            async function fetchServiceFee() {
-                try {
-                    if (!window.autoV) throw new Error('API client not available');
-                    const data = await window.autoV.apiRequest('/settings/instant_fee');
-                    const fee = parseInt(data.fee ?? data.setting_value, 10);
-                    if (!Number.isFinite(fee)) throw new Error('Invalid fee returned by API');
-                    serviceFee = fee;
-                    serviceFeeDisplay.textContent = `KES ${serviceFee.toLocaleString()}`;
-                    return serviceFee;
-                } catch (error) {
-                    console.warn('Error fetching service fee:', error);
-                    serviceFeeDisplay.textContent = 'Unavailable';
-                    return null;
-                }
-            }
-
             // ─── FETCH VEHICLE DATA FROM API ─────────────────────────
-            // No fabricated model catalog: MODEL_MAP only ever contains models
-            // that have actually been seen in the vehicles table. If the API
-            // call fails outright, we show an error state rather than pretend
-            // we have real inventory data.
             async function loadVehicleData() {
                 try {
                     if (!window.autoV) throw new Error('API client not available');
@@ -1135,16 +1102,13 @@
                     console.error('Error loading vehicle model data:', error);
                     MODEL_MAP = {};
                     statusBox.className = 'status-box status-info';
-                    statusBox.textContent = 'ℹ️ Model suggestions are temporarily unavailable — you can still type your model manually.';
+                    statusBox.textContent = 'ℹ️ Model suggestions temporarily unavailable — you can still type your model manually.';
                     statusBox.style.display = 'flex';
                     return false;
                 }
             }
 
-            // ─── VALIDATE + SANITIZE VEHICLE DATA HANDED IN FROM ANOTHER PAGE ──
-            // Data arriving via URL params or sessionStorage is not trusted -
-            // whitelist expected fields, enforce types/lengths/allowed values
-            // before it ever touches the DOM or gets submitted to the API.
+            // ─── VALIDATE + SANITIZE VEHICLE DATA ──────────────────
             function sanitizePortalVehicleData(raw) {
                 if (!raw || typeof raw !== 'object') return null;
                 const out = {};
@@ -1349,9 +1313,6 @@
                 document.getElementById('resultDate').textContent = new Date().toLocaleDateString('en-KE', {
                     year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
                 });
-                // certificate_number should always come from the backend (it's
-                // the source of truth for a document users may rely on) - no
-                // client-side fallback fabrication.
                 document.getElementById('resultCert').textContent = data.certificate_number || 'Pending';
 
                 const confidenceFill = document.getElementById('confidenceFill');
@@ -1372,7 +1333,10 @@
             });
 
             makeSelect.addEventListener('change', updateModelDropdown);
-            modelSelect.addEventListener('change', updateVehiclePreview);
+            modelSelect.addEventListener('change', function() {
+                updateVehiclePreview();
+                updateProgress();
+            });
             bodyTypeSelect.addEventListener('change', updateVehiclePreview);
 
             document.querySelectorAll('input, select').forEach(el => {
@@ -1412,8 +1376,6 @@
                 try {
                     localStorage.setItem('valuationDraft', JSON.stringify(formData));
                 } catch (e) {
-                    // localStorage can throw in private-browsing/quota-exceeded cases -
-                    // draft saving is a convenience, not a hard requirement.
                     console.warn('Could not save draft:', e);
                 }
             }
@@ -1466,6 +1428,7 @@
             }
 
             // ─── FORM SUBMISSION ──────────────────────────────────────
+            // ONLY calls /instant-value/calculate
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
 
@@ -1524,6 +1487,7 @@
                         if (step <= 5) updateLoadingStep(step);
                     }, 1200);
 
+                    // ─── ONLY API CALL ───────────────────────────────────
                     const result = await window.autoV.apiRequest('/instant-value/calculate', {
                         method: 'POST',
                         body: JSON.stringify(formData)
@@ -1585,9 +1549,8 @@
 
                 const gotPortalData = loadVehicleFromPortal();
                 if (!gotPortalData) loadDraft();
-                else updateModelDropdown(); // portal data already loaded; refresh model list for real API data
+                else updateModelDropdown();
 
-                await fetchServiceFee();
                 updateProgress();
 
                 document.getElementById('year').max = new Date().getFullYear();
