@@ -848,8 +848,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V INSTANT VALUE CHECK — FIXED ARCHITECTURE
-        // Supabase Auth → FastAPI Backend → Supabase DB
+        // AUTO-V INSTANT VALUE CHECK — ALIGNED WITH API DOCS
+        // Endpoints: /api/v1/instant-value/calculate ONLY
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -880,7 +880,6 @@
 
             // ─── State ──────────────────────────────────────────────────
             let currentUser = null;
-            let serviceFee = 500;
 
             // ─── DOM ELEMENTS ──────────────────────────────────────────
             const vehicleTypeSelect = document.getElementById('vehicleType');
@@ -1079,26 +1078,12 @@
                 }
             }
 
-            // ─── FETCH SERVICE FEE ──────────────────────────────────
-            // FIXED: Using correct endpoint /instant-value/fee
-            async function fetchServiceFee() {
-                try {
-                    if (!window.autoV) throw new Error('API client not available');
-                    const data = await window.autoV.apiRequest('/instant-value/fee');
-                    serviceFee = parseInt(data.fee ?? data.setting_value, 10) || 500;
-                    return serviceFee;
-                } catch (error) {
-                    console.warn('⚠️ Error fetching service fee:', error);
-                    return 500;
-                }
-            }
-
             // ─── FETCH VEHICLE DATA ──────────────────────────────────
-            // FIXED: Using correct endpoint /instant-value/models
+            // Uses GET /api/v1/vehicles/models from API docs
             async function loadVehicleData() {
                 try {
                     if (!window.autoV) throw new Error('API client not available');
-                    const vehicles = await window.autoV.apiRequest('/instant-value/models');
+                    const vehicles = await window.autoV.apiRequest('/vehicles/models');
 
                     MODEL_MAP = {};
                     vehicles.forEach(v => {
@@ -1362,7 +1347,7 @@
             }
 
             // ─── FORM SUBMISSION ──────────────────────────────────────
-            // FIXED: Complete flow with DB save via FastAPI
+            // ALIGNED WITH API DOCS: POST /api/v1/instant-value/calculate
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
 
@@ -1373,7 +1358,6 @@
                     return;
                 }
 
-                // Check if user is authenticated
                 if (!currentUser) {
                     const user = await checkAuth();
                     if (!user) return;
@@ -1387,21 +1371,22 @@
                 }
 
                 const formData = {
-                    vehicleType: vehicleTypeSelect.value,
+                    user_id: currentUser.id,
+                    type: vehicleTypeSelect.value,
                     make: makeSelect.value,
                     model: modelSelect.value,
                     year: parseInt(document.getElementById('year').value),
-                    engineCapacity: parseInt(engineCapacitySelect.value),
-                    fuelType: document.getElementById('fuelType').value,
+                    engine_capacity: parseInt(engineCapacitySelect.value),
+                    fuel_type: document.getElementById('fuelType').value,
                     transmission: document.getElementById('transmission').value,
-                    bodyType: bodyTypeSelect.value,
-                    bodyColor: document.getElementById('bodyColor').value,
+                    body_type: bodyTypeSelect.value,
+                    body_color: document.getElementById('bodyColor').value,
                     mileage: parseInt(document.getElementById('mileage').value),
                     condition: document.getElementById('condition').value,
-                    accidentHistory: document.getElementById('accidentHistory').value,
+                    accident_history: document.getElementById('accidentHistory').value,
                     location: document.getElementById('location').value,
-                    previousOwners: parseInt(document.getElementById('previousOwners').value),
-                    usageType: document.getElementById('usageType').value,
+                    previous_owners: parseInt(document.getElementById('previousOwners').value),
+                    usage_type: document.getElementById('usageType').value,
                     phone: document.getElementById('mpesaPhone').value.trim()
                 };
 
@@ -1421,60 +1406,12 @@
                         if (step <= 5) updateLoadingStep(step);
                     }, 1200);
 
-                    // ─── STEP 1: Calculate AI Valuation ───────────────────
-                    // POST /instant-value/calculate
+                    // ─── SINGLE API CALL ───────────────────────────────────
+                    // POST /api/v1/instant-value/calculate
+                    // This endpoint calculates AND saves to instant_valuations table
                     const result = await window.autoV.apiRequest('/instant-value/calculate', {
                         method: 'POST',
-                        body: JSON.stringify({
-                            user_id: currentUser.id,
-                            type: formData.vehicleType,
-                            make: formData.make,
-                            model: formData.model,
-                            year: formData.year,
-                            engine_capacity: formData.engineCapacity,
-                            fuel_type: formData.fuelType,
-                            transmission: formData.transmission,
-                            body_type: formData.bodyType,
-                            body_color: formData.bodyColor,
-                            mileage: formData.mileage,
-                            condition: formData.condition,
-                            accident_history: formData.accidentHistory,
-                            location: formData.location,
-                            previous_owners: formData.previousOwners,
-                            usage_type: formData.usageType,
-                            phone: formData.phone
-                        })
-                    });
-
-                    // ─── STEP 2: Save to Database ─────────────────────────
-                    // POST /instant-value/valuations
-                    await window.autoV.apiRequest('/instant-value/valuations', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            user_id: currentUser.id,
-                            vehicle_type: formData.vehicleType,
-                            make: formData.make,
-                            model: formData.model,
-                            year: formData.year,
-                            engine_capacity: formData.engineCapacity,
-                            fuel_type: formData.fuelType,
-                            transmission: formData.transmission,
-                            body_type: formData.bodyType,
-                            body_color: formData.bodyColor,
-                            mileage: formData.mileage,
-                            previous_owners: formData.previousOwners,
-                            usage_type: formData.usageType,
-                            condition: formData.condition,
-                            accident_history: formData.accidentHistory,
-                            location: formData.location,
-                            phone: formData.phone,
-                            market_value: result.market_value,
-                            range_low: result.range_low,
-                            range_high: result.range_high,
-                            confidence_score: result.confidence_score,
-                            certificate_number: result.certificate_number,
-                            factors: result.factors || []
-                        })
+                        body: JSON.stringify(formData)
                     });
 
                     clearInterval(stepInterval);
@@ -1538,15 +1475,13 @@
                 vehicleTypeSelect.value = 'Car';
                 await loadVehicleData();
                 loadDraft();
-                await fetchServiceFee();
                 updateProgress();
 
                 const currentYear = new Date().getFullYear();
                 document.getElementById('year').max = currentYear;
 
                 console.log('✅ AUTO-V Instant Value Check loaded successfully!');
-                console.log(`📌 Supabase Auth: ✅ Connected (${user.email})`);
-                console.log(`📌 FastAPI Client: ${window.autoV ? '✅ Connected' : '❌ Not available'}`);
+                console.log('📌 Endpoint: POST /api/v1/instant-value/calculate');
                 console.log('📌 Architecture: Frontend → FastAPI → Supabase DB');
                 
                 if (window.autoV) {
