@@ -464,6 +464,41 @@
             to { opacity: 1; transform: translateX(0); }
         }
         
+        /* ─── Loading Overlay ─── */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 99999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .loading-overlay.show { display: flex; }
+        .loading-overlay .spinner-big {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #1e293b;
+            border-top-color: #eab308;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .loading-overlay p {
+            color: #94a3b8;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        .loading-overlay .progress-text-overlay {
+            color: #eab308;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
         @media (max-width: 768px) {
             .container { padding: 24px 18px; }
             .form-grid { grid-template-columns: 1fr; }
@@ -483,6 +518,13 @@
     </style>
 </head>
 <body>
+
+    <!-- ─── LOADING OVERLAY ─── -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner-big"></div>
+        <p id="loadingText">Processing your valuation...</p>
+        <div class="progress-text-overlay" id="loadingProgress">Step 1 of 5</div>
+    </div>
 
     <div class="container">
         <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
@@ -748,7 +790,7 @@
                 <input type="tel" id="mpesaPhone" placeholder="0712345678" required>
                 <div class="error-text" id="phoneError">Please enter a valid phone number</div>
                 <small style="color: #64748b; font-size: 11px; display: block; margin-top: 4px;">
-                    Enter the M-Pesa number you'll pay from
+                    Enter the M-Pesa number you'll pay from (Service fee: KES 500)
                 </small>
             </div>
 
@@ -848,7 +890,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V INSTANT VALUE CHECK — FIXED BIKE MODEL MAPPING
+        // AUTO-V INSTANT VALUE CHECK — PRODUCTION READY
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -857,11 +899,23 @@
             if (window.autoVInstantCheckInitialized) return;
             window.autoVInstantCheckInitialized = true;
 
+            // ─── CONFIGURATION ──────────────────────────────────────────
+            const CONFIG = {
+                CACHE_KEY: 'vehicle_models_cache',
+                CACHE_DURATION: 3600000, // 1 hour
+                MAX_RETRIES: 3,
+                RETRY_DELAY: 1000,
+                RATE_LIMIT_MS: 3000,
+                SESSION_CHECK_INTERVAL: 300000, // 5 minutes
+                SERVICE_FEE: 500,
+                API_ENDPOINT: '/instant-value/calculate'
+            };
+
             // ─── MODEL MAPPING ──────────────────────────────────────────
             let MODEL_MAP = {};
+            let MODEL_MAP_LOADED = false;
             
             // ─── BIKE MAKE NAME MAPPING ──────────────────────────────
-            // Maps display names to API make names
             const BIKE_MAKE_MAP = {
                 'Honda': 'Honda',
                 'Yamaha': 'Yamaha',
@@ -901,6 +955,8 @@
             // ─── State ──────────────────────────────────────────────────
             let currentUser = null;
             let vehicleDataFromPortal = null;
+            let submitCooldown = false;
+            let sessionCheckInterval = null;
 
             // ─── DOM ELEMENTS ──────────────────────────────────────────
             const vehicleTypeSelect = document.getElementById('vehicleType');
@@ -919,6 +975,56 @@
             const previewIcon = document.getElementById('previewIcon');
             const previewTitle = document.getElementById('previewTitle');
             const previewSubtitle = document.getElementById('previewSubtitle');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            const loadingProgress = document.getElementById('loadingProgress');
+
+            // ─── TOAST SYSTEM ──────────────────────────────────────────
+            function showToast(msg, type = 'success') {
+                if (window.autoV && window.autoV.showToast) {
+                    window.autoV.showToast(msg, type);
+                    return;
+                }
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
+                const t = document.createElement('div');
+                t.className = `toast toast-${type}`;
+                t.textContent = msg;
+                document.body.appendChild(t);
+                setTimeout(() => t.remove(), 3500);
+            }
+
+            // ─── LOADING OVERLAY ──────────────────────────────────────
+            function showLoading(show, text = 'Processing...', progress = '') {
+                if (show) {
+                    loadingOverlay.classList.add('show');
+                    loadingText.textContent = text;
+                    loadingProgress.textContent = progress;
+                } else {
+                    loadingOverlay.classList.remove('show');
+                }
+            }
+
+            // ─── API REQUEST WITH RETRY ──────────────────────────────
+            async function apiRequestWithRetry(endpoint, options, retries = CONFIG.MAX_RETRIES) {
+                let lastError;
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        if (!window.autoV || !window.autoV._initialized) {
+                            throw new Error('API client not initialized');
+                        }
+                        const result = await window.autoV.apiRequest(endpoint, options);
+                        return result;
+                    } catch (err) {
+                        lastError = err;
+                        console.warn(`API request failed (attempt ${i + 1}/${retries}):`, err.message);
+                        if (i < retries - 1) {
+                            await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY * (i + 1)));
+                        }
+                    }
+                }
+                throw lastError;
+            }
 
             // ─── CHECK AUTH ────────────────────────────────────────────
             async function checkAuth() {
@@ -930,7 +1036,6 @@
                         window.location.href = 'login.html';
                         return null;
                     }
-
                     currentUser = user;
                     console.log('✅ Authenticated user:', user.email);
                     return user;
@@ -939,6 +1044,19 @@
                     window.location.href = 'login.html';
                     return null;
                 }
+            }
+
+            // ─── SESSION MONITORING ──────────────────────────────────
+            function startSessionMonitoring() {
+                if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+                sessionCheckInterval = setInterval(async () => {
+                    try {
+                        await window.autoV.getCurrentUser();
+                    } catch {
+                        showToast('Session expired. Please login again.', 'error');
+                        setTimeout(() => { window.location.href = 'login.html?expired=true'; }, 2000);
+                    }
+                }, CONFIG.SESSION_CHECK_INTERVAL);
             }
 
             // ─── TOM SELECT ──────────────────────────────────────────
@@ -992,8 +1110,6 @@
             function updateModelDropdown() {
                 const selectedDisplayMake = makeSelect.value;
                 const vehicleType = vehicleTypeSelect.value;
-                
-                // Get the API make name for lookup
                 const apiMakeName = getApiMakeName(selectedDisplayMake, vehicleType);
                 const models = MODEL_MAP[apiMakeName] || ['Other'];
 
@@ -1010,13 +1126,12 @@
                     modelSelect.appendChild(opt);
                 });
 
-                if (tomModel) tomModel.clearOptions();
                 if (tomModel) {
+                    tomModel.clearOptions();
                     tomModel.addOption(models.map(m => ({ value: m, text: m })));
                     tomModel.refreshOptions();
                 }
 
-                // If we have vehicle data from portal, auto-select the model
                 if (vehicleDataFromPortal && vehicleDataFromPortal.model) {
                     const modelExists = models.includes(vehicleDataFromPortal.model);
                     if (modelExists) {
@@ -1130,11 +1245,31 @@
                 }
             }
 
-            // ─── FETCH VEHICLE DATA ──────────────────────────────────
+            // ─── FETCH VEHICLE DATA WITH CACHING ─────────────────────
             async function loadVehicleData() {
+                // Check cache first
+                try {
+                    const cached = localStorage.getItem(CONFIG.CACHE_KEY);
+                    if (cached) {
+                        const { data, timestamp } = JSON.parse(cached);
+                        if (Date.now() - timestamp < CONFIG.CACHE_DURATION) {
+                            MODEL_MAP = data;
+                            MODEL_MAP_LOADED = true;
+                            console.log('✅ Vehicle data loaded from cache:', Object.keys(MODEL_MAP).length, 'makes');
+                            updateModelDropdown();
+                            updateEngineDropdown();
+                            updateBodyTypeDropdown();
+                            return true;
+                        }
+                    }
+                } catch (e) {
+                    console.log('Cache read error:', e);
+                }
+
+                // Fetch fresh data
                 try {
                     if (!window.autoV) throw new Error('API client not available');
-                    const vehicles = await window.autoV.apiRequest('/vehicles/models');
+                    const vehicles = await apiRequestWithRetry('/vehicles/models', { method: 'GET' });
 
                     MODEL_MAP = {};
                     vehicles.forEach(v => {
@@ -1150,12 +1285,19 @@
                         MODEL_MAP[make].sort();
                     });
 
+                    MODEL_MAP_LOADED = true;
+
+                    // Save to cache
+                    try {
+                        localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify({
+                            data: MODEL_MAP,
+                            timestamp: Date.now()
+                        }));
+                    } catch (e) {
+                        console.log('Cache write error:', e);
+                    }
+
                     console.log('✅ Vehicle data loaded from API:', Object.keys(MODEL_MAP).length, 'makes');
-                    console.log('📌 Bike makes in API:', Object.keys(MODEL_MAP).filter(m => 
-                        ['Honda', 'Yamaha', 'Suzuki', 'Kawasaki', 'TVS', 'Bajaj', 'Hero MotoCorp', 
-                         'Royal Enfield', 'KTM', 'Aprilia', 'BMW Motorrad', 'Ducati', 'Triumph', 
-                         'Harley-Davidson', 'MV Agusta'].includes(m)
-                    ));
 
                     updateModelDropdown();
                     updateEngineDropdown();
@@ -1164,31 +1306,30 @@
                     return true;
                 } catch (error) {
                     console.error('Error loading vehicle data:', error);
-                    // Fallback to hardcoded data with proper bike makes
+                    // Fallback to hardcoded data
                     MODEL_MAP = {
-                        // Cars
                         'Toyota': ['Corolla', 'Axio', 'Camry', 'RAV4', 'Hilux', 'Land Cruiser'],
                         'Honda': ['Civic', 'Accord', 'CR-V', 'Fit'],
                         'Nissan': ['X-Trail', 'Patrol', 'Note', 'Qashqai'],
                         'BMW': ['X5', '3 Series', '5 Series', '7 Series'],
                         'Mercedes': ['C-Class', 'E-Class', 'GLC', 'GLE'],
-                        // Bikes
-                        'Yamaha': ['R1', 'R6', 'R3', 'MT-07', 'MT-09', 'MT-15', 'YZF 450', 'Tracer 900', 'VMAX', 'Bolt'],
-                        'Suzuki': ['GSX-R1000', 'GSX-R750', 'GSX-8S', 'Hayabusa', 'V-Strom 650', 'V-Strom 1000', 'SV650'],
-                        'Kawasaki': ['Ninja 250', 'Ninja 400', 'Ninja 650', 'Z900', 'Z650', 'Versys 650', 'Versys 1000', 'KX 450', 'Vulcan 900'],
-                        'KTM': ['Duke 200', 'Duke 390', 'RC 390', '890 Adventure', '1290 Super Adventure', '690 Enduro', '450 EXC'],
-                        'Ducati': ['Panigale V4', 'Panigale 959', 'Monster 821', 'Monster 1200', 'Scrambler', 'Multistrada 950', 'Multistrada 1260', 'Diavel'],
-                        'Triumph': ['Street Triple', 'Tiger 900', 'Tiger 1200', 'Bonneville', 'Speed Twin', 'Rocket 3', 'Speed Triple'],
-                        'Harley-Davidson': ['Street 750', 'Iron 883', 'Forty-Eight', 'Softail', 'Road King', 'Street Glide', 'Road Glide', 'Pan America'],
-                        'Royal Enfield': ['Bullet 350', 'Classic 350', 'Classic 500', 'Himalayan', 'Interceptor 650', 'GT 650', 'Meteor 350'],
-                        'Bajaj': ['Pulsar 150', 'Pulsar 180', 'Pulsar 200', 'Pulsar NS 200', 'Dominar 400', 'Avenger 160', 'Avenger 220'],
-                        'TVS': ['Apache RTR 160', 'Apache RTR 200', 'Apache RR 310', 'Star City', 'Jupiter'],
-                        'Hero MotoCorp': ['Splendor', 'Passion Pro', 'Glamour', 'Karizma', 'XPulse 200', 'Maverick'],
-                        'BMW Motorrad': ['R 1250 GS', 'R 1250 RT', 'S 1000 RR', 'F 900 R', 'K 1600 GT', 'G 310 R'],
-                        'Aprilia': ['RSV4', 'Tuono V4', 'RS 660', 'Tuono 660', 'RS 125', 'Tuono 125'],
-                        'MV Agusta': ['F3 800', 'F4 1000', 'Brutale 800', 'Brutale 1000', 'Dragster 800', 'Turismo Veloce'],
+                        'Yamaha': ['R1', 'R6', 'R3', 'MT-07', 'MT-09'],
+                        'Suzuki': ['GSX-R1000', 'GSX-R750', 'Hayabusa'],
+                        'Kawasaki': ['Ninja 250', 'Ninja 400', 'Ninja 650', 'Z900'],
+                        'KTM': ['Duke 200', 'Duke 390', 'RC 390'],
+                        'Ducati': ['Panigale V4', 'Monster 821', 'Scrambler'],
+                        'Triumph': ['Street Triple', 'Tiger 900', 'Bonneville'],
+                        'Harley-Davidson': ['Street 750', 'Iron 883', 'Softail'],
+                        'Royal Enfield': ['Bullet 350', 'Classic 350', 'Himalayan'],
+                        'Bajaj': ['Pulsar 150', 'Pulsar 180', 'Dominar 400'],
+                        'TVS': ['Apache RTR 160', 'Apache RTR 200', 'Apache RR 310'],
+                        'Hero MotoCorp': ['Splendor', 'Passion Pro', 'Glamour'],
+                        'BMW Motorrad': ['R 1250 GS', 'S 1000 RR', 'G 310 R'],
+                        'Aprilia': ['RSV4', 'Tuono V4', 'RS 660'],
+                        'MV Agusta': ['F3 800', 'Brutale 800', 'Dragster 800'],
                         'Other': ['Other']
                     };
+                    MODEL_MAP_LOADED = true;
                     updateModelDropdown();
                     updateEngineDropdown();
                     updateBodyTypeDropdown();
@@ -1199,25 +1340,22 @@
             // ─── LOAD VEHICLE DATA FROM PORTAL ──────────────────────
             function loadVehicleFromPortal() {
                 try {
-                    // Check if vehicle data was passed via URL params
                     const urlParams = new URLSearchParams(window.location.search);
                     const vehicleDataParam = urlParams.get('vehicle');
                     
                     if (vehicleDataParam) {
                         vehicleDataFromPortal = JSON.parse(decodeURIComponent(vehicleDataParam));
                     } else {
-                        // Check sessionStorage for vehicle data
                         const storedData = sessionStorage.getItem('selectedVehicle');
                         if (storedData) {
                             vehicleDataFromPortal = JSON.parse(storedData);
-                            sessionStorage.removeItem('selectedVehicle'); // Clean up
+                            sessionStorage.removeItem('selectedVehicle');
                         }
                     }
 
                     if (vehicleDataFromPortal) {
                         console.log('📌 Vehicle data from portal:', vehicleDataFromPortal);
                         
-                        // Auto-populate fields
                         if (vehicleDataFromPortal.vehicle_type) {
                             vehicleTypeSelect.value = vehicleDataFromPortal.vehicle_type;
                             updateEngineDropdown();
@@ -1229,11 +1367,9 @@
                             makeSelect.value = displayMake;
                             if (tomMake) tomMake.setValue(displayMake);
                             
-                            // Load models for this make
                             const apiMake = getApiMakeName(displayMake, vehicleDataFromPortal.vehicle_type || 'Car');
                             const models = MODEL_MAP[apiMake] || ['Other'];
                             
-                            // Update model dropdown with models for this make
                             modelSelect.innerHTML = '';
                             const placeholder = document.createElement('option');
                             placeholder.value = '';
@@ -1253,7 +1389,6 @@
                                 tomModel.refreshOptions();
                             }
                             
-                            // Select the model
                             if (vehicleDataFromPortal.model) {
                                 modelSelect.value = vehicleDataFromPortal.model;
                                 if (tomModel) tomModel.setValue(vehicleDataFromPortal.model);
@@ -1390,6 +1525,12 @@
                         el.querySelector('.icon').textContent = '⏳';
                     }
                 });
+                // Update overlay progress
+                const progressTexts = ['Checking market data...', 'Comparing similar vehicles...', 'Running AI valuation...', 'Calculating depreciation...', 'Generating estimate...'];
+                if (step <= 5) {
+                    loadingText.textContent = progressTexts[step - 1] || 'Processing...';
+                    loadingProgress.textContent = `Step ${step} of 5`;
+                }
             }
 
             // ─── SHOW RESULT WITH ANIMATION ──────────────────────────
@@ -1503,13 +1644,17 @@
                     location: document.getElementById('location').value,
                     phone: document.getElementById('mpesaPhone').value
                 };
-                localStorage.setItem('valuationDraft', JSON.stringify(formData));
+                try {
+                    localStorage.setItem('valuationDraft', JSON.stringify(formData));
+                } catch (e) {
+                    console.log('Could not save draft:', e);
+                }
             }
 
             function loadDraft() {
                 try {
                     const data = JSON.parse(localStorage.getItem('valuationDraft'));
-                    if (data && !vehicleDataFromPortal) { // Only load draft if no portal data
+                    if (data && !vehicleDataFromPortal) {
                         vehicleTypeSelect.value = data.vehicleType || 'Car';
                         makeSelect.value = data.make || '';
                         updateModelDropdown();
@@ -1540,9 +1685,27 @@
                 }
             }
 
+            // ─── TRACK ANALYTICS ──────────────────────────────────────
+            function trackEvent(action, label, value) {
+                try {
+                    if (window.gtag) {
+                        gtag('event', action, { event_label: label, value: value });
+                    }
+                    console.log('📊 Analytics:', action, label, value);
+                } catch (e) {
+                    // Silent fail
+                }
+            }
+
             // ─── FORM SUBMISSION ──────────────────────────────────────
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
+
+                // Rate limiting
+                if (submitCooldown) {
+                    showToast('Please wait a moment before submitting again.', 'warning');
+                    return;
+                }
 
                 if (!window.autoV || !window.autoV._initialized) {
                     statusBox.className = 'status-box status-error';
@@ -1563,7 +1726,9 @@
                     return;
                 }
 
-                // Get the API make name for the selected display make
+                // Set cooldown
+                submitCooldown = true;
+
                 const displayMake = makeSelect.value;
                 const vehicleType = vehicleTypeSelect.value;
                 const apiMake = getApiMakeName(displayMake, vehicleType);
@@ -1571,7 +1736,7 @@
                 const formData = {
                     user_id: currentUser.id,
                     type: vehicleType,
-                    make: apiMake,  // Use API make name
+                    make: apiMake,
                     model: modelSelect.value,
                     year: parseInt(document.getElementById('year').value),
                     engine_capacity: parseInt(engineCapacitySelect.value),
@@ -1598,22 +1763,30 @@
                 const loadingSteps = document.getElementById('loadingSteps');
                 loadingSteps.classList.add('show');
                 updateLoadingStep(1);
+                showLoading(true, 'Checking market data...', 'Step 1 of 5');
 
                 try {
                     let step = 1;
                     const stepInterval = setInterval(() => {
                         step++;
-                        if (step <= 5) updateLoadingStep(step);
+                        if (step <= 5) {
+                            updateLoadingStep(step);
+                            const progressTexts = ['Checking market data...', 'Comparing similar vehicles...', 'Running AI valuation...', 'Calculating depreciation...', 'Generating estimate...'];
+                            showLoading(true, progressTexts[step - 1] || 'Processing...', `Step ${step} of 5`);
+                        }
                     }, 1200);
 
-                    // ─── SINGLE API CALL ───────────────────────────────────
-                    const result = await window.autoV.apiRequest('/instant-value/calculate', {
+                    trackEvent('valuation_started', formData.make + ' ' + formData.model, formData.year);
+
+                    // ─── API CALL WITH RETRY ───────────────────────────────
+                    const result = await apiRequestWithRetry(CONFIG.API_ENDPOINT, {
                         method: 'POST',
                         body: JSON.stringify(formData)
                     });
 
                     clearInterval(stepInterval);
                     updateLoadingStep(5);
+                    showLoading(false);
 
                     loadingSteps.classList.remove('show');
 
@@ -1626,12 +1799,15 @@
                     submitBtn.textContent = '✅ Valuation Complete';
                     submitBtn.disabled = true;
 
+                    trackEvent('valuation_completed', formData.make + ' ' + formData.model, result.market_value);
+
                     if (window.autoV) {
                         window.autoV.showToast('✅ Valuation complete!', 'success');
                     }
 
                 } catch (err) {
                     console.error('Error:', err);
+                    showLoading(false);
                     loadingSteps.classList.remove('show');
                     statusBox.className = 'status-box status-error';
                     statusBox.textContent = `❌ ${err.message || 'An error occurred. Please try again.'}`;
@@ -1639,9 +1815,15 @@
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '🚀 Get AI Valuation';
                     
+                    trackEvent('valuation_error', err.message, 0);
+                    
                     if (window.autoV) {
                         window.autoV.showToast('❌ Error: ' + err.message, 'error');
                     }
+                } finally {
+                    setTimeout(() => {
+                        submitCooldown = false;
+                    }, CONFIG.RATE_LIMIT_MS);
                 }
             });
 
@@ -1668,6 +1850,9 @@
                 const user = await checkAuth();
                 if (!user) return;
 
+                // Start session monitoring
+                startSessionMonitoring();
+
                 // Initialize UI
                 initTomSelect();
                 vehicleTypeSelect.value = 'Car';
@@ -1686,8 +1871,12 @@
                 const currentYear = new Date().getFullYear();
                 document.getElementById('year').max = currentYear;
 
+                // Track page view
+                trackEvent('page_view', 'instant_value_check', 0);
+
                 console.log('✅ AUTO-V Instant Value Check loaded successfully!');
                 console.log('📌 Bike make mapping:', BIKE_MAKE_MAP);
+                console.log('📌 Production ready with retry logic, caching, rate limiting, and analytics');
                 
                 if (window.autoV) {
                     window.autoV.showToast('🚗 Instant Value Check ready', 'success');
