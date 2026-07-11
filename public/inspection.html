@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
-        /* ─── All existing CSS remains the same ─── */
+        /* ─── RESET & BASE ─── */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
@@ -519,7 +519,6 @@
             <form id="vehicleForm" onsubmit="return false;">
                 <!-- TAB 1: Vehicle Info -->
                 <div id="tab-basic" class="tab-content">
-                    <!-- Vehicle Info content remains the same -->
                     <div class="row">
                         <div class="form-group"><label class="required">Registration</label><input type="text" id="vehicleReg" placeholder="KCA 123A"></div>
                         <div class="form-group"><label>VIN / Chassis</label><input type="text" id="vehicleVin" placeholder="JTEGD34V000123456"></div>
@@ -621,10 +620,9 @@
 
                 <!-- TAB 2: Images -->
                 <div id="tab-images" class="tab-content hidden">
-                    <h3>📸 Required Vehicle Images (18)</h3>
+                    <h3>📸 Required Vehicle Images (19)</h3>
                     <p style="color:#94a3b8; font-size:13px; margin-bottom:15px;">Upload clear photos for each angle. All mandatory.</p>
                     <div class="upload-grid" id="imageGrid">
-                        <!-- Image upload items remain the same -->
                         <div class="upload-item" data-slot="front"><span class="upload-label">Front View</span><input type="file" accept="image/*" onchange="handleImageUpload(this, 'front')"><div class="file-status pending">⏳ Pending</div></div>
                         <div class="upload-item" data-slot="rear"><span class="upload-label">Rear View</span><input type="file" accept="image/*" onchange="handleImageUpload(this, 'rear')"><div class="file-status pending">⏳ Pending</div></div>
                         <div class="upload-item" data-slot="left"><span class="upload-label">Left Side</span><input type="file" accept="image/*" onchange="handleImageUpload(this, 'left')"><div class="file-status pending">⏳ Pending</div></div>
@@ -680,7 +678,6 @@
                             <select id="inspTransmission"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select>
                         </div>
                     </div>
-                    <!-- Rest of inspection details remain the same -->
                     <div class="row">
                         <div class="form-group"><label>Suspension</label>
                             <select id="inspSuspension"><option value="Excellent">Excellent</option><option value="Good" selected>Good</option><option value="Fair">Fair</option><option value="Poor">Poor</option></select>
@@ -780,7 +777,6 @@
                     </div>
 
                     <div class="kebs-grid">
-                        <!-- KEBS items remain the same -->
                         <div class="kebs-item pass" id="kebs-steering">
                             <span>🔄 Steering System</span>
                             <span class="check" id="kebs-steering-status">✅ Pass</span>
@@ -914,8 +910,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V PROFESSIONAL INSPECTION ENGINE — Hybrid Architecture
-        // Uses window.autoV (Supabase + FastAPI)
+        // AUTO-V PROFESSIONAL INSPECTION ENGINE — ALIGNED WITH API DOCS
+        // Endpoints: /api/v1/inspections/...
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -1322,6 +1318,7 @@
             }
 
             // ─── MAIN SUBMIT ────────────────────────────────────────────
+            // ALIGNED WITH API DOCS: POST /api/v1/inspections/vehicles/{vehicle_id}/inspections
             document.getElementById('submitBtn').addEventListener('click', async function() {
                 const reg = document.getElementById('vehicleReg').value.toUpperCase();
                 const make = document.getElementById('vehicleMake').value;
@@ -1329,6 +1326,7 @@
                 const year = parseInt(document.getElementById('vehicleYear').value);
                 const vin = document.getElementById('vehicleVin').value || 'N/A';
                 const odometer = parseInt(document.getElementById('vehicleOdometer').value) || 0;
+                const bodyType = document.getElementById('vehicleBody').value;
 
                 if (!reg || !make || !model || !year) {
                     showMessage('Please fill in registration, make, model, and year', 'error');
@@ -1376,12 +1374,50 @@
                     currentUser = user;
                     document.getElementById('userEmail').textContent = user.email;
 
+                    // ─── STEP 1: Create/Get Vehicle ──────────────────────
+                    let vehicleId;
+                    try {
+                        const vehicleResult = await window.autoV.apiRequest('/vehicles/', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                reg: reg,
+                                vin: vin,
+                                make: make,
+                                model: model,
+                                year: year,
+                                body_type: bodyType,
+                                odometer: odometer,
+                                fuel_type: document.getElementById('vehicleFuel').value,
+                                transmission: document.getElementById('vehicleTransmission').value,
+                                engine_capacity: parseInt(document.getElementById('vehicleEngine').value)
+                            })
+                        });
+                        vehicleId = vehicleResult.data?.id || vehicleResult.id;
+                        showToast('✅ Vehicle created', 'success');
+                    } catch (vehicleError) {
+                        // Check if vehicle exists
+                        try {
+                            const vehicles = await window.autoV.apiRequest(`/vehicles/?reg=${reg}`);
+                            if (vehicles.data && vehicles.data.length > 0) {
+                                vehicleId = vehicles.data[0].id;
+                                showToast('✅ Existing vehicle found', 'info');
+                            } else {
+                                throw vehicleError;
+                            }
+                        } catch (e) {
+                            showToast('⚠️ Could not create/find vehicle', 'warning');
+                            vehicleId = 'temp_' + Date.now();
+                        }
+                    }
+
                     const purpose = document.getElementById('inspectionPurpose').value;
                     const price = pricingMap[purpose] || 3500;
                     const conditionData = calculateConditionScores();
                     const report = generateInspectionReport(conditionData);
                     const kebsResult = evaluateKEBS();
 
+                    // ─── STEP 2: Create Inspection ────────────────────────
+                    // POST /api/v1/inspections/vehicles/{vehicle_id}/inspections
                     const payload = {
                         vehicle_data: {
                             registration_number: reg,
@@ -1389,21 +1425,11 @@
                             make: make,
                             model: model,
                             year: year,
-                            body_type: document.getElementById('vehicleBody').value,
-                            engine_cc: parseInt(document.getElementById('vehicleEngine').value),
+                            body_type: bodyType,
+                            engine_cc: parseInt(document.getElementById('vehicleEngine').value) || 0,
                             transmission: document.getElementById('vehicleTransmission').value,
                             fuel_type: document.getElementById('vehicleFuel').value,
-                            odometer: odometer,
-                            engine_rating: document.getElementById('inspEngine').value,
-                            transmission_rating: document.getElementById('inspTransmission').value,
-                            suspension_rating: document.getElementById('inspSuspension').value,
-                            brakes_rating: document.getElementById('inspBrakes').value,
-                            paint_rating: document.getElementById('inspPaint').value,
-                            chassis_rating: document.getElementById('inspChassis').value,
-                            interior_rating: document.getElementById('inspInterior').value,
-                            electronics_rating: document.getElementById('inspElectronics').value,
-                            tyre_depth_mm: parseFloat(document.getElementById('inspTyres').value) || 6,
-                            accident_history: document.getElementById('inspAccident').value.toLowerCase()
+                            odometer: odometer
                         },
                         inspection_type: document.getElementById('inspectionType').value,
                         purpose: purpose,
@@ -1411,49 +1437,46 @@
                         inspector: {
                             name: inspectorName,
                             credentials: inspectorCreds,
+                            reg_number: document.getElementById('inspectorRegNumber')?.value || 'N/A',
+                            company: document.getElementById('inspectorCompany')?.value || 'Independent',
                             signature: inspectorSig
                         },
+                        condition_ratings: {
+                            engine: document.getElementById('inspEngine').value,
+                            transmission: document.getElementById('inspTransmission').value,
+                            suspension: document.getElementById('inspSuspension').value,
+                            brakes: document.getElementById('inspBrakes').value,
+                            paint: document.getElementById('inspPaint').value,
+                            chassis: document.getElementById('inspChassis').value,
+                            interior: document.getElementById('inspInterior').value,
+                            electronics: document.getElementById('inspElectronics').value,
+                            tyre_depth_mm: parseFloat(document.getElementById('inspTyres').value) || 6,
+                            accident_history: document.getElementById('inspAccident').value.toLowerCase()
+                        },
+                        damage_marks: [],
+                        checklist: [],
                         image_urls: imageUrls,
                         document_urls: docUrls,
-                        kebs: kebsResult
-                    };
-
-                    const inspectionData = {
-                        user_id: user.id,
-                        registration_number: reg,
-                        make: make,
-                        model: model,
-                        year: year,
-                        vin: vin,
-                        odometer: odometer,
-                        inspection_type: payload.inspection_type,
-                        purpose: purpose,
-                        region: payload.region,
-                        inspector_name: inspectorName,
-                        inspector_credentials: inspectorCreds,
-                        inspector_signature: inspectorSig,
+                        kebs: kebsResult,
                         condition_scores: report.scores,
                         issues: report.issues || [],
-                        kebs_score: kebsResult.percentage,
-                        kebs_status: kebsResult.status,
-                        kebs_critical_failures: kebsResult.criticalFailures || [],
-                        kebs_results: kebsResult.results || {},
-                        overall_score: report.scores.overall,
-                        confidence_score: kebsResult.percentage,
-                        certificate_number: `INS-${Date.now().toString(36).toUpperCase()}`,
-                        status: kebsResult.status === 'FAIL' ? 'failed' : 'completed'
+                        notes: document.getElementById('inspectionNotes').value || '',
+                        phone: document.getElementById('inspectionPhone').value || ''
                     };
 
-                    await window.autoV.apiRequest('/inspections', {
+                    const result = await window.autoV.apiRequest(`/inspections/vehicles/${vehicleId}/inspections`, {
                         method: 'POST',
-                        body: JSON.stringify(inspectionData)
+                        body: JSON.stringify(payload)
                     });
 
+                    const inspectionData = result.data || result;
+                    const certNumber = `INS-${Date.now().toString(36).toUpperCase()}`;
+
+                    // ─── STEP 3: Show Results ────────────────────────────
                     document.getElementById('dataEntryCard').classList.add('hidden');
                     document.getElementById('resultsCard').classList.remove('hidden');
 
                     const container = document.getElementById('resultsContainer');
-                    const certNumber = inspectionData.certificate_number;
                     const confidence = kebsResult.percentage;
                     const confidenceColor = confidence >= 80 ? '#22c55e' : confidence >= 60 ? '#eab308' : '#ef4444';
                     const isRoadworthy = kebsResult.status === 'PASS';
@@ -1544,14 +1567,15 @@
                     qrImg.alt = 'QR Code for verification';
                     qrImg.style.width = '120px';
                     qrImg.style.height = '120px';
-                    document.getElementById('qrCode').appendChild(qrImg);
+                    const qrContainer = document.getElementById('qrCode');
+                    if (qrContainer) qrContainer.appendChild(qrImg);
 
-                    window._currentInspectionResult = { ...inspectionData, inspectorName, inspectorCreds, inspectorSig };
+                    window._currentInspectionResult = { certNumber, inspectorName, inspectorCreds, inspectorSig };
                     showToast('✅ Inspection completed successfully!', 'success');
 
                 } catch (error) {
                     console.error('Inspection error:', error);
-                    showMessage('Error: ' + error.message, 'error');
+                    showMessage('Error: ' + (error.message || 'An error occurred'), 'error');
                 } finally {
                     showLoading(false);
                 }
@@ -1563,7 +1587,7 @@
                 if (!result) { showToast('No inspection to download', 'error'); return; }
                 const content = document.getElementById('resultsContainer').cloneNode(true);
                 const qr = content.querySelector('.qr-container');
-                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Inspection ID: ${result.certificate_number}</span>`;
+                if (qr) qr.innerHTML = `<span style="color:#000; font-weight:600;">🔍 Inspection ID: ${result.certNumber}</span>`;
                 const win = window.open('', '_blank');
                 win.document.write(`
                     <html><head><title>AUTO-V Inspection Report</title>
@@ -1606,7 +1630,7 @@
                 const result = window._currentInspectionResult;
                 if (!result) { showToast('No inspection to verify', 'error'); return; }
                 const verifyUrl =
-                    `https://auto-v.meipressgroup.com/verify-inspection.html?id=${result.certificate_number}`;
+                    `https://auto-v.meipressgroup.com/verify-inspection.html?id=${result.certNumber}`;
                 window.open(verifyUrl, '_blank');
             }
 
