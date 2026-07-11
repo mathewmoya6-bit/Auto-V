@@ -542,31 +542,31 @@
                             <option value="Hyundai">Hyundai</option>
                             <option value="Kia">Kia</option>
                             <option value="Peugeot">Peugeot</option>
-                            <option value="Suzuki Car">Suzuki</option>
+                            <option value="Suzuki">Suzuki</option>
                             <option value="Isuzu">Isuzu</option>
                             <option value="Daihatsu">Daihatsu</option>
                         </optgroup>
                         <optgroup label="Bikes">
-                            <option value="Honda Bike">Honda</option>
+                            <option value="Honda">Honda</option>
                             <option value="Yamaha">Yamaha</option>
-                            <option value="Suzuki Bike">Suzuki</option>
+                            <option value="Suzuki">Suzuki</option>
                             <option value="Kawasaki">Kawasaki</option>
                             <option value="TVS">TVS</option>
                             <option value="Bajaj">Bajaj</option>
-                            <option value="Hero">Hero</option>
+                            <option value="Hero MotoCorp">Hero</option>
                             <option value="Royal Enfield">Royal Enfield</option>
                             <option value="KTM">KTM</option>
                             <option value="Aprilia">Aprilia</option>
                             <option value="BMW Motorrad">BMW Motorrad</option>
                             <option value="Ducati">Ducati</option>
                             <option value="Triumph">Triumph</option>
-                            <option value="Harley Davidson">Harley Davidson</option>
+                            <option value="Harley-Davidson">Harley Davidson</option>
                             <option value="MV Agusta">MV Agusta</option>
                         </optgroup>
                         <optgroup label="Tricycles">
                             <option value="Piaggio">Piaggio</option>
-                            <option value="TVS Tricycle">TVS</option>
-                            <option value="Bajaj Tricycle">Bajaj</option>
+                            <option value="TVS">TVS</option>
+                            <option value="Bajaj">Bajaj</option>
                         </optgroup>
                         <option value="Other">Other</option>
                     </select>
@@ -848,8 +848,7 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V INSTANT VALUE CHECK — ALIGNED WITH API DOCS
-        // Endpoints: /api/v1/instant-value/calculate ONLY
+        // AUTO-V INSTANT VALUE CHECK — FIXED BIKE MODEL MAPPING
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -860,6 +859,27 @@
 
             // ─── MODEL MAPPING ──────────────────────────────────────────
             let MODEL_MAP = {};
+            
+            // ─── BIKE MAKE NAME MAPPING ──────────────────────────────
+            // Maps display names to API make names
+            const BIKE_MAKE_MAP = {
+                'Honda': 'Honda',
+                'Yamaha': 'Yamaha',
+                'Suzuki': 'Suzuki',
+                'Kawasaki': 'Kawasaki',
+                'TVS': 'TVS',
+                'Bajaj': 'Bajaj',
+                'Hero MotoCorp': 'Hero MotoCorp',
+                'Royal Enfield': 'Royal Enfield',
+                'KTM': 'KTM',
+                'Aprilia': 'Aprilia',
+                'BMW Motorrad': 'BMW Motorrad',
+                'Ducati': 'Ducati',
+                'Triumph': 'Triumph',
+                'Harley-Davidson': 'Harley-Davidson',
+                'MV Agusta': 'MV Agusta'
+            };
+
             const ENGINE_CAPACITIES = {
                 'Car': ['800', '1000', '1200', '1500', '1800', '2000', '2500', '3000', '3500', '4000', '5000', '6000'],
                 'Bike': ['50', '100', '125', '150', '200', '250', '300', '400', '500', '600', '800', '1000', '1200', '1500', '1800'],
@@ -949,10 +969,22 @@
                 });
             }
 
+            // ─── GET API MAKE NAME ─────────────────────────────────────
+            function getApiMakeName(displayName, vehicleType) {
+                if (vehicleType === 'Bike' && BIKE_MAKE_MAP[displayName]) {
+                    return BIKE_MAKE_MAP[displayName];
+                }
+                return displayName;
+            }
+
             // ─── UPDATE MODEL DROPDOWN ──────────────────────────────
             function updateModelDropdown() {
-                const selectedMake = makeSelect.value;
-                const models = MODEL_MAP[selectedMake] || ['Other'];
+                const selectedDisplayMake = makeSelect.value;
+                const vehicleType = vehicleTypeSelect.value;
+                
+                // Get the API make name for lookup
+                const apiMakeName = getApiMakeName(selectedDisplayMake, vehicleType);
+                const models = MODEL_MAP[apiMakeName] || ['Other'];
 
                 modelSelect.innerHTML = '';
                 const placeholder = document.createElement('option');
@@ -1079,7 +1111,6 @@
             }
 
             // ─── FETCH VEHICLE DATA ──────────────────────────────────
-            // Uses GET /api/v1/vehicles/models from API docs
             async function loadVehicleData() {
                 try {
                     if (!window.autoV) throw new Error('API client not available');
@@ -1100,6 +1131,11 @@
                     });
 
                     console.log('✅ Vehicle data loaded from API:', Object.keys(MODEL_MAP).length, 'makes');
+                    console.log('📌 Bike makes in API:', Object.keys(MODEL_MAP).filter(m => 
+                        ['Honda', 'Yamaha', 'Suzuki', 'Kawasaki', 'TVS', 'Bajaj', 'Hero MotoCorp', 
+                         'Royal Enfield', 'KTM', 'Aprilia', 'BMW Motorrad', 'Ducati', 'Triumph', 
+                         'Harley-Davidson', 'MV Agusta'].includes(m)
+                    ));
 
                     updateModelDropdown();
                     updateEngineDropdown();
@@ -1108,13 +1144,29 @@
                     return true;
                 } catch (error) {
                     console.error('Error loading vehicle data:', error);
-                    // Fallback to hardcoded data
+                    // Fallback to hardcoded data with proper bike makes
                     MODEL_MAP = {
+                        // Cars
                         'Toyota': ['Corolla', 'Axio', 'Camry', 'RAV4', 'Hilux', 'Land Cruiser'],
                         'Honda': ['Civic', 'Accord', 'CR-V', 'Fit'],
                         'Nissan': ['X-Trail', 'Patrol', 'Note', 'Qashqai'],
                         'BMW': ['X5', '3 Series', '5 Series', '7 Series'],
                         'Mercedes': ['C-Class', 'E-Class', 'GLC', 'GLE'],
+                        // Bikes
+                        'Yamaha': ['R1', 'R6', 'R3', 'MT-07', 'MT-09', 'MT-15', 'YZF 450', 'Tracer 900', 'VMAX', 'Bolt'],
+                        'Suzuki': ['GSX-R1000', 'GSX-R750', 'GSX-8S', 'Hayabusa', 'V-Strom 650', 'V-Strom 1000', 'SV650'],
+                        'Kawasaki': ['Ninja 250', 'Ninja 400', 'Ninja 650', 'Z900', 'Z650', 'Versys 650', 'Versys 1000', 'KX 450', 'Vulcan 900'],
+                        'KTM': ['Duke 200', 'Duke 390', 'RC 390', '890 Adventure', '1290 Super Adventure', '690 Enduro', '450 EXC'],
+                        'Ducati': ['Panigale V4', 'Panigale 959', 'Monster 821', 'Monster 1200', 'Scrambler', 'Multistrada 950', 'Multistrada 1260', 'Diavel'],
+                        'Triumph': ['Street Triple', 'Tiger 900', 'Tiger 1200', 'Bonneville', 'Speed Twin', 'Rocket 3', 'Speed Triple'],
+                        'Harley-Davidson': ['Street 750', 'Iron 883', 'Forty-Eight', 'Softail', 'Road King', 'Street Glide', 'Road Glide', 'Pan America'],
+                        'Royal Enfield': ['Bullet 350', 'Classic 350', 'Classic 500', 'Himalayan', 'Interceptor 650', 'GT 650', 'Meteor 350'],
+                        'Bajaj': ['Pulsar 150', 'Pulsar 180', 'Pulsar 200', 'Pulsar NS 200', 'Dominar 400', 'Avenger 160', 'Avenger 220'],
+                        'TVS': ['Apache RTR 160', 'Apache RTR 200', 'Apache RR 310', 'Star City', 'Jupiter'],
+                        'Hero MotoCorp': ['Splendor', 'Passion Pro', 'Glamour', 'Karizma', 'XPulse 200', 'Maverick'],
+                        'BMW Motorrad': ['R 1250 GS', 'R 1250 RT', 'S 1000 RR', 'F 900 R', 'K 1600 GT', 'G 310 R'],
+                        'Aprilia': ['RSV4', 'Tuono V4', 'RS 660', 'Tuono 660', 'RS 125', 'Tuono 125'],
+                        'MV Agusta': ['F3 800', 'F4 1000', 'Brutale 800', 'Brutale 1000', 'Dragster 800', 'Turismo Veloce'],
                         'Other': ['Other']
                     };
                     updateModelDropdown();
@@ -1347,7 +1399,6 @@
             }
 
             // ─── FORM SUBMISSION ──────────────────────────────────────
-            // ALIGNED WITH API DOCS: POST /api/v1/instant-value/calculate
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
 
@@ -1370,10 +1421,15 @@
                     return;
                 }
 
+                // Get the API make name for the selected display make
+                const displayMake = makeSelect.value;
+                const vehicleType = vehicleTypeSelect.value;
+                const apiMake = getApiMakeName(displayMake, vehicleType);
+
                 const formData = {
                     user_id: currentUser.id,
-                    type: vehicleTypeSelect.value,
-                    make: makeSelect.value,
+                    type: vehicleType,
+                    make: apiMake,  // Use API make name
                     model: modelSelect.value,
                     year: parseInt(document.getElementById('year').value),
                     engine_capacity: parseInt(engineCapacitySelect.value),
@@ -1389,6 +1445,8 @@
                     usage_type: document.getElementById('usageType').value,
                     phone: document.getElementById('mpesaPhone').value.trim()
                 };
+
+                console.log('📤 Submitting valuation with make:', formData.make, '(display:', displayMake, ')');
 
                 statusBox.style.display = 'none';
                 resultBox.classList.remove('show');
@@ -1407,8 +1465,6 @@
                     }, 1200);
 
                     // ─── SINGLE API CALL ───────────────────────────────────
-                    // POST /api/v1/instant-value/calculate
-                    // This endpoint calculates AND saves to instant_valuations table
                     const result = await window.autoV.apiRequest('/instant-value/calculate', {
                         method: 'POST',
                         body: JSON.stringify(formData)
@@ -1481,8 +1537,7 @@
                 document.getElementById('year').max = currentYear;
 
                 console.log('✅ AUTO-V Instant Value Check loaded successfully!');
-                console.log('📌 Endpoint: POST /api/v1/instant-value/calculate');
-                console.log('📌 Architecture: Frontend → FastAPI → Supabase DB');
+                console.log('📌 Bike make mapping:', BIKE_MAKE_MAP);
                 
                 if (window.autoV) {
                     window.autoV.showToast('🚗 Instant Value Check ready', 'success');
