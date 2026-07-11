@@ -7,7 +7,7 @@ from app.api.v1.endpoints import (
     vehicles_router,
     mileage_router,
     instant_value_router,
-    vehicle_assessments_router,
+    vehicle_assessment_router,
     valuation_router,
     payments_router,
     inspections_router,
@@ -23,7 +23,7 @@ api_router.include_router(categories_router, prefix="/categories", tags=["Catego
 api_router.include_router(vehicles_router, prefix="/vehicles", tags=["Vehicles"])
 api_router.include_router(mileage_router, prefix="/mileage", tags=["Mileage"])
 api_router.include_router(instant_value_router, prefix="/instant-value", tags=["Instant Value"])
-api_router.include_router(vehicle_assessments_router, prefix="/vehicle-assessments", tags=["Vehicle Assessments"])
+api_router.include_router(vehicle_assessment_router, prefix="/vehicle-assessments", tags=["Vehicle Assessments"])
 api_router.include_router(valuation_router, prefix="/valuations", tags=["Valuations"])
 api_router.include_router(payments_router, prefix="/payments", tags=["Payments"])
 api_router.include_router(inspections_router, prefix="/inspections", tags=["Inspections"])
