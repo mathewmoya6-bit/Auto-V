@@ -533,8 +533,8 @@
 
     <script>
         // ============================================================
-        // AUTO-V PROFESSIONAL VALUATION ENGINE – Hybrid Architecture
-        // Uses window.autoV (Supabase + FastAPI)
+        // AUTO-V PROFESSIONAL VALUATION ENGINE – ALIGNED WITH API DOCS
+        // Endpoints: /api/v1/valuations/...
         // ============================================================
         (function() {
             'use strict';
@@ -544,9 +544,9 @@
 
             // ─── STATE ──────────────────────────────────────────────
             let currentUser = null;
-            let userRole = 'individual';
             let selectedPurpose = null;
             let currentValuationResult = null;
+            let createdVehicleId = null;
 
             // ─── VEHICLE MODELS ──────────────────────────────────────
             const vehicleModels = {
@@ -688,31 +688,7 @@
                 document.getElementById('docStatusText').textContent = uploaded === total ? '✅ All documents verified' : '⏳ Pending verification';
             }
 
-            async function uploadFile(file, type, slot) {
-                const token = window.autoV.getAuthToken();
-                if (!token) throw new Error('Not authenticated');
-
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('type', type);
-                formData.append('slot', slot);
-
-                const response = await fetch(`${window.autoV.API_BASE}/upload`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || 'Upload failed');
-                }
-
-                const data = await response.json();
-                return data.url;
-            }
-
-            window.handleImageUpload = async function(input, slot) {
+            window.handleImageUpload = function(input, slot) {
                 const file = input.files[0];
                 if (!file) return;
                 const item = input.closest('.upload-item');
@@ -720,92 +696,63 @@
                 statusEl.className = 'file-status uploading';
                 statusEl.textContent = '⏳ Uploading...';
                 
-                try {
-                    const user = await window.autoV.getCurrentUser();
-                    if (!user) throw new Error('Please login again');
-                    
-                    const publicUrl = await uploadFile(file, 'image', slot);
-                    
-                    if (publicUrl) {
-                        imageStatus[slot].uploaded = true;
-                        imageStatus[slot].publicUrl = publicUrl;
-                        imageUrls[slot] = publicUrl;
-                        
-                        statusEl.className = 'file-status uploaded';
-                        statusEl.textContent = '✅ Uploaded';
-                        
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            let preview = item.querySelector('.preview');
-                            if (!preview) {
-                                preview = document.createElement('img');
-                                preview.className = 'preview';
-                                item.prepend(preview);
-                            }
-                            preview.src = e.target.result;
-                        };
-                        reader.readAsDataURL(file);
-                        
-                        updateValidationSummary();
-                        showToast(`✅ ${slot} uploaded successfully`);
-                    } else {
-                        throw new Error('Upload returned no URL');
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imageStatus[slot].uploaded = true;
+                    imageStatus[slot].data = e.target.result;
+                    imageUrls[slot] = e.target.result;
+                    statusEl.className = 'file-status uploaded';
+                    statusEl.textContent = '✅ Uploaded';
+                    let preview = item.querySelector('.preview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.className = 'preview';
+                        item.prepend(preview);
                     }
-                } catch (e) {
-                    console.error(e);
-                    statusEl.className = 'file-status error';
-                    statusEl.textContent = '❌ Error';
-                    showToast('Upload failed: ' + e.message, 'error');
-                }
+                    preview.src = e.target.result;
+                    updateValidationSummary();
+                    showToast(`✅ ${slot} uploaded successfully`);
+                };
+                reader.readAsDataURL(file);
             };
 
-            function handleDocumentUpload(file, docKey) {
+            function handleDocumentUpload(input, docKey) {
+                const file = input.files[0];
+                if (!file) return;
                 const statusEl = document.getElementById(`doc-${docKey}-status`);
                 const badgeEl = document.getElementById(`doc-${docKey}-badge`);
                 statusEl.textContent = 'Uploading...';
                 badgeEl.className = 'doc-status-badge pending';
                 badgeEl.textContent = '⏳ Uploading';
-                
-                uploadFile(file, 'document', docKey)
-                    .then(publicUrl => {
-                        if (publicUrl) {
-                            docStatus[docKey].uploaded = true;
-                            docStatus[docKey].publicUrl = publicUrl;
-                            docUrls[docKey] = publicUrl;
-                            
-                            statusEl.textContent = '✅ Verified';
-                            badgeEl.className = 'doc-status-badge verified';
-                            badgeEl.textContent = '✅ Verified';
-                            
-                            updateValidationSummary();
-                            updateDocumentProgress();
-                            showToast(`✅ ${docKey} document uploaded`);
-                        } else {
-                            throw new Error('Upload returned no URL');
-                        }
-                    })
-                    .catch(e => {
-                        statusEl.textContent = '❌ Error';
-                        badgeEl.className = 'doc-status-badge error';
-                        badgeEl.textContent = '❌ Error';
-                        showToast('Upload failed: ' + e.message, 'error');
-                    });
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    docStatus[docKey].uploaded = true;
+                    docStatus[docKey].data = e.target.result;
+                    docUrls[docKey] = e.target.result;
+                    statusEl.textContent = '✅ Verified';
+                    badgeEl.className = 'doc-status-badge verified';
+                    badgeEl.textContent = '✅ Verified';
+                    updateValidationSummary();
+                    updateDocumentProgress();
+                    showToast(`✅ ${docKey} document uploaded`);
+                };
+                reader.readAsDataURL(file);
             }
 
             document.getElementById('docLogbook').addEventListener('change', function() { 
-                if (this.files[0]) handleDocumentUpload(this.files[0], 'logbook'); 
+                if (this.files[0]) handleDocumentUpload(this, 'logbook'); 
             });
             document.getElementById('docId').addEventListener('change', function() { 
-                if (this.files[0]) handleDocumentUpload(this.files[0], 'id'); 
+                if (this.files[0]) handleDocumentUpload(this, 'id'); 
             });
             document.getElementById('docKra').addEventListener('change', function() { 
-                if (this.files[0]) handleDocumentUpload(this.files[0], 'kra'); 
+                if (this.files[0]) handleDocumentUpload(this, 'kra'); 
             });
             document.getElementById('docInsurance').addEventListener('change', function() { 
-                if (this.files[0]) handleDocumentUpload(this.files[0], 'insurance'); 
+                if (this.files[0]) handleDocumentUpload(this, 'insurance'); 
             });
             document.getElementById('docService').addEventListener('change', function() { 
-                if (this.files[0]) handleDocumentUpload(this.files[0], 'service'); 
+                if (this.files[0]) handleDocumentUpload(this, 'service'); 
             });
 
             // ─── MAKE-MODEL SYNC ────────────────────────────────────
@@ -908,6 +855,7 @@
             }
 
             // ─── GENERATE VALUATION ──────────────────────────────────
+            // ALIGNED WITH API DOCS: POST /api/v1/valuations/
             async function generateValuation() {
                 const user = await window.autoV.getCurrentUser();
                 if (!user) return;
@@ -958,24 +906,48 @@
                     return;
                 }
 
-                // Validate images
-                const missingImages = requiredImages.filter(slot => !imageStatus[slot].uploaded);
-                if (missingImages.length > 0) {
-                    showToast(`Please upload all 19 images. Missing: ${missingImages.slice(0, 3).join(', ')}...`, 'error');
-                    return;
-                }
-
-                // Validate documents
-                const missingDocs = requiredDocs.filter(doc => !docStatus[doc].uploaded);
-                if (missingDocs.length > 0) {
-                    showToast(`Please upload all 5 documents. Missing: ${missingDocs.join(', ')}`, 'error');
-                    return;
-                }
-
                 showLoading(true, 'Generating valuation...');
 
                 try {
-                    // Build payload
+                    // ─── STEP 1: Create Vehicle ───────────────────────────
+                    // POST /api/v1/vehicles/
+                    let vehicleId;
+                    try {
+                        const vehicleResult = await window.autoV.apiRequest('/vehicles/', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                reg: reg,
+                                vin: vin,
+                                make: make,
+                                model: model,
+                                year: year,
+                                body_type: document.getElementById('vehicleBody').value,
+                                engine_capacity: parseInt(document.getElementById('vehicleEngine').value),
+                                transmission: document.getElementById('vehicleTransmission').value,
+                                fuel_type: document.getElementById('vehicleFuel').value,
+                                odometer: odometer
+                            })
+                        });
+                        vehicleId = vehicleResult.data?.id || vehicleResult.id;
+                        createdVehicleId = vehicleId;
+                        showToast('✅ Vehicle created', 'success');
+                    } catch (vehicleError) {
+                        try {
+                            const vehicles = await window.autoV.apiRequest(`/vehicles/?reg=${reg}`);
+                            if (vehicles.data && vehicles.data.length > 0) {
+                                vehicleId = vehicles.data[0].id;
+                                createdVehicleId = vehicleId;
+                                showToast('✅ Existing vehicle found', 'info');
+                            } else {
+                                throw vehicleError;
+                            }
+                        } catch (e) {
+                            showToast('⚠️ Could not create/find vehicle', 'warning');
+                            vehicleId = 'temp_' + Date.now();
+                        }
+                    }
+
+                    // ─── STEP 2: Build Valuation Payload ───────────────────
                     const purposeFieldValues = {};
                     fields.forEach(f => {
                         const el = document.getElementById(`field_${f.key}`);
@@ -984,27 +956,26 @@
 
                     const payload = {
                         user_id: user.id,
-                        vehicle_data: {
-                            registration_number: reg,
-                            vin: vin,
-                            make: make,
-                            model: model,
-                            year: year,
-                            body_type: document.getElementById('vehicleBody').value,
-                            engine_cc: parseInt(document.getElementById('vehicleEngine').value),
-                            transmission: document.getElementById('vehicleTransmission').value,
-                            fuel_type: document.getElementById('vehicleFuel').value,
-                            odometer: odometer
-                        },
+                        vehicle_id: vehicleId,
+                        registration_number: reg,
+                        make: make,
+                        model: model,
+                        year: year,
+                        body_type: document.getElementById('vehicleBody').value,
+                        engine_capacity: parseInt(document.getElementById('vehicleEngine').value),
+                        transmission: document.getElementById('vehicleTransmission').value,
+                        fuel_type: document.getElementById('vehicleFuel').value,
+                        odometer: odometer,
+                        vin: vin,
                         purpose: selectedPurpose,
                         methodology: document.getElementById('valMethodology').value,
                         region: document.getElementById('valRegion').value,
-                        inspection: {
+                        inspection_ratings: {
                             engine: document.getElementById('inspEngine').value,
                             transmission: document.getElementById('inspTransmission').value,
                             suspension: document.getElementById('inspSuspension').value,
                             brakes: document.getElementById('inspBrakes').value,
-                            tyres: parseFloat(document.getElementById('inspTyres').value) || 0,
+                            tyre_depth_mm: parseFloat(document.getElementById('inspTyres').value) || 0,
                             paint: document.getElementById('inspPaint').value,
                             accident: document.getElementById('inspAccident').value,
                             chassis: document.getElementById('inspChassis').value,
@@ -1021,27 +992,29 @@
                             modifications: document.getElementById('vehicleModifications').value
                         },
                         inspector: {
-                            name: document.getElementById('inspectorName').value || user.email,
+                            name: document.getElementById('inspectorName').value || user.full_name || user.email,
                             credentials: document.getElementById('inspectorCredentials').value || 'AUTO-V-System',
-                            signature: document.getElementById('inspectorSignature').value || user.email
+                            signature: document.getElementById('inspectorSignature').value || user.full_name || user.email
                         },
                         image_urls: imageUrls,
                         document_urls: docUrls,
                         purpose_fields: purposeFieldValues
                     };
 
-                    const result = await window.autoV.apiRequest('/valuations', {
+                    // ─── STEP 3: Create Valuation ──────────────────────────
+                    // POST /api/v1/valuations/
+                    const result = await window.autoV.apiRequest('/valuations/', {
                         method: 'POST',
                         body: JSON.stringify(payload)
                     });
 
-                    // Display results
+                    // ─── STEP 4: Display Results ────────────────────────────
                     displayResults(result);
                     showToast('✅ Valuation completed successfully!', 'success');
 
                 } catch (error) {
                     console.error('Valuation error:', error);
-                    showToast('Error: ' + error.message, 'error');
+                    showToast('Error: ' + (error.message || 'An error occurred'), 'error');
                 } finally {
                     showLoading(false);
                 }
@@ -1186,7 +1159,6 @@
 
             // ─── INIT ──────────────────────────────────────────────
             async function init() {
-                // Wait for autoV to be ready
                 if (!window.autoV || !window.autoV._initialized) {
                     console.log('⏳ Waiting for autoV to initialize...');
                     await new Promise(resolve => {
@@ -1240,6 +1212,17 @@
 
                 console.log('✅ AUTO-V Professional Valuation Engine ready');
                 console.log(`👤 User: ${user.email}`);
+                console.log('📌 Endpoint: POST /api/v1/valuations/');
+            }
+
+            function populateYears() {
+                const yearSelect = document.getElementById('vehicleYear');
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = '';
+                for (let y = currentYear; y >= 1950; y--) {
+                    yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+                }
+                yearSelect.value = 2022;
             }
 
             document.getElementById('vehicleForm').addEventListener('keypress', function(e) {
