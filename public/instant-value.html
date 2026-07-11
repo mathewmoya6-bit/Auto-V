@@ -199,34 +199,6 @@
         .vehicle-preview .icon { font-size: 36px; }
         .vehicle-preview .info h4 { color: #eab308; font-size: 16px; font-weight: 600; }
         .vehicle-preview .info p { color: #94a3b8; font-size: 13px; }
-        .price-banner {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border-left: 4px solid #22c55e;
-            padding: 14px 20px;
-            border-radius: 10px;
-            margin: 16px 0 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .price-banner .label {
-            color: #94a3b8;
-            font-size: 13px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .price-banner .label .check { color: #22c55e; }
-        .price-banner .amount { color: #22c55e; font-size: 24px; font-weight: 700; }
-        .price-banner .processing-time {
-            font-size: 11px;
-            color: #64748b;
-            width: 100%;
-            text-align: right;
-        }
         .btn {
             width: 100%;
             padding: 16px;
@@ -468,15 +440,6 @@
             animation: spin 0.6s linear infinite;
             vertical-align: middle;
         }
-        .footer {
-            text-align: center;
-            margin-top: 24px;
-            padding-top: 20px;
-            border-top: 1px solid #1e293b;
-            font-size: 12px;
-            color: #475569;
-        }
-        .footer strong { color: #eab308; }
         
         /* ─── Toast ─── */
         .toast {
@@ -510,7 +473,6 @@
             h1 { font-size: 22px; }
             .header { flex-direction: column; align-items: flex-start; }
             .vehicle-preview { flex-direction: column; text-align: center; }
-            .price-banner { flex-direction: column; text-align: center; }
         }
         @media (max-width: 480px) {
             body { padding: 10px; }
@@ -781,14 +743,6 @@
                 </div>
             </div>
 
-            <div class="price-banner">
-                <span class="label">
-                    <span class="check">✅</span> Service Fee
-                </span>
-                <span class="amount" id="serviceFeeDisplay">KES --</span>
-                <span class="processing-time">⏱️ Average processing time: ~15 seconds</span>
-            </div>
-
             <div class="form-group">
                 <label>M-Pesa Phone Number <span class="required">*</span></label>
                 <input type="tel" id="mpesaPhone" placeholder="0712345678" required>
@@ -894,7 +848,8 @@
 
     <script>
         // ═══════════════════════════════════════════════════════════════
-        // AUTO-V INSTANT VALUE CHECK — Supabase Auth + FastAPI Logic
+        // AUTO-V INSTANT VALUE CHECK — FIXED ARCHITECTURE
+        // Supabase Auth → FastAPI Backend → Supabase DB
         // ═══════════════════════════════════════════════════════════════
 
         (function() {
@@ -925,7 +880,7 @@
 
             // ─── State ──────────────────────────────────────────────────
             let currentUser = null;
-            let serviceFee = null;
+            let serviceFee = 500;
 
             // ─── DOM ELEMENTS ──────────────────────────────────────────
             const vehicleTypeSelect = document.getElementById('vehicleType');
@@ -933,7 +888,6 @@
             const modelSelect = document.getElementById('model');
             const engineCapacitySelect = document.getElementById('engineCapacity');
             const bodyTypeSelect = document.getElementById('bodyType');
-            const serviceFeeDisplay = document.getElementById('serviceFeeDisplay');
             const form = document.getElementById('instantForm');
             const submitBtn = document.getElementById('submitBtn');
             const statusBox = document.getElementById('statusBox');
@@ -1125,29 +1079,27 @@
                 }
             }
 
-            // ─── FETCH SERVICE FEE FROM API ──────────────────────────
+            // ─── FETCH SERVICE FEE ──────────────────────────────────
+            // FIXED: Using correct endpoint /instant-value/fee
             async function fetchServiceFee() {
                 try {
                     if (!window.autoV) throw new Error('API client not available');
-                    const data = await window.autoV.apiRequest('/settings/instant_fee');
-                    const fee = parseInt(data.fee ?? data.setting_value, 10);
-                    if (!Number.isFinite(fee)) throw new Error('Invalid fee returned by API');
-                    serviceFee = fee;
-                    serviceFeeDisplay.textContent = `KES ${serviceFee.toLocaleString()}`;
+                    const data = await window.autoV.apiRequest('/instant-value/fee');
+                    serviceFee = parseInt(data.fee ?? data.setting_value, 10) || 500;
                     return serviceFee;
                 } catch (error) {
                     console.warn('⚠️ Error fetching service fee:', error);
-                    serviceFeeDisplay.textContent = 'Unavailable';
-                    return null;
+                    return 500;
                 }
             }
 
-            // ─── FETCH VEHICLE DATA FROM API ─────────────────────────
+            // ─── FETCH VEHICLE DATA ──────────────────────────────────
+            // FIXED: Using correct endpoint /instant-value/models
             async function loadVehicleData() {
                 try {
                     if (!window.autoV) throw new Error('API client not available');
-                    const vehicles = await window.autoV.apiRequest('/vehicles/models');
-                    
+                    const vehicles = await window.autoV.apiRequest('/instant-value/models');
+
                     MODEL_MAP = {};
                     vehicles.forEach(v => {
                         if (!MODEL_MAP[v.make]) {
@@ -1410,6 +1362,7 @@
             }
 
             // ─── FORM SUBMISSION ──────────────────────────────────────
+            // FIXED: Complete flow with DB save via FastAPI
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
 
@@ -1468,10 +1421,12 @@
                         if (step <= 5) updateLoadingStep(step);
                     }, 1200);
 
-                    // ─── Get instant AI valuation (single call) ────────
+                    // ─── STEP 1: Calculate AI Valuation ───────────────────
+                    // POST /instant-value/calculate
                     const result = await window.autoV.apiRequest('/instant-value/calculate', {
                         method: 'POST',
                         body: JSON.stringify({
+                            user_id: currentUser.id,
                             type: formData.vehicleType,
                             make: formData.make,
                             model: formData.model,
@@ -1488,6 +1443,37 @@
                             previous_owners: formData.previousOwners,
                             usage_type: formData.usageType,
                             phone: formData.phone
+                        })
+                    });
+
+                    // ─── STEP 2: Save to Database ─────────────────────────
+                    // POST /instant-value/valuations
+                    await window.autoV.apiRequest('/instant-value/valuations', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            user_id: currentUser.id,
+                            vehicle_type: formData.vehicleType,
+                            make: formData.make,
+                            model: formData.model,
+                            year: formData.year,
+                            engine_capacity: formData.engineCapacity,
+                            fuel_type: formData.fuelType,
+                            transmission: formData.transmission,
+                            body_type: formData.bodyType,
+                            body_color: formData.bodyColor,
+                            mileage: formData.mileage,
+                            previous_owners: formData.previousOwners,
+                            usage_type: formData.usageType,
+                            condition: formData.condition,
+                            accident_history: formData.accidentHistory,
+                            location: formData.location,
+                            phone: formData.phone,
+                            market_value: result.market_value,
+                            range_low: result.range_low,
+                            range_high: result.range_high,
+                            confidence_score: result.confidence_score,
+                            certificate_number: result.certificate_number,
+                            factors: result.factors || []
                         })
                     });
 
@@ -1561,6 +1547,7 @@
                 console.log('✅ AUTO-V Instant Value Check loaded successfully!');
                 console.log(`📌 Supabase Auth: ✅ Connected (${user.email})`);
                 console.log(`📌 FastAPI Client: ${window.autoV ? '✅ Connected' : '❌ Not available'}`);
+                console.log('📌 Architecture: Frontend → FastAPI → Supabase DB');
                 
                 if (window.autoV) {
                     window.autoV.showToast('🚗 Instant Value Check ready', 'success');
