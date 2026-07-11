@@ -785,7 +785,7 @@
                 <span class="label">
                     <span class="check">✅</span> Service Fee
                 </span>
-                <span class="amount" id="serviceFeeDisplay">KES 500</span>
+                <span class="amount" id="serviceFeeDisplay">KES --</span>
                 <span class="processing-time">⏱️ Average processing time: ~15 seconds</span>
             </div>
 
@@ -925,7 +925,7 @@
 
             // ─── State ──────────────────────────────────────────────────
             let currentUser = null;
-            let serviceFee = 500;
+            let serviceFee = null;
 
             // ─── DOM ELEMENTS ──────────────────────────────────────────
             const vehicleTypeSelect = document.getElementById('vehicleType');
@@ -1130,13 +1130,15 @@
                 try {
                     if (!window.autoV) throw new Error('API client not available');
                     const data = await window.autoV.apiRequest('/settings/instant_fee');
-                    serviceFee = parseInt(data.fee ?? data.setting_value, 10) || 500;
+                    const fee = parseInt(data.fee ?? data.setting_value, 10);
+                    if (!Number.isFinite(fee)) throw new Error('Invalid fee returned by API');
+                    serviceFee = fee;
                     serviceFeeDisplay.textContent = `KES ${serviceFee.toLocaleString()}`;
                     return serviceFee;
                 } catch (error) {
                     console.warn('⚠️ Error fetching service fee:', error);
-                    serviceFeeDisplay.textContent = 'KES 500';
-                    return 500;
+                    serviceFeeDisplay.textContent = 'Unavailable';
+                    return null;
                 }
             }
 
@@ -1466,71 +1468,31 @@
                         if (step <= 5) updateLoadingStep(step);
                     }, 1200);
 
-                    // ─── Step 1: Create valuation record ──────────────
-                    const valuationData = {
-                        user_id: currentUser.id,
-                        make: formData.make,
-                        model: formData.model,
-                        year: formData.year,
-                        engine_capacity: formData.engineCapacity,
-                        fuel_type: formData.fuelType,
-                        transmission: formData.transmission,
-                        body_type: formData.bodyType,
-                        body_color: formData.bodyColor,
-                        mileage: formData.mileage,
-                        condition: formData.condition,
-                        accident_history: formData.accidentHistory,
-                        location: formData.location,
-                        previous_owners: formData.previousOwners,
-                        usage_type: formData.usageType,
-                        phone: formData.phone
-                    };
-
-                    const savedValuation = await window.autoV.apiRequest('/valuations', {
-                        method: 'POST',
-                        body: JSON.stringify(valuationData)
-                    });
-
-                    // ─── Step 2: Get AI valuation ──────────────────────
-                    const result = await window.autoV.apiRequest('/valuations/instant', {
+                    // ─── Get instant AI valuation (single call) ────────
+                    const result = await window.autoV.apiRequest('/instant-value/calculate', {
                         method: 'POST',
                         body: JSON.stringify({
-                            user_id: currentUser.id,
-                            vehicle: {
-                                type: formData.vehicleType,
-                                make: formData.make,
-                                model: formData.model,
-                                year: formData.year,
-                                engine_capacity: formData.engineCapacity,
-                                fuel_type: formData.fuelType,
-                                transmission: formData.transmission,
-                                body_type: formData.bodyType,
-                                body_color: formData.bodyColor,
-                                mileage: formData.mileage,
-                                condition: formData.condition,
-                                accident_history: formData.accidentHistory,
-                                location: formData.location,
-                                previous_owners: formData.previousOwners,
-                                usage_type: formData.usageType
-                            },
-                            phone: formData.phone,
-                            valuation_id: savedValuation.id
+                            type: formData.vehicleType,
+                            make: formData.make,
+                            model: formData.model,
+                            year: formData.year,
+                            engine_capacity: formData.engineCapacity,
+                            fuel_type: formData.fuelType,
+                            transmission: formData.transmission,
+                            body_type: formData.bodyType,
+                            body_color: formData.bodyColor,
+                            mileage: formData.mileage,
+                            condition: formData.condition,
+                            accident_history: formData.accidentHistory,
+                            location: formData.location,
+                            previous_owners: formData.previousOwners,
+                            usage_type: formData.usageType,
+                            phone: formData.phone
                         })
                     });
 
                     clearInterval(stepInterval);
                     updateLoadingStep(5);
-
-                    // ─── Step 3: Update valuation with result ──────────
-                    await window.autoV.apiRequest(`/valuations/${savedValuation.id}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({
-                            market_value: result.market_value,
-                            confidence_score: result.confidence_score,
-                            certificate_number: result.certificate_number,
-                            status: 'completed'
-                        })
-                    });
 
                     loadingSteps.classList.remove('show');
 
