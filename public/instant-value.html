@@ -900,6 +900,7 @@
 
             // ─── State ──────────────────────────────────────────────────
             let currentUser = null;
+            let vehicleDataFromPortal = null;
 
             // ─── DOM ELEMENTS ──────────────────────────────────────────
             const vehicleTypeSelect = document.getElementById('vehicleType');
@@ -977,6 +978,16 @@
                 return displayName;
             }
 
+            // ─── GET DISPLAY MAKE NAME ────────────────────────────────
+            function getDisplayMakeName(apiMake, vehicleType) {
+                if (vehicleType === 'Bike') {
+                    for (const [display, api] of Object.entries(BIKE_MAKE_MAP)) {
+                        if (api === apiMake) return display;
+                    }
+                }
+                return apiMake;
+            }
+
             // ─── UPDATE MODEL DROPDOWN ──────────────────────────────
             function updateModelDropdown() {
                 const selectedDisplayMake = makeSelect.value;
@@ -1003,6 +1014,15 @@
                 if (tomModel) {
                     tomModel.addOption(models.map(m => ({ value: m, text: m })));
                     tomModel.refreshOptions();
+                }
+
+                // If we have vehicle data from portal, auto-select the model
+                if (vehicleDataFromPortal && vehicleDataFromPortal.model) {
+                    const modelExists = models.includes(vehicleDataFromPortal.model);
+                    if (modelExists) {
+                        modelSelect.value = vehicleDataFromPortal.model;
+                        if (tomModel) tomModel.setValue(vehicleDataFromPortal.model);
+                    }
                 }
 
                 updateVehiclePreview();
@@ -1173,6 +1193,128 @@
                     updateEngineDropdown();
                     updateBodyTypeDropdown();
                     return false;
+                }
+            }
+
+            // ─── LOAD VEHICLE DATA FROM PORTAL ──────────────────────
+            function loadVehicleFromPortal() {
+                try {
+                    // Check if vehicle data was passed via URL params
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const vehicleDataParam = urlParams.get('vehicle');
+                    
+                    if (vehicleDataParam) {
+                        vehicleDataFromPortal = JSON.parse(decodeURIComponent(vehicleDataParam));
+                    } else {
+                        // Check sessionStorage for vehicle data
+                        const storedData = sessionStorage.getItem('selectedVehicle');
+                        if (storedData) {
+                            vehicleDataFromPortal = JSON.parse(storedData);
+                            sessionStorage.removeItem('selectedVehicle'); // Clean up
+                        }
+                    }
+
+                    if (vehicleDataFromPortal) {
+                        console.log('📌 Vehicle data from portal:', vehicleDataFromPortal);
+                        
+                        // Auto-populate fields
+                        if (vehicleDataFromPortal.vehicle_type) {
+                            vehicleTypeSelect.value = vehicleDataFromPortal.vehicle_type;
+                            updateEngineDropdown();
+                            updateBodyTypeDropdown();
+                        }
+                        
+                        if (vehicleDataFromPortal.make) {
+                            const displayMake = getDisplayMakeName(vehicleDataFromPortal.make, vehicleDataFromPortal.vehicle_type || 'Car');
+                            makeSelect.value = displayMake;
+                            if (tomMake) tomMake.setValue(displayMake);
+                            
+                            // Load models for this make
+                            const apiMake = getApiMakeName(displayMake, vehicleDataFromPortal.vehicle_type || 'Car');
+                            const models = MODEL_MAP[apiMake] || ['Other'];
+                            
+                            // Update model dropdown with models for this make
+                            modelSelect.innerHTML = '';
+                            const placeholder = document.createElement('option');
+                            placeholder.value = '';
+                            placeholder.textContent = '-- Select Model --';
+                            modelSelect.appendChild(placeholder);
+                            
+                            models.forEach(m => {
+                                const opt = document.createElement('option');
+                                opt.value = m;
+                                opt.textContent = m;
+                                modelSelect.appendChild(opt);
+                            });
+                            
+                            if (tomModel) {
+                                tomModel.clearOptions();
+                                tomModel.addOption(models.map(m => ({ value: m, text: m })));
+                                tomModel.refreshOptions();
+                            }
+                            
+                            // Select the model
+                            if (vehicleDataFromPortal.model) {
+                                modelSelect.value = vehicleDataFromPortal.model;
+                                if (tomModel) tomModel.setValue(vehicleDataFromPortal.model);
+                            }
+                        }
+                        
+                        if (vehicleDataFromPortal.year) {
+                            document.getElementById('year').value = vehicleDataFromPortal.year;
+                        }
+                        
+                        if (vehicleDataFromPortal.engine_capacity) {
+                            engineCapacitySelect.value = vehicleDataFromPortal.engine_capacity.toString();
+                        }
+                        
+                        if (vehicleDataFromPortal.fuel_type) {
+                            const fuelMap = {
+                                'petrol': 'Petrol',
+                                'diesel': 'Diesel',
+                                'hybrid': 'Hybrid',
+                                'electric': 'Electric',
+                                'lpg': 'LPG'
+                            };
+                            document.getElementById('fuelType').value = fuelMap[vehicleDataFromPortal.fuel_type.toLowerCase()] || 'Petrol';
+                        }
+                        
+                        if (vehicleDataFromPortal.transmission) {
+                            const transMap = {
+                                'automatic': 'Automatic',
+                                'manual': 'Manual',
+                                'cvt': 'CVT'
+                            };
+                            document.getElementById('transmission').value = transMap[vehicleDataFromPortal.transmission.toLowerCase()] || 'Automatic';
+                        }
+                        
+                        if (vehicleDataFromPortal.body_type) {
+                            bodyTypeSelect.value = vehicleDataFromPortal.body_type;
+                        }
+                        
+                        if (vehicleDataFromPortal.odometer) {
+                            document.getElementById('mileage').value = vehicleDataFromPortal.odometer;
+                        }
+                        
+                        if (vehicleDataFromPortal.location) {
+                            document.getElementById('location').value = vehicleDataFromPortal.location;
+                            if (tomLocation) tomLocation.setValue(vehicleDataFromPortal.location);
+                        }
+                        
+                        if (vehicleDataFromPortal.condition) {
+                            document.getElementById('condition').value = vehicleDataFromPortal.condition;
+                        }
+                        
+                        if (vehicleDataFromPortal.phone) {
+                            document.getElementById('mpesaPhone').value = vehicleDataFromPortal.phone;
+                        }
+                        
+                        updateVehiclePreview();
+                        updateProgress();
+                        showToast('✅ Vehicle details auto-populated from portal', 'success');
+                    }
+                } catch (e) {
+                    console.error('Error loading vehicle from portal:', e);
                 }
             }
 
@@ -1367,7 +1509,7 @@
             function loadDraft() {
                 try {
                     const data = JSON.parse(localStorage.getItem('valuationDraft'));
-                    if (data) {
+                    if (data && !vehicleDataFromPortal) { // Only load draft if no portal data
                         vehicleTypeSelect.value = data.vehicleType || 'Car';
                         makeSelect.value = data.make || '';
                         updateModelDropdown();
@@ -1530,7 +1672,15 @@
                 initTomSelect();
                 vehicleTypeSelect.value = 'Car';
                 await loadVehicleData();
-                loadDraft();
+                
+                // Load vehicle from portal first (if available)
+                loadVehicleFromPortal();
+                
+                // If no portal data, load draft
+                if (!vehicleDataFromPortal) {
+                    loadDraft();
+                }
+                
                 updateProgress();
 
                 const currentYear = new Date().getFullYear();
